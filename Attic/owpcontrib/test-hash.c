@@ -2,10 +2,10 @@
  * $Id$
  */
 #include <I2util/table.h>
-#include "access.h"
+#include "./access.h"
 
 void
-test_ip2class(hash_ptr ip2class_hash)
+test_ip2class(I2table ip2class_hash)
 {
 	char line[MAX_LINE];
 	u_int32_t ip;
