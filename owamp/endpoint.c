@@ -279,17 +279,21 @@ GetTimespec(
 #else
 	sec = 1000000;
 #endif
-	if(ntp_conf.offset > 0){
-		while(ntp_conf.offset >= sec){
-			ts->tv_sec++;
-			ntp_conf.offset -= sec;
-		}
+	/*
+	 * Convert negative offsets to positive ones by decreasing
+	 * the ts->tv_sec.
+	 */
+	while(ntp_conf.offset < 0){
+		ts->tv_sec--;
+		ntp_conf.offset += sec;
 	}
-	else{
-		while(ntp_conf.offset <= -sec){
-			ts->tv_sec--;
-			ntp_conf.offset += sec;
-		}
+
+	/*
+	 * Make sure the "offset" is less than 1 second
+	 */
+	while(ntp_conf.offset >= sec){
+		ts->tv_sec++;
+		ntp_conf.offset -= sec;
 	}
 
 #ifndef	STA_NANO
