@@ -251,6 +251,8 @@ print_record(void *calldata,          /* currently just a file pointer */
 	return 0;
 }
 
+#define THOUSAND 1000.0
+
 /*
 ** Print delay for the current record (ping-like style) and update the stats.
 */
@@ -282,8 +284,6 @@ print_delay(void *calldata,      /* fetch_state_ptr */
 
 	return 0;
 }
-
-#define THOUSAND 1000.0
 
 /*
 ** Print out summary results, ping-like style.
