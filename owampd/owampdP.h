@@ -36,6 +36,7 @@ typedef struct {
 	I2Boolean	help;
 
 	char		*confdir;
+	char		*vardir;
 	char		*ip2class;
 	char		*class2limits;
 	char		*passwd;
@@ -44,7 +45,10 @@ typedef struct {
 
 	char		*authmode;
 	u_int32_t	auth_mode;	/* cooked version of authmode */
-	char		*nodename;
+	char		*srcnode;
+
+	char		*user;
+	char		*group;
 
 	int		maxconnections;
 	int		tmout;
@@ -53,6 +57,7 @@ typedef struct {
 #ifndef	NDEBUG
 	I2Boolean	childwait;
 #endif
+	I2Boolean	daemon;
 } owampd_opts;
 
 #endif	/*	_owampdp_h_	*/

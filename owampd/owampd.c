@@ -28,6 +28,8 @@
 #include <unistd.h>
 #include <signal.h>
 #include <errno.h>
+#include <pwd.h>
+#include <grp.h>
 
 #include <owamp/owamp.h>
 #include <owamp/conndata.h>
@@ -39,11 +41,12 @@
 #define OWP_MAX_CLASSNAME_LEN 64 /* temp plug */
 
 /* Global variable - the total number of allowed Control connections. */
-static int		sigchld_received = 0;
-static owampd_opts	opts;
-static I2ErrHandle	errhand;
-static I2table		fdtable=NULL;
-static I2table		pidtable=NULL;
+static int			sigchld_received = 0;
+static owampd_opts		opts;
+static I2ErrLogSyslogAttr	syslogattr;
+static I2ErrHandle		errhand;
+static I2table			fdtable=NULL;
+static I2table			pidtable=NULL;
 
 static void
 usage(
@@ -54,19 +57,21 @@ usage(
 	fprintf(stderr, "Usage: %s [options]\n", progname);
 	fprintf(stderr, "\nWhere \"options\" are:\n\n");
 
-		fprintf(stderr, "%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n",
-			"   -v                verbose output",
-			"   -k                Print this message and exit",
-			"   -C confidr        Configuration directory",
-			"   -c ip2class       ipclass config filename",
-			"   -l class2limits   class2limits config filename",
-			"   -c passwd         passwd config filename",
-			"   -d datadir        Data directory",
-			"   -a authmode       Default supported authmodes:[E]ncrypted,[A]uthenticated,[O]pen",
-		        "   -n nodename       Local nodename to bind to: addr:port",
-			"   -t tmout          Max time to wait for control connection reads (sec)",
-			"   -L timeout        Maximum time to wait for a packet before declaring it lost",
-			"   -w                Debugging: busy-wait children after fork to allow attachment"
+		fprintf(stderr,
+		"   -v                verbose output\n"
+		"   -h                Print this message and exit\n"
+		"   -c confidr        Configuration directory\n"
+		"   -d datadir        Data directory\n"
+		"   -a authmode       Default supported authmodes:[E]ncrypted,[A]uthenticated,[O]pen\n"
+	        "   -S nodename:port  Srcaddr to bind to\n"
+		"   -t tmout          Max time to wait for control connection reads (sec)\n"
+		"   -L timeout        Maximum time to wait for a packet before declaring it lost\n"
+		"      -U/-G options only used if run as root\n"
+		"   -U user           Run as user \"user\" :-uid also valid\n"
+		"   -G group          Run as group \"group\" :-gid also valid\n"
+		"   -w                Debugging: busy-wait children after fork to allow attachment\n"
+		"   -Z                Debugging: Run in foreground\n"
+			"\n"
 			);
 	return;
 }
@@ -84,34 +89,6 @@ sig_chld(
 	sigchld_received++;
 	return;
 }
-
-/*
-** This is a basic function to report errors on the server.
-*/
-
-#if	NOT
-static int
-owampd_err_func(
-		void           *app_data	__attribute__((unused)),
-		OWPErrSeverity severity,
-		OWPErrType     etype,
-		const char     *errmsg
-)
-{
-	/*
-	 * TODO: Add a logging file (OWPErrINFO && OWPErrPOLICY)
-	 * indicates logging information...
-	 */
-#ifdef	NDEBUG
-	if(!opts.verbose && (severity > OWPErrWARNING))
-		return 0;
-#endif
-
-	I2ErrLogP(errhand,etype,errmsg);
-
-	return 0;
-}
-#endif
 
 struct ChldStateRec{
 	OWPContext	ctx;
@@ -506,12 +483,242 @@ FindMaxFD(
 	return True;
 }
 
+static int
+ReadConfLine(
+	FILE	*fp,
+	int	rc,
+	char	**line_buf,
+	int	*line_buf_size
+	)
+{
+	int	c;
+	char	*line = *line_buf;
+	int	i=0;
+
+	while((c = fgetc(fp)) != EOF){
+		if(c == '\n'){
+			rc++;
+			if(i) break;
+			continue;
+		}
+
+		if(!i && c == '#'){
+			while((c = fgetc(fp)) != EOF)
+				if(c == '\n'){
+					rc++;
+					break;
+				}
+			continue;
+		}
+
+		if(!i && isspace(c))
+			continue;
+
+		if(i+2 > *line_buf_size){
+			*line_buf_size *= 2;
+			*line_buf = realloc(line,sizeof(char) * *line_buf_size);
+			if(!*line_buf){
+				free(line);
+				fprintf(stderr,"malloc(): %s\n",
+							strerror(errno));
+				exit(1);
+			}
+			line = *line_buf;
+		}
+		line[i++] = c;
+	}
+
+	line[i] = '\0';
+	if(!i) return 0;
+	if(c==EOF) rc++;
+
+	return rc;
+}
+
+static int
+ReadConfVar(
+	FILE	*fp,
+	int	rc,
+	char	**key,
+	char	**val,
+	int	max
+	)
+{
+	char	*line;
+	char	*lbuf=NULL;
+	int	lbuf_max= MAXPATHLEN;
+	char	*cptr;
+
+	if(!(lbuf = (char*)malloc(sizeof(char)*lbuf_max))){
+		fprintf(stderr,"malloc(): %s\n",strerror(errno));
+		exit(1);
+	}
+
+	if((rc = ReadConfLine(fp,rc,&lbuf,&lbuf_max)) > 0){
+		int	i;
+		
+		line = lbuf;
+
+		i=0;
+		cptr = *key;
+		while(i<(max-1)){
+			if(isspace(*line) || (*line == '\0'))
+				break;
+			*cptr++ = *line++;
+			i++;
+		}
+		if(i >= (max-1)){
+			rc = -rc;
+			goto BADLINE;
+		}
+		*cptr = '\0';
+
+		while(isspace(*line))
+			line++;
+
+		i=0;
+		cptr = *val;
+		while(i<(max-1)){
+			if(*line == '\0')
+				break;
+			*cptr++ = *line++;
+			i++;
+		}
+		if(i >= (max-1)){
+			rc = -rc;
+			goto BADLINE;
+		}
+		*cptr = '\0';
+		/*
+		 * Remove trailing spaces
+		 */
+		while(i>0){
+			cptr--;
+			if(!isspace(*cptr))
+				break;
+			*cptr = '\0';
+		}
+	}
+
+BADLINE:
+	free(lbuf);
+	return rc;
+}
+
+static void
+LoadConfig()
+{
+	FILE	*conf;
+	char	conf_file[MAXPATHLEN];
+	char	keybuf[MAXPATHLEN],valbuf[MAXPATHLEN];
+	char	*key = keybuf;
+	char	*val = valbuf;
+	int	rc=0;
+
+	conf_file[0] = '\0';
+	if(opts.confdir){
+		strcpy(conf_file, opts.confdir);
+		strcat(conf_file, OWP_PATH_SEPARATOR);
+	}
+	strcat(conf_file, "owampd.conf");
+
+	if(!(conf = fopen(conf_file, "r"))){
+		if(opts.confdir){
+			fprintf(stderr,"Unable to open %s: %s\n",conf_file,
+					strerror(errno));
+			exit(1);
+		}
+		return;
+	}
+
+	while((rc = ReadConfVar(conf,rc,&key,&val,MAXPATHLEN)) > 0){
+		/*
+		 * TODO: eventually set up a table of all opts, types, and
+		 * getopt flags so this is more automatic, but it isn't worth
+		 * it yet.
+		 */
+
+		/* syslog facility */
+		if(!strncasecmp(key,"facility",8)){
+			int fac = I2ErrLogSyslogFacility(val);
+			if(fac == -1){
+				fprintf(stderr,
+				"Invalid -e: Syslog facility \"%s\" unknown\n",
+				val);
+				exit(1);
+			}
+			syslogattr.facility = fac;
+		}
+		else if(!strncasecmp(key,"loglocation",11)){
+			syslogattr.line_info |= I2FILE|I2LINE;
+		}
+		else if(!strncasecmp(key,"datadir",7)){
+		     if(!(opts.datadir = strdup(val))) {
+			     fprintf(stderr,"strdup(): %s\n",strerror(errno));
+			     exit(1);
+		     }
+		}
+		else if(!strncasecmp(key,"user",4)){
+		     if(!(opts.user = strdup(val))) {
+			     fprintf(stderr,"strdup(): %s\n",strerror(errno));
+			     exit(1);
+		     }
+		}
+		else if(!strncasecmp(key,"group",5)){
+		     if(!(opts.group = strdup(val))) {
+			     fprintf(stderr,"strdup(): %s\n",strerror(errno));
+			     exit(1);
+		     }
+		}
+		else if(!strncasecmp(key,"verbose",7)){
+			opts.verbose = True;
+		}
+		else if(!strncasecmp(key,"authmode",8)){
+		     if(!(opts.authmode = strdup(val))) {
+			     fprintf(stderr,"strdup(): %s\n",strerror(errno));
+			     exit(1);
+		     }
+		}
+		else if(!strncasecmp(key,"srcnode",7)){
+		     if(!(opts.srcnode = strdup(val))) {
+			     fprintf(stderr,"strdup(): %s\n",strerror(errno));
+			     exit(1);
+		     }
+		}
+		else if(!strncasecmp(key,"timeout",7)){
+			opts.tmout = strtoul(optarg,NULL,10);
+			if(errno != 0) {
+				fprintf(stderr,
+			"Invalid -t value (%s): Positive integer expected\n",
+					val);
+				exit(1);
+			}
+		}
+		else if(!strncasecmp(key,"vardir",6)){
+		     if(!(opts.vardir = strdup(val))) {
+			     fprintf(stderr,"strdup(): %s\n",strerror(errno));
+			     exit(1);
+		     }
+		}
+		else{
+			fprintf(stderr,"Unknown key=%s in %s\n",key,conf_file);
+			exit(1);
+		}
+	}
+
+	if(rc < 0){
+		fprintf(stderr,"Invalid config file! %s line %d\n",
+				conf_file,-rc);
+		exit(1);
+	}
+
+	return;
+}
+
 int
 main(int argc, char *argv[])
 {
 	char			*progname;
-	I2LogImmediateAttr	ia;
-	I2ErrLogSyslogAttr	syslogattr;
 	OWPErrSeverity		out = OWPErrFATAL;
 	owp_policy_data		*policy;
 	char			ip2class[MAXPATHLEN],
@@ -534,11 +741,13 @@ main(int argc, char *argv[])
 	OWPTimeStamp	        currtime;	
 	OWPnum64	        cnum;
 	int ch;
+	uid_t			setuser=0;
+	gid_t			setgroup=0;
 
 #ifndef NDEBUG
-	char *optstring = "vwhC:c:l:p:d:a:n:t:L:";
+	char *optstring = "hvc:d:R:a:S:t:L:e:ZU:G:w";
 #else	
-	char *optstring = "vhC:c:l:p:d:a:n:t:L:";
+	char *optstring = "hvc:d:R:a:S:t:L:e:ZU:G:";
 #endif
 
 	OWPInitializeConfigRec	cfg  = {
@@ -559,15 +768,89 @@ main(int argc, char *argv[])
 	*/
 	progname = (progname = strrchr(argv[0], '/')) ? ++progname : *argv;
 	syslogattr.ident = progname;
-	syslogattr.logopt = LOG_PID|LOG_PERROR;
-	syslogattr.facility = LOG_LOCAL5;
+	syslogattr.logopt = LOG_PID;
+	syslogattr.facility = LOG_DAEMON;
 	syslogattr.priority = LOG_ERR;
 	syslogattr.line_info = I2MSG;
-#ifdef	NOT
-	ia.fp = stderr;
-	a.line_info = I2MSG|I2NAME;
-	errhand = I2ErrOpen(progname, I2ErrLogImmediate, &ia, NULL, NULL);
-#endif
+
+	/* Set up options defaults */
+	opts.verbose = False;
+	opts.ip2class = "ip2class.conf";
+	opts.class2limits = "class2limits.conf";
+	opts.passwd = "passwd.conf";
+	opts.vardir = opts.confdir = opts.datadir = NULL;
+	opts.authmode = NULL; 
+	opts.srcnode = NULL;
+	opts.lossThreshold = 10;
+	opts.tmout = 10;
+	opts.daemon = 1;
+	opts.user = opts.group = NULL;
+
+	/*
+	 * Fetch config file option if present
+	 */
+	opterr = 0;
+	while((ch = getopt(argc, argv, optstring)) != -1){
+		switch (ch){
+		case 'c':	/* -c "Config directory" */
+			if (!(opts.confdir = strdup(optarg))) {
+				I2ErrLog(cfg.eh,"malloc: %M");
+				exit(1);
+			}
+			break;
+		default:
+			break;
+		}
+	}
+	opterr = optreset = optind = 1;
+
+	/*
+	 * Load Config file.
+	 */
+	LoadConfig();
+
+	/*
+	 * If the confdir wasn't specified on the cmdline above, then
+	 * we set it to "." here so that passwd files etc, are relative
+	 * to current directory.
+	 */
+	if(!opts.confdir)
+		opts.confdir = ".";
+
+
+	/*
+	 * Read cmdline options that effect syslog so the rest of cmdline
+	 * processing can be reported via syslog.
+	 */
+	opterr = 0;
+	while((ch = getopt(argc, argv, optstring)) != -1){
+		switch (ch){
+			int fac;
+		case 'e':	/* -e "syslog err facility" */
+			fac = I2ErrLogSyslogFacility(optarg);
+			if(fac == -1){
+				fprintf(stderr,
+				"Invalid -e: Syslog facility \"%s\" unknown\n",
+				optarg);
+				exit(1);
+			}
+			syslogattr.facility = fac;
+			break;
+		case 'Z':
+			opts.daemon = 0;
+			break;
+		default:
+			break;
+		}
+	}
+	opterr = optreset = optind = 1;
+
+	/*
+	 * Always use LOG_PERROR - if daemonizing, stderr will be closed,
+	 * and this hurts nothing. And... commandline reporting is good
+	 * until after the fork.
+	 */
+	syslogattr.logopt |= LOG_PERROR;
 	errhand = I2ErrOpen(progname, I2ErrLogSyslog, &syslogattr, NULL, NULL);
 	if(! errhand) {
 		fprintf(stderr, "%s : Couldn't init error module\n", progname);
@@ -581,101 +864,86 @@ main(int argc, char *argv[])
 	cfg.eh = errhand;
 	ctx = OWPContextInitialize(&cfg);
 
-	/* Set up options defaults */
-	opts.verbose = False;
-	opts.ip2class = "ip2class.conf";
-	opts.class2limits = "class2limits.conf";
-	opts.passwd = "passwd.conf";
-	opts.confdir = opts.datadir = "";
-	opts.authmode = NULL; 
-
-	opts.nodename = NULL;
-
-	opts.lossThreshold = 10;
-	opts.tmout = 10;
-
-	while ((ch = getopt(argc, argv, optstring)) != -1)
-             switch (ch) {
-		     /* Connection options. */
-             case 'v':
-		     opts.verbose = True;
-                     break;
-             case 'C':
-		     if (!(opts.confdir = strdup(optarg))) {
-			     I2ErrLog(cfg.eh,"malloc: %M");
-			     exit(1);
-		     }
-                     break;
-             case 'c':
-		     if (!(opts.ip2class = strdup(optarg))) {
-			     I2ErrLog(cfg.eh,"malloc: %M");
-			     exit(1);
-		     }
-                     break;
-             case 'l':
-		     if (!(opts.class2limits = strdup(optarg))) {
-			     I2ErrLog(cfg.eh,"malloc: %M");
-			     exit(1);
-		     }
-                     break;
-             case 'p':
-		     if (!(opts.passwd = strdup(optarg))) {
-			     I2ErrLog(cfg.eh,"malloc: %M");
-			     exit(1);
-		     }
-                     break;
-             case 'd':
-		     if (!(opts.datadir = strdup(optarg))) {
-			     I2ErrLog(cfg.eh,"malloc: %M");
-			     exit(1);
-		     }
-                     break;
-             case 'a':
-		     if (!(opts.authmode = strdup(optarg))) {
-			     I2ErrLog(cfg.eh,"malloc: %M");
-			     exit(1);
-		     }
-                     break;
-             case 'n':
-		     if (!(opts.nodename = strdup(optarg))) {
-			     I2ErrLog(cfg.eh,"malloc: %M");
-			     exit(1);
-		     }
-                     break;
-             case 't':
-		     {
-			     char                    *endptr = NULL;
-			     opts.tmout = strtoul(optarg, &endptr, 10);
-			     if (*endptr != '\0') {
-				     usage(progname, 
-				   "Invalid value. Positive integer expected");
-				     exit(1);
-			     }
-		     }
-                     break;
-             case 'L':
-		     {
-			     char                    *endptr = NULL;
-			     opts.lossThreshold = strtoul(optarg, &endptr, 10);
-			     if (*endptr != '\0') {
-				     usage(progname, 
-				   "Invalid value. Positive integer expected");
-				     exit(1);
-			     }
-		     }
-                     break;
+	/*
+	 * Now deal with "all" cmdline options.
+	 */
+	while ((ch = getopt(argc, argv, optstring)) != -1){
+		switch (ch) {
+		/* Connection options. */
+		case 'v':	/* -v "verbose" */
+			opts.verbose = True;
+			break;
+		case 'd':	/* -d "data directory" */
+			if (!(opts.datadir = strdup(optarg))) {
+				I2ErrLog(cfg.eh,"malloc: %M");
+				exit(1);
+			}
+			break;
+		case 'a':	/* -a "authmode" */
+			if (!(opts.authmode = strdup(optarg))) {
+				I2ErrLog(cfg.eh,"malloc: %M");
+				exit(1);
+			}
+			break;
+		case 'S':  /* -S "src addr" */
+			if (!(opts.srcnode = strdup(optarg))) {
+				I2ErrLog(cfg.eh,"malloc: %M");
+				exit(1);
+			}
+			break;
+		case 't':
+			opts.tmout = strtoul(optarg,NULL,10);
+			if(errno != 0) {
+				I2ErrLog(cfg.eh,
+			"Invalid -t value (%s): Positive integer expected",
+						optarg);
+				exit(1);
+			}
+			break;
+		case 'L':
+			opts.lossThreshold = strtoul(optarg,NULL,10);
+			if(errno != 0) {
+				I2ErrLog(cfg.eh,
+			"Invalid -L value (%s). Positive integer expected",
+					optarg);
+				exit(1);
+			}
+			break;
+		case 'U':
+			if(!(opts.user = strdup(optarg))){
+				I2ErrLog(cfg.eh,"malloc: %M");
+				exit(1);
+			}
+			break;
+		case 'G':
+			if(!(opts.group = strdup(optarg))){
+				I2ErrLog(cfg.eh,"malloc: %M");
+				exit(1);
+			}
+			break;
+		case 'R':	/* -R "var/run directory" */
+			if (!(opts.vardir = strdup(optarg))) {
+				I2ErrLog(cfg.eh,"malloc: %M");
+				exit(1);
+			}
+			break;
+		case 'c':
+		case 'e':
+		case 'Z':
+			break;
 #ifndef NDEBUG
-             case 'w':
-		     opts.childwait = True;
-                     break;
+		case 'w':
+			opts.childwait = True;
+		break;
 #endif
-             case 'h':
-	     case '?':
-	     default:
-		     usage(progname, "");
-		     exit(0);
-		     /* UNREACHED */ 
-	     }
+		case 'h':
+		case '?':
+		default:
+			usage(progname, "");
+			exit(0);
+			/* UNREACHED */ 
+		}
+	}
 	argc -= optind;
 	argv += optind;
 
@@ -684,8 +952,14 @@ main(int argc, char *argv[])
 		     exit(1);
 	}
 
+	if(!opts.datadir)
+		opts.datadir = "";
+
+	if(!opts.vardir)
+		opts.vardir = ".";
+
 	/*  Get exclusive lock for pid file. */
-	strcpy(pid_file, opts.confdir);
+	strcpy(pid_file, opts.vardir);
 	strcat(pid_file, OWP_PATH_SEPARATOR);
 	strcat(pid_file, "owampd.pid");
 	if ((pid_fd = open(pid_file, O_RDWR|O_CREAT,
@@ -693,53 +967,85 @@ main(int argc, char *argv[])
 		I2ErrLog(errhand, "open(%s): %M", pid_file);
 		exit(1);
 	}
+	flk.l_start = 0;
+	flk.l_len = 0;
+	flk.l_type = F_WRLCK;
+	flk.l_whence = SEEK_SET; 
+	while((rc=fcntl(pid_fd, F_SETLK, &flk)) < 0 && errno == EINTR);
+	if(rc < 0){
+		I2ErrLog(errhand,"Unable to lock file %s:%M", pid_file);
+		exit(1);
+	}
 	if ((pid_fp = fdopen(pid_fd, "wr")) == NULL) {
 		I2ErrLog(errhand, "fdopen(): %M");
 		exit(1);
 	}
-	flk.l_start = 0;
-        flk.l_len = 0;
-        flk.l_type = F_WRLCK;
-        flk.l_whence = SEEK_SET; 
-        while((rc = fcntl(pid_fd, F_SETLK, &flk)) < 0 && errno == EINTR);
-        if(rc < 0){
-                I2ErrLog(errhand,"Unable to lock file %s:%M", pid_file);
-                exit(1);
-        }
 
-	/* Record pid.  */
-	mypid = getpid();
-	if(!OWPGetTimeOfDay(&currtime)){
-			I2ErrLogP(errhand, errno, "OWPGetTimeOfDay:%M");
+	/*
+	 * If running as root warn if the -U/-G flags not set.
+	 */
+	if(!geteuid()){
+		struct passwd	*pw;
+		struct group	*gr;
+
+		if(!opts.user){
+			I2ErrLog(errhand,"Running owampd as root is folly!");
+			I2ErrLog(errhand,"Use the -U option!");
 			exit(1);
-	}
-	fprintf(pid_fp, "%lld\n", (long long)mypid);
-	if (fflush(pid_fp) < 0) {
-		I2ErrLogP(errhand, errno, "fflush: %M");
-		exit(1);
-	}
+		}
 
-	/* Record the start timestamp in the info file. */
-	strcpy(info_file, opts.confdir);
-	strcat(info_file, OWP_PATH_SEPARATOR);
-	strcat(info_file, "owampd.infoi");
-	if ((info_fp = fopen(info_file, "w")) == NULL) {
-		I2ErrLog(errhand, "fopen(%s): %M", info_file);
-		exit(1);
-	}
-	cnum = OWPTimeStamp2num64(&currtime);
-	fprintf(info_fp, "START="OWP_TSTAMPFMT"\n", cnum);
-	fprintf(info_fp, "PID=%lld\n", (long long)mypid);
-	while ((rc = fclose(info_fp)) < 0 && errno == EINTR);
-	if(rc < 0){
-                I2ErrLog(errhand,"fclose(): %M");
-                exit(1);
-        }
-	strcpy(pid_file,info_file);
-	info_file[strlen(info_file)-1] = '\0'; // remove trailing "i"
-	if(rename(pid_file,info_file) != 0){
-		I2ErrLog(errhand,"rename(): %M");
-		exit(1);
+		/*
+		 * Validate user option.
+		 */
+		if((pw = getpwnam(opts.user))){
+			setuser = pw->pw_uid;
+		}
+		else if(opts.user[0] == '-'){
+			setuser = strtoul(&opts.user[1],NULL,10);
+			if(errno || !getpwuid(setuser))
+				setuser = 0;
+		}
+		if(!setuser){
+			I2ErrLog(errhand,"Invalid user/-U option: %s",
+					opts.user);
+			exit(1);
+		}
+
+		/*
+		 * Validate group option.
+		 */
+		if(opts.group){
+			if((gr = getgrnam(opts.group))){
+				setgroup = gr->gr_gid;
+			}
+			else if(opts.group[0] == '-'){
+				setgroup = strtoul(&opts.group[1],NULL,10);
+				if(errno || !getgrgid(setgroup))
+					setgroup = 0;
+			}
+			if(!setgroup){
+				I2ErrLog(errhand,"Invalid user/-G option: %s",
+					opts.group);
+				exit(1);
+			}
+		}
+
+		/*
+		 * Only setting effective id for now. This will catch
+		 * errors, and will still allow the rename of the
+		 * pid/info file later.
+		 */
+		if(setgroup && (setegid(setgroup) != 0)){
+			I2ErrLog(errhand,"Unable to setgid to \"%s\": %M",
+					opts.group);
+			exit(1);
+		}
+		if(seteuid(setuser) != 0){
+			I2ErrLog(errhand,"Unable to setuid to \"%s\": %M",
+					opts.user);
+			exit(1);
+		}
+
 	}
 
 	/*
@@ -748,21 +1054,21 @@ main(int argc, char *argv[])
 
 	rc = snprintf(ip2class,sizeof(ip2class),"%s%s%s",opts.confdir,
 					OWP_PATH_SEPARATOR,opts.ip2class);
-	if(rc > (int)sizeof(ip2class)){
+	if(rc >= (int)sizeof(ip2class)){
 		I2ErrLog(errhand, "Invalid path to ip2class file.");
 		exit(1);
 	}
 
 	rc = snprintf(class2limits,sizeof(class2limits),"%s%s%s",opts.confdir,
 					OWP_PATH_SEPARATOR,opts.class2limits);
-	if(rc > (int)sizeof(class2limits)){
+	if(rc >= (int)sizeof(class2limits)){
 		I2ErrLog(errhand, "Invalid path to class2limits file.");
 		exit(1);
 	}
 
 	rc = snprintf(passwd,sizeof(passwd),"%s%s%s",opts.confdir,
 					OWP_PATH_SEPARATOR,opts.passwd);
-	if(rc > (int)sizeof(passwd)){
+	if(rc >= (int)sizeof(passwd)){
 		I2ErrLog(errhand, "Invalid path to passwd file.");
 		exit(1);
 	}
@@ -831,15 +1137,138 @@ main(int argc, char *argv[])
 	}
 
 	/*
+	 * daemonize here
+	 */
+	mypid = 0;
+	if(opts.daemon){
+		/*
+		 * TODO: Need to think about this one... It would be
+		 * good to chdir to '/' so file systems can be unmounted,
+		 * however... this breaks relative path names.
+		 */
+#if	NOT
+		if(chdir("/") < 0){
+			I2ErrLog(errhand,"Unable to chdir to /: %M");
+			exit(1);
+		}
+#endif
+		for(rc=0;rc<3;rc++){
+			if(close(rc) == -1 || open("/dev/null",O_RDWR) != rc){
+				I2ErrLog(errhand,"Unable to reopen fd(%d): %M",
+						rc);
+				exit(1);
+			}
+		}
+
+		mypid = fork();
+		if(mypid < 0){
+			I2ErrLog(errhand,"Unable to fork: %M");
+			exit(1);
+		}
+		if((mypid == 0) && (setsid() == -1)){
+			I2ErrLog(errhand,"Unable to setsid: %M");
+			exit(1);
+		}
+	}
+	else{
+		mypid = getpid();
+	}
+
+	/*
+	 * Temporarily take root permissions back.
+	 * (If this is parent of daemonizing - exit immediately after
+	 * updating pid/info files. If not daemonizing, setuid/setgid
+	 * is called after the mypid if to return to lesser
+	 * permissions.)
+	 */
+	if((setuser) && (seteuid(getuid()) != 0)){
+		I2ErrLog(errhand,"seteuid(): %M");
+		kill(mypid,SIGTERM);
+		exit(1);
+	}
+	if((setgroup) && (setegid(getgid()) != 0)){
+		I2ErrLog(errhand,"setegid(): %M");
+		kill(mypid,SIGTERM);
+		exit(1);
+	}
+
+	/*
+	 * If this is the parent process (or not daemonizing) - write the pid
+	 * and info files.
+	 */
+	if(mypid > 0){
+
+		/* Record pid.  */
+		fprintf(pid_fp, "%lld\n", (long long)mypid);
+		if (fflush(pid_fp) < 0) {
+			I2ErrLogP(errhand, errno, "fflush: %M");
+			kill(mypid,SIGTERM);
+			exit(1);
+		}
+
+		/* Record the start timestamp in the info file. */
+		strcpy(info_file, opts.vardir);
+		strcat(info_file, OWP_PATH_SEPARATOR);
+		strcat(info_file, "owampd.infoi");
+		if ((info_fp = fopen(info_file, "w")) == NULL) {
+			I2ErrLog(errhand, "fopen(%s): %M", info_file);
+			kill(mypid,SIGTERM);
+			exit(1);
+		}
+
+		if(!OWPGetTimeOfDay(&currtime)){
+			I2ErrLogP(errhand, errno, "OWPGetTimeOfDay:%M");
+			kill(mypid,SIGTERM);
+			exit(1);
+		}
+		cnum = OWPTimeStamp2num64(&currtime);
+		fprintf(info_fp, "START="OWP_TSTAMPFMT"\n", cnum);
+		fprintf(info_fp, "PID=%lld\n", (long long)mypid);
+		while ((rc = fclose(info_fp)) < 0 && errno == EINTR);
+		if(rc < 0){
+			I2ErrLog(errhand,"fclose(): %M");
+			kill(mypid,SIGTERM);
+			exit(1);
+		}
+		strcpy(pid_file,info_file);
+		info_file[strlen(info_file)-1] = '\0'; // remove trailing "i"
+		if(rename(pid_file,info_file) != 0){
+			I2ErrLog(errhand,"rename(): %M");
+			kill(mypid,SIGTERM);
+			exit(1);
+		}
+
+		/*
+		 * If daemonizing - this is parent - exit.
+		 */
+		if(opts.daemon) exit(0);
+	}
+
+	/*
 	 * If the local interface was specified, use it - otherwise use NULL
 	 * for wildcard.
 	 */
-	if(opts.nodename)
-		listenaddr = OWPAddrByNode(ctx,opts.nodename);
+	if(opts.srcnode && !(listenaddr = OWPAddrByNode(ctx,opts.srcnode))){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+			"Invalid source address specified: %s",opts.srcnode);
+		exit(1);
+	}
 	listenaddr = OWPServerSockCreate(ctx,listenaddr,&out);
 	if(!listenaddr){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
 				"Unable to create server socket. Exiting...");
+		exit(1);
+	}
+
+	/*
+	 * set real uid/gid, not just effective.
+	 */
+	if((setgroup) && (setgid(setgroup) != 0)){
+		I2ErrLog(errhand,"setegid(): %M");
+		exit(1);
+	}
+	if((setuser) && (setuid(setuser) != 0)){
+		I2ErrLog(errhand,"setuid(): %M");
 		exit(1);
 	}
 
