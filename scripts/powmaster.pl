@@ -580,9 +580,12 @@ sub txfr{
 				$resp{$pname} = $pval;
 				next;
 			}
+			# Invalid message!
+			warn("Invalid message \"$_\" from server!");
 		}
-		# Invalid message!
-		warn ("Socket closed or Invalid message from server!");
+		else{
+			warn("Socket closed to server!");
+		}
 		return fail_server;
 	}
 	$MD5->add($secret);
