@@ -893,15 +893,11 @@ OWPControlAccept(
 	cntrl->mode = ntohl(*(u_int32_t *)buf); /* requested mode */
 	
 	/* insure that exactly one is chosen */
-	if ( ! IS_LEGAL_MODE(cntrl->mode))
-	     /*(mode_requested == OWP_MODE_OPEN 
-	       | mode_requested == OWP_MODE_AUTHENTICATED
-	       | mode_requested == OWP_MODE_ENCRYPTED ) */
-		{
-			*err_ret = OWPErrFATAL;
-			OWPControlClose(cntrl);
-			return NULL;
-				}
+	if ( ! IS_LEGAL_MODE(cntrl->mode)){
+		*err_ret = OWPErrFATAL;
+		OWPControlClose(cntrl);
+		return NULL;
+	}
 
 	if (cntrl->mode & ~mode_offered){ /* can't provide requested mode */
 		if (_OWPServerOK(cntrl, CTRL_REJECT) < 0)
@@ -937,6 +933,7 @@ OWPControlAccept(
 			return NULL;
 		}
 		
+		/* Authentication ok - determine usage class now.*/
 		if (_OWPCallCheckControlPolicy(
 			   cntrl->ctx, cntrl->mode, cntrl->kid, 
 			    cntrl->local_addr, cntrl->remote_addr, 
@@ -945,17 +942,6 @@ OWPControlAccept(
 			OWPControlClose(cntrl);
 			return NULL;
 		}	
-		/* XXX - Authentication ok - determine usage class now. 
-		   BUT: libowamp doesn't know about policy!!!
-		   Must make use of hook function here.
-		if ((class = GetClass(cntrl->kid)) == NULL)
-			class = OWP_MODE_AUTHENTICATED;
-		
-		if ((GetMode(class) & mode_requested) == 0){
-			_OWPServerOK(cntrl, CTRL_REJECT);
-			return NULL;
-		}
-		*/
 			
 		random_bytes(cntrl->writeIV, 16);
 
@@ -964,19 +950,16 @@ OWPControlAccept(
 		memcpy(cntrl->readIV, buf + 44, 16);
 		_OWPMakeKey(cntrl, cntrl->session_key); 
 	} else { /* mode_req == OPEN */
-		/* XXX - Authentication ok - determine usage class now. 
-		   BUT: libowamp doesn't know about policy!!!
-		   Must make use of hook function here.
-		if (class = (GetClass(cntrl->remote)) == NULL)
-			class = OWP_OPEN;
-
-		if ((GetMode(class) & mode_requested) == 0){
+		if (_OWPCallCheckControlPolicy(
+			   cntrl->ctx, cntrl->mode, cntrl->kid, 
+			    cntrl->local_addr, cntrl->remote_addr, 
+			   err_ret) == False){
 			_OWPServerOK(cntrl, CTRL_REJECT);
-			return NULL;
+			OWPControlClose(cntrl);
+			return NULL;		
 		}
-		*/
 	}
-
+	
 	/* Apparently everything is ok. Accept the Control session. */
 	_OWPServerOK(cntrl, CTRL_ACCEPT);
 	return cntrl;
