@@ -50,7 +50,7 @@ sub valid_session{
 	my($start,$end,$intervals) = @_;
 
 	# if no pairs defined yet - then the period is assumed valid so far...
-	return 1 if(!defined @{$intervals});
+	return 1 if(!defined @$intervals || (@$intervals < 2));
 
 	die "Invalid intervals" unless ($#{$intervals} % 2); # must be pairs
 
@@ -77,7 +77,7 @@ sub valid_session{
 		# start time is in this interval, if end time is too, then
 		# the file is valid.
 		
-		return 1 if($end < ${$intervals}[1]);
+		return 1 if($end <= ${$intervals}[1]);
 
 		# if this is the "last" interval, then we tentatively
 		# call this valid, but it may be declared invalid later.

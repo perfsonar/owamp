@@ -30,7 +30,7 @@ use strict;
 use FindBin;
 use lib ("$FindBin::Bin");
 use Getopt::Std;
-use POSIX qw(SEEK_END SEEK_SET EINTR SIGALRM SIG_BLOCK sigprocmask sigsuspend);
+use POSIX;
 use IPC::Open3;
 use File::Path;
 use FileHandle;
@@ -40,10 +40,8 @@ use OWP::Syslog;
 use Digest::MD5;
 use Socket;
 use IO::Socket;
-use GDBM_File;
+use DB_File;
 require 'sys/syscall.ph';
-#require 'time.ph';
-#require 'sys/time.ph';
 
 my @SAVEARGV = @ARGV;
 my %options = (
@@ -476,13 +474,13 @@ sub send_data{
 		local *DIR;
 		opendir(DIR,$ldir) || die "can't opendir $_:$!";
 		push @flist, map {join '/',$ldir,$_}
-					sort grep {/$suffix$/} readdir(DIR);
+					grep {/$suffix$/} readdir(DIR);
 		closedir DIR;
 	}
 	#
 	# Sort the list by "start time" of the sessions instead of
 	# by directory so data is sent to central server in a more
-	# digestable way.
+	# time relevant way.
 	#
 	if(@flist){
 		sub bystart{
@@ -600,7 +598,8 @@ sub live_update{
 	# locking files makes that risky.)
 	#
 	my %state;
-	tie %state, 'GDBM_File', $updatedb, GDBM_WRCREAT, 0660 ||
+	my $db = tie %state,'DB_File',$updatedb,O_RDWR|O_CREAT|O_EXLOCK,
+								0660,$DB_HASH ||
 		die "Unable to open liveupdate db $updatedb: $!";
 
 	my @intervals = ();
@@ -656,6 +655,7 @@ sub live_update{
 						OWP::Utils::time2owptime(time);
 		}
 		$state{$me} = join '_', @intervals;
+		$db->sync;
 
 		my($key,$line,$msg,%msg);
 		$msg{'NODE'} = $me;

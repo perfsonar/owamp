@@ -32,8 +32,6 @@ use lib ("$FindBin::Bin");
 use Getopt::Std;
 use Socket;
 use POSIX;
-#use POSIX qw(SIG_BLOCK SIG_SETMASK SIGCHLD SIGINT SIGHUP SIGTERM
-#		sigprocmask sigsuspend);
 use File::Path;
 use Digest::MD5;
 use OWP;
@@ -45,8 +43,9 @@ use OWP::Digest;
 use Sys::Syslog;
 use File::Basename;
 use Fcntl ':flock';
-use GDBM_File;
+use FileHandle;
 use IO::Socket;
+use DB_File;
 use Carp qw(cluck);
 
 my @SAVEARGV = @ARGV;
@@ -532,9 +531,9 @@ sub do_req{
 	# remove trailing '/'
 	$dir =~ s#/$##;
 
-	# GDBM_WRCREATE locks the file.
 	my %state;
-	if(!tie %state, 'GDBM_File', "$dir/$dbfile", GDBM_WRCREAT, 0660){
+	if(!tie %state,'DB_File',"$dir/$dbfile",O_RDWR|O_CREAT|O_EXLOCK,
+								0660, $DB_HASH){
 		unlink "$req{'FNAME'}.i";
 		die "Unable to open db file $dir/$dbfile: $!";
 	}
@@ -543,7 +542,7 @@ sub do_req{
 
 	die "Invalid filename datestamps" if(!defined $start || !defined $end);
 
-	my(@intervals);
+	my(@intervals) = ();
 	@intervals = split /_/,$state{'UPTIMEINTERVALS'}
 		if defined $state{'UPTIMEINTERVALS'};
 	if(valid_session($start,$end,\@intervals)){
@@ -580,7 +579,7 @@ sub do_req{
 		#
 		# Update interval information.
 		#
-		if(defined @intervals){
+		if(@intervals > 1){
 
 			$state{'UPTIMEINTERVALS'} = join '_', @intervals;
 
@@ -608,7 +607,6 @@ sub do_req{
 		warn "$req{'FNAME'} ignored - invalid session";
 		unlink "$req{'FNAME'}.i";
 	}
-
 
 	untie %state;
 
@@ -729,17 +727,20 @@ REQ_LOOP:
 sub update_node{
 	my($node,$upref,@dirs)	= @_;
 	my($skip,$dir);
+	my %state;
 
 	# $skip is the number of elements to shift off the upref array
 	# at the end because the earlier elements are no longer needed.
 	# (Initialize it to the max that can be removed, individual
 	# dirs that need more will update it.)
 	$skip = @$upref - 2;
-	foreach $dir (@dirs){
+	SENDDIR:
+	while($dir = shift @dirs){
 		# open per-dir database - this locks the directory as well
 		# as allowing this process to update the last "valid" time.
-		my %state;
-		if(!tie %state,'GDBM_File',"$dir/$dbfile",GDBM_WRCREAT,0660){
+
+		if(!tie %state, 'DB_File', "$dir/$dbfile",
+				O_RDWR|O_CREAT|O_EXLOCK, 0660, $DB_HASH){
 			warn "Unable to open db file $dir/$dbfile: $!";
 			$skip = 0;
 			next;
@@ -748,11 +749,11 @@ sub update_node{
 		@intervals = split /_/,$state{'UPTIMEINTERVALS'}
 				if defined $state{'UPTIMEINTERVALS'};
 
-		# Files with starttimes before $validstart can be ignored
-		# $index will be the first "uptime" we need to be concerned
-		# with.
+		# $validstart will be set to the time that existing
+		# files have been validated with. i.e. files with
+		# a start time before this time can be ignored.
+		# (initialize to 0 so all files are done the first time.)
 		my $validstart = 0;
-		my $index = 0;
 		my @globals = @$upref;
 		if(@intervals >0){
 			my $index = $#intervals-1;
@@ -785,24 +786,94 @@ sub update_node{
 		push @intervals, @globals if(@globals > 0);
 		undef @globals;
 
-		#
-		# If( validstart && intervals == 2) then we are done.
-		# no additional files can be invalidated.
-		#
-		unless($validstart && (@intervals == 2)){
-			#
-			# TODO: Check all files with starttimes after
-			#	validstart.
-			#
-			;
+		if(@intervals < 2){
+			warn "No valid intervals for update_node?";
+			next;
 		}
 
-		#
+		my $validend=0;
+		my $res;
+		foreach $res (@reslist){
+			local *RESDIR;
+
+			unless(opendir(RESDIR,"$dir/$res")){
+				warn("Unable to opendir $dir/$res: $!");
+				next SENDDIR;
+			}
+
+			my @lvals = @intervals;
+			foreach(sort grep {/$digestsuffix$/} readdir(RESDIR)){
+				my($start,$end) = m#(\d+)_(\d+)$digestsuffix$#;
+
+				# skip non-matching files
+				next if(!$start || !$end);
+
+				# Skip files that have already been validated
+				next if($start < $validstart);
+
+				# $start is before this interval - invalid.
+				if($start < $lvals[0]){
+					unlink "$dir/$res/$_" ||
+					warn("unlink($dir/$res/$_): $!");
+					next SENDDIR;
+				}
+
+				# $start is after this interval - go to next
+				# interval.
+				if($start > $lvals[1]){
+					last if(@lvals <= 2);
+					shift @lvals;
+					shift @lvals;
+					redo;
+				}
+
+				# $start is in this interval, if $end is too,
+				# then we can call it valid!
+				if($end <= $lvals[1]){
+					$validend = ($validend > $end)?
+							$validend: $end;
+					next;
+				}
+
+				# If this is the last interval, it is not
+				# possible to validate/invalidate anymore
+				# files. (This $end is after the last
+				# know uptime.)
+				last if(@lvals <= 2);
+			}
+			closedir(RESDIR);
+		}
+
+		$state{'UPTIMEINTERVALS'} = join '_', @intervals;
+
 		# TODO: Update VALIDTIME file with end timestamp of last
 		#	file in the "lowest" res "completely" in the range.
-		#
-		undef %state;
+		if($validend){
+			local (*TFILE);
+
+			# inform archive of updated valid_time
+			$archive->valid_time(DIRECTORY=>$dir,
+							VALID_TIME=>$validend);
+
+			# inform "plotting" of updated valid_time
+			#
+			# using rename to update the "valid_time" file
+			# so that it is an "atomic" operation.
+			unless(open TFILE, ">$dir/$vtimefile.i"){
+				warn "Open Error $dir/$vtimefile.i: $!";
+				next;
+			}
+			print TFILE "$validend";
+			close TFILE;
+			rename "$dir/$vtimefile.i","$dir/$vtimefile" ||
+					warn "Rename $dir/$vtimefile: $!";
+			
+		}
 	}
+	continue{
+		untie %state;
+	}
+	untie %state;
 
 	while($skip--){
 		shift @$upref;
@@ -816,6 +887,10 @@ sub uptimes{
 
 	my($md5) = new Digest::MD5 ||
 		die "Unable to create md5 context";
+
+	my %state;
+	tie(%state,'DB_File',$uptimedb,O_RDWR|O_CREAT|O_EXLOCK,0660,$DB_HASH) ||
+		die "Unable to open node uptime db $uptimedb: $!";
 
 	#
 	# Create udp socket for receiving uptimes.
@@ -836,10 +911,6 @@ sub uptimes{
 
 	# child continues...
 	$SIG{HUP} = $SIG{TERM} = $SIG{INT} = $SIG{CHLD} = 'DEFAULT';
-
-	my %state;
-	tie(%state, 'GDBM_File', $uptimedb, GDBM_WRCREAT, 0660) ||
-		die "Unable to open node uptime db $uptimedb: $!";
 
 	my @uptimes;
 	my $node;
