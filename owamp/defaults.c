@@ -107,10 +107,14 @@ owp_check_control(
 	}
 
 	if (!class)  /*Internal error - every KID must have a class.*/{
+#ifdef	VERBOSE
 		fprintf(stderr, "DEBUG: no class for the connection\n");
+#endif
 		goto error;
 	}
+#ifdef	VERBOSE
 	fprintf(stderr, "DEBUG: class = %s\n", class);
+#endif
 
 	node = owp_class2node(class, policy->class2node);
 	if (!node)  /* Internal error - every class must have a node. */
@@ -169,7 +173,9 @@ owp_check_test(
 		total_octets *= poisson_test->npackets;
 		octets_on_disk = (u_int64_t)20 * poisson_test->npackets;
 		
+#ifdef	VERBOSE
 		fprintf(stderr, "DEBUG: request parsed ok\n");
+#endif
 
 		/* fetch class limits and check restrictions */
 		if (bw > node->limits.values[OWP_LIM_BANDWIDTH])

@@ -580,7 +580,7 @@ _OWPTestSessionFree(
 )
 {
 	OWPTestSession	*sptr;
-	OWPErrSeverity	err,err2;
+	OWPErrSeverity	err=OWPErrOK,err2=OWPErrOK;
 
 	if(!tsession)
 		return OWPErrOK;

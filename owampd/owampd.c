@@ -253,32 +253,26 @@ AllocChldState(
 }
 
 static void
-CloseChldFD(
-	ChldState	cstate,
-	fd_set		*readfds
-	)
-{
-	if(cstate->fd < 0)
-		return;
-
-	while((close(cstate->fd) < 0) && (errno == EINTR));
-	FD_CLR(cstate->fd, readfds);
-	if(I2hash_delete(fdtable,&cstate->fdkey) != 0)
-		OWPError(cstate->ctx,OWPErrWARNING,OWPErrUNKNOWN,
-					"fd(%d) not in fdtable!?!",cstate->fd);
-	cstate->fd = -1;
-}
-
-static void
 FreeChldState(
 	ChldState	cstate,
 	fd_set		*readfds
 	)
 {
-	CloseChldFD(cstate,readfds);
-	if(I2hash_delete(pidtable,&cstate->pidkey) != 0)
+	if(cstate->fd >= 0){
+
+		while((close(cstate->fd) < 0) && (errno == EINTR));
+		FD_CLR(cstate->fd, readfds);
+		if(I2hash_delete(fdtable,&cstate->fdkey) != 0){
+			OWPError(cstate->ctx,OWPErrWARNING,OWPErrUNKNOWN,
+					"fd(%d) not in fdtable!?!",cstate->fd);
+		}
+	}
+
+	if(I2hash_delete(pidtable,&cstate->pidkey) != 0){
 		OWPError(cstate->ctx,OWPErrWARNING,OWPErrUNKNOWN,
 				"pid(%d) not in pidtable!?!",cstate->pid);
+	}
+
 	/*
 	 * TODO:Do we need to keep track of the number of fd's in use?
 	 * decrement that count here...
@@ -359,10 +353,8 @@ CheckFD(
 		if((out = I2Readn(cstate->fd,&cstate->authmode,in)) != in){
 			if(out != 0){
 				OWPError(cstate->ctx,OWPErrWARNING,
-					OWPErrUNKNOWN,
-					"read error:(%s)",strerror(errno));
+					OWPErrUNKNOWN,"read error:(%M)");
 			}
-			/* CloseChldFD(cstate,arg->readfds); */
 			(void)kill(cstate->pid,SIGKILL);
 		}
 		/* TODO: validate authmode received. */
@@ -438,16 +430,15 @@ ACCEPT:
 				return;
 				break;
 			default:
-				OWPError(ctx,OWPErrFATAL,errno,
-						"accept():%s",strerror(errno));
+				OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+						"accept():%M");
 				return;
 				break;
 		}
 	}
 
 	if (pipe(new_pipe) < 0){
-		OWPError(ctx,OWPErrFATAL,errno,
-						"pipe():%s",strerror(errno));
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"pipe():%M");
 		(void)close(connfd);
 		return;
 	}
@@ -456,8 +447,7 @@ ACCEPT:
 
 	/* fork error */
 	if (pid < 0){
-		OWPError(ctx,OWPErrFATAL,errno,
-						"fork():%s",strerror(errno));
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fork():%M");
 		(void)close(new_pipe[0]);
 		(void)close(new_pipe[1]);
 		(void)close(connfd);
@@ -550,14 +540,14 @@ ACCEPT:
 		n = sizeof(mode);
 		if(I2Writen(new_pipe[1],&mode,n) < n){
 			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"Write on pipe failed:(%s)",
-					strerror(errno));
+					"Write on pipe failed:(%M)");
 			exit(-1);
 		}
 
-		if(OWPProcessRequests(cntrl) != OWPErrOK)
+		if(OWPProcessRequests(cntrl) != OWPErrOK){
 			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
 				"Control session terminated abnormally...");
+		}
 
 		OWPControlClose(cntrl);
 
@@ -812,8 +802,8 @@ main(int argc, char *argv[])
 		 * NDEBUG should be defined for non-development builds.
 		 * (see the error handler above.)
 		 */
-		OWPError(ctx,OWPErrINFO,errno,"select returned:%d (%s)",
-						nfound,strerror(errno));
+		OWPError(ctx,OWPErrINFO,errno,"select returned:(%d) [%M]",
+						nfound);
 		/*
 		 * Handle select interupts/errors.
 		 */
@@ -822,8 +812,7 @@ main(int argc, char *argv[])
 				ReapChildren(&maxfd,&readfds);
 				continue;
 			}
-			OWPError(ctx,OWPErrFATAL,errno,"select failed:(%s)",
-							strerror(errno));
+			OWPError(ctx,OWPErrFATAL,errno,"select():%M");
 			exit(1);
 		}
 

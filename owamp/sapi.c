@@ -1254,7 +1254,6 @@ OWPProcessRequests(
 	u_int8_t	msgtype;
 
 	while((msgtype = OWPReadRequestType(cntrl)) > 0){
-		fprintf(stderr, "DEBUG: msg_type = %d\n", msgtype);
 		switch (msgtype){
 				/* TestRequest */
 			case 1:
@@ -1274,7 +1273,7 @@ OWPProcessRequests(
 				break;
 			default:
 				OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-		"Invalid msgtype (%d) returned from OWPReadRequesttype",
+		"Invalid msgtype (%d) returned from OWPReadRequestType",
 					msgtype);
 				rc = OWPErrFATAL;
 		}

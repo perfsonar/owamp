@@ -199,6 +199,9 @@ _OWPReceiveBlocks(OWPControl cntrl, u_int8_t *buf, int num_blocks)
 				"I2Readn failed:(%s)",strerror(errno));
 		return -1;
 	} 
+	if(n == 0)
+		return 0;
+
 	if (cntrl->mode & _OWP_DO_CIPHER)
 		_OWPDecryptBlocks(cntrl, buf, num_blocks, buf);
 
