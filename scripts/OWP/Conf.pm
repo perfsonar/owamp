@@ -108,18 +108,18 @@ my %ARRS = (
 	MESHNODES	=>	1,
 	MESHTYPES	=>	1,
 	ADJNODES	=>	1,
+	DIGESTRESLIST	=>	1,
 );
 
 # Opts that in effect create sub opt hashes.
-# The "NODE" one is the only one currently, and it is a special case in
-# that the api understands it's existance.
 #
 # The keys here actually define new syntax for the config file. A very
 # ugly description of this would be:
 # <"KEY"="any one of @{$HASHOPTS{"KEY"}}">
 # </"KEY">
 my %HASHOPTS = (
-	NODE	=>	"MESHNODES",
+	NODE		=>	"MESHNODES",
+	DIGESTRES	=>	"DIGESTRESLIST",
 );
 
 sub new {
