@@ -29,7 +29,7 @@
 # Process this file with autoconf to produce a configure script.
 AC_INIT(owamp, 1.0, owamp-bugs@internet2.edu)
 AC_CONFIG_AUX_DIR(config)
-AM_INIT_AUTOMAKE(owamp, 1.0)
+AM_INIT_AUTOMAKE(owamp, 1.0, [no-define])
 AC_CONFIG_SRCDIR(owamp/context.c)
 AM_CONFIG_HEADER(owamp/config.h owpcontrib/access.h)
 
@@ -124,6 +124,7 @@ AC_HEADER_STDC
 AC_CHECK_HEADERS([errno.h netdb.h stdlib.h sys/param.h sys/socket.h sys/time.h])
 
 # Checks for typedefs, structures, and compiler characteristics.
+I2_C___ATTRIBUTE__
 AC_C_CONST
 AC_HEADER_TIME
 
@@ -134,6 +135,7 @@ AC_CHECK_FUNCS([memset socket getaddrinfo])
 # AC_CONFIG_FILES([Makefile owamp/Makefile])
 
 AC_SUBST(ac_aux_dir)
+
 AC_OUTPUT([Makefile owamp/Makefile owpcontrib/Makefile owampd/Makefile \
 	 owping/Makefile],
 	[test -z "$CONFIG_HEADERS" || echo timestamp > owamp/stamp-h.in])
