@@ -379,7 +379,7 @@ connect_tmout(
 	struct timeval	ltm = *tm_out;
 
 	flags = fcntl(fd, F_GETFL,0);
-	fcntl(fd,f_SETFL,flags|O|NONBLOCK);
+	fcntl(fd,F_SETFL,flags|O_NONBLOCK);
 
 	rc = connect(fd,ai_addr,ai_addr_len);
 
@@ -522,7 +522,7 @@ _OWPClientConnect(
 		/*
 		 * Call connect - we ignore error values from here for now...
 		 */
-		if(connect_tmout(fd,ai->ai_addr,ai->ai_addrlen,&cntrl->cfg.tm_out) == 0){
+		if(connect_tmout(fd,ai->ai_addr,ai->ai_addrlen,&cntrl->ctx->cfg.tm_out) == 0){
 			server_addr->fd = fd;
 			server_addr->saddr = *ai->ai_addr;
 			server_addr->saddr_set = True;
@@ -801,6 +801,11 @@ OWPControlAccept(
 		 OWPErrSeverity *err_ret   /* err - return                  */
 )
 {
+#if	TODO
+/*
+ * Tolya - I commented this out because default_offered_mode is undefined
+ * and I am trying to get my stuff to compile...
+ */
 	u_int32_t mode_offered = default_offered_mode;
 	u_int32_t mode_requested;
  
@@ -831,6 +836,7 @@ OWPControlAccept(
 	_OWPReadClientGreeting(cntrl, err_ret);
 
 	return cntrl;
+#endif
 }
 
 /*

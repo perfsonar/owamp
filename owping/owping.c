@@ -42,7 +42,7 @@ OWPingErrFunc(
 	const char	*errmsg
 )
 {
-	OWPingT		pctx = (OWPingT)app_data;
+	ow_ping_t		pctx = (ow_ping_t)app_data;
 
 	/*
 	 * If not debugging - only print messages of warning or worse.
@@ -201,6 +201,7 @@ main(
 	I2table			local_addr_table;
 	OWPPoissonTestSpec	test_spec;
 	OWPSID			sid_ret;
+	OWPTimeStamp		zero_time={0};
 
 	ia.line_info = (I2NAME | I2MSG);
 	ia.fp = stderr;
@@ -329,11 +330,11 @@ main(
 	 * TODO test_spec and verify options.
 	 */
 	test_spec.test_type = OWPTestPoisson;
-	test_spec.start_time = 
-	test_spec.npackets =
-	test_spec.typeP =
-	test_spec.packet_size_padding =
-	test_spec.InvLambda =
+	test_spec.start_time = zero_time;
+	test_spec.npackets = 1;
+	test_spec.typeP = 0;
+	test_spec.packet_size_padding = 0;
+	test_spec.InvLambda = 1;
 
 	/*
 	 * Initialize library with configuration functions.
