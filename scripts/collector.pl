@@ -32,9 +32,10 @@ use lib ("$FindBin::Bin");
 use Getopt::Std;
 use Socket;
 use POSIX;
+#use POSIX qw(SIG_BLOCK SIG_SETMASK SIGCHLD SIGINT SIGHUP SIGTERM
+#		sigprocmask sigsuspend);
 use File::Path;
 use Digest::MD5;
-# use Errno qw(EINTR);
 use OWP;
 use OWP::Syslog;
 use OWP::RawIO;
@@ -46,6 +47,7 @@ use File::Basename;
 use Fcntl ':flock';
 use GDBM_File;
 use IO::Socket;
+use Carp qw(cluck);
 
 my @SAVEARGV = @ARGV;
 
@@ -83,7 +85,6 @@ undef $slog;	# Don't need the ref anymore, and untie won't work if
 #
 # Initialize Mesh info
 #
-my($mtype,$recv,$send,$raddr,$saddr);
 my @mtypes = $conf->must_get_val(ATTR=>'MESHTYPES');
 my @nodes = $conf->must_get_val(ATTR=>'MESHNODES');
 
@@ -110,16 +111,21 @@ my $archive = OWP::Archive->new(DATADIR=>$datadir);
 #
 # deamon values
 #
-my $port = $conf->must_get_val(ATTR=>'CentralHostPort');
+my $serverport = $conf->must_get_val(ATTR=>'CentralHostPort');
 my $dbfile = $conf->must_get_val(ATTR=>'CentralPerDirDB');
 my $vtimefile = $conf->must_get_val(ATTR=>'CentralPerDirValidFile');
+my $uptimedb = $datadir . "/" . $conf->must_get_val(ATTR=>'UpTimeDBFile');
+my $udpmsglen = $conf->must_get_val(ATTR=>'UpTimeMaxMesgLen') + 0;
+my $uptimeport = $conf->must_get_val(ATTR=>'UpTimeSendToPort');
 
 my $timeout = $conf->must_get_val(ATTR=>'CentralHostTimeout');
 
 #
 # Build directories if needed.
 #
-my @dirlist;
+my($mtype,$recv,$send,$raddr,$saddr,$res);
+my %nodeupdate;	# hash vals contain list of dirs to update for each "node".
+my @dirlist; # list of directories that must exist.
 foreach $mtype (@mtypes){
 	foreach $recv (@nodes){
 		next if(!($raddr=$conf->get_val(NODE=>$recv,
@@ -129,9 +135,12 @@ foreach $mtype (@mtypes){
 			next if(!($saddr=$conf->get_val(NODE=>$send,
 							TYPE=>$mtype,
 							ATTR=>'ADDR')));
-			foreach (@reslist){
+			push @{$nodeupdate{$send}},
+				"$datadir/$mtype/$raddr/$saddr";
+
+			foreach $res (@reslist){
 				push @dirlist,
-					"$datadir/$mtype/$raddr/$saddr/$_";
+					"$datadir/$mtype/$raddr/$saddr/$res";
 			}
 		}
 	}
@@ -141,11 +150,17 @@ mkpath(\@dirlist,0,0775);
 
 chdir $datadir || die "Unable to chdir to $datadir";
 
+my ($reset,$die) = (0,0);
+my (%children);
+
+my $uppid = uptimes(%nodeupdate);
+$children{$uppid} = 'uptimes';
+
 #
 # setup server socket.
 #
 my $Server = IO::Socket::INET->new(
-			LocalPort	=>	$port,
+			LocalPort	=>	$serverport,
 			Proto		=>	'tcp',
 			Type		=>	SOCK_STREAM,
 			ReuseAddr	=>	1,
@@ -153,64 +168,64 @@ my $Server = IO::Socket::INET->new(
 			Timeout		=>	$timeout,
 			Listen		=>	SOMAXCONN) or die;
 
-my $waitedpid = 0;
-my $paddr;
-
-my ($reset,$die);
-my $serverset = 1;
-my (@dead_children,%children);
-my $pid;
-
+my $sigchld = 0;
 sub catch{
 	my $signame = shift;
 
+
 	if($signame =~ /HUP/){
-		warn "Handling SIG$signame... Stop processing...\n";
 		kill 'TERM', (keys %children);
 		$reset = 1;
 	}
 	elsif($signame =~ /CHLD/){
-		if(($pid = wait) != -1){
-			my @tarr = ($pid,$?);
-			if(exists $children{$pid}){
-				push @dead_children, \@tarr
-			}
-			else{
-				# Not a child we spawned intentionally...
-				# Don't "die" to force exception handling.
-				return;
-			}
-		}
+		$sigchld++;
 	}
 	else{
 		$die = 1;
 		kill $signame, (keys %children);
 	}
 	#
-	# Die from here so that perl exception handling happens. (This is how
-	# we get perl to return from "accept" on a signal... EINTR doesn't
-	# seem to happen...)
+	# If we are in an eval - die from here to make the function return
+	# and not automatically restart: ie accept.
 	#
-	die "SIG$signame\n";
+	die "SIG$signame\n" if($^S);
+
+	#
+	# If we are not in an eval - we have already set our global vars
+	# so things should happen properly in the main loop.
+
+	return;
 }
 
 sub handle_req;
 
+my $block_mask = new POSIX::SigSet(SIGCHLD,SIGHUP,SIGTERM,SIGINT);
+my $old_mask = new POSIX::SigSet;
+sigprocmask(SIG_BLOCK,$block_mask,$old_mask);
 $SIG{CHLD} = $SIG{HUP} = $SIG{TERM} = $SIG{INT} = \&catch;
 
 while(1){
+	my $paddr;
 	my ($func);
 
 	$@ = '';
-	if($reset || $die){
+	if($sigchld){
+		undef $paddr;
+	}elsif($reset || $die){
 		undef $Server;
 		undef $paddr;
-		$func = "sleep";
-		eval {sleep;} if((keys %children) > 0);
+		$func = "sigsuspend";
+		if((keys %children) > 0){
+			eval{
+				sigsuspend($old_mask);
+			};
+		}
 	}else{
 		$func = "accept";
 		eval{
+			return if(sigprocmask(SIG_SETMASK,$old_mask) != 0);
 			$paddr = $Server->accept;
+			sigprocmask(SIG_BLOCK,$block_mask);
 		};
 	}
 	for($@){
@@ -223,11 +238,24 @@ while(1){
 	# Not a connection - do error handling.
 	#
 	if(!defined($paddr)){
-		while(@dead_children > 0){
-			my $cpid = shift @dead_children;
-			my ($pid,$status) = @$cpid;
-			delete $children{$pid};
-			syslog('debug',"PID#$pid exited with status $status");
+		if($reset == 1){
+			warn "Handling SIGHUP... Stop processing...\n";
+			$reset++;
+		}
+		if($die == 1){
+			warn "Exiting... Deleting sub-processes...\n";
+			$die++;
+		}
+		if($sigchld){
+			my $wpid;
+			while(($wpid = waitpid(-1,WNOHANG)) > 0){
+				if(exists $children{$wpid}){
+					delete $children{$wpid};
+					syslog('debug',
+						"PID#$wpid exit status: $?");
+				}
+			}
+			$sigchld=0;
 		}
 
 		if($reset){
@@ -237,7 +265,10 @@ while(1){
 			exec $FindBin::Bin."/".$FindBin::Script, @SAVEARGV;
 		}
 
-		die "Exiting...\n" if($die);
+		if($die){
+			next if((keys %children) > 0);
+			die "Dead\n";
+		}
 
 		next;
 	}
@@ -246,8 +277,8 @@ while(1){
 	# Handle the new connection
 	#
 
-	$pid = handle_req($paddr);
-	$children{$pid} = 1;
+	my $newpid = handle_req($paddr);
+	$children{$newpid} = 'handle_req';
 	undef $paddr;
 }
 
@@ -387,14 +418,13 @@ sub read_req{
 
 	# read version - ignored for now.
 	$_ = sys_readline(FILEHANDLE=>$fh,TIMEOUT=>$timeout);
-	die "Socket closed" if !defined $_;
+	return if !defined $_;
 	die "Invalid request!: $_" if(!(($vers) = /OWP\s+(\d+)/));
 	$md5->add($_);
 
 	while(($_ = sys_readline(FILEHANDLE=>$fh,TIMEOUT=>$timeout))){
 		my($pname,$pval);
 
-		last if(/^$/); # end of message
 		$md5->add($_);
 		next if(/^\s*#/); # comments
 		next if(/^\s*$/); # blank lines.
@@ -406,16 +436,20 @@ sub read_req{
 		}
 
 		# Invalid message!
-		die "Invalid request from socket!";
+		die "Invalid request from socket: $_";
 	}
+	return if(!defined $_);
 	die "No secretname!" if(!exists $req{'SECRETNAME'});
 	$req{'SECRET'} = $conf->must_get_val(ATTR=>$req{'SECRETNAME'});
 	$md5->add($req{'SECRET'});
-	die "Invalid auth hash!"
-		if($md5->hexdigest ne sys_readline(FILEHANDLE=>$fh,
-							TIMEOUT=>$timeout));
-	die "Invalid end Message!" if("" ne sys_readline(FILEHANDLE=>$fh,
-							TIMEOUT=>$timeout));
+
+	$_ = sys_readline(FILEHANDLE=>$fh,TIMEOUT=>$timeout);
+	return if(!defined $_);
+	die "Invalid auth hash: $_" if($md5->hexdigest ne $_);
+
+	$_ = sys_readline(FILEHANDLE=>$fh,TIMEOUT=>$timeout);
+	return if(!defined $_);
+	die "Invalid end Message: $_" if("" ne $_);
 
 	return %req;
 }
@@ -500,7 +534,7 @@ sub do_req{
 
 	# GDBM_WRCREATE locks the file.
 	my %state;
-	if(!tie %state, 'GDBM_File', "$dir/$dbfile", &GDBM_WRCREAT, 0660){
+	if(!tie %state, 'GDBM_File', "$dir/$dbfile", GDBM_WRCREAT, 0660){
 		unlink "$req{'FNAME'}.i";
 		die "Unable to open db file $dir/$dbfile: $!";
 	}
@@ -509,10 +543,10 @@ sub do_req{
 
 	die "Invalid filename datestamps" if(!defined $start || !defined $end);
 
-	my(@intervals,$i);
+	my(@intervals);
 	@intervals = split /_/,$state{'UPTIMEINTERVALS'}
 		if defined $state{'UPTIMEINTERVALS'};
-	if($i = valid_session($start,$end,@intervals)){
+	if(valid_session($start,$end,\@intervals)){
 
 		rename "$req{'FNAME'}.i",$req{'FNAME'} ||
 			die "Unable to rename $req{'FNAME'}";
@@ -548,7 +582,7 @@ sub do_req{
 		#
 		if(defined @intervals){
 
-			$state{'UPTIMEINTERVALS'} = join '_', @intervals
+			$state{'UPTIMEINTERVALS'} = join '_', @intervals;
 
 			# If file end is before last "uptime" reported,
 			# then we can update the "valid" time to the
@@ -562,7 +596,7 @@ sub do_req{
 				#
 				# using rename to update the "valid_time" file
 				# so that it is an "atomic" operation.
-				open TFILE, ">$dir/$vtimefile.i" ||
+				open TFILE, ">$dir/$vtimefile.i"  ||
 					warn "Open Error $dir/$vtimefile.i: $!";
 				print TFILE "$end";
 				close TFILE;
@@ -594,24 +628,24 @@ sub write_response{
 	delete $resp{'SECRET'};
 
 	$md5->reset;
-	return undef if(!sys_writeline(FILEHANDLE=>$fh,
+	return if(!sys_writeline(FILEHANDLE=>$fh,
 					MD5=>$md5,
 					TIMEOUT=>$timeout,
 					LINE=>$line));
 	foreach (keys %resp){
-		return undef if(!sys_writeline(FILEHANDLE=>$fh,
+		return if(!sys_writeline(FILEHANDLE=>$fh,
 						MD5=>$md5,
 						TIMEOUT=>$timeout,
 						LINE=>"$_\t$resp{$_}"));
 	}
-	return undef if(!sys_writeline(FILEHANDLE=>$fh,
+	return if(!sys_writeline(FILEHANDLE=>$fh,
 					TIMEOUT=>$timeout));
 	$md5->add($secret);
-	return undef if(!sys_writeline(FILEHANDLE=>$fh,
+	return if(!sys_writeline(FILEHANDLE=>$fh,
 					MD5=>$md5,
 					TIMEOUT=>$timeout,
 					LINE=>$md5->hexdigest));
-	return undef if(!sys_writeline(FILEHANDLE=>$fh,
+	return if(!sys_writeline(FILEHANDLE=>$fh,
 					TIMEOUT=>$timeout));
 
 	return 1;
@@ -622,7 +656,7 @@ sub child_catch{
 
 	$die = 1;
 
-	return;
+	die "SIG$signame caught...\n";
 }
 
 sub handle_req{
@@ -645,7 +679,7 @@ sub handle_req{
 	$SIG{CHLD} = 'DEFAULT';
 	$SIG{HUP} = $SIG{TERM} = $SIG{INT} = \&child_catch;
 
-	syslog('info',"connect from [".$fh->peerhost."] at port: $port");
+	syslog('info',"connect from [".$fh->peerhost."]");
 
 	my($rin,$rout,$ein,$eout,$nfound);
 
@@ -653,30 +687,264 @@ sub handle_req{
 	vec($rin,$fh->fileno,1) = 1;
 	$ein = $rin;
 
-
 REQ_LOOP:
 	while(1){
+		my(%req,%response);
+		# accept signals
+		eval{
+			sigprocmask(SIG_SETMASK,$old_mask);
+		};
 		last if($die);
-		($nfound) = select($rout=$rin,undef,$eout=$ein,$timeout);
+		die "\$@ = $@" if($@);
+		eval {
+			($nfound) =select($rout=$rin,undef,$eout=$ein,$timeout);
+		};
 		last if($die);
+		die "\$@ = $@" if($@);
 		last if(vec($eout,$fh->fileno,1));
 		last if(!vec($rout,$fh->fileno,1));
 		
-		my(%req) = read_req($fh,$md5);
+		undef %req;
+		%req = read_req($fh,$md5);
 		last if($die);
 		#
 		# Once we start doing the request - we don't die until
 		# after trying to write the response.
-		#
-		my(%response);
+		# (block sigs)
+		eval{
+			sigprocmask(SIG_BLOCK,$block_mask);
+		};
+		last if($die);
+		die "\$@ = $@" if($@);
 		undef %response;
-		%response = do_req($fh,$md5,%req) if(%req);
+		%response = do_req($fh,$md5,%req) if(defined %req);
 		next if(defined %response &&
 			write_response($fh,$md5,%response));
 		last;
 	}
 
-	$fh->close;
-	exit(0);
-1;
+	exit 0;
 }
+
+sub update_node{
+	my($node,$upref,@dirs)	= @_;
+	my($skip,$dir);
+
+	# $skip is the number of elements to shift off the upref array
+	# at the end because the earlier elements are no longer needed.
+	# (Initialize it to the max that can be removed, individual
+	# dirs that need more will update it.)
+	$skip = @$upref - 2;
+	foreach $dir (@dirs){
+		# open per-dir database - this locks the directory as well
+		# as allowing this process to update the last "valid" time.
+		my %state;
+		if(!tie %state,'GDBM_File',"$dir/$dbfile",GDBM_WRCREAT,0660){
+			warn "Unable to open db file $dir/$dbfile: $!";
+			$skip = 0;
+			next;
+		}
+		my @intervals = ();
+		@intervals = split /_/,$state{'UPTIMEINTERVALS'}
+				if defined $state{'UPTIMEINTERVALS'};
+
+		# Files with starttimes before $validstart can be ignored
+		# $index will be the first "uptime" we need to be concerned
+		# with.
+		my $validstart = 0;
+		my $index = 0;
+		my @globals = @$upref;
+		if(@intervals >0){
+			my $index = $#intervals-1;
+			$validstart = $intervals[$index];
+			my $skipglobals = 0;
+			while(@globals > 0){
+				# global start is old - skip it.
+				next if($globals[0] < $intervals[$index]);
+				# global start is new - break and add
+				# this and all remaining.
+				last if($globals[0] > $intervals[$index]);
+
+				# global start == local start
+				# update "end" time, then break and
+				# add remaining globals.
+				$intervals[$#intervals] = $globals[1];
+				shift @globals;
+				shift @globals;
+				last;
+			}
+			continue{
+				shift @globals;
+				shift @globals;
+				$skipglobals+=2;
+			}
+			# keep track of MIN skips so global array can
+			# have skipped values removed.
+			$skip = ($skip<$skipglobals)?$skip:$skipglobals;
+		}
+		push @intervals, @globals if(@globals > 0);
+		undef @globals;
+
+		#
+		# If( validstart && intervals == 2) then we are done.
+		# no additional files can be invalidated.
+		#
+		unless($validstart && (@intervals == 2)){
+			#
+			# TODO: Check all files with starttimes after
+			#	validstart.
+			#
+			;
+		}
+
+		#
+		# TODO: Update VALIDTIME file with end timestamp of last
+		#	file in the "lowest" res "completely" in the range.
+		#
+		undef %state;
+	}
+
+	while($skip--){
+		shift @$upref;
+	}
+
+	return;
+}
+
+sub uptimes{
+	my (%node2dirs) = @_;
+
+	my($md5) = new Digest::MD5 ||
+		die "Unable to create md5 context";
+
+	#
+	# Create udp socket for receiving uptimes.
+	#
+	my $UptimeSocket = IO::Socket::INET->new(
+				TYPE		=>	SOCK_DGRAM,
+				Proto		=>	'udp',
+				LocalPort	=>	$uptimeport) ||
+		die "Unable to create udp socket for uptimes: $!";
+
+	my $pid = fork;
+
+	# error
+	die "Can't fork uptimes: $!" if(!defined($pid));
+
+	#parent
+	return $pid if($pid);
+
+	# child continues...
+	$SIG{HUP} = $SIG{TERM} = $SIG{INT} = $SIG{CHLD} = 'DEFAULT';
+
+	my %state;
+	tie(%state, 'GDBM_File', $uptimedb, GDBM_WRCREAT, 0660) ||
+		die "Unable to open node uptime db $uptimedb: $!";
+
+	my @uptimes;
+	my $node;
+	foreach $node (keys %node2dirs){
+		next if(!defined $state{$node});
+		@uptimes = split '_',$state{$node};
+		if((@uptimes > 0) && !($#uptimes % 2)){
+			warn "Invalid uptimes pairs from db for $node";
+			delete $state{$node};
+			next;
+		}
+		next if(@uptimes < 2);
+		update_node($node,\@uptimes,@{$node2dirs{$node}});
+		$state{$node} = join '_',@uptimes;
+	}
+
+	my($peeraddr);
+	my($fullmsg);
+	MESSAGE:
+	while($peeraddr = $UptimeSocket->recv($fullmsg,$udpmsglen,0)){
+		my %msg = ();
+		my ($key,$val);
+
+		$md5->reset;
+
+		my @lines = split '\n',$fullmsg;
+		while($_ = shift @lines){
+			last if /^$/;
+			if(($key,$val) = /^(\w+)\s+(.*)/o){
+				$msg{$key} = $val;
+				$md5->add($_);
+				next;
+			}
+			warn "Invalid udp message received";
+			next MESSAGE;
+		}
+		if(!defined $msg{'SECRETNAME'}){
+			warn "No secret?";
+			next;
+		}
+
+		my $secret = $conf->get_val(ATTR=>$msg{'SECRETNAME'});
+		if(!$secret){
+			warn "Invalid secretname";
+			next;
+		}
+
+		$md5->add($secret);
+		if($md5->hexdigest ne shift @lines){
+			warn "Invalid secret";
+			next;
+		}
+
+		warn "More message?" if(@lines > 0);
+
+		next if !($node = $msg{'NODE'});
+
+		# prepare "message" uptime pairs.
+		my @newuptimes = ();
+		@newuptimes = split '_',$msg{'UPTIMEINTERVALS'}
+			if(defined $msg{'UPTIMEINTERVALS'});
+		if(!($#newuptimes % 2)){
+			warn "Invalid uptimes in message";
+			next;
+		}
+
+		# fetch db's version of uptime pairs
+		@uptimes = ();
+		@uptimes = split '_',$state{$node} if(defined $state{$node});
+		if((@uptimes > 0) && !($#uptimes % 2)){
+			warn "Invalid uptimes pairs from db for $node";
+			delete $state{$node};
+		}
+
+		# combine db/mesage uptime pairs
+		if(@uptimes > 0){
+			my $oi = $#uptimes-1;
+			while(@newuptimes > 0){
+				next if($newuptimes[0] < $uptimes[$oi]);
+				last if($newuptimes[0] > $uptimes[$oi]);
+				# start times are == update this
+				# entry, and then break out of loop
+				$uptimes[$#uptimes] = $newuptimes[1];
+				shift @newuptimes;
+				shift @newuptimes;
+				last;
+			}
+			continue{
+				shift @newuptimes;
+				shift @newuptimes;
+			}
+		}
+		push @uptimes, @newuptimes if(@newuptimes > 0);
+
+		# update the node with the new uptime information
+		next if(@uptimes < 2);
+		update_node($node,\@uptimes,@{$node2dirs{$node}});
+
+		# save the new uptime info (update_node modifies
+		# the uptimes array so it is only as large as it needs
+		# to be. i.e. It deletes older values that are no
+		# longer needed.
+		$state{$node} = join '_',@uptimes;
+	}
+	die "recv error on udp socket: $!";
+}
+
+1;

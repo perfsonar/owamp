@@ -55,19 +55,24 @@ sub valid_session{
 	die "Invalid intervals" unless ($#{$intervals} % 2); # must be pairs
 
 	#
-	# invalid <---- up      down
-	#               up      down
-	#               up      down----->valid
+	# invalid <---- up	down
+	#               up    	down
+	#               up	down----->valid
 	# start/end pairs are only valid if they can be competely contained
 	# between an up/down pair. The last one is a special case in that
 	# the down is not really a "down", but a "last message time".
 	# (The return 1 after the loop takes care of this case.)
 	#
-	while($#{$intervals} >= 1){
+	while(@$intervals >= 2){
 		# start time was before this interval - invalid.
 		return undef if($start < ${$intervals}[0]);
+
 		# start time is after this interval - go to next interval.
-		next if($start > ${$intervals}[1]);
+		if($start > ${$intervals}[1]){
+			next if(@$intervals > 2);
+			# if this is the "last" interval, then break out.
+			last;
+		}
 
 		# start time is in this interval, if end time is too, then
 		# the file is valid.
@@ -76,7 +81,7 @@ sub valid_session{
 
 		# if this is the "last" interval, then we tentatively
 		# call this valid, but it may be declared invalid later.
-		last if($#{$intervals} <= 1);
+		last if(@$intervals <= 2);
 	}
 	continue{
 		shift @$intervals; shift @$intervals;

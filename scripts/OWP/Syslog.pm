@@ -51,14 +51,22 @@ sub HandleDieWarn {
 		return;
 	};
 	$SIG{__DIE__} = sub {  ## still dies upon return
-		return if $^S; ## see perldoc -f die perlfunc
-		print $_ @_ foreach(@fh);
+		die @_ if $^S; ## see perldoc -f die perlfunc
+		foreach(@fh){
+			# the "real" die function prints to stderr,
+			# so we want to skip this one if it is
+			# in our list.
+			next if($_->fileno == STDERR->fileno);
+			print $_ @_;
+		}
 		syslog $this->{'priority'}, "%s", join('',@_);
-		exit 1;
+		return;
 	};
 
 	## mark that this object redefined warn/die handlers
 	$this->{'isDIEWARN'} = 1;
+	# Need to do this or bad things can happen in a "die".
+	syslog $this->{'priority'}, "Opened syslog";
 }
 
 my %defs = (

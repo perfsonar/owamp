@@ -58,12 +58,10 @@ sub sys_readline{
 			$read = sysread($fh,$char,1);
 			alarm 0;
 		};
-		return &$cb(undef) if($@ && ($@ eq "alarm\n"));
-		if(!defined($read)){
-			next if($! == EINTR);
-			return &$cb(undef);
+		return &$cb(undef) if(!defined($read));
+		if($read < 1){
+			return &$cb($read)
 		}
-		return &$cb($read) if($read < 1);
 		if($char eq "\n"){
 #warn "RECV: $line\n";
 			return $line;

@@ -36,6 +36,7 @@ use File::Path;
 use FileHandle;
 use OWP;
 use OWP::RawIO;
+use OWP::Syslog;
 use Digest::MD5;
 use Socket;
 use IO::Socket;
@@ -67,6 +68,16 @@ foreach (keys %optnames){
 $defaults{"NODE"} =~ tr/a-z/A-Z/;
 
 my $conf = new OWP::Conf(%defaults);
+
+# setup syslog
+local(*MYLOG);
+my $slog = tie *MYLOG, 'OWP::Syslog',
+		facility	=> $conf->must_get_val(ATTR=>'SyslogFacility'),
+		log_opts	=> 'pid',
+		setlogsock	=> 'unix';
+# make die/warn goto syslog, and also to STDERR.
+$slog->HandleDieWarn(*STDERR);
+undef $slog;	# Don't keep tie'd ref's around unless you need them...
 
 #
 # fetch "global" values needed.
@@ -283,6 +294,8 @@ sub OpenServer{
 	return if(defined $SendServer);
 
 	eval{
+		local $SIG{'__DIE__'} = sub{die $_[0];};
+		local $SIG{'__WARN__'} = sub{die $_[0];};
 		$SendServer = IO::Socket::INET->new(
 				PeerAddr	=>	$central_host,
 				PeerPort	=>	$central_port,
@@ -292,7 +305,7 @@ sub OpenServer{
 	};
 
 	if($@){
-		warn "Unable to contact Home:$central_host: $@";
+		warn "Unable to contact Home($central_host)\n";
 	}
 
 	return;
@@ -570,7 +583,7 @@ sub live_update{
 	my $pid = fork;
 
 	# error
-	die "Can't fork send_data: $!" if(!defined($pid));
+	die "Can't fork live_update: $!" if(!defined($pid));
 
 	#parent
 	return $pid if($pid);
@@ -587,12 +600,12 @@ sub live_update{
 	# locking files makes that risky.)
 	#
 	my %state;
-	tie %state, 'GDBM_File', $updatedb, &GDBM_WRCREAT, 0660 ||
+	tie %state, 'GDBM_File', $updatedb, GDBM_WRCREAT, 0660 ||
 		die "Unable to open liveupdate db $updatedb: $!";
 
 	my @intervals = ();
-	@intervals = split /_/,$state{'UPTIMEINTERVALS'}
-		if defined $state{'UPTIMEINTERVALS'};
+	@intervals = split /_/,$state{$me}
+		if defined $state{$me};
 	die "Invalid uptime pairs from db: @intervals"
 		if((@intervals > 0) && !($#intervals % 2)); # Must be pairs
 
@@ -602,9 +615,9 @@ sub live_update{
 	sigprocmask(SIG_BLOCK,$block_mask,$old_mask);
 	# remove SIGALRM from old_mask so it can be used for sigsuspend.
 	$old_mask->delset(SIGALRM);
-	# initialize timer to go off in one second, and then every
+	# initialize timer to go off in one usec, and then every
 	# $senduptimeinterval.
-	$in_timer = pack($itimer_t,$senduptimeinterval+0,0,1,0);
+	$in_timer = pack($itimer_t,$senduptimeinterval+0,0,0,1);
 	syscall(&SYS_setitimer,0,$in_timer,$out_timer) &&
 		die "syscall(setitimer) failed!: $!";
 
@@ -620,7 +633,10 @@ sub live_update{
 			# get new info, and see if the new info works.
 			($starttime,$owampdpid) = get_owp_info($owampdinfofile);
 			next if(!$starttime || !$owampdpid);
-			next if(!kill(0,$owampdpid));
+			if(!kill(0,$owampdpid)){
+				warn "owampd doesn't appear to be running...";
+				next;
+			}
 
 			if(@intervals == 0 || $intervals[-2] ne $starttime){
 				push @intervals, $starttime,
@@ -639,12 +655,12 @@ sub live_update{
 			$intervals[$#intervals] =
 						OWP::Utils::time2owptime(time);
 		}
-		$state{'UPTIMEINTERVALS'} = join '_', @intervals;
+		$state{$me} = join '_', @intervals;
 
 		my($key,$line,$msg,%msg);
 		$msg{'NODE'} = $me;
 		$msg{'SECRETNAME'} = $secretname;
-		$msg{'UPTIMEINTERVALS'} = $state{'UPTIMEINTERVALS'};
+		$msg{'UPTIMEINTERVALS'} = $state{$me};
 
 		$md5->reset;
 		$msg= "";
@@ -654,7 +670,7 @@ sub live_update{
 			$msg .= $line."\n";
 		}
 		$md5->add($secret);
-		$msg .= "\n".$md5->hexdigest."\n";
+		$msg .= "\n".$md5->hexdigest;
 
 		my($toaddr);
 		foreach $toaddr (keys %contacts){
