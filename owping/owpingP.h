@@ -1,87 +1,89 @@
 /*
+ * ex: set tabstop=4 ai expandtab softtabstop=4 shiftwidth=4:
+ * -*- mode: c-basic-indent: 4; tab-width: 4; indent-tabls-mode: nil -*-
  *      $Id$
  */
 /************************************************************************
-*									*
-*			     Copyright (C)  2002			*
-*				Internet2				*
-*			     All Rights Reserved			*
-*									*
-************************************************************************/
+ *                                                                       *
+ *                           Copyright (C)  2002                         *
+ *                               Internet2                               *
+ *                           All Rights Reserved                         *
+ *                                                                       *
+ ************************************************************************/
 /*
- *	File:		owpingP.h
+ *    File:         owpingP.h
  *
- *	Author:		Jeff Boote
- *			Internet2
+ *    Author:       Jeff Boote
+ *                  Internet2
  *
- *	Date:		Thu Apr 25 13:00:00  2002
+ *    Date:         Thu Apr 25 13:00:00  2002
  *
- *	Description:	
+ *    Description:    
  */
-#ifndef	_owpingp_h_
-#define	_owpingp_h_
+#ifndef    _owpingp_h_
+#define    _owpingp_h_
 
-#define	_OWPING_DEF_TMPDIR	"/tmp"
-#define	_OWPING_PATH_SEPARATOR	"/"
-#define	_OWPING_TMPFILEFMT	"owamp.XXXXXX"
+#define    _OWPING_DEF_TMPDIR    "/tmp"
+#define    _OWPING_PATH_SEPARATOR    "/"
+#define    _OWPING_TMPFILEFMT    "owamp.XXXXXX"
 
 /*
  * Reasonable limits on these so dynamic memory is not needed.
  */
-#define	MAX_PASSPROMPT	256
-#define	MAX_PASSPHRASE	256
+#define    MAX_PASSPROMPT    256
+#define    MAX_PASSPHRASE    256
 
 /*
  * Application "context" structure
  */
-typedef	struct {
-	/*
-	**	Command line options
-	*/
-	struct  {
-		/* Flags */
-		I2Boolean	records;	/* -v */
-		I2Boolean	quiet;		/* -Q */
-		I2Boolean	raw;		/* -R */
+typedef    struct {
+    /*
+     **    Command line options
+     */
+    struct  {
+        /* Flags */
+        I2Boolean       records;            /* -v */
+        I2Boolean       quiet;              /* -Q */
+        I2Boolean       raw;                /* -R */
 
-		I2Boolean	to;		/* -t */
-		I2Boolean	from;		/* -f */
-		char		*save_to_test;	/* -T */
-		char		*save_from_test;/* -F */
+        I2Boolean       to;                 /* -t */
+        I2Boolean       from;               /* -f */
+        char            *save_to_test;      /* -T */
+        char            *save_from_test;    /* -F */
 
-		char		*authmode;	/* -A */
-		char		*identity;	/* -u */
-		char		*keyfile;	/* -k */
-		u_int32_t	numPackets;	/* -c */
+        char            *authmode;          /* -A */
+        char            *identity;          /* -u */
+        char            *keyfile;           /* -k */
+        u_int32_t       numPackets;         /* -c */
 
-		double		lossThreshold;	/* -L */
-		float		percentile;	/* -a */
+        double          lossThreshold;      /* -L */
+        float           percentile;         /* -a */
 
-		char		*srcaddr;	/* -S */
+        char            *srcaddr;           /* -S */
 
-		OWPPortRange	portspec;	/* -P */
+        OWPPortRange    portspec;           /* -P */
 
-#ifndef	NDEBUG
-		I2Boolean	childwait;	/* -w */
+#ifndef    NDEBUG
+        I2Boolean       childwait;          /* -w */
 #endif
 
-		u_int32_t	padding;	/* -s */
+        u_int32_t       padding;            /* -s */
 
-	} opt;
+    } opt;
 
-	char			*remote_test;
-	char			*remote_serv;
+    char                *remote_test;
+    char                *remote_serv;
 
-	u_int32_t		auth_mode;
+    u_int32_t           auth_mode;
 
-	OWPContext		lib_ctx;
-	OWPControl		cntrl;
+    OWPContext          lib_ctx;
+    OWPControl          cntrl;
 
-	float			mean_wait;		/* default slot value */
-	u_int32_t		nslots;
-	OWPSlot			*slots;
+    float               mean_wait;        /* default slot value */
+    u_int32_t           nslots;
+    OWPSlot             *slots;
 
-	OWPPortRangeRec		portrec;
+    OWPPortRangeRec     portrec;
 } ow_ping_trec, *ow_ping_t;
 
 #endif
