@@ -640,7 +640,7 @@ _OWPClientRequestTestReadResponse(
 }
 
 OWPBoolean
-OWPRequestTestSession(
+OWPSessionRequest(
 	OWPControl	cntrl,
 	OWPAddr		sender,
 	OWPBoolean	server_conf_sender,
@@ -665,7 +665,7 @@ OWPRequestTestSession(
 	if(!cntrl || !_OWPStateIsRequest(cntrl)){
 		*err_ret = OWPErrFATAL;
 		OWPError(cntrl->ctx,*err_ret,OWPErrINVALID,
-		"OWPRequestTestSession called with invalid cntrl record");
+		"OWPSessionRequest called with invalid cntrl record");
 		goto error;
 	}
 
@@ -718,7 +718,7 @@ OWPRequestTestSession(
 	 */
 	*err_ret = OWPErrWARNING;
 	OWPError(cntrl->ctx,*err_ret,OWPErrINVALID,
-		"OWPRequestTestSession called with incompatible addresses");
+		"OWPSessionRequest called with incompatible addresses");
 	goto error;
 
 foundaddr:
@@ -914,102 +914,6 @@ OWPStartSessions(
 		}
 
 	return err2;
-}
-
-int
-OWPStopSessionsWait(
-	OWPControl	cntrl,
-	OWPTimeStamp	*wake,
-	OWPAcceptType	*acceptval,
-	OWPErrSeverity	*err_ret
-	)
-{
-	struct timeval	currtime;
-	struct timeval	reltime;
-	struct timeval	*waittime = NULL;
-	fd_set		readfds;
-	int		rc;
-	u_int8_t	msgtype;
-	OWPTestSession	tsession;
-	OWPErrSeverity	err2=OWPErrOK;
-
-	if(!cntrl || cntrl->sockfd < 0){
-		*err_ret = OWPErrFATAL;
-		return -1;
-	}
-
-	if(wake){
-		if(gettimeofday(&currtime,NULL) != 0){
-			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"gettimeofday():%M");
-			return -1;
-		}
-		OWPCvtTimestamp2Timeval(&reltime,wake);
-		if(tvalcmp(&currtime,&reltime,<))
-			tvalsub(&reltime,&currtime);
-		else
-			tvalclear(&reltime);
-
-		waittime = &reltime;
-	}
-
-
-	FD_ZERO(&readfds);
-	FD_SET(cntrl->sockfd,&readfds);
-	rc = select(cntrl->sockfd+1,&readfds,NULL,&readfds,waittime);
-
-	if(rc < 0){
-		if(errno == EINTR)
-			return 2;
-		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,"select():%M");
-		*err_ret = OWPErrFATAL;
-		return -1;
-	}
-	if(rc == 0)
-		return 1;
-
-	if(!FD_ISSET(cntrl->sockfd,&readfds)){
-		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"select():cntrl fd not ready?:%M");
-		*err_ret = OWPErrFATAL;
-		return -1;
-	}
-
-	msgtype = OWPReadRequestType(cntrl);
-	if(msgtype != 3){
-		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-				"Invalid protocol message received...");
-		*err_ret = OWPErrFATAL;
-		cntrl->state = _OWPStateInvalid;
-		return -1;
-	}
-
-	*err_ret = _OWPReadStopSessions(cntrl,acceptval);
-	if(*err_ret < OWPErrOK){
-		cntrl->state = _OWPStateInvalid;
-		return -1;
-	}
-
-	for(tsession = cntrl->tests;tsession;tsession = tsession->next){
-		if(tsession->recv_end_data){
-			_OWPCallEndpointStop(tsession,tsession->recv_end_data,
-					*acceptval,&err2);
-			*err_ret = MIN(*err_ret,err2);
-		}
-		if(tsession->send_end_data){
-			_OWPCallEndpointStop(tsession,tsession->send_end_data,
-					*acceptval,&err2);
-			*err_ret = MIN(*err_ret,err2);
-		}
-	}
-
-	if(*err_ret < OWPErrWARNING)
-		*acceptval = OWP_CNTRL_FAILURE;
-
-	err2 = _OWPWriteStopSessions(cntrl,*acceptval);
-
-	*err_ret = MIN(*err_ret, err2);
-	return 0;
 }
 
 /*

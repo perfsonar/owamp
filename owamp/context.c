@@ -156,10 +156,9 @@ _OWPCallEndpointInit(
 	if(cntrl->ctx->cfg.endpoint_init_func)
 		init_func = cntrl->ctx->cfg.endpoint_init_func;
 
-	if( (*err_ret = (*init_func)(cntrl->app_data,end_data_ret,send,
-			localaddr,test_spec,sid)) < OWPErrWARNING)
-		return False;
-	return True;
+	*err_ret = (*init_func)(cntrl->app_data,end_data_ret,send,
+						localaddr,test_spec,sid);
+	return (*err_ret > OWPErrFATAL);
 }
 
 /*
@@ -189,10 +188,8 @@ _OWPCallEndpointInitHook(
 	if(cntrl->ctx->cfg.endpoint_init_hook_func)
 		initH_func = cntrl->ctx->cfg.endpoint_init_hook_func;
 
-	if( (*err_ret=(*initH_func)(cntrl->app_data,end_data,remoteaddr,sid)) <
-								OWPErrWARNING)
-		return False;
-	return True;
+	*err_ret=(*initH_func)(cntrl->app_data,end_data,remoteaddr,sid);
+	return (*err_ret > OWPErrFATAL);
 }
 
 OWPBoolean
@@ -214,11 +211,35 @@ _OWPCallEndpointStart(
 	if(tsession->cntrl->ctx->cfg.endpoint_start_func)
 		func = tsession->cntrl->ctx->cfg.endpoint_start_func;
 
-	if( (*err_ret = (*func)(tsession->cntrl->app_data,end_data)) <
-								OWPErrWARNING)
-		return False;
-	return True;
+	*err_ret = (*func)(tsession->cntrl->app_data,end_data);
+	return (*err_ret > OWPErrFATAL);
 }
+
+OWPBoolean
+_OWPCallEndpointStatus(
+	OWPTestSession	tsession,
+	void		*end_data,
+	OWPAcceptType	*aval,
+	OWPErrSeverity	*err_ret
+)
+{
+	OWPEndpointStatusFunc	func = OWPDefEndpointStatus;
+
+	if(!tsession){
+		OWPError(NULL,OWPErrFATAL,OWPErrINVALID,
+				"_OWPCallEndpointStatus:No TestSession record!");
+		*err_ret = OWPErrFATAL;
+		return False;
+	}
+
+	if(tsession->cntrl->ctx->cfg.endpoint_status_func)
+		func = tsession->cntrl->ctx->cfg.endpoint_status_func;
+
+	*err_ret = (*func)(tsession->cntrl->app_data,end_data,aval);
+
+	return (*err_ret > OWPErrFATAL);
+}
+
 
 OWPBoolean
 _OWPCallEndpointStop(
@@ -240,10 +261,9 @@ _OWPCallEndpointStop(
 	if(tsession->cntrl->ctx->cfg.endpoint_stop_func)
 		func = tsession->cntrl->ctx->cfg.endpoint_stop_func;
 
-	if( (*err_ret = (*func)(tsession->cntrl->app_data,end_data,aval)) <
-								OWPErrWARNING)
-		return False;
-	return True;
+	*err_ret = (*func)(tsession->cntrl->app_data,end_data,aval);
+
+	return (*err_ret > OWPErrFATAL);
 }
 
 /*

@@ -37,6 +37,7 @@
  * managed by these functions.
  */
 typedef struct _DefEndpointRec{
+	OWPContext		ctx;
 	I2RandomSource		rand_src;
 	OWPTestSpec		test_spec;
 	OWPSessionMode		mode;
@@ -44,7 +45,9 @@ typedef struct _DefEndpointRec{
 	u_int32_t		lossThreshold;
 
 	OWPSID			sid;
+	OWPAcceptType		acceptval;
 	pid_t			child;
+	int			wopts;
 	OWPBoolean		send;
 	int			sockfd;
 	FILE			*datafile;
@@ -76,6 +79,8 @@ EndpointAlloc(
 	memset(ep,0,sizeof(*ep));
 	ep->test_spec.test_type = OWPTestUnspecified;
 	ep->sockfd = -1;
+	ep->acceptval = OWP_CNTRL_INVALID;
+	ep->wopts = WNOHANG;
 
 	return ep;
 }
@@ -261,6 +266,7 @@ OWPDefEndpointInit(
 	ep->mode = OWPGetMode(cdata->cntrl);
 	ep->aeskey = OWPGetAESkeyInstance(cdata->cntrl,send);
 	ep->lossThreshold = cdata->lossThreshold;
+	ep->ctx = ctx;
 	ep->rand_src = ctx->rand_src;
 
 	tpsize = OWPTestPacketSize(localaddr->saddr->sa_family,
@@ -286,7 +292,7 @@ OWPDefEndpointInit(
 	ep->clr_buffer = malloc(16);	/* one block - dynamic for alignment */
 
 	if(!ep->payload || !ep->clr_buffer){
-		OWPError(NULL,OWPErrFATAL,OWPErrUNKNOWN,"malloc():%s",
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"malloc():%s",
 				strerror(errno));
 		goto error;
 	}
@@ -541,6 +547,24 @@ static int owp_usr2;
 static int owp_int;
 static int owp_alrm;
 
+/*
+ * This sighandler is used to ensure SIGCHLD events are sent to this process.
+ */
+static void
+sig_nothing(
+	int	signo
+	)
+{
+	switch(signo){
+		case SIGCHLD:
+			break;
+		default:
+			OWPError(NULL,OWPErrFATAL,OWPErrUNKNOWN,
+					"sig_nothing:Invalid signal(%d)",signo);
+			exit(OWP_CNTRL_FAILURE);
+	}
+	return;
+}
 
 static void
 sig_catch(
@@ -563,7 +587,7 @@ sig_catch(
 		default:
 			OWPError(NULL,OWPErrFATAL,OWPErrUNKNOWN,
 					"sig_catch:Invalid signal(%d)",signo);
-			exit(1);
+			exit(OWP_CNTRL_FAILURE);
 	}
 	return;
 }
@@ -671,10 +695,6 @@ GetTimespec(
  * 		This function is the main processing function for a "sender"
  * 		sub-process.
  *
- * 		TODO: Figure out how to report errors reasonably -
- * 		OWPError will only work with the current apps if they
- * 		are printing to stderr... (and perhaps not then.)
- *
  * In Args:	
  *
  * Out Args:	
@@ -691,6 +711,7 @@ run_sender(
 	u_int32_t	i=0;
 	struct timespec	currtime;
 	struct timespec	nexttime;
+	struct timespec	sleeptime;
 	u_int32_t	esterror;
 	u_int32_t	lasterror=0;
 	int		sync;
@@ -729,35 +750,30 @@ run_sender(
 			 * but put default in to stop annoying
 			 * compiler warnings...
 			 */
-			exit(1);
+			exit(OWP_CNTRL_FAILURE);
 	}
 
 	/*
 	 * set random bits.
 	 */
-#ifndef	OWP_VARY_TEST_PAYLOAD
-#ifdef	OWP_ZERO_TEST_PAYLOAD
+#if	defined(OWP_ZERO_TEST_PAYLOAD)
 	memset(payload,0,ep->test_spec.any.packet_size_padding);
-#else
+#elif	!defined(OWP_VARY_TEST_PAYLOAD)
 	/*
 	 * Ignore errors here - it isn't that critical that it be random.
+	 * (just trying to defeat modem compression and the like.)
 	 */
 	(void)I2RandomBytes(ep->rand_src,payload,
 			    ep->test_spec.any.packet_size_padding);
-#endif
 #endif
 
 	do{
 		/*
 		 * First setup "this" packet.
 		 */
-#ifdef	OWP_VARY_TEST_PAYLOAD
-#ifdef	OWP_ZERO_TEST_PAYLOAD
-		memset(payload,0,ep->test_spec.any.packet_size_padding);
-#else
+#if	defined(OWP_VARY_TEST_PAYLOAD) && !defined(OWP_ZERO_TEST_PAYLOAD)
 		(void)I2RandomBytes(ep->rand_src,payload,
 				    ep->test_spec.any.packet_size_padding);
-#endif
 #endif
 		nexttime = ep->start;
 		timespecadd(&nexttime,&ep->relative_offsets[i]);
@@ -772,14 +788,14 @@ run_sender(
 
 AGAIN:
 		if(owp_int)
-			exit(1);
+			exit(OWP_CNTRL_FAILURE);
 		if(owp_usr2)
-			exit(0);
+			exit(OWP_CNTRL_ACCEPT);
 
 		if(!GetTimespec(&currtime,&esterror,&sync)){
-			OWPError(NULL,OWPErrFATAL,OWPErrUNKNOWN,
+			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 				"Problem retrieving time");
-			exit(1);
+			exit(OWP_CNTRL_FAILURE);
 		}
 
 		if(timespeccmp(&nexttime,&currtime,<)){
@@ -803,7 +819,7 @@ AGAIN:
 						ep->len_payload,0)) < 0){
 				if(errno == ENOBUFS)
 					goto AGAIN;
-				OWPError(NULL,OWPErrFATAL,OWPErrUNKNOWN,
+				OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 						"send(#%d):%s",i,
 						strerror(errno));
 			}
@@ -814,21 +830,53 @@ AGAIN:
 			/*
 			 * Sleep until we should send the next packet.
 			 */
-			struct timespec	sleeptime;
 
 			sleeptime = nexttime;
 			timespecsub(&sleeptime,&currtime);
 			if((nanosleep(&sleeptime,NULL) == 0) ||
 					(errno == EINTR))
 				goto AGAIN;
-			OWPError(NULL,OWPErrFATAL,OWPErrUNKNOWN,
+			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 					"nanosleep():%s",strerror(errno));
-			exit(1);
+			exit(OWP_CNTRL_FAILURE);
 		}
 
 	} while(i<ep->test_spec.any.npackets);
 
-	exit(0);
+	/*
+	 * Wait until lossthresh after last packet or
+	 * for a signal to exit.
+	 */
+	nexttime = ep->start;
+	timespecadd(&nexttime,
+			&ep->relative_offsets[ep->test_spec.any.npackets-1]);
+	nexttime.tv_sec += ep->lossThreshold;
+
+	while(!owp_usr2 && !owp_int){
+		if(!GetTimespec(&currtime,&esterror,&sync)){
+			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+					"Problem retrieving time");
+			exit(OWP_CNTRL_FAILURE);
+		}
+
+		if(timespeccmp(&nexttime,&currtime,<))
+			break;
+
+		sleeptime = nexttime;
+		timespecsub(&sleeptime,&currtime);
+		if(nanosleep(&sleeptime,NULL) == 0)
+			break;
+		if(errno != EINTR){
+			OWPError(ep->ctx,OWPErrWARNING,OWPErrUNKNOWN,
+					"nanosleep():%M");
+			/*
+			 * if nanosleep is broken - this turns into
+			 * a busy wait loop...
+			 */
+		}
+	}
+
+	exit(OWP_CNTRL_ACCEPT);
 }
 
 static void
@@ -869,7 +917,7 @@ run_receiver(
 			 * but put default in to stop annoying
 			 * compiler warnings...
 			 */
-			exit(1);
+			exit(OWP_CNTRL_FAILURE);
 	}
 	lasttime = ep->relative_offsets[ep->test_spec.any.npackets-1];
 	lasttime.tv_sec += ep->lossThreshold;
@@ -889,12 +937,18 @@ run_receiver(
 			break;
 		}
 
-		if(recv(ep->sockfd,ep->payload,ep->len_payload,0) !=
-						(ssize_t)ep->len_payload)
-			continue;
+		if(recvfrom(ep->sockfd,ep->payload,ep->len_payload,0,
+					NULL,NULL) != (ssize_t)ep->len_payload){
+			if(errno == EINTR)
+				continue;
+			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+							"recvfrom():%M");
+			goto error;
+			goto error;
+		}
 
 		if(!GetTimespec(&currtime,&esterror,&sync)){
-			OWPError(NULL,OWPErrFATAL,OWPErrUNKNOWN,
+			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 				"Problem retrieving time");
 			goto error;
 		}
@@ -918,14 +972,14 @@ run_receiver(
 
 			/* write sequence number */
 			if(fwrite(seq,sizeof(u_int32_t),1,ep->datafile) != 1){
-				OWPError(NULL,OWPErrFATAL,OWPErrUNKNOWN,
+				OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 						"fwrite():%s",strerror(errno));
 				goto error;
 			}
 			/* write "sent" tstamp */
 			if(fwrite(tstamp,sizeof(u_int32_t),2,ep->datafile)
 									!= 2){
-				OWPError(NULL,OWPErrFATAL,OWPErrUNKNOWN,
+				OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 						"fwrite():%s",strerror(errno));
 				goto error;
 			}
@@ -941,26 +995,28 @@ run_receiver(
 			/* write "recv" tstamp */
 			if(fwrite(ep->clr_buffer,sizeof(u_int32_t),2,
 						ep->datafile) != 2){
-				OWPError(NULL,OWPErrFATAL,OWPErrUNKNOWN,
+				OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 						"fwrite():%s",strerror(errno));
 				goto error;
 			}
 
-#ifdef	NOT
 			/*
-			 * If we want to short-cut the recvier - try and
+			 * TODO:
+			 * If we want to short-cut the recvier to try and
 			 * detect a completed session before last+lossThreshold:
-			 * It would happen here.
-			 * set found-bit to determine "finished"
-			 * determine if session is complete
+			 * We would need to try and detect the "completion"
+			 * here - and would probably have to update some kind
+			 * of data structure if it is not complete...
+			 * Is it worth it?
 			 */
-			if(seq_num == (ep->test_spec.any.npackets-1)){
-				if(IsTestDone)
-					break;
-			}
-#endif
 		}
 	}
+
+	/*
+	 * TODO: Should SIGUSR2 - early termination rename the file? Should
+	 * the session be thought of as complete?
+	 * It currently does/is.
+	 */
 
 	/*
 	 * Move file from "SID^OWP_INCOMPLETE_EXT" in-progress test to "SID".
@@ -976,7 +1032,7 @@ run_receiver(
 	newpath[lenpath-strlen(OWP_INCOMPLETE_EXT)] = '\0'; /* remove the 
 						     extension from the end. */
 	if(link(ep->filepath,newpath) != 0){
-		OWPError(NULL,OWPErrFATAL,OWPErrUNKNOWN,
+		OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 					"link():%s",strerror(errno));
 		goto error;
 	}
@@ -989,7 +1045,7 @@ run_receiver(
 	newlink[lenpath-strlen(OWP_INCOMPLETE_EXT)] = '\0'; /* remove the 
 						    extension from the end. */
 	if(symlink(newpath,newlink) != 0){
-		OWPError(NULL,OWPErrFATAL,OWPErrUNKNOWN,
+		OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 				"symlink():%s",strerror(errno));
 		goto error;
 	}
@@ -999,12 +1055,12 @@ run_receiver(
 	 * to ensure no race conditions.
 	 */
 	if((unlink(ep->linkpath) != 0) || (unlink(ep->filepath) != 0)){
-		OWPError(NULL,OWPErrFATAL,OWPErrUNKNOWN,
+		OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 				"unlink():%s",strerror(errno));
 		goto error;
 	}
 
-	exit(0);
+	exit(OWP_CNTRL_ACCEPT);
 
 error:
 	/*
@@ -1062,37 +1118,21 @@ OWPDefEndpointInitHook(
 	}
 
 	/*
-	 * Set the global signal flag vars to 0, call sigprocmask to block
-	 * signals before the fork. (Ensures no race condition.) Then
-	 * unblock the signals in the parent, and wait for the signals
+	 * call sigprocmask to block signals before the fork.
+	 * (This ensures no race condition.)
+	 * Then unblock the signals in the parent.
+	 * Child sets new sig_handlers and waits for the signals
 	 * in the child using sigsuspend.
 	 */
-	owp_usr1 = 0;
-	owp_usr2 = 0;
-	owp_int = 0;
-	owp_alrm = 0;
-	act.sa_handler = sig_catch;
-	sigemptyset(&act.sa_mask);
-	act.sa_flags = 0;
-
 	sigemptyset(&sigs);
 	sigaddset(&sigs,SIGUSR1);
 	sigaddset(&sigs,SIGUSR2);
 	sigaddset(&sigs,SIGINT);
 	sigaddset(&sigs,SIGALRM);
 	
-	if(	(sigprocmask(SIG_BLOCK,&sigs,&osigs) != 0) ||
-					(sigaction(SIGUSR1,&act,NULL) != 0) ||
-					(sigaction(SIGUSR2,&act,NULL) != 0) ||
-					(sigaction(SIGINT,&act,NULL) != 0) ||
-					(sigaction(SIGALRM,&act,NULL) != 0)){
-		act.sa_handler = SIG_DFL;
-		(void)sigaction(SIGUSR1,&act,NULL);
-		(void)sigaction(SIGUSR2,&act,NULL);
-		(void)sigaction(SIGINT,&act,NULL);
-		(void)sigaction(SIGALRM,&act,NULL);
+	if(sigprocmask(SIG_BLOCK,&sigs,&osigs) != 0){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"sigaction failed:%s",strerror(errno));
+				"sigprocmask failed:%s",strerror(errno));
 		EndpointFree(ep);
 		return OWPErrFATAL;
 	}
@@ -1101,11 +1141,6 @@ OWPDefEndpointInitHook(
 
 	if(ep->child < 0){
 		/* fork error */
-		act.sa_handler = SIG_DFL;
-		(void)sigaction(SIGUSR1,&act,NULL);
-		(void)sigaction(SIGUSR2,&act,NULL);
-		(void)sigaction(SIGINT,&act,NULL);
-		(void)sigaction(SIGALRM,&act,NULL);
 		(void)sigprocmask(SIG_SETMASK,&osigs,NULL);
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fork failed:%s",
 				strerror(errno));
@@ -1115,14 +1150,41 @@ OWPDefEndpointInitHook(
 
 	if(ep->child > 0){
 		/* parent */
-		act.sa_handler = SIG_DFL;
-		if(	(sigaction(SIGUSR1,&act,NULL) != 0) ||
-			(sigaction(SIGUSR2,&act,NULL) != 0) ||
-			(sigaction(SIGUSR2,&act,NULL) != 0) ||
-			(sigaction(SIGALRM,&act,NULL) != 0) ||
-			(sigprocmask(SIG_SETMASK,&osigs,NULL) != 0)){
+
+		struct sigaction	chldact;
+	
+		/*
+		 * If there is currently no SIGCHLD handler:
+		 * setup an empty CHLD handler to ensure SIGCHLD is sent
+		 * to this process. (Just need the signal sent to break
+		 * us out of "select" with an EINTR when we trying to
+		 * determine if test sessions are complete.)
+		 */
+		sigemptyset(&chldact.sa_mask);
+		chldact.sa_handler = SIG_DFL;
+		chldact.sa_flags = 0;
+		/* fetch current handler */
+		if(sigaction(SIGCHLD,NULL,&chldact) != 0){
 			OWPError(ctx,OWPErrWARNING,OWPErrUNKNOWN,
-				"sigaction(DFL) failed:%s",strerror(errno));
+				"sigaction():%M");
+			return OWPErrWARNING;
+		}
+		/* if there is currently no handler - set one. */
+		if(chldact.sa_handler == SIG_DFL){
+			chldact.sa_handler = sig_nothing;
+			if(sigaction(SIGCHLD,&chldact,NULL) != 0){
+				OWPError(ctx,OWPErrWARNING,OWPErrUNKNOWN,
+					"sigaction(DFL) failed:%M");
+				return OWPErrWARNING;
+			}
+		}
+		/* now make sure SIGCHLD won't be masked. */
+		sigdelset(&osigs,SIGCHLD);
+
+		/* reset sig_mask to the old one (-SIGCHLD)	*/
+		if(sigprocmask(SIG_SETMASK,&osigs,NULL) != 0){
+			OWPError(ctx,OWPErrWARNING,OWPErrUNKNOWN,
+				"sigprocmask():%M");
 			return OWPErrWARNING;
 		}
 
@@ -1134,6 +1196,10 @@ OWPDefEndpointInitHook(
 	 * We are now in the child send/recv process.
 	 */
 
+	/*
+	 * busy loop for systems where debugger doesn't support
+	 * child follow_fork mode functionality...
+	 */
 #ifdef	WAIT_FOR
 	{
 		int	waitfor=1;
@@ -1142,33 +1208,35 @@ OWPDefEndpointInitHook(
 	}
 #endif
 
-#ifdef	NOT
-	for(i=getdtablesize()-1;i>=0;i--){
-#ifndef	NDEBUG
-		if(i == fileno(stderr))
-			continue;
-#endif
-		if((i==ep->sockfd) ||
-				((ep->datafile) && (i==fileno(ep->datafile))))
-			continue;
+	/*
+	 * set the sig handlers for the currently blocked signals.
+	 */
+	owp_usr1 = 0;
+	owp_usr2 = 0;
+	owp_int = 0;
+	owp_alrm = 0;
+	act.sa_handler = sig_catch;
+	sigemptyset(&act.sa_mask);
+	act.sa_flags = 0;
 
-		/*
-		 * Ignore errors unless it was intr - then try again.
-		 */
-		while((close(i) < 0) && (errno == EINTR));
+	if(		(sigaction(SIGUSR1,&act,NULL) != 0) ||
+			(sigaction(SIGUSR2,&act,NULL) != 0) ||
+			(sigaction(SIGINT,&act,NULL) != 0) ||
+			(sigaction(SIGALRM,&act,NULL) != 0)){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"sigaction():%M");
+		exit(OWP_CNTRL_FAILURE);
 	}
-#endif
 
 	if(InitNTP() != 0){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
 				"Unable to initialize clock interface.");
-		exit(1);
+		exit(OWP_CNTRL_FAILURE);
 	}
 
 	if(!OWPCvtTimestamp2Timespec(&ep->start,&ep->test_spec.any.start_time)){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
 				"TStamp2TSpec conversion?");
-		exit(1);
+		exit(OWP_CNTRL_FAILURE);
 	}
 
 	/*
@@ -1180,7 +1248,7 @@ OWPDefEndpointInitHook(
 	if(!(rand_ctx = OWPrand_context64_init(ep->sid))){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
 					"Unable to init random context");
-		exit(1);
+		exit(OWP_CNTRL_FAILURE);
 	}
 
 	/*
@@ -1217,19 +1285,18 @@ OWPDefEndpointInitHook(
 		/* cancel the session */
 		if(ep->filepath)
 			unlink(ep->filepath);
-		exit(1);
+		exit(OWP_CNTRL_REJECT);
 	}else if(owp_usr1){
+		/* start the session */
 		struct timespec currtime;
 		u_int32_t	esterror;
 		int		sync;
 
-		/* start the session */
-		act.sa_handler = SIG_DFL;
-		(void)sigaction(SIGUSR1,&act,NULL);
+		/* clear the sig mask so all sigs come through */
 		if(sigprocmask(SIG_SETMASK,&sigs,NULL) != 0){
 			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"Unable to clear signal mask...");
-			exit(1);
+					"sigprocmask():%M");
+			exit(OWP_CNTRL_FAILURE);
 		}
 
 		if(!GetTimespec(&currtime,&esterror,&sync)){
@@ -1237,7 +1304,7 @@ OWPDefEndpointInitHook(
 					"Unable to fetch current time...");
 			if(ep->filepath)
 				unlink(ep->filepath);
-			exit(1);
+			exit(OWP_CNTRL_FAILURE);
 		}
 
 		if(timespeccmp(&ep->start,&currtime,<))
@@ -1254,7 +1321,7 @@ OWPDefEndpointInitHook(
 	/* should not get here. */
 	OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
 			"Shouldn't get to this line of code... Hmmpf.");
-	exit(1);
+	exit(OWP_CNTRL_FAILURE);
 }
 
 OWPErrSeverity
@@ -1266,13 +1333,48 @@ OWPDefEndpointStart(
 	OWPPerConnData		cdata = (OWPPerConnData)app_data;
 	_DefEndpoint		ep=(_DefEndpoint)end_data;
 
-	if(kill(ep->child,SIGUSR1) == 0)
+	if((ep->acceptval < 0) && ep->child && (kill(ep->child,SIGUSR1) == 0))
 		return OWPErrOK;
 	OWPError(OWPGetContext(cdata->cntrl),OWPErrFATAL,OWPErrUNKNOWN,
 			"EndpointStart:Can't signal child #%d:%s",ep->child,
 			strerror(errno));
 	return OWPErrFATAL;
 }
+
+OWPErrSeverity
+OWPDefEndpointStatus(
+	void		*app_data,
+	void		*end_data,
+	OWPAcceptType	*aval		/* out */
+	)
+{
+	OWPPerConnData		cdata = (OWPPerConnData)app_data;
+	_DefEndpoint		ep=(_DefEndpoint)end_data;
+	pid_t			p;
+	OWPErrSeverity		err=OWPErrOK;
+	int			childstatus;
+
+	if(ep->acceptval < 0){
+AGAIN:
+		p = waitpid(ep->child,&childstatus,ep->wopts);
+		if(p < 0){
+			if(errno == EINTR)
+				goto AGAIN;
+			OWPError(OWPGetContext(cdata->cntrl),OWPErrWARNING,
+				OWPErrUNKNOWN,
+				"EndpointStart:Can't query child #%d:%M",
+				ep->child);
+			ep->acceptval = OWP_CNTRL_FAILURE;
+			err = OWPErrWARNING;
+		}
+		else if(p > 0)
+			ep->acceptval = (OWPAcceptType)WEXITSTATUS(childstatus);
+	}
+
+	*aval = ep->acceptval;
+	return err;
+}
+
 
 OWPErrSeverity
 OWPDefEndpointStop(
@@ -1284,16 +1386,27 @@ OWPDefEndpointStop(
 	OWPPerConnData		cdata = (OWPPerConnData)app_data;
 	_DefEndpoint		ep=(_DefEndpoint)end_data;
 	int			sig;
+	int			teststatus;
+	OWPErrSeverity		err;
+
+	if(ep->acceptval >= 0)
+		return OWPErrOK;
 
 	if(aval)
 		sig = SIGINT;
 	else
 		sig = SIGUSR2;
 
-	if(kill(ep->child,sig) == 0)
-		return OWPErrOK;
+	if(kill(ep->child,sig) != 0)
+		goto error;
+
+	ep->wopts &= ~WNOHANG;
+	err = OWPDefEndpointStatus(app_data,end_data,&teststatus);
+	if(teststatus >= 0)
+		return err;
+
+error:
 	OWPError(OWPGetContext(cdata->cntrl),OWPErrFATAL,OWPErrUNKNOWN,
-			"EndpointStart:Can't signal child #%d:%s",ep->child,
-			strerror(errno));
+			"EndpointStart:Can't signal child #%d:%M",ep->child);
 	return OWPErrFATAL;
 }

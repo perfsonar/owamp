@@ -52,6 +52,13 @@ OWPDefEndpointStart(
 	);
 
 extern OWPErrSeverity
+OWPDefEndpointStatus(
+	void		*app_data,
+	void		*end_data,
+	OWPAcceptType	*aval
+	);
+
+extern OWPErrSeverity
 OWPDefEndpointStop(
 	void		*app_data,
 	void		*end_data,

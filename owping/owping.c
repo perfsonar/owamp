@@ -175,11 +175,12 @@ static	OWPInitializeConfigRec	OWPCfg = {{
 	/* tm_out.tv_usec		*/	0},
 	/* eh				*/	NULL,
 	/* get_aes_key			*/	owp_get_aes_key,
-	/* check_control_func		*/	owp_check_control,
-	/* check_test_func		*/	owp_check_test,
+	/* check_control_func		*/	NULL,
+	/* check_test_func		*/	NULL,
 	/* endpoint_init_func		*/	NULL,
 	/* endpoint_init_hook_func	*/	NULL,
 	/* endpoint_start_func		*/	NULL,
+	/* endpoint_status_func		*/	NULL,
 	/* endpoint_stop_func		*/	NULL,
 	/* rand_type                    */      I2RAND_DEV,
 	/* rand_data                    */      NULL
@@ -503,6 +504,8 @@ main(
 	OWPSID			sid_ret;
 	OWPTimeStamp		start_time_rec={0,0,0,0};
 	OWPPerConnDataRec	conndata;
+	OWPAcceptType		acceptval;
+	OWPErrSeverity		err;
 
 	ia.line_info = (I2NAME | I2MSG);
 	ia.fp = stderr;
@@ -752,7 +755,7 @@ main(
 	/*
 	 * Now ready to make test requests...
 	 */
-	if( !OWPRequestTestSession(ping_ctx.cntrl,
+	if( !OWPSessionRequest(ping_ctx.cntrl,
 			OWPAddrByNode(ctx,ping_ctx.opt.sender),
 			!ping_ctx.sender_local,
 			OWPAddrByNode(ctx,ping_ctx.opt.receiver),
@@ -768,6 +771,9 @@ main(
 	 * TODO install sig handler for keyboard interupt - to send stop
 	 * sessions.
 	 */
+	if(OWPStopSessionsWait(ping_ctx.cntrl,NULL,&acceptval,&err) == 0)
+		exit(0);
 
-	exit(0);
+	OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"It didn't wait!");
+	exit(1);
 }

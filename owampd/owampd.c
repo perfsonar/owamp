@@ -633,6 +633,7 @@ main(int argc, char *argv[])
 	/*	endpoint_init_func	*/	NULL,
 	/*	endpoint_init_hook_func	*/	NULL,
 	/*	endpoint_start_func	*/	NULL,
+	/*	endpoint_status_func	*/	NULL,
 	/*	endpoint_stop_func	*/	NULL,
 	/*	rand_type		*/	I2RAND_DEV,
 	/*	rand_data		*/	NULL

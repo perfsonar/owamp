@@ -35,6 +35,7 @@ static OWPInitializeConfigRec	def_cfg = {
 	/* endpoint_init_func		*/	NULL,
 	/* endpoint_init_hook_func	*/	NULL,
 	/* endpoint_start_func		*/	NULL,
+	/* endpoint_status_func		*/	NULL,
 	/* endpoint_stop_func		*/	NULL,
 	/* rand_type			*/	I2RAND_DEV,
 	/* rand_data			*/	NULL
@@ -535,39 +536,6 @@ _OWPFailControlSession(
 	return (OWPErrSeverity)level;
 }
 
-OWPErrSeverity
-OWPControlClose(OWPControl cntrl)
-{
-	OWPErrSeverity	err = OWPErrOK;
-	OWPErrSeverity	lerr = OWPErrOK;
-	OWPControl	*list = &cntrl->ctx->cntrl_list;
-
-	/*
-	 * TODO: remove all test sessions if necessary - send stop session
-	 * if needed.
-	 */
-
-	/*
-	 * Remove cntrl from ctx list.
-	 */
-	while(*list && (*list != cntrl))
-		list = &(*list)->next;
-	if(*list == cntrl)
-		*list = cntrl->next;
-
-	/*
-	 * these functions will close the control socket if it is open.
-	 */
-	lerr = OWPAddrFree(cntrl->remote_addr);
-	err = MIN(err,lerr);
-	lerr = OWPAddrFree(cntrl->local_addr);
-	err = MIN(err,lerr);
-
-	free(cntrl);
-
-	return err;
-}
-
 OWPTestSession
 _OWPTestSessionAlloc(
 	OWPControl	cntrl,
@@ -638,6 +606,43 @@ _OWPTestSessionFree(
 	free(tsession);
 
 	return MIN(err,err2);
+}
+
+OWPErrSeverity
+OWPControlClose(OWPControl cntrl)
+{
+	OWPErrSeverity	err = OWPErrOK;
+	OWPErrSeverity	lerr = OWPErrOK;
+	OWPControl	*list = &cntrl->ctx->cntrl_list;
+	OWPAcceptType	acceptval = OWP_CNTRL_ACCEPT;
+
+	/*
+	 * remove all test sessions
+	 */
+	while(cntrl->tests){
+		lerr = _OWPTestSessionFree(cntrl->tests,acceptval);
+		err = MIN(err,lerr);
+	}
+
+	/*
+	 * Remove cntrl from ctx list.
+	 */
+	while(*list && (*list != cntrl))
+		list = &(*list)->next;
+	if(*list == cntrl)
+		*list = cntrl->next;
+
+	/*
+	 * these functions will close the control socket if it is open.
+	 */
+	lerr = OWPAddrFree(cntrl->remote_addr);
+	err = MIN(err,lerr);
+	lerr = OWPAddrFree(cntrl->local_addr);
+	err = MIN(err,lerr);
+
+	free(cntrl);
+
+	return err;
 }
 
 OWPErrSeverity
@@ -742,4 +747,164 @@ OWPTestPacketSize(
 			return 0;
 
 	return payload_size + header_size;
+}
+
+OWPBoolean
+OWPSessionStatus(
+		OWPControl	cntrl,
+		OWPSID		sid,
+		OWPBoolean	send,
+		OWPAcceptType	*aval
+		)
+{
+	OWPTestSession	tsession;
+	OWPErrSeverity	err;
+
+	for(tsession=cntrl->tests;tsession;tsession=tsession->next)
+		if(memcmp(sid,tsession->sid,sizeof(OWPSID)) == 0)
+			goto found;
+
+	return False;
+found:
+	if(send && tsession->send_end_data)
+		return _OWPCallEndpointStatus(tsession,tsession->send_end_data,
+								aval,&err);
+	if(!send && tsession->recv_end_data)
+		return _OWPCallEndpointStatus(tsession,tsession->recv_end_data,
+								aval,&err);
+	return False;
+}
+
+int
+OWPSessionsActive(
+		OWPControl	cntrl
+		)
+{
+	OWPTestSession	tsession;
+	OWPAcceptType	aval;
+	int		n=0;
+	OWPErrSeverity	err;
+
+	for(tsession = cntrl->tests;tsession;tsession = tsession->next){
+		if((tsession->recv_end_data) && _OWPCallEndpointStatus(tsession,
+					tsession->recv_end_data,&aval,&err)){
+			if(aval < 0)
+				n++;
+		}
+		if((tsession->send_end_data) && _OWPCallEndpointStatus(tsession,
+					tsession->send_end_data,&aval,&err)){
+			if(aval < 0)
+				n++;
+		}
+	}
+
+	return n;
+}
+
+int
+OWPStopSessionsWait(
+	OWPControl	cntrl,
+	OWPTimeStamp	*wake,
+	OWPAcceptType	*acceptval,
+	OWPErrSeverity	*err_ret
+	)
+{
+	struct timeval	currtime;
+	struct timeval	reltime;
+	struct timeval	*waittime = NULL;
+	fd_set		readfds;
+	fd_set		exceptfds;
+	int		rc;
+	u_int8_t	msgtype;
+	OWPErrSeverity	err2=OWPErrOK;
+
+	if(!cntrl || cntrl->sockfd < 0){
+		*err_ret = OWPErrFATAL;
+		return -1;
+	}
+
+	if(wake){
+		if(gettimeofday(&currtime,NULL) != 0){
+			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+					"gettimeofday():%M");
+			return -1;
+		}
+		OWPCvtTimestamp2Timeval(&reltime,wake);
+		if(tvalcmp(&currtime,&reltime,<))
+			tvalsub(&reltime,&currtime);
+		else
+			tvalclear(&reltime);
+
+		waittime = &reltime;
+	}
+
+
+	FD_ZERO(&readfds);
+	FD_SET(cntrl->sockfd,&readfds);
+	FD_ZERO(&exceptfds);
+	FD_SET(cntrl->sockfd,&exceptfds);
+AGAIN:
+	rc = select(cntrl->sockfd+1,&readfds,NULL,&exceptfds,waittime);
+
+	if(rc < 0){
+		if(errno != EINTR){
+			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+					"select():%M");
+			*err_ret = OWPErrFATAL;
+			return -1;
+		}
+		if(waittime)
+			return 2;
+
+		/*
+		 * If there are tests still happening - go back to select
+		 * and wait for them to complete.
+		 */
+		if(OWPSessionsActive(cntrl))
+			goto AGAIN;
+
+		/*
+		 * Sessions are complete - send StopSessions message.
+		 */
+		*err_ret = OWPStopSessions(cntrl,acceptval);
+		return 0;
+	}
+	if(rc == 0)
+		return 1;
+
+	if(!FD_ISSET(cntrl->sockfd,&readfds) &&
+					!FD_ISSET(cntrl->sockfd,&exceptfds)){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+					"select():cntrl fd not ready?:%M");
+		*err_ret = OWPErrFATAL;
+		return -1;
+	}
+
+	msgtype = OWPReadRequestType(cntrl);
+	if(msgtype != 3){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+				"Invalid protocol message received...");
+		*err_ret = OWPErrFATAL;
+		cntrl->state = _OWPStateInvalid;
+		return -1;
+	}
+
+	*err_ret = _OWPReadStopSessions(cntrl,acceptval);
+	if(*err_ret < OWPErrOK){
+		cntrl->state = _OWPStateInvalid;
+		return -1;
+	}
+
+	while(cntrl->tests){
+		err2 = _OWPTestSessionFree(cntrl->tests,*acceptval);
+		*err_ret = MIN(*err_ret,err2);
+	}
+
+	if(*err_ret < OWPErrWARNING)
+		*acceptval = OWP_CNTRL_FAILURE;
+
+	err2 = _OWPWriteStopSessions(cntrl,*acceptval);
+
+	*err_ret = MIN(*err_ret, err2);
+	return 0;
 }

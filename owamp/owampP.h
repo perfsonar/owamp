@@ -505,6 +505,14 @@ _OWPCallEndpointStart(
 	);
 
 extern OWPBoolean
+_OWPCallEndpointStatus(
+	OWPTestSession	tsession,
+	void		*end_data,
+	OWPAcceptType	*aval,
+	OWPErrSeverity	*err_ret
+	);
+
+extern OWPBoolean
 _OWPCallEndpointStop(
 	OWPTestSession	tsession,
 	void		*end_data,

@@ -320,6 +320,15 @@ typedef OWPErrSeverity (*OWPEndpointStartFunc)(
 );
 
 /*
+ * Get status of session
+ */
+typedef OWPErrSeverity (*OWPEndpointStatusFunc)(
+	void		*app_data,
+	void		*end_data,
+	OWPAcceptType	*aval
+);
+
+/*
  * Given stop session
  */
 typedef OWPErrSeverity (*OWPEndpointStopFunc)(
@@ -349,6 +358,7 @@ typedef struct {
 	OWPEndpointInitFunc		endpoint_init_func;
 	OWPEndpointInitHookFunc		endpoint_init_hook_func;
 	OWPEndpointStartFunc		endpoint_start_func;
+	OWPEndpointStatusFunc		endpoint_status_func;
 	OWPEndpointStopFunc		endpoint_stop_func;
 	int                             rand_type;
 	void*                           rand_data;
@@ -473,7 +483,7 @@ OWPControlClose(
  * Client
  */
 extern OWPBoolean
-OWPRequestTestSession(
+OWPSessionRequest(
 	OWPControl	control_handle,
 	OWPAddr		sender,
 	OWPBoolean	server_conf_sender,
@@ -498,13 +508,21 @@ OWPStartSessions(
  * Wait for test sessions to complete. This function will return the
  * following integer values:
  * 	<0	ErrorCondition
- * 	0	StopSessions received and sent
+ * 	0	StopSessions received, acted upon, and sent back.
  * 	1	wake_time reached
  *	2	system event (signal)
  *
  * To effect a poll - specify a waketime in the past. 1 will be returned
  * if there is nothing to read.
- * To block indefinately, specify a NULL wake_time.
+ *
+ * To block indefinately, specify a NULL wake_time. (StopSessionsWait will
+ * poll the status of current tests automatically whenever a system event
+ * takes place in this case, so StopSessionsWait will never return 1 or 2
+ * in this case.)
+ *
+ * If you do specify a wake time, you are required to poll the status
+ * of each local endpoint using OWPTestSessionStatus until it comes back
+ * complete.
  *
  * Client and Server
  */
@@ -512,9 +530,44 @@ extern int
 OWPStopSessionsWait(
 	OWPControl	control_handle,
 	OWPTimeStamp	*wake_time,		/* abs time */
-	OWPAcceptType	*acceptval,		/* rtn */
+	OWPAcceptType	*acceptval,		/* out */
 	OWPErrSeverity	*err_ret
 );
+
+/*
+ * Used to poll the status of a test endpoint.
+ *
+ * returns:
+ * 		True if it could get the status,
+ * 		False if it could not. (session with given sid wasn't found,
+ * 		or "send" indicated a remote endpoint.)
+ *
+ * 		aval returns the following for status:
+ * 	<0	Test is not yet complete.
+ * 	>=0	Accept value of completed test. 0 indicates success
+ * 		other values indicate type of error test encountered.
+ */
+extern OWPBoolean
+OWPSessionStatus(
+	OWPControl	cntrl,
+	OWPSID		sid,	/* SID of test to poll	*/
+	OWPBoolean	send,	/* Poll the send side of the test if true*/
+				/* recv side if false			*/
+	OWPAcceptType	*aval	/* out - return accept value	*/
+	);
+
+/*
+ * Used to determine how many local endpoints are still active.
+ * (effectively calls the OWPTestSessionStatus function on all endpoints
+ * and determines if they are complete yet.)
+ *
+ * returns:
+ * 	number of active endpoints.
+ */
+extern int
+OWPSessionsActive(
+		OWPControl	cntrl
+		);
 
 /*
  * Send the StopSession message, and wait for the response.
@@ -524,7 +577,7 @@ OWPStopSessionsWait(
 extern OWPErrSeverity
 OWPStopSessions(
 	OWPControl	control_handle,
-	OWPAcceptType	*acceptval	/* read/write */
+	OWPAcceptType	*acceptval	/* in/out */
 );
 
 

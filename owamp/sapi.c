@@ -1262,9 +1262,12 @@ OWPProcessRequests(
 				break;
 			case 2:
 				rc = OWPProcessStartSessions(cntrl);
-				break;
-			case 3:
-				rc = OWPProcessStopSessions(cntrl);
+				if(rc <= OWPErrFATAL)
+					break;
+
+				/* rc gives us all the return info we need */
+				rc = OWPErrOK;
+				(void)OWPStopSessionsWait(cntrl,NULL,NULL,&rc);
 				break;
 			case 4:
 				rc = OWPProcessRetrieveSession(cntrl);
@@ -1276,9 +1279,8 @@ OWPProcessRequests(
 				rc = OWPErrFATAL;
 		}
 
-		if(rc > OWPErrFATAL)
-			continue;
-		return rc;
+		if(rc <= OWPErrFATAL)
+			return rc;
 	}
 
 	/*
