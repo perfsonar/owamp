@@ -772,77 +772,15 @@ OWPControlAccept(
 	if ( !(cntrl = _OWPControlAlloc(ctx, err_ret)))
 		return NULL;
 
-	_OWPServerSendServerGreeting(cntrl, mode, err_ret);
-
-	/* first generate server greeting */
-	memset(buf, 0, sizeof(buf));
-	mode = htonl(get_mode());
-	*(int32_t *)(buf + 12) = mode; /* first 12 bytes unused */
-
-	/* generate 16 random bytes and save them away. */
-	random_bytes(challenge, 16);
-	bcopy(challenge, buf + 16, 16); /* the last 16 bytes */
-
-	/* Send server greeting. */
-	encrypt = 0;
-	if (send_data(connfd, buf, 32, encrypt) < 0){
-		fprintf(stderr, "Warning: send_data failed.\n");
-		close(connfd);
-		exit(1);
-	}
-
-	/* Read client greeting. */
-	if (readn(connfd, buf, 60) != 60){
-		fprintf(stderr, "Warning: client greeting too short.\n");
-		exit(1);
-	}
-
-	mode_requested = htonl(*(u_int32_t *)buf);
-	if (mode_requested & ~mode){ /* can't provide requested mode */
-		OWPServerOK(cntrl, connfd, CTRL_REJECT, buf);
-		close(connfd);
-		exit(0);
-	}
-	if (mode_requested & OWP_MODE_AUTHENTICATED){
-
-		/* Save 8 bytes of kid */
-		bcopy(buf + 4, kid, 8);
-
-		/* Fetch the shared secret and initialize the cipher. */
-		/* XXX - this needs to be redone to respect abstraction 
-		key = hash_fetch(passwd_hash, 
-				 (const datum *)str2datum((const char *)kid));
-		r = makeKey(&keyInst, DIR_DECRYPT, 128, key->dptr);
-		*/
-
-		if (TRUE != r) {
-			fprintf(stderr,"makeKey error %d\n",r);
-			exit(-1);
-		}
-		r = cipherInit(&cipherInst, MODE_CBC, NULL);
-		if (TRUE != r) {
-			fprintf(stderr,"cipherInit error %d\n",r);
-			exit(-1);
-		}
-
-		/* Decrypt two 16-byte blocks - save the result into token.*/
-		blockDecrypt(&cipherInst, &keyInst, buf + 12, 2*(16*8), token);
-
-		/* Decrypted challenge is in the first 16 bytes */
-		if (bcmp(challenge, token, 16)){
-			OWPServerOK(cntrl, connfd, CTRL_REJECT, buf);
-			close(connfd);
-			exit(0);
-		}
-
-		/* Save 16 bytes of session key and 16 bytes of client IV*/
-		/* OWPSetSessionKey(cntrl, token + 16); */
-		bcopy(buf + 44, read_iv, 16);
-
-		/* Apparently everything is ok. Accept the Control session. */
-		OWPServerOK(cntrl, connfd, CTRL_ACCEPT, buf);
-
-	}
+	/* XXX - setc cntrl fields, - say,
+	   cntrl->sockfd = connfd, etc
+	*/
+	  
+	/*
+	  XXX - TODO: error-checking.
+	*/
+	_OWPSendServerGreeting(cntrl, err_ret);
+	_OWPReadClientGreeting(cntrl, app_data);
 
 	return cntrl;
 }
@@ -878,4 +816,3 @@ OWPAddrCheck(
 
 	return (*ctx->cfg.check_addr_func)(app_data, local, remote, err_ret);
 }
-
