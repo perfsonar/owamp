@@ -57,7 +57,7 @@
 #	Options:
 require 5.005;
 use strict;
-use POSIX;
+# use POSIX;
 use FindBin;
 package OWP::Conf;
 
@@ -364,11 +364,14 @@ sub init {
 	$self->load_file($self->{'GLOBALCONF'},$nodename);
 
 	undef $file;
+
 	if(defined($ENV{$Conf::DEVCONFENV})){
 		$file = $self->resolve_path($ENV{$Conf::DEVCONFENV});
 	}
+
 	if(defined($file) and -e $file){
-		$self->{'DEVNODECONF'} = $file
+	    $self->{'DEVNODECONF'} = $file;
+	} else {
 	}
 	$self->load_file($self->{'DEVNODECONF'},$nodename)
 		if defined($self->{'DEVNODECONF'});
@@ -518,7 +521,8 @@ sub dump{
 sub get_names_info {
     my ($self, $mtype, $recv, $sender, $res, $mode) = @_;
     my $rel_dir = $self->get_rel_path($mtype, $recv, $sender);
-    my $datadirname = join('/', $self->must_get_val(ATTR=>'CENTRALDATADIR'), $rel_dir, $res);
+    my $datadirname = join('/', $self->must_get_val(ATTR=>'CENTRALDATADIR'),
+			   $rel_dir, $res);
 
     my $full_www = join('/', $self->must_get_val(ATTR=>'CENTRALWWWDIR'), $rel_dir);
 
