@@ -357,6 +357,25 @@ _OWPClientBind(
 	return False;
 }
 
+#define tvaladd(a,b)					\
+	do{						\
+		(a)->tv_sec += (b)->tv_sec;		\
+		(a)->tv_usec += (b)->tv_usec;		\
+		if((a)->tv_usec >= 1000000){		\
+			(a)->tv_sec++;			\
+			(a)->tv_usec -= 1000000;	\
+		}					\
+	} while (0)
+#define tvalsub(a,b)					\
+	do{						\
+		(a)->tv_sec -= (b)->tv_sec;		\
+		(a)->tv_usec -= (b)->tv_usec;		\
+		if((a)->tv_usec < 0){			\
+			(a)->tv_sec--;			\
+			(a)->tv_usec += 1000000;	\
+		}					\
+	} while (0)
+
 static int
 connect_tmout(
 	int		fd,
@@ -369,11 +388,9 @@ connect_tmout(
 	int		rc;
 	fd_set		rset,wset;
 	int		len;
-	/*
-	 * Some versions of select modify the timeval values - so create
-	 * a local copy before calling select.
-	 */
-	struct timeval	ltm = *tm_out;
+	struct timeval	end_time;
+	struct timeval	curr_time;
+	struct timeval	tout;
 
 	flags = fcntl(fd, F_GETFL,0);
 	fcntl(fd,F_SETFL,flags|O_NONBLOCK);
@@ -387,19 +404,37 @@ connect_tmout(
 		return -1;
 	}
 	
+	if(gettimeofday(&curr_time,NULL) != 0)
+		return -1;
+
+	timevalclear(end_time);
+	tvaladd(end_time,curr_time);
+	tvaladd(end_time,*tm_out);
+
 AGAIN:
 	FD_ZERO(&rset);
 	FD_SET(fd,&rset);
 	wset = rset;
 
-	rc = select(fd+1,&rset,&wset,NULL,&ltm);
+	/*
+	 * Set tout to (end_time-curr_time) - curr_time will get updated
+	 * if there is an intr, so this is the "time left" from the original
+	 * timeout.
+	 */
+	timevalclear(tout);
+	tvaladd(tout,end_time);
+	tvalsub(tout,curr_time);
+	rc = select(fd+1,&rset,&wset,NULL,&tout);
 	if(rc == 0){
 		errno = ETIMEDOUT;
 		return -1;
 	}
 	if(rc < 0){
-		if(errno == EINTR)
+		if(errno == EINTR){
+			if(gettimeofday(&curr_time,NULL) != 0)
+				return -1;
 			goto AGAIN;
+		}
 		return -1;
 	}
 

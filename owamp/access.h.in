@@ -29,6 +29,10 @@
 #include <I2util/table.h>
 #include <owamp/owamp.h>
 
+#ifndef	OWP_PREFIX
+#define	OWP_PREFIX	/usr/local
+#endif
+
 #undef	AUTOCONF_SYSCONFDIR
 #define	MSTRCAT(A,B)		#A ## #B
 #define	MSTRCATEXPAND(A,B)	MSTRCAT(A,B)
