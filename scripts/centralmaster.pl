@@ -12,6 +12,7 @@ use Socket;
 use Sys::Hostname;
 use Fcntl;
 use Digest::MD5;
+use GDBM_File;
 
 use constant DEBUG => 1;
 use constant TMP_SECRET => 'abcdefgh12345678';
@@ -30,6 +31,8 @@ my $digest_path = '/home/karp/owp/owamp/owdigest/owdigest';
 # this is the file containing the secret to hash timestamps with.
 my $passwd_file = '/home/karp/owp/owamp/etc/owampd.passwd';
 
+# this is a log file with liveness reports from nodes
+my $log_file = "$top_dir/liveness.dat";
 ### End of configuration section.
 
 chdir $top_dir or die "Could not chdir to $top_dir: $!";
@@ -44,14 +47,32 @@ unless ($secret) {
 chomp $secret;
 close PASSWD;
 
+# Initialize data structures for keeping track of updates.
+my %live_times;   # this hash keeps track of intervals [start_time, cur_time]
+                  # ordered by start_time in the increasing order
+
+# Open the database and read in its contents.
+my %live_db;
+tie %live_db, 'GDBM_File', $log_file, &GDBM_WRCREAT, 0640;
+for (keys %live_db) {
+    $live_times{$_} = [];
+    my @points = split ':', $live_db{$_};
+    my $even = 1;
+    my $low;
+    for my $point (@points) {
+	if ($even) {
+	    $low = $point;
+	} else {
+	    push @{$live_times{$_}}, [$low, $point];
+	}
+	$even = 1 - $even;
+    }
+}
+
 socket(my $server, PF_INET, SOCK_DGRAM, getprotobyname('udp'));
 my $iaddr = gethostbyname(hostname());
 my $proto = getprotobyname('udp');
 my $paddr = sockaddr_in($server_port, $iaddr);
-
-# Initialize data structures for keeping track of updates.
-my %live_times;   # this hash keeps track of intervals [start_time, cur_time]
-                  # ordered by start_time in the increasing order
 
 socket($server, PF_INET, SOCK_DGRAM, $proto)   || die "socket: $!";
 bind($server, $paddr)                          || die "bind: $!";
@@ -77,11 +98,13 @@ while (1) {
 	}
 
 	# Update the list of live intervals, or initialize it if there's none.
+	# Similarly with the log database.
 	if (exists $live_times{$src}) {
 	    my $final = $#{$live_times{$src}};
 	    if ($start_time > $live_times{$src}[$final][0]) {
 		print "DEBUG: received new start time: $start_time\n" if DEBUG;
 		push @{$live_times{$src}}, [$start_time, $cur_time];
+		$live_db{$src} .= ":$start_time:$cur_time";
 	    }
 
 	    for (my $i = $final; $i >= 0; $i--) {
@@ -103,12 +126,16 @@ while (1) {
 			}
 
 			$live_times{$src}[$i][1] = $cur_time;
+			my @intervals = split /:/, $live_db{$src};
+			$intervals[2*$i + 1] = $cur_time;
+			$live_db{$src} = join ':', @intervals;
 		    }
 		}
 	    }
 	} else {
 	    @{$live_times{$src}} = ();
 	    push @{$live_times{$src}}, [$start_time, $cur_time];
+	    $live_db{$src} = "$start_time:$cur_time";
 	}
 
 	# When get a new update for a host - process all files for which
