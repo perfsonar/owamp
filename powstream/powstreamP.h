@@ -33,7 +33,13 @@
  * If the RTT gets worse than this, there will be breaks between the
  * sessions.
  */
-#define	RTT_REQ_ESTIMATE	10
+#define	SETUP_ESTIMATE	10
+
+/*
+ * Lock file name. This file is created in the output directory to ensure
+ * there is not more than one powstream process writing there.
+ */
+#define	POWLOCK	".powlock"
 
 /*
  * Application "context" structure
@@ -82,11 +88,24 @@ typedef struct pow_session_rec{
 } pow_session_rec, *pow_session;
 
 typedef struct pow_cntrl_rec{
+	OWPBoolean	setup;
 	OWPControl	cntrl;
-	OWPTimeStamp	*seriesStart;
+	OWPSID		sid;
+	OWPTimeStamp	*sessionStart;
 	OWPTimeStamp	tstamp_mem;
-	pow_session	sessions;
-	u_int32_t	activeSessions;
+	FILE		*fp;
+	char		fname[PATH_MAX];
+	u_int32_t	numPackets;
 } pow_cntrl_rec, *pow_cntrl;
 
+struct pow_parse_rec{
+	u_int32_t		i;
+	FILE			*fp;
+	u_int32_t		first;
+	u_int32_t		last;
+	off_t			begin;
+	off_t			next;
+	u_int8_t		*seen;
+	OWPSessionHeader	hdr;
+};
 #endif

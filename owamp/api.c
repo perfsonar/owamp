@@ -1297,7 +1297,7 @@ OWPReadDataHeader(
 ** Parse the 20-byte timestamp data record for application to use.
 */
 static void
-OWPParseV3DataRecord(
+OWPDecodeV3DataRecord(
 		u_int8_t	*buf, 
 		OWPDataRec	*rec
 		)
@@ -1341,7 +1341,7 @@ OWPParseRecords(
 	for(i=0;i<num_rec;i++){
 		if(fread(rbuf,_OWP_TS_REC_SIZE,1,fp) < 1)
 			return OWPErrFATAL;
-		OWPParseV3DataRecord(rbuf,&rec);
+		OWPDecodeV3DataRecord(rbuf,&rec);
 		rc = proc_rec(app_data,&rec);
 		if(!rc) continue;
 		if(rc < 0)
