@@ -108,7 +108,7 @@ sub fetch_sender_data {
 
     unless (-f $summary_file) {
 	warn "summary file $summary_file not found - skipping"
-		if $sender eq $recv;
+		unless $sender eq $recv;
 	return join ',', "N/A", "0", "0";
     }
 
