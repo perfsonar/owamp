@@ -22,6 +22,8 @@
 #include <rijndael-api-fst.h>
 #include "../contrib/table.h"
 
+void random_bytes(char *ptr, int count);
+
 static OWPInitializeConfigRec	def_cfg = {
 	/* tm_out.tv_sec		*/	0,
 	/* tm_out.tv_usec		*/	0,
