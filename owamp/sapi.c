@@ -266,7 +266,7 @@ OpenSocket(
 	)
 {
 	struct addrinfo	*ai;
-	const int	on=1;
+	int		on;
 
 	for(ai = addr->ai;ai;ai = ai->ai_next){
 		if(ai->ai_family != family)
@@ -277,9 +277,19 @@ OpenSocket(
 		if(addr->fd < 0)
 			continue;
 
+		on=1;
 		if(setsockopt(addr->fd,SOL_SOCKET,SO_REUSEADDR,&on,
-							sizeof(on)) != 0)
+							sizeof(on)) != 0){
 			goto failsock;
+		}
+
+#if	defined(IPPROTO_IPV6) && defined(IPV6_V6ONLY)
+		on=0;
+		if(setsockopt(addr->fd,IPPROTO_IPV6,IPV6_V6ONLY,&on,
+							sizeof(on)) != 0){
+			goto failsock;
+		}
+#endif
 
 		if(bind(addr->fd,ai->ai_addr,ai->ai_addrlen) == 0){
 
