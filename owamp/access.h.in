@@ -4,6 +4,7 @@
 #include <limits.h>
 #include <db.h>
 #include <math.h>
+#include <fcntl.h>
 
 /* for inet_pton */
 #include <sys/socket.h>
