@@ -361,20 +361,28 @@ SetupSession(
 		I2ErrLog(eh,"fdopen(%s:(%d)):%M",p->fname,fd);
 		return 0;
 	}
+	if(!(p->testfp = fopen(p->fname,"wb+"))){
+		I2ErrLog(eh,"fopen(%s): %M",p->fname);
+		return 0;
+	}
 	if(unlink(p->fname) != 0){
 		I2ErrLog(eh,"unlink():%M");
 		while((fclose(p->fp) != 0) && errno==EINTR);
 		p->fp = NULL;
+		while((fclose(p->testfp) != 0) && errno==EINTR);
+		p->testfp = NULL;
 		return 0;
 	}
 
 	tspec.start_time = *p->sessionStart;
 	if(!OWPSessionRequest(p->cntrl,OWPAddrByNode(ctx,appctx.remote_test),
 				True, NULL, False,
-				(OWPTestSpec*)&tspec,p->fp,p->sid,&err)){
+				(OWPTestSpec*)&tspec,p->testfp,p->sid,&err)){
 		I2ErrLog(eh,"OWPSessionRequest: Failed");
 		while((fclose(p->fp) != 0) && errno==EINTR);
 		p->fp = NULL;
+		while((fclose(p->testfp) != 0) && errno==EINTR);
+		p->testfp = NULL;
 		if(err == OWPErrFATAL){
 			OWPControlClose(p->cntrl);
 			p->cntrl = NULL;
@@ -388,6 +396,8 @@ SetupSession(
 		I2ErrLog(eh,"OWPStartSessions: Failed");
 		fclose(p->fp);
 		p->fp = NULL;
+		fclose(p->testfp);
+		p->testfp = NULL;
 		OWPControlClose(p->cntrl);
 		p->cntrl = NULL;
 		return 0;
@@ -398,8 +408,8 @@ SetupSession(
 	 */
 	if(OWPScheduleContextReset(p->sctx,p->sid,&tspec) != OWPErrOK){
 		I2ErrLog(eh,"Schedule Initialization Failed");
-		fclose(p->fp);
-		p->fp = NULL;
+		fclose(p->fp); fclose(p->testfp);
+		p->fp = p->testfp = NULL;
 		OWPControlClose(p->cntrl);
 		p->cntrl = NULL;
 		return 0;
@@ -741,7 +751,6 @@ main(
 			appctx.opt.printfiles = True;
 			break;
 		case 'b':
-			/* TODO: Add -b option to powmaster */
 			appctx.opt.bucketWidth = strtod(optarg, &endptr);
 			if (*endptr != '\0') {
 				usage(progname, 
@@ -1188,6 +1197,10 @@ AGAIN:
 				nrecs = 0;
 			}
 
+			/*
+			 * TODO: Remove this if, and all refs to fileend
+			 * if strange short read is figured out.
+			 */
 			if((nrecs * hdr.rec_size) > (fileend - parse.begin)){
 				I2ErrLog(eh,
 			"Invalid nrecs!: nrecs=%lu,fileend=%llu,begin=%llu",
@@ -1327,7 +1340,7 @@ AGAIN:
 							appctx.opt.bucketWidth);
 
 					/*
-					 * TODO: PRINT out the BUCKETS
+					 * PRINT out the BUCKETS
 					 */
 					fprintf(parse.sfp,"<BUCKETS>\n");
 					I2HashIterate(parse.buckets,
@@ -1377,7 +1390,8 @@ error:
 		 */
 		p->numPackets = 0;
 		while((fclose(p->fp) != 0) && errno==EINTR);
-		p->fp = NULL;
+		while((fclose(p->testfp) != 0) && errno==EINTR);
+		p->fp = p->testfp = NULL;
 
 		if(sig_check())
 			goto NextConnection;

@@ -2091,12 +2091,14 @@ OWPParseRecords(
 
 	for(i=0;i<num_rec;i++){
 		if(fread(rbuf,_OWP_TESTREC_SIZE,1,fp) < 1){
-			if(feof(fp)){
+			if(ferror(fp)){
+				OWPError(ctx,OWPErrFATAL,errno,
+				"fread(): STREAM ERROR: offset=%llu,i=%lu",
+					ftello(fp),i);
+			}
+			else if(feof(fp)){
 				OWPError(ctx,OWPErrFATAL,errno,
 					"fread(): EOF: offset=%llu",ftello(fp));
-			}
-			else{
-				OWPError(ctx,OWPErrFATAL,errno,"fread(): %M");
 			}
 			return OWPErrFATAL;
 		}
