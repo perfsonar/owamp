@@ -124,7 +124,8 @@ _OWPReceiveBlocks(OWPControl cntrl, char* buf, int num_blocks)
 
 /*
 ** The following two functions encrypt/decrypt a given number
-** of (16-byte) blocks. They update IV as necessary.
+** of (16-byte) blocks. IV is currently updated within
+** the rijndael api (blockEncrypt/blockDecrypt).
 */
 
 int
@@ -135,10 +136,6 @@ _OWPEncryptBlocks(OWPControl cntrl, char *buf, int num_blocks, char *out)
 			 &cntrl->encrypt_key, buf, num_blocks*16*8, out);
 	if (r != num_blocks*16*8)
 		return -1;
-
-	/* Currently blockEncrypt does NOT update IV */
-	if (num_blocks > 1)
-		memcpy(cntrl->writeIV, out + ((num_blocks-1)*16), 16);
 }
 
 

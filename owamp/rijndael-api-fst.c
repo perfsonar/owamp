@@ -62,13 +62,13 @@ makeKey(keyInstance *key, BYTE direction, char *keyMaterial) {
  	for (i = 0; i < 128/8; i++) {
 		int t, v;
 
-		t = *keyMat++;
+		t = *keyMaterial++;
 		if ((t >= '0') && (t <= '9')) v = (t - '0') << 4;
 		else if ((t >= 'a') && (t <= 'f')) v = (t - 'a' + 10) << 4;
 		else if ((t >= 'A') && (t <= 'F')) v = (t - 'A' + 10) << 4;
 		else return BAD_KEY_MAT;
 		
-		t = *keyMat++;
+		t = *keyMaterial++;
 		if ((t >= '0') && (t <= '9')) v ^= (t - '0');
 		else if ((t >= 'a') && (t <= 'f')) v ^= (t - 'a' + 10);
 		else if ((t >= 'A') && (t <= 'F')) v ^= (t - 'A' + 10);
@@ -77,14 +77,13 @@ makeKey(keyInstance *key, BYTE direction, char *keyMaterial) {
 		cipherKey[i] = (u8)v;
 	}
 
-	/*
+	
 	if (direction == DIR_ENCRYPT) {
 		key->Nr = rijndaelKeySetupEnc(key->rk, cipherKey, 128);
 	} else {
 		key->Nr = rijndaelKeySetupDec(key->rk, cipherKey, 128);
 	}
-	*/
-
+	
 	return TRUE;
 }
 
@@ -121,7 +120,7 @@ int cipherInit(BYTE *binIV, char *hexIV) {
 /*
 ** This function encrypts a given number of bits (= inputlen),
 ** assumed to bo divisible by 128 (= 16 bytes * 8 bits/byte).
-** NOTICE that binIV is not updated.
+** NOTICE that binIV is automatically updated in the end.
 */
 int blockEncrypt(BYTE *binIV, keyInstance *key,
 		BYTE *input, int inputLen, BYTE *outBuffer) {
@@ -150,8 +149,8 @@ int blockEncrypt(BYTE *binIV, keyInstance *key,
 		outBuffer += 16;
 	}
 	
-	/* Update the IV */
-	
+	/* Update the IV so we don't  have to do it in owamp library. */
+	   memcpy(binIV, iv, 16); 
 
 	return 128*numBlocks;
 }
@@ -159,7 +158,7 @@ int blockEncrypt(BYTE *binIV, keyInstance *key,
 /*
 ** This function encrypts a given number of bits (= inputlen),
 ** assumed to be divisible by 128 (= #bits in 16 bytes).
-** NOTICE that binIV is changed! (CBC mode)
+** NOTICE that binIV is updated! (CBC mode)
 */
 int blockDecrypt(BYTE *binIV, keyInstance *key,
 		BYTE *input, int inputLen, BYTE *outBuffer) {
