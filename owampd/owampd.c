@@ -246,15 +246,20 @@ owampd_err_func(
 	return 0;
 }
 
-
 OWPBoolean
 ServerMainControl(OWPControl cntrl, OWPErrSeverity* out)
 {
 	pid_t pidlet;
 	char buf[MAX_MSG];
 	int msg_type;
+
+	/* Data to be passed to the kid */
+	OWPAddr     sender, receiver;
+	OWPBoolean  conf_sender, conf_receiver;
+	OWPTestSpec *test_spec;
+	OWPSID      sid;
 	
-	if ((msg_type = OWPServerReadRequest(cntrl, buf)) < 0)
+	if ((msg_type = OWPGetType(cntrl)) == 0)
 		/* CNTRLNEXT; */
 		return True;
 				
@@ -265,14 +270,8 @@ ServerMainControl(OWPControl cntrl, OWPErrSeverity* out)
 			"DEBUG: client issued a session request");
 		CNTRLNEXT;
 		
-		/* XXX fill in!
-		   if (ParseRest(cntrl) < 0){
-		   rude_close();
-		   clean_up();
-		   again = False;
-		   CNTRLNEXT;
-		   }
-		*/
+		
+
 		if (_OWPCallCheckTestPolicy(cntrl, NULL, False, NULL, NULL, 
 					    NULL, &out) == False){
 					  

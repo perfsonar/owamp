@@ -1235,7 +1235,8 @@ OWPControlAccept(
 		/* Authentication ok - determine usage class now.*/
 		if (_OWPCallCheckControlPolicy(
 			   cntrl->ctx, cntrl->mode, cntrl->kid, 
-			    cntrl->local_addr, cntrl->remote_addr, 
+			   /* cntrl->local_addr, cntrl->remote_addr, */
+			   NULL, NULL,
 			   err_ret) == False){
 			_OWPServerOK(cntrl, CTRL_REJECT);
 			OWPControlClose(cntrl);
@@ -1251,7 +1252,8 @@ OWPControlAccept(
 	} else { /* mode_req == OPEN */
 		if (_OWPCallCheckControlPolicy(
 			   cntrl->ctx, cntrl->mode, cntrl->kid, 
-			    cntrl->local_addr, cntrl->remote_addr, 
+			   /* cntrl->local_addr, cntrl->remote_addr, */
+			   NULL, NULL,
 			   err_ret) == False){
 			_OWPServerOK(cntrl, CTRL_REJECT);
 			OWPControlClose(cntrl);

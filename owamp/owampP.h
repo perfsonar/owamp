@@ -122,6 +122,7 @@ struct OWPControlRec{
 	OWPBoolean		server;	/* this record represents server */
 	int			state;	/* current state of connection */
 	OWPSessionMode		mode;
+	char                    msg[MAX_MSG]; /* area for peer's messages */
 
 	/*
 	 * Address specification and "network" information.

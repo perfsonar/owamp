@@ -309,6 +309,27 @@ typedef struct {
 	OWPGetTimeStampFunc		get_timestamp_func;
 } OWPInitializeConfigRec, *OWPInitializeConfig;
 
+typedef u_int32_t OWPSequenceNumber; 
+
+/*
+** The structures below describe the non-trivial Control
+** protocol messages.
+*/
+
+typedef struct {
+	OWPAddr		sender;
+	OWPBoolean	conf_sender;
+	OWPAddr		receiver;
+	OWPBoolean	conf_receiver;
+	OWPTestSpec	*test_spec;
+	OWPSID		sid;
+} RequestSessionSpec;
+
+typedef struct {
+	OWPSequenceNumber    BeginSeq;
+	OWPSequenceNumber    EndSeq;
+	OWPSID               sid;
+} RetrieveSessionSpec;
 
 /*
  * API Functions
@@ -349,8 +370,6 @@ OWPErrorLine(
 	const char	*fmt,
 	...
 );
-
-
 
 /*
  * The OWPAddrBy* functions are used to allow the OWP API to more
@@ -528,7 +547,34 @@ OWPControlAccept(
 		 void           *app_data, /* policy                        */
 		 OWPErrSeverity *err_ret   /* err - return                  */
 		 );
-int
+/* Determine the type of the newly received request. */
+extern u_int8_t
+OWPGetType(OWPControl cntrl);
+
+/* The next four functions parse each of their repective message types */
+extern int
+OWPParseTestRequest(
+		    OWPControl cntrl, 
+		    OWPAddr server, 
+		    OWPAddr receiver,
+		    OWPBoolean *conf_sender,
+		    OWPBoolean *conf_receiver,
+		    OWPTestSpec *test_spec,
+		    OWPSID sid
+		    );
+
+extern int
+OWPParseTestStart(OWPControl cntrl);
+
+extern int
+OWPParseTestStop(OWPControl cntrl);
+
+extern int
+OWPParseTestRetrieve(OWPControl cntrl);
+
+
+
+extern int
 OWPServerReadRequest(OWPControl cntrl, char *buf);
 
 /*
