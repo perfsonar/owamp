@@ -141,6 +141,7 @@ _OWPCallEndpointInit(
 	OWPAddr		localaddr,
 	OWPTestSpec	*test_spec,
 	OWPSID		sid,
+	int		fd,
 	OWPErrSeverity	*err_ret
 )
 {
@@ -157,7 +158,7 @@ _OWPCallEndpointInit(
 		init_func = cntrl->ctx->cfg.endpoint_init_func;
 
 	*err_ret = (*init_func)(cntrl->app_data,end_data_ret,send,
-						localaddr,test_spec,sid);
+						localaddr,test_spec,sid,fd);
 	return (*err_ret > OWPErrFATAL);
 }
 

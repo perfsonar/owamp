@@ -645,7 +645,7 @@ _OWPClientRequestTestReadResponse(
 }
 
 OWPAddr
-AddrByLocalControl(
+OWPAddrByLocalControl(
 		   OWPControl	cntrl
 		   )
 {
@@ -740,6 +740,7 @@ OWPSessionRequest(
 	OWPBoolean	server_conf_receiver,
 	OWPTestSpec	*test_spec,
 	OWPSID		sid_ret,
+	int		fd,
 	OWPErrSeverity	*err_ret
 )
 {
@@ -765,7 +766,7 @@ OWPSessionRequest(
 		if(server_conf_receiver)
 			receiver = OWPAddrByNode(cntrl->ctx,"localhost");
 		else
-			receiver = AddrByLocalControl(cntrl);
+			receiver = OWPAddrByLocalControl(cntrl);
 		if(!receiver)
 			goto error;
 	}
@@ -774,7 +775,7 @@ OWPSessionRequest(
 		if(server_conf_sender)
 			sender = OWPAddrByNode(cntrl->ctx,"localhost");
 		else
-			sender = AddrByLocalControl(cntrl);
+			sender = OWPAddrByLocalControl(cntrl);
 		if(!sender)
 			goto error;
 	}
@@ -861,9 +862,9 @@ foundaddr:
 			 * create the local sender
 			 */
 			if(!_OWPCallEndpointInit(cntrl,
-						 &tsession->send_end_data,
-						 True,sender,test_spec,
-						 tsession->sid,err_ret))
+						&tsession->send_end_data,
+						True,sender,test_spec,
+						tsession->sid,-1,err_ret))
 				goto error;
 		}
 		/*
@@ -900,7 +901,7 @@ foundaddr:
 		}
 		if(!_OWPCallEndpointInit(cntrl,&tsession->recv_end_data,
 					False,receiver,test_spec,tsession->sid,
-					err_ret))
+					fd,err_ret))
 			goto error;
 
 
@@ -931,10 +932,10 @@ foundaddr:
 				goto error;
 			}
 			if(!_OWPCallEndpointInit(cntrl,
-						 &tsession->send_end_data,
-						 True,sender,
-						 test_spec,tsession->sid,
-						 err_ret))
+						&tsession->send_end_data,
+						True,sender,
+						test_spec,tsession->sid,
+						-1,err_ret))
 				goto error;
 			if(!_OWPCallEndpointInitHook(cntrl,
 					&tsession->send_end_data,receiver,

@@ -143,46 +143,189 @@ EndpointFree(
 	return;
 }
 
+static FILE*
+reopen_datafile(
+		OWPContext	ctx,
+		int		fd
+		)
+{
+	int	newfd;
+	FILE	*fp;
+
+	if( (newfd = dup(fd)) < 0){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"dup(%d):%M",fd);
+		return NULL;
+	}
+
+	if( !(fp = fdopen(newfd,"ab"))){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN, "fdopen(%d):%M",newfd);
+		return NULL;
+	}
+
+	return fp;
+}
+
 static FILE *
 opendatafile(
 	OWPContext		ctx,
-	char			*real_data_dir, /* already encodes node */
-	char			*sid_name,
-	char			**file_path
+	OWPPerConnData		cdata,
+	_DefEndpoint		ep,
+	OWPSID			sid
 )
 {
-	FILE	*dp;
-	char	*path;
+	FILE	*fp;
+	char	sid_name[(sizeof(OWPSID)*2)+1];
+
+	OWPHexEncode(sid_name,sid,sizeof(OWPSID));
+
+	/*
+	 * Ensure real_data_dir exists.
+	 */
+	if((mkdir(cdata->real_data_dir,0755) != 0) && (errno != EEXIST)){
+		 OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"mkdir(%s):%M",
+						  cdata->real_data_dir);
+		 return NULL;
+	}
+
+	if(cdata->link_data_dir){
+		/*
+		 * Ensure link_data_dir exists.
+		 */
+		if((mkdir(cdata->link_data_dir,0755) != 0) &&
+							(errno != EEXIST)){
+			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+					"Unable to mkdir(%s):%M",
+					cdata->link_data_dir);
+			return NULL;
+		}
+
+		/*
+		 * Now complete the filename for the linkpath.
+		 */
+		if( !(ep->linkpath 
+			      = (char *)malloc(strlen(cdata->link_data_dir)
+				       + OWP_PATH_SEPARATOR_LEN
+				       + sizeof(OWPSID)*2
+				       + strlen(OWP_INCOMPLETE_EXT) + 1))) {
+			OWPError(ctx,OWPErrFATAL,errno,"malloc():%M");
+			return NULL;
+		}
+
+		strcpy(ep->linkpath, cdata->link_data_dir);
+		strcat(ep->linkpath,OWP_PATH_SEPARATOR);
+		strcat(ep->linkpath,sid_name);
+		strcat(ep->linkpath, OWP_INCOMPLETE_EXT);
+	}
 
 	/*
 	 * 1 for the final '\0'.
 	 */
-	if (!(path = (char *)malloc(strlen(real_data_dir)
+	if (!(ep->filepath = (char *)malloc(strlen(cdata->real_data_dir)
 				    + OWP_PATH_SEPARATOR_LEN
 				    + sizeof(OWPSID)*2
 				    + strlen(OWP_INCOMPLETE_EXT) + 1))) {
 		OWPError(ctx, OWPErrFATAL, errno, 
-			 "FATAL: opendatafile: malloc failed");
-		return NULL;
-
+				 "FATAL: opendatafile: malloc failed");
+		goto error;
 	}
 
-	strcpy(path,real_data_dir);
-	strcat(path,OWP_PATH_SEPARATOR);
-	strcat(path,sid_name);
-	strcat(path, OWP_INCOMPLETE_EXT);	/* in-progress	*/
+	strcpy(ep->filepath,cdata->real_data_dir);
+	strcat(ep->filepath,OWP_PATH_SEPARATOR);
+	strcat(ep->filepath,sid_name);
+	strcat(ep->filepath, OWP_INCOMPLETE_EXT);	/* in-progress	*/
 
-	dp = fopen(path,"wb");
-	if(!dp){
+	fp = fopen(ep->filepath,"wb");
+	if(!fp){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-			"Unable to open datafile(%s):%M",path);
-		free(path);
+				"Unable to open datafile(%s):%M",ep->filepath);
+		goto error;
 	}
 
-	*file_path = path;
-	return dp;
+	if(ep->linkpath && (symlink(ep->filepath,ep->linkpath) != 0)){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"symlink():%M");
+		goto error;
+	}
+
+	return fp;
+
+error:
+	if(ep->linkpath){
+		free(ep->linkpath);
+		ep->linkpath = NULL;
+	}
+
+	if(ep->filepath){
+		free(ep->filepath);
+		ep->filepath = NULL;
+	}
+
+	if(fp)
+		fclose(fp);
+
+	return NULL;
 }
 
+
+/*
+ * If STA_NANO is defined, we insist it is set, this way we can be sure that
+ * ntp_gettime is returning a timespec and not a timeval.
+ */
+static int
+InitNTP(
+		OWPContext	ctx
+		)
+{
+	struct timex	ntp_conf;
+
+	ntp_conf.modes = 0;
+
+	if(ntp_adjtime(&ntp_conf) < 0)
+		return 1;
+#ifdef	STA_NANO
+	if( !(ntp_conf.status & STA_NANO)){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+		"InitNTP:STA_NANO must be set! - try /usr/sbin/ntptime -N");
+		return 1;
+	}
+#endif
+
+	return 0;
+}
+
+static struct timespec *
+GetTimespec(
+		struct timespec		*ts,
+		u_int32_t		*esterr,
+		int			*sync
+		)
+{
+	struct ntptimeval	ntv;
+	int			status;
+
+	status = ntp_gettime(&ntv);
+
+	if(status < 0)
+		return NULL;
+	if(status > 0)
+		*sync = 0;
+	else
+		*sync = 1;
+
+	*esterr = (u_int32_t)ntv.esterror;
+	assert((long)*esterr == ntv.esterror);
+
+#ifdef	STA_NANO
+	*ts = ntv.time;
+#else
+	/*
+	 * convert usec to nsec if not STA_NANO
+	 */
+	*(struct timeval*)ts = ntv.time;
+	ts->tv_nsec *= 1000;
+#endif
+
+	return ts;
+}
 
 /*
  * The endpoint init function is responsible for opening a socket, and
@@ -197,14 +340,15 @@ OWPDefEndpointInit(
 	OWPBoolean	send,
 	OWPAddr		localaddr,
 	OWPTestSpec	*test_spec,
-	OWPSID		sid
+	OWPSID		sid,
+	int		fd
 )
 {
 	OWPPerConnData		cdata = (OWPPerConnData)app_data;
 	struct sockaddr_storage	sbuff;
 	socklen_t		sbuff_len=sizeof(sbuff);
 	OWPContext		ctx = OWPGetContext(cdata->cntrl);
-	_DefEndpoint		ep=EndpointAlloc(ctx);
+	_DefEndpoint		ep;
 	OWPPacketSizeT		tpsize;
 	int			sbuf_size;
 	int			sopt;
@@ -212,7 +356,13 @@ OWPDefEndpointInit(
 
 	*end_data_ret = NULL;
 
-	if(!ep)
+	if(InitNTP(ctx) != 0){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+				"Unable to initialize clock interface.");
+		exit(OWP_CNTRL_FAILURE);
+	}
+
+	if( !(ep=EndpointAlloc(ctx)))
 		return OWPErrFATAL;
 
 	ep->send = send;
@@ -302,7 +452,6 @@ OWPDefEndpointInit(
 		u_int8_t	*aptr;
 		u_int32_t	tval[2];
 		size_t		size;
-		char		sid_name[(sizeof(OWPSID)*2)+1];
 
 		/*
 		 * Generate a "unique" SID from
@@ -345,58 +494,14 @@ OWPDefEndpointInit(
 		if(I2RandomBytes(ep->rand_src,&sid[12],4) != 0)
 			goto error;
 
-		OWPHexEncode(sid_name,sid,sizeof(OWPSID));
+		if(fd >= 0)
+			ep->datafile = reopen_datafile(ctx,fd);
+		else
+			ep->datafile = opendatafile(ctx,cdata,ep,sid);
 
-		/*
-		 * Ensure real_data_dir exists.
-		 */
-		if((mkdir(cdata->real_data_dir,0755) != 0) 
-		   && (errno != EEXIST)){
-			 OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"mkdir(%s):%M",
-				  cdata->real_data_dir);
-			goto error;
-		}
-
-		if(cdata->link_data_dir){
-			/*
-			 * Ensure link_data_dir exists.
-			 */
-			if((mkdir(cdata->link_data_dir,0755) != 0) &&
-							(errno != EEXIST)){
-				OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"Unable to mkdir(%s):%M",
-					cdata->link_data_dir);
-				goto error;
-			}
-
-			/*
-			 * Now complete the filename for the linkpath.
-			 */
-			if (!(ep->linkpath 
-			      = (char *)malloc(strlen(cdata->link_data_dir)
-				       + OWP_PATH_SEPARATOR_LEN
-				       + sizeof(OWPSID)*2
-				       + strlen(OWP_INCOMPLETE_EXT) + 1))) {
-				OWPError(ctx,OWPErrFATAL,errno,"malloc():%M");
-				goto error;
-			}
-
-			strcpy(ep->linkpath, cdata->link_data_dir);
-			strcat(ep->linkpath,OWP_PATH_SEPARATOR);
-			strcat(ep->linkpath,sid_name);
-			strcat(ep->linkpath, OWP_INCOMPLETE_EXT);
-		}
-
-		ep->datafile = opendatafile(ctx,cdata->real_data_dir, sid_name,
-					    &ep->filepath);
 		if(!ep->datafile){
 			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"Unable to open session file:%M");
-			goto error;
-		}
-
-		if(ep->linkpath && (symlink(ep->filepath,ep->linkpath) != 0)){
-			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"symlink():%M");
+					"Unable to open session file:%M");
 			goto error;
 		}
 
@@ -584,79 +689,6 @@ sig_catch(
 		}							\
 	} while (0)
 #endif
-
-/*
- * For now assume that if STA_NANO is defined, get_ntptime will return
- * nanosecond resolution.
- */
-#ifdef	NTP_RETURNS_TSPEC_NONNANO
-static int	ntp_status;
-
-static int
-InitNTP()
-{
-	struct timex	ntp_conf;
-
-	ntp_conf.modes = 0;
-
-	if(ntp_adjtime(&ntp_conf) < 0)
-		return 1;
-
-	ntp_status = ntp_conf.status;
-	return 0;
-}
-#else
-#define	InitNTP()	0
-#endif
-
-
-static struct timespec *
-GetTimespec(
-		struct timespec		*ts,
-		u_int32_t		*esterr,
-		int			*sync
-		)
-{
-	struct ntptimeval	ntv;
-	int			status;
-
-	status = ntp_gettime(&ntv);
-
-	if(status < 0)
-		return NULL;
-	if(status > 0)
-		*sync = 0;
-	else
-		*sync = 1;
-
-	*esterr = (u_int32_t)ntv.esterror;
-	assert((long)*esterr == ntv.esterror);
-
-#ifdef	NTP_RETURNS_TSPEC_NONNANO
-#ifdef	STA_NANO
-	*ts = ntv.time;
-	if(ntp_status & STA_NANO)
-		;
-	else
-#else
-	*(struct timeval*)ts = ntv.time;
-#endif
-		/*
-		 * convert usec to nsec if not STA_NANO
-		 */
-		ts->tv_nsec *= 1000;
-#endif
-
-#ifdef	STA_NANO
-	*ts = ntv.time;
-#else
-	*(struct timeval*)ts = ntv.time;
-	ts->tv_nsec *= 1000;
-#endif
-
-	return ts;
-}
-
 
 /*
  * Function:	run_sender
@@ -935,7 +967,6 @@ run_receiver(
 				continue;
 			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 							"recvfrom():%M");
-			goto error;
 			goto error;
 		}
 
@@ -1218,12 +1249,6 @@ OWPDefEndpointInitHook(
 			(sigaction(SIGINT,&act,NULL) != 0) ||
 			(sigaction(SIGALRM,&act,NULL) != 0)){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"sigaction():%M");
-		exit(OWP_CNTRL_FAILURE);
-	}
-
-	if(InitNTP() != 0){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"Unable to initialize clock interface.");
 		exit(OWP_CNTRL_FAILURE);
 	}
 

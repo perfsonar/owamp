@@ -34,7 +34,8 @@ OWPDefEndpointInit(
 	OWPBoolean	send,
 	OWPAddr		localaddr,
 	OWPTestSpec	*test_spec,
-	OWPSID		sid_ret
+	OWPSID		sid_ret,
+	int		fd
 );
 
 extern OWPErrSeverity

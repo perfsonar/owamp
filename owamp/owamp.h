@@ -297,7 +297,8 @@ typedef OWPErrSeverity (*OWPEndpointInitFunc)(
 	OWPBoolean	send,
 	OWPAddr		localaddr,
 	OWPTestSpec	*test_spec,
-	OWPSID		sid_ret		/* only used if !send */
+	OWPSID		sid_ret,	/* only used if !send */
+	int		fd		/* only used if !send */
 );
 
 /*
@@ -406,6 +407,18 @@ OWPAddrBySockFD(
 );
 
 /*
+ * Return the address for the local side of the control connection.
+ * (getsockname)
+ */
+OWPAddr
+OWPAddrByLocalControl(
+	OWPControl cntrl
+	);
+
+void
+OWPAddr2string(OWPAddr addr, char *buf, size_t len);
+
+/*
  * return FD for given OWPAddr or -1 if it doesn't refer to a socket yet.
  */
 extern int
@@ -492,6 +505,7 @@ OWPSessionRequest(
 	OWPBoolean	server_conf_receiver,
 	OWPTestSpec	*test_spec,
 	OWPSID		sid_ret,
+	int		fd,	/* only used if !server_conf_receiver */
 	OWPErrSeverity	*err_ret
 );
 
@@ -841,11 +855,5 @@ OWPCvtTimestamp2Timespec(
 	struct timespec	*tval,
 	OWPTimeStamp	*tstamp
 	);
-
-OWPAddr
-AddrByLocalControl(OWPControl cntrl);
-
-void
-OWPAddr2string(OWPAddr addr, char *buf, size_t len);
 
 #endif	/* OWAMP_H */

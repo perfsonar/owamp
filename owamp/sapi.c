@@ -707,8 +707,9 @@ OWPProcessTestRequest(
 	 * if conf_receiver - open port and get SID.
 	 */
 	if(conf_receiver){
+
 		if(!_OWPCallCheckTestPolicy(cntrl,False,recvaddr,sendaddr,
-						&tspec,&err_ret)){
+							&tspec,&err_ret)){
 			if(err_ret < OWPErrOK)
 				goto error;
 			OWPError(cntrl->ctx,OWPErrINFO,OWPErrPOLICY,
@@ -721,7 +722,7 @@ OWPProcessTestRequest(
 		/* receiver first (sid comes from there) */
 		if(!_OWPCallEndpointInit(cntrl,&tsession->recv_end_data,
 				False,tsession->receiver,&tsession->test_spec,
-				tsession->sid,&err_ret)){
+				tsession->sid,-1,&err_ret)){
 			goto error;
 		}
 	}else{
@@ -750,7 +751,7 @@ OWPProcessTestRequest(
 		if(!_OWPCallEndpointInit(cntrl, &tsession->send_end_data,
 					True,tsession->sender,
 					&tsession->test_spec,
-					tsession->sid,&err_ret)){
+					tsession->sid,-1,&err_ret)){
 			goto error;
 		}
 		if(!_OWPCallEndpointInitHook(cntrl,&tsession->send_end_data,

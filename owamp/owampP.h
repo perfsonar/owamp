@@ -479,13 +479,14 @@ _OWPCallCheckTestPolicy(
 
 extern OWPBoolean
 _OWPCallEndpointInit(
-        OWPControl      cntrl,
-	void            **end_data_ret,
-        OWPBoolean      send,
-	OWPAddr         localaddr,
-	OWPTestSpec     *test_spec,
-	OWPSID          sid_ret,	/* only used if !send */
-	OWPErrSeverity  *err_ret
+        OWPControl	cntrl,
+	void		**end_data_ret,
+        OWPBoolean	send,
+	OWPAddr		localaddr,
+	OWPTestSpec	*test_spec,
+	OWPSID		sid_ret,	/* only used if !send */
+	int		fd,		/* only used if !send */
+	OWPErrSeverity	*err_ret
 );
 
 extern OWPBoolean

@@ -594,8 +594,8 @@ do_single_record(void *calldata, OWPCookedDataRecPtr rec)
 	
 	/* Update N-reordering state. */
 	for (j = 0; j < OWP_MIN(state->l, OWP_MAX_N); j++) { 
-		 if (!((rec->seq_no) 
-		       < state->ring[OWP_LOOP((state->r) - j - 1)]))
+		 if(rec->seq_no 
+		       >= state->ring[OWP_LOOP((int)(state->r - j - 1))])
 			 break;
 		 state->m[j]++;
 	}
@@ -846,6 +846,7 @@ main(
 	OWPAcceptType		acceptval;
 	OWPErrSeverity		err;
 	fetch_state             state;
+	int			tofd=-1,fromfd=-1;
 	OWPAddr                 local;
 	char                    local_str[NI_MAXHOST], *remote;
 
@@ -1068,21 +1069,22 @@ main(
 	/*
 	 * Now ready to make test requests...
 	 */
-	if(ping_ctx.opt.to && 
-	   !OWPSessionRequest(ping_ctx.cntrl, NULL ,False,
-			      OWPAddrByNode(ctx,ping_ctx.remote_test),True, 
-			(OWPTestSpec*)&test_spec, tosid, &err_ret))
+	if(ping_ctx.opt.to &&
+		!OWPSessionRequest(ping_ctx.cntrl,
+			NULL,False,
+			OWPAddrByNode(ctx,ping_ctx.remote_test),True,
+			(OWPTestSpec*)&test_spec,tosid,tofd,&err_ret))
 		FailSession(ping_ctx.cntrl);
 
 
 	if(ping_ctx.opt.from &&
 		!OWPSessionRequest(ping_ctx.cntrl,
-			 OWPAddrByNode(ctx,ping_ctx.remote_test),True,
-				   NULL,False,                        
-				   (OWPTestSpec*)&test_spec,fromsid, &err_ret))
+			OWPAddrByNode(ctx,ping_ctx.remote_test),True,
+			NULL,False,
+			(OWPTestSpec*)&test_spec,fromsid,fromfd,&err_ret))
 		FailSession(ping_ctx.cntrl);
 	
-	local = AddrByLocalControl(ping_ctx.cntrl); /* sender */
+	local = OWPAddrByLocalControl(ping_ctx.cntrl);
 	
 
 	if(OWPStartSessions(ping_ctx.cntrl)< OWPErrINFO)
