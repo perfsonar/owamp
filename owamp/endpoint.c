@@ -296,6 +296,10 @@ GetTimespec(
 	ntp_conf.offset *= 1000;
 #endif
 	ts->tv_nsec += ntp_conf.offset;
+	if(ts->tv_nsec >= 1000000000){
+		ts->tv_sec++;
+		ts->tv_nsec -= 1000000000;
+	}
 
 	/*
 	 * Check sync flag
