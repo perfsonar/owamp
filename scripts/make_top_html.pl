@@ -14,6 +14,10 @@ use constant VERBOSE => 1;
 use FindBin;
 use lib ("$FindBin::Bin");
 use File::Path;
+use File::Temp qw/ tempfile /;
+use FileHandle;
+use Fcntl qw(:flock);
+
 use CGI qw/:standard/;
 use OWP;
 
@@ -30,7 +34,9 @@ my $loss_thresh = 1;  # % loss
 
 my $recv;
 
-open INDEXFH, ">$index_page" or die "Could not open $index_page";
+my $tmp_name ="$index_page.tmp";
+
+open INDEXFH, ">$tmp_name" or die "Could not open $index_page";
 select INDEXFH;
 
 print  start_html('Abilene OWAMP active meshes.'),
@@ -39,7 +45,8 @@ print  start_html('Abilene OWAMP active meshes.'),
 print "\n<p>\n";
 print <<"STOP";
 Each mesh (IPv4, IPv6) is described by a separate table. For each
-link within a mesh we print median delay (ms) and loss percentage.
+link within a mesh we print the worst median delay (ms) and loss percentage
+of 30-sec sessions over the last 5 minutes.
 Senders are listed going down the column, and receivers along the row.
 Cells with delay of more than $del_thresh ms, or loss of more than
 $loss_thresh\%, are marked in red.
@@ -70,9 +77,15 @@ STOP
 
 	foreach my $send_datum (@senders_data) {
 #	    warn "$send_datum";
+
 	    my ($datum, $median, $loss) = split /,/, $send_datum;
-	    my $td = (($median > $del_thresh) || ($loss > $loss_thresh))?
-		    'td bgcolor="red"' : 'td';
+	    my $td;
+	    if ($median eq '*') {
+		$td = 'td bgcolor="yellow"';
+	    } else {
+		$td = (($median > $del_thresh) || ($loss > $loss_thresh))?
+			'td bgcolor="red"' : 'td';
+	    }
 	    print "<$td>$datum</td>\n";
 	}
 	print "</tr>\n";
@@ -82,6 +95,8 @@ print "</table>\n";
 
 print end_html;
 close INDEXFH;
+
+rename $tmp_name, $index_page;
 
 sub fetch_sender_data {
     my ($sender, $recv, $mtype) = @_;
@@ -96,19 +111,25 @@ sub fetch_sender_data {
 	return join ',', "N/A", "0", "0";
     }
 
-    open FH, "<$summary_file" or die "Could not open $summary_file: $!";
-    my $line = <FH>;
-    close FH;
+    my $fh = new FileHandle "<$summary_file";
 
-    chomp $line;
-
-    my ($median, $med, $ninety_perc, $loss) = split / /, $line, 4;
+    my ($median, $loss);
+    unless ($fh && flock($fh, LOCK_SH)) {
+	warn "could not open $summary_file: $!";
+	($median, $loss) = ('*', '*');
+    } else {
+	my $line = <$fh>;
+	close $fh;
+	chomp $line;
+	($median, $loss) = split / /, $line, 2;
+    }
 
     # create a proper link here
     my $tentry = "\n";
     $tentry .= a({href => "$rel_wwwdir/index.html#delays"}, $median);
     $tentry .= " / \n" ;
-    $tentry .= a({href => "$rel_wwwdir/index.html#loss"}, "$loss%");
+    my $losst  = ($loss eq '*')? '*' : "$loss" . '%';
+    $tentry .= a({href => "$rel_wwwdir/index.html#loss"}, "$losst");
     $tentry .= "\n";
     return join ',', $tentry, $median, $loss;
 }
