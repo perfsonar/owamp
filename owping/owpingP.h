@@ -51,6 +51,7 @@ typedef	struct {
 		u_int32_t	numPackets;
 
 		char		*datadir;
+		char		*readfrom;
 
 		u_int32_t	lossThreshold;
 

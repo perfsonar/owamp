@@ -202,6 +202,7 @@ static	I2OptDescRec	set_options[] = {
 	{"lossThreshold", 1, "120",
 			"elapsed time when recv declares packet lost (sec)"},
 	{"datadir", 1, NULL, "Data directory to store test session data"},
+	{"readfrom", 1, NULL, "Read binary data from file."},
 	{"keepdata", 0, 0, "do not delete binary test session data "},
 	{"full", 0, 0,    "print out full records in human-readable form"},
 	{"records", 0, 0, "Show timestamp records."},
@@ -270,6 +271,10 @@ static  I2Option  get_options[] = {
         {
 	"datadir", I2CvtToString, &ping_ctx.opt.datadir,
 	sizeof(ping_ctx.opt.datadir)
+	},
+        {
+	"readfrom", I2CvtToString, &ping_ctx.opt.readfrom,
+	sizeof(ping_ctx.opt.readfrom)
 	},
         {
 	"lossThreshold", I2CvtToUInt, &ping_ctx.opt.lossThreshold,
@@ -341,6 +346,9 @@ FailSession(
 #define OWP_MESH_HIGH       ((double)(OWP_CUTOFF_HIGH-OWP_CUTOFF_MID)        \
                              /(double)OWP_NUM_HIGH)
 
+#define OWP_MAX_N           100  /* N-reordering statistics parameter */
+#define OWP_LOOP(x)         ((x) >= 0? (x): (x) + OWP_MAX_N)
+
 /*
 ** Generic state to be maintained by client during Fetch.
 */
@@ -356,6 +364,14 @@ typedef struct fetch_state {
 	int          order_disrupted;  /* flag                               */
 	u_int32_t    max_seqno;        /* max sequence number seen           */
 	u_int32_t    *buckets;         /* array of buckets of counts         */
+
+	/* N-reodering state variables. */
+	u_int32_t        m[OWP_MAX_N];       /* We have m[j-1] == number of
+						j-reordered packets.         */
+        u_int32_t        ring[OWP_MAX_N];    /* Last sequence numbers seen.  */
+        u_int32_t        r;                  /* Ring pointer for next write. */
+        u_int32_t        l;                  /* Number of seq numbers read.  */
+
 } fetch_state, *fetch_state_ptr;
 
 #define OWP_CMP(a,b) ((a) < (b))? -1 : (((a) == (b))? 0 : 1)
@@ -458,7 +474,7 @@ owp_bucket(double delay)
 void
 owp_update_stats(fetch_state_ptr state, OWPCookedDataRecPtr rec) {
 	double delay;  
-	int bucket;  
+	int bucket;
 
 	assert(state); assert(rec);
 
@@ -495,12 +511,12 @@ owp_get_percentile(fetch_state_ptr state, double alpha)
 {
 	int i;
 	double sum = 0;
+	u_int32_t unique = state->num_received - state->dup_packets;
 
 	assert((0.0 <= alpha) && (alpha <= 1.0));
 	
-	for (i = 0; (i<=OWP_MAX_BUCKET) && (sum<alpha*state->num_received);i++)
+	for (i = 0; (i <= OWP_MAX_BUCKET) && (sum < alpha*unique); i++)
 		sum += state->buckets[i];
-	
 
 	if (i <= OWP_NUM_LOW)
 		return i*OWP_MESH_LOW;
@@ -535,6 +551,8 @@ do_single_record(void *calldata, OWPCookedDataRecPtr rec)
 {
 	int i;
 	fetch_state_ptr state = (fetch_state_ptr)calldata;
+	u_int32_t j;
+
 	assert(state);
 
 	owp_record_out(state, rec); /* Output is done in all cases. */
@@ -543,6 +561,18 @@ do_single_record(void *calldata, OWPCookedDataRecPtr rec)
 	if (state->order_disrupted)
 		return 0;
 	
+
+	/* Update N-reordering state. */
+	for (j = 0; j < OWP_MIN(state->l, OWP_MAX_N); j++) { 
+		 if (!((rec->seq_no) 
+		       < state->ring[OWP_LOOP((state->r) - j - 1)]))
+			 break;
+		 state->m[j]++;
+	}
+	state->ring[state->r] = rec->seq_no;
+	state->l++;
+	state->r = (state->r + 1) % OWP_MAX_N;
+
 	if (state->cur_win_size < OWP_WIN_WIDTH){/* insert - no stats updates*/
 		if (state->cur_win_size) { /* Grow window. */
 			int num_records_to_move;
@@ -594,7 +624,10 @@ owp_do_summary(fetch_state_ptr state)
 	u_int32_t sent = state->max_seqno + 1;
 	u_int32_t lost = state->dup_packets + sent - state->num_received; 
 	double percent_lost = (double)lost/(double)state->max_seqno;
-	
+	int j;
+
+	assert(state); assert(state->fp);
+
 	fprintf(state->fp, "\n--- owping statistics ---\n");
 	if (state->dup_packets)
 		fprintf(state->fp, 
@@ -607,6 +640,20 @@ owp_do_summary(fetch_state_ptr state)
 
 	fprintf(state->fp, "one-way delay min/median = %.3f/%.3f ms\n", 
 		min, owp_get_percentile(state, 0.5)*THOUSAND);
+
+	for (j = 0; j < OWP_MAX_N && state->m[j]; j++)
+                fprintf(state->fp,
+			"%d-reordering = %f%%\n", j+1, 
+			100.0*state->m[j]/(state->l - j - 1));
+        if (j == 0) 
+		fprintf(state->fp, "no reordering\n");
+        else 
+		if (j < OWP_MAX_N) 
+			fprintf(state->fp, "no %d-reordering\n", j+1);
+        else 
+		fprintf(state->fp, 
+			"only up to %d-reordering is handled\n", OWP_MAX_N);
+
 	return 0;
 }
 
@@ -620,19 +667,11 @@ owp_do_summary(fetch_state_ptr state)
 **     (original ping style: max/avg/min/stdev) at the end.
 */
 int
-do_records_all(char *datadir, OWPSID sid, fetch_state_ptr state)
+do_records_all(char *datafile, fetch_state_ptr state)
 {
 	int fd, i, num_buckets;
 	u_int32_t num_rec, typeP;
-	char datafile[PATH_MAX]; /* full path to data file */
-	char sid_name[(sizeof(OWPSID)*2)+1];
 	struct stat     stat_buf;
-	
-	/* Create the path. */
-	strcpy(datafile, datadir);
-	strcat(datafile,OWP_PATH_SEPARATOR);
-	OWPHexEncode(sid_name, sid, sizeof(OWPSID));
-	strcat(datafile, sid_name);
 	
  open_again:
 	if ((fd = open(datafile, O_RDONLY)) < 0) {
@@ -675,10 +714,14 @@ do_records_all(char *datadir, OWPSID sid, fetch_state_ptr state)
 	state->cur_win_size = 0;
 	state->tmin = 9999.999;
 	state->tmax = 0.0;
-	state->num_received = 0;
+	state->num_received = state->dup_packets = state->max_seqno = 0;
+
 	state->order_disrupted = 0;
-	state->dup_packets = 0;
-	state->max_seqno = 0;
+
+	/* N-reodering fields/ */
+	state->r = state->l = 0;
+	for (i = 0; i < OWP_MAX_N; i++) 
+		state->m[i] = 0;
 
 	num_buckets = OWP_NUM_LOW + OWP_NUM_MID + OWP_NUM_HIGH;
 
@@ -713,6 +756,7 @@ do_records_all(char *datadir, OWPSID sid, fetch_state_ptr state)
 		owp_update_stats(state, &state->window[i]);
 
 	owp_do_summary(state);
+	free(state->buckets);
 	return 0;
 }
 
@@ -741,11 +785,15 @@ main(
 	OWPAcceptType		acceptval;
 	OWPErrSeverity		err;
 	fetch_state             state;
+	char datafile[PATH_MAX]; /* full path to data file */
+	char sid_name[(sizeof(OWPSID)*2)+1];
 
 	ia.line_info = (I2NAME | I2MSG);
 	ia.fp = stderr;
 
 	progname = (progname = strrchr(argv[0], '/')) ? ++progname : *argv;
+
+	state.fp = stdout;
 
 	/*
 	* Start an error logging session for reporing errors to the
@@ -783,6 +831,18 @@ main(
 		usage(od, progname, NULL);
 		exit(0);
 	}
+
+	if (ping_ctx.opt.readfrom) {
+		ping_ctx.opt.keepdata = 1;
+		if (do_records_all(ping_ctx.opt.readfrom, &state) < 0){
+			I2ErrLog(eh, 
+			 "FATAL: do_records_all(%s): failure processing data",
+				 datafile);
+			exit(1);
+		}
+		exit(0);
+	}
+	
 
 	OWPCfg.tm_out.tv_sec = ping_ctx.opt.tmout;
 
@@ -1029,11 +1089,16 @@ main(
 		}
 	}
 
-	/* Set up relevant fields of state. */
-	state.fp = stdout;
+	/* Create the path. */
+	strcpy(datafile, conndata.real_data_dir);
+	strcat(datafile,OWP_PATH_SEPARATOR);
+	OWPHexEncode(sid_name, sid_ret, sizeof(OWPSID));
+	strcat(datafile, sid_name);
 
-	if (do_records_all(conndata.real_data_dir, sid_ret, &state) < 0){
-		I2ErrLog(eh, "FATAL: do_records_all: failure processing data");
+	if (do_records_all(datafile, &state) < 0){
+		I2ErrLog(eh, 
+			 "FATAL: do_records_all(%s): failure processing data",
+			 datafile);
 		exit(1);
 	}
 
