@@ -308,6 +308,7 @@ OWPControlOpen(
 	u_int8_t	token[32];
 	u_int8_t	*key=NULL;
 	OWPAcceptType	acceptval;
+	struct timeval	tval;
 
 	*err_ret = OWPErrOK;
 
@@ -414,6 +415,8 @@ OWPControlOpen(
 	if(I2RandomBytes(ctx->rand_src,cntrl->writeIV,16) != 0)
 		goto error;
 
+	if(gettimeofday(&tval,NULL)!=0)
+		goto error;
 	/*
 	 * Write the client greeting, and see if the Server agree's to it.
 	 */
@@ -428,6 +431,10 @@ OWPControlOpen(
 							"Server denied access");
 		goto denied;
 	}
+
+	if(gettimeofday(&cntrl->delay_bound,NULL)!=0)
+		goto error;
+	tvalsub(&cntrl->delay_bound,&tval);
 
 	return cntrl;
 
@@ -622,7 +629,7 @@ _OWPClientRequestTestReadResponse(
 				OWPError(cntrl->ctx,
 						OWPErrFATAL,OWPErrINVALID,
 						"Invalid address family");
-				return -1;
+				return 1;
 		}
 	}
 
@@ -641,7 +648,8 @@ _OWPClientRequestTestReadResponse(
 	 * TODO: report addresses for test here.
 	 */
 	OWPError(cntrl->ctx,OWPErrINFO,OWPErrPOLICY,"Server denied test:");
-	return -1;
+	*err_ret = OWPErrOK;
+	return 1;
 }
 
 OWPAddr
@@ -747,6 +755,7 @@ OWPSessionRequest(
 	struct addrinfo		*rai=NULL;
 	struct addrinfo		*sai=NULL;
 	OWPTestSession		tsession = NULL;
+	int			rc=0;
 
 	*err_ret = OWPErrOK;
 
@@ -859,10 +868,10 @@ foundaddr:
 		 * Request the server create the receiver & possibly the
 		 * sender.
 		 */
-		if(_OWPClientRequestTestReadResponse(cntrl,
+		if((rc = _OWPClientRequestTestReadResponse(cntrl,
 					sender,server_conf_sender,
 					receiver,server_conf_receiver,
-					test_spec,tsession->sid,err_ret) != 0){
+					test_spec,tsession->sid,err_ret)) != 0){
 			goto error;
 		}
 
@@ -922,10 +931,10 @@ foundaddr:
 		 * If conf_sender - make request to server
 		 */
 		if(server_conf_sender){
-			if(_OWPClientRequestTestReadResponse(cntrl,
+			if((rc = _OWPClientRequestTestReadResponse(cntrl,
 					sender,server_conf_sender,
 					receiver,server_conf_receiver,
-					test_spec,tsession->sid,err_ret) != 0){
+					test_spec,tsession->sid,err_ret)) != 0){
 				goto error;
 			}
 		}else{

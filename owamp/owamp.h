@@ -421,8 +421,20 @@ OWPControlClose(
 );
 
 /*
- * Request a test session - if err_ret is OWPErrOK - then the function
+ * Request a test session - if the function returns True, then the function
  * returns a valid SID for the session.
+ *
+ * If the function returns False - check err_ret. If err_ret is ErrOK, the
+ * session was denied by the server, and the control connection is still
+ * valid.
+ *
+ * TODO:Add OWPControlStatus(cntrl) function to determine cntrl status...
+ *
+ * Reasons this function will return False:
+ * 1. Server denied test: err_ret==ErrOK
+ * 2. Control connection failure: err_ret == ErrFATAL
+ * 3. Local resource problem (malloc/fork/fdopen): err_ret == ErrFATAL
+ * 4. Bad addresses: err_ret == ErrWARNING
  *
  * Once an OWPAddr record has been passed into this function, it
  * is automatically free'd. It should not be referenced again in any way.
@@ -503,6 +515,17 @@ OWPSessionStatus(
 	OWPBoolean	send,	/* Poll the send side of the test if true*/
 				/* recv side if false			*/
 	OWPAcceptType	*aval	/* out - return accept value	*/
+	);
+
+/*
+ * Returns the duration of the session in OWPnum64 format. Conversion
+ * functions are available to convert that to OWPTimeStamp format.
+ * 0 is returned for non-existant SID's.
+ */
+extern OWPnum64
+OWPSessionDuration(
+	OWPControl	cntrl,
+	OWPSID		sid
 	);
 
 /*

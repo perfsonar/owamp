@@ -41,8 +41,8 @@
  * The powstream context
  */
 static	powapp_trec	appctx;
-static I2ErrHandle	eh;
-static pow_cntrl_rec	pcntrl[2];
+static	I2ErrHandle	eh;
+static	pow_cntrl_rec	pcntrl[2];
 
 /*
  * Library initialization structure;
@@ -108,25 +108,6 @@ usage(const char *progname, const char *msg)
 	print_output_args();
 
 	return;
-}
-
-static void
-FailSession(
-	OWPControl	control_handle	__attribute__((unused))
-	   )
-{
-	/*
-	 * Session denied - report error, close connection, and exit.
-	 */
-	I2ErrLog(eh, "Session Failed!");
-	fflush(stderr);
-
-#if	NOT
-	/* TODO: determine "reason" for denial and report */
-	(void)OWPControlClose(appctx.cntrl[0]);
-	(void)OWPControlClose(appctx.cntrl[1]);
-#endif
-	exit(1);
 }
 
 /*
@@ -207,7 +188,6 @@ main(
 	OWPContext		ctx;
 	OWPTestSpecPoisson	test_spec;
 	OWPPerConnDataRec	conndata;
-	OWPAcceptType		acceptval;
 
 	int			ch;
 	char                    *endptr = NULL;
@@ -222,8 +202,11 @@ main(
 	int			which=0;	/* which cntrl connect used */
 	u_int32_t		file_offset;
 	u_int32_t		ext_offset;
+	char			dirpath[PATH_MAX];
+	u_int32_t		s;
+	unsigned int		delay,stime;
 
-	ia.line_info = (I2NAME | I2MSG);
+	ia.line_info = (I2NAME | I2MSG | I2FILE | I2LINE);
 	ia.fp = stderr;
 
 	progname = (progname = strrchr(argv[0], '/')) ? ++progname : *argv;
@@ -241,7 +224,7 @@ main(
 
 	/* Set default options. */
 	memset(&appctx,0,sizeof(appctx));
-	appctx.opt.numPackets = 100;
+	appctx.opt.numPackets = 300;
 	appctx.opt.lossThreshold = 120;
 	appctx.opt.meanWait = (float)0.1;
 
@@ -362,12 +345,26 @@ main(
 		appctx.opt.padding = MAX_PADDING_SIZE;
 
 	/*
-	 * TODO: check savedir option. Make sure it will not make fnames
+	 * Check savedir option. Make sure it will not make fnames
 	 * exceed PATH_MAX even with the nul byte.
 	 * Also set file_offset and ext_offset to the lengths needed.
 	 */
-	file_offset = 0;	/* no dir set. */
-	ext_offset = 0;		/* file_offset + length filename */
+	ch = 2*TSTAMPCHARS + strlen(OWP_NAME_SEP) +
+		MAX(strlen(OWP_FILE_EXT),strlen(OWP_INCOMPLETE_EXT));
+	assert((ch+1)<PATH_MAX);
+	if(appctx.opt.savedir){
+		if((strlen(appctx.opt.savedir) + strlen(OWP_PATH_SEPARATOR)+
+							ch + 1) > PATH_MAX){
+			usage(progname,"-d: pathname too long.");
+			exit(1);
+		}
+		strcpy(dirpath,appctx.opt.savedir);
+		strcat(dirpath,OWP_PATH_SEPARATOR);
+	}else
+		dirpath[0] = '\0';
+
+	file_offset = strlen(dirpath);
+	ext_offset = file_offset + TSTAMPCHARS;
 
 	owp_set_auth(&appctx, &policy, progname, ctx); 
 
@@ -418,12 +415,18 @@ main(
 					appctx.auth_mode, 
 					appctx.opt.identity,
 					(void*)&conndata, &err_ret))){
-		I2ErrLog(eh, "OWPControlOpen():%M...Retrying");
+
+		stime = RTT_REQ_ESTIMATE;
+		I2ErrLog(eh, "OWPControlOpen():%M...Retrying in %d seconds",
+				stime);
+		while((stime = sleep(stime)));
 	}
 
 	OWPGetDelay(pcntrl[0].cntrl,&delay_tval);
-	delay_tval.tv_sec++;	/* add one sec for file creation time.	*/
-	delay_tval.tv_sec++;	/* add one sec to round to seconds	*/
+	delay = delay_tval.tv_sec;
+	delay++;	/* add one sec for file creation time.	*/
+	delay++;	/* add one sec to round to seconds	*/
+	delay = MAX(delay,RTT_REQ_ESTIMATE);
 
 	/*
 	 * Hack to set lossThreshold for v3 of protocol. Fixed in v5.
@@ -441,25 +444,57 @@ main(
 	 * The length of time a series takes MUST be greater than the length
 	 * of time it takes to set up that series by a "reasonable" amount
 	 * to ensure each test session series is stiched right up to the
-	 * one before it.
+	 * one before it. To ensure this "reasonable" amount, delay can
+	 * not be larger than .5 of the mean session duration.
 	 */
-	if(delay_tval.tv_sec >
-			(appctx.opt.numPackets * appctx.opt.meanWait)){
+	if(delay >= (u_int32_t)(appctx.opt.numPackets*appctx.opt.meanWait*0.5)){
 		I2ErrLog(eh,"Individual test sessions are too small.\n"
-			"It is impossible to create continues streams.\n"
-			"(It take more time to set them up than for\n"
-			"them to occur.)");
+			"(It can take more time to set one  up than for\n"
+			"it to occur.)");
 		exit(1);
 	}
 
+	/*
+	 * First make sure numSessions is enough to allow time to setup
+	 * a series.
+	 */
 	numSessions = 0;
 	do{
 		numSessions++;
 		seriesTime = numSessions *
 				appctx.opt.numPackets * appctx.opt.meanWait;
-		setupTime = (numSessions+4) * delay_tval.tv_sec;
-	} while((seriesTime < appctx.opt.seriesInterval) ||
-		(seriesTime < (setupTime + appctx.opt.lossThreshold)));
+		setupTime = (numSessions+4) * delay;
+	} while(seriesTime < (setupTime + appctx.opt.lossThreshold));
+
+	/*
+	 * Now - ensure it is at least as long as the user requested.
+	 * (This also ensures that numSessions is at least 1 greater than
+	 * needed for setupTime/lossThreshold. This is the "reasonable"
+	 * amount from the comment above. We will see with use how well
+	 * this guess works...)
+	 */
+	do{
+		numSessions++;
+		seriesTime = numSessions *
+				appctx.opt.numPackets * appctx.opt.meanWait;
+		setupTime = (numSessions+4) * delay;
+	} while(seriesTime < appctx.opt.seriesInterval);
+
+	I2ErrLog(eh,"%d sessions per/series:approx seriesInterval:%d seconds",
+							numSessions,seriesTime);
+	pcntrl[0].sessions = calloc(numSessions,sizeof(pow_session_rec));
+	pcntrl[1].sessions = calloc(numSessions,sizeof(pow_session_rec));
+	if(!pcntrl[0].sessions || !pcntrl[1].sessions){
+		I2ErrLog(eh,"calloc(%d,%d):%M",numSessions,
+						sizeof(pow_session_rec));
+		exit(1);
+	}
+
+	if(appctx.opt.savedir)
+		for(s=0;s<numSessions;s++){
+			strcpy(pcntrl[0].sessions[s].fname_mem,dirpath);
+			strcpy(pcntrl[1].sessions[s].fname_mem,dirpath);
+		}
 
 	/*
 	 * Main loop - loop over two connections collecting the data
@@ -492,11 +527,12 @@ main(
 	 */
 	while(1){
 		pow_cntrl	p,q;
+		pow_session	tst;
 		OWPTimeStamp	endtime;
 		OWPTimeStamp	currtime;
-		u_int32_t	s;
 		int		call_stop;
 		OWPAcceptType	series_aval;
+		OWPnum64	cnum,dnum;
 
 NextConnection:
 		/*
@@ -515,65 +551,67 @@ NextConnection:
 		call_stop = (p->activeSessions)?True:False;
 		series_aval = OWP_CNTRL_ACCEPT;
 		for(s=0;s<p->activeSessions;s++){
-			pow_session	tst;
 			OWPAcceptType	aval;
-			OWPErrSeverity	err;
 			int		rc;
 
 			tst = &p->sessions[s];
 			if(!tst->fp)
 				continue;
 
-			endtime = *tst->sessionEnd;
+			OWPnum64toTimeStamp(&endtime,tst->end);
 			endtime.sec += appctx.opt.lossThreshold;
 			endtime.sec++;	/* allow some system time. */
 
 			aval = OWP_CNTRL_INVALID;
-			while(p->cntrl && (aval < 0)){
-				if(!OWPSessionStatus(p->cntrl,tst->sid,
-								False,&aval))
-					break;	/* error */
-				if(!aval)
-					break;	/* test done */
-				rc = OWPStopSessionsWait(p->cntrl,
-						&endtime,&series_aval,&err);
-				if(rc < 0){
-					OWPControlClose(p->cntrl);
-					p->cntrl = NULL;
-					break;	/* error */
-				}
-				if(rc == 1)
-					break;	/* time is up */
-				if(rc == 0){
-					/* stop sessions happened
-					 * still go to the top and get the
-					 * status of this session.
+			if(OWPSessionStatus(p->cntrl,tst->sid,False,&aval)){
+				while(p->cntrl && call_stop && (aval < 0)){
+					rc = OWPStopSessionsWait(p->cntrl,
+						&endtime,&series_aval,&err_ret);
+					if(rc<0){
+						/* error */
+						OWPControlClose(p->cntrl);
+						p->cntrl = NULL;
+					}
+					if(rc<1){
+						call_stop = False;
+						break;
+					}
+					/*
+					 * If time is up, or signal received,
+					 * get the session status.
 					 */
-					call_stop = False;
+					if(!OWPSessionStatus(p->cntrl,tst->sid,
+							False,&aval))
+						break;
+					if(rc==1)	/* times up. */
+						break;
+					/*
+					 * TODO: Check for signal indicating
+					 * other node may have restarted. Add
+					 * logic here to check, and invalidate
+					 * current connections if true.
+					 * if(chk_cntrlstatus_sig_received)
+					 * 	....
+					 */
 				}
-				/*
-				 * TODO: Check for signal indicating other
-				 * node may have restarted. Add logic here
-				 * to check, and invalidate current connections
-				 * if true.
-				 */
 			}
+
+			if(!call_stop)
+				aval = series_aval;
 
 			/*
 			 *  test is over...
 			 */
 			if(!aval){
 				/* success - rename the file. */
+				char	endname[PATH_MAX];
 				char	newpath[PATH_MAX];
 
-				/*
-				 * TODO: validate char lengths. do this when
-				 * checking for valid "dir" arg to command
-				 * line. filenames and extentions are fixed
-				 * lengths beyond the "dir" name.
-				 */
+				sprintf(endname,TSTAMPFMT,tst->end);
 				strcpy(newpath,tst->fname);
-				strcpy(&newpath[ext_offset],OWP_FILE_EXT);
+				sprintf(&newpath[ext_offset],"%s%s%s",
+					OWP_NAME_SEP,endname,OWP_FILE_EXT);
+
 				if(link(tst->fname,newpath) != 0){
 					I2ErrLog(eh,"link():%M");
 				}
@@ -603,6 +641,7 @@ NextConnection:
 		/*
 		 * First open a connection if we don't have one.
 		 */
+		delay = delay_tval.tv_sec;
 		while(!p->cntrl){
 
 			if(p->seriesStart){
@@ -637,7 +676,13 @@ NextConnection:
 					OWPAddrByNode(ctx, appctx.remote_serv),
 					appctx.auth_mode,appctx.opt.identity,
 					(void*)&conndata, &err_ret))){
-				I2ErrLog(eh, "OWPControlOpen():%M");
+				I2ErrLog(eh,
+				"OWPControlOpen():%M:Retry-%d seconds",delay);
+				stime = delay;
+				while((stime = sleep(stime)));
+				delay *= 2;
+				if(delay > RTT_REQ_ESTIMATE)
+					delay = RTT_REQ_ESTIMATE;
 			}
 		}
 
@@ -658,15 +703,52 @@ NextConnection:
 			p->seriesStart->sec += setupTime;
 		}
 
+		currtime = *p->seriesStart;
+		cnum = OWPTimeStamp2num64(&currtime);
 		for(s=0;s<numSessions;s++){
+
 			/*
 			 * Setup sessions.
 			 */
-		}
-		p->activeSessions = numSessions;
+			tst = &p->sessions[s];
 
-		if(p->sessions[numSessions-1].sessionEnd){
-			q->tstamp_mem = *p->sessions[numSessions-1].sessionEnd;
+			tst->fname = tst->fname_mem;
+			sprintf(&tst->fname[file_offset],TSTAMPFMT,cnum);
+			strcpy(&tst->fname[ext_offset],OWP_INCOMPLETE_EXT);
+
+			if(!(tst->fp = fopen(tst->fname,"wb+"))){
+				I2ErrLog(eh,"fopen(%s):%M");
+				break;
+			}
+
+			test_spec.start_time = currtime;
+			if(!OWPSessionRequest(p->cntrl,
+					OWPAddrByNode(ctx,appctx.remote_test),
+					True, NULL, False,
+					(OWPTestSpec*)&test_spec, tst->sid,
+					tst->fp,&err_ret)){
+				/*
+				 * It doesn't really matter why the
+				 * request failed... we just break out
+				 * and let the next connection try and
+				 * set it up.
+				 */
+				fclose(tst->fp);
+				tst->fp = NULL;
+				tst->fname = NULL;
+				break;
+			}
+			dnum = OWPSessionDuration(p->cntrl,tst->sid);
+			cnum += dnum;
+			tst->end = cnum;
+			OWPnum64toTimeStamp(&currtime,cnum);
+		}
+
+		if(s && (OWPStartSessions(p->cntrl) >= OWPErrINFO))
+			p->activeSessions = s;
+
+		if(p->activeSessions){
+			q->tstamp_mem = currtime;
 			q->seriesStart = &q->tstamp_mem;
 		}else{
 			q->seriesStart = NULL;

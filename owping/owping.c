@@ -157,6 +157,10 @@ usage(const char *progname, const char *msg)
 		fprintf(stderr, "\n");
 		print_output_args();
 	}
+	else{
+		fprintf(stderr,
+			"usage: %s is not a known name for this program.\n",progname);
+	}
 
 	return;
 }
@@ -906,6 +910,11 @@ main(
 		strcpy(optstring, conn_opts);
 		strcat(optstring, out_opts);
 	}
+	else{
+	     usage(progname, "Invalid program name.");
+	     exit(1);
+	}
+
 	strcat(optstring, gen_opts);
 #ifndef	NDEBUG
 	strcat(optstring,debug_opts);

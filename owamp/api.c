@@ -880,6 +880,24 @@ OWPTestPacketSize(
 	return payload_size + header_size;
 }
 
+/*
+ * Return 0 for non-existant SID's.
+ */
+OWPnum64
+OWPSessionDuration(
+		OWPControl	cntrl,
+		OWPSID		sid
+		)
+{
+	OWPTestSession	tsession;
+
+	for(tsession=cntrl->tests;tsession;tsession=tsession->next)
+		if(memcmp(sid,tsession->sid,sizeof(OWPSID)) == 0)
+			return tsession->last;
+
+	return (OWPnum64)0;
+}
+
 OWPBoolean
 OWPSessionStatus(
 		OWPControl	cntrl,
@@ -896,6 +914,7 @@ OWPSessionStatus(
 			goto found;
 
 	return False;
+
 found:
 	if(send && tsession->send_end_data)
 		return _OWPCallEndpointStatus(tsession,&tsession->send_end_data,
