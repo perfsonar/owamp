@@ -60,9 +60,12 @@ void OWPnum2formatted(OWPnum128 from, OWPFormattedTime to);
 void OWPformatted2num(OWPFormattedTime from, OWPnum128 to);
 void OWPnum2timeval(OWPnum128 from, struct timeval *to);
 void OWPtimeval2num(struct timeval *from, OWPnum128 to);
+void OWPnum2timespec(OWPnum128 from, struct timespec *to);
+void OWPtimespec2num(struct timespec *from, OWPnum128 to);
 
 /* Random number generating functions */
 OWPrand_context *OWPrand_context_init(BYTE *sid);  /* Initialize generator. */
+void OWPrand_context_free(OWPrand_context *next);
 struct OWPnum128 OWPexp_rand(OWPrand_context *next);  /* Generate exponential 
 						      (mean 1) deviate */
 /* Debugging and auxilliary functions */
