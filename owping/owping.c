@@ -25,6 +25,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <ctype.h>
+#include <math.h>
 
 #include <I2util/util.h>
 #include <owamp/owamp.h>
@@ -39,6 +40,33 @@
  * The owping context
  */
 static	ow_ping_trec	ping_ctx;
+
+/*
+** State to be maintained by client during Fetch.
+*/
+typedef struct fetch_state {
+	double    tmin;             /* max delay                    */
+	double    tmax;             /* min delay                    */     
+	double    tsum;             /* sum of delays                */
+	double    tsumsq;           /* sum of squared delays        */
+	u_int32_t numpack_received; /* number of received packets   */
+	FILE*     fp;               /* stream to report records     */
+} fetch_state, *fetch_state_ptr;
+
+
+/*
+** Initialize the state.
+*/
+void
+fetch_state_init(fetch_state_ptr state, FILE *fp)
+{
+	assert(state);
+
+	state->tmin = 9999.999;
+	state->tmax = state->tsum = state->tsumsq = 0.0;
+	state->numpack_received = 0;
+	state->fp = fp;
+}
 
 static int
 OWPingErrFunc(
@@ -203,6 +231,110 @@ FailSession(
 	/* TODO: determine "reason" for denial and report */
 	(void)OWPControlClose(ping_ctx.cntrl);
 	exit(1);
+}
+
+/*
+** Given a pointer to a 20-byte data record, print it out, in a 
+** machine-readable form, to a given file (if not NULL), or stdout otherwise.
+*/
+int
+print_record(void *calldata,          /* currently just a file pointer */
+	     u_int32_t seq_num,
+	     OWPTimeStamp *send_time,
+	     OWPTimeStamp *recv_time)
+{
+	FILE* fp = (calldata)? (FILE *)calldata : stdout;
+
+	fprintf(fp, "seq_no=%u send=%u.%us recv=%u.%us\n",
+		seq_num, send_time->sec, send_time->frac_sec,
+		recv_time->sec, recv_time->frac_sec);
+	return 0;
+}
+
+/*
+** Print delay for the current record (ping-like style) and update the stats.
+*/
+int
+print_delay(void *calldata,      /* fetch_state_ptr */
+	    u_int32_t seq_num,
+	    OWPTimeStamp *send_time,
+	    OWPTimeStamp *recv_time
+	    )
+{
+	fetch_state_ptr state = (fetch_state_ptr)calldata;
+	double delay = owp_delay(send_time, recv_time);
+
+	assert(state);
+	
+	/* Update the state. */
+	if (delay < state->tmin)
+		state->tmin = delay;
+
+	if (delay > state->tmax)
+		state->tmax = delay;
+
+	state->tsum += delay;
+	state->tsumsq += (delay*delay);
+	state->numpack_received++;
+
+	fprintf(state->fp, "seq_no=%u delay=%.3f ms\n", seq_num, 
+		delay*THOUSAND);
+
+	return 0;
+}
+
+#define THOUSAND 1000.0
+
+/*
+** Print out summary results, ping-like style.
+*/
+int
+owp_do_summary(fetch_state_ptr state)
+{
+	double min = ((double)(state->tmin)) * THOUSAND;    /* msec */
+	double max = ((double)(state->tmax)) * THOUSAND;    /* msec */
+	double   n = (double)(state->numpack_received);   
+	double avg = ((state->tsum)/n) * THOUSAND;
+	double vari = ((state->tsumsq / n) - avg * avg) * THOUSAND;
+	
+	fprintf(state->fp, "%u records received\n", state->numpack_received);
+	fprintf(state->fp, 
+		"one-way delay min/avg/max/stddev = %.3f/%.3f/%.3f/%.3f ms\n",
+		min, avg, max, sqrt(vari));
+	return 0;
+}
+
+/*
+** Master output function - reads the records sent by the server
+** and prints them to the stdout in a style specified by <type>.
+** Its value is interpreted as follows:
+** 0 - print out send and recv timestamsps for each record in machine-readable
+** format;
+** 1 - print one-way delay in msec for each record, and final summary
+**     (original ping style: max/avg/min/stdev) at the end.
+*/
+int
+do_records_all(OWPControl cntrl, u_int32_t num_rec, int type, FILE *fp)
+{
+	assert(fp);
+
+	switch (type) {
+	case 0:          /* print the full record in machine-readable form */
+		OWPFetchRecords(cntrl, num_rec, print_record, fp);
+		break;
+	case 1:
+		{
+		      fetch_state state;
+		      
+		      fetch_state_init(&state, fp);
+		      OWPFetchRecords(cntrl, num_rec, print_delay, &state);
+		      owp_do_summary(&state);
+		      break;
+		}
+	default:
+		break;
+	}
+	return 0;
 }
 
 /*
@@ -451,8 +583,8 @@ main(
 			sid_ret,
 			&err_ret))
 		FailSession(ping_ctx.cntrl);
-
-	if( (OWPStartTestSessions(ping_ctx.cntrl) != OWPErrOK))
+	
+	if(OWPStartTestSessions(ping_ctx.cntrl) != OWPErrOK)
 		FailSession(ping_ctx.cntrl);
 	/*
 	 * TODO install sig handler for keyboard interupt - to send stop
