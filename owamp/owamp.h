@@ -27,6 +27,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
+#include <sys/time.h>
 
 #ifndef	False
 #define	False	(0)
@@ -35,9 +36,12 @@
 #define	True	(!False)
 #endif
 
+#include <sys/param.h>
+
 #ifndef	MAXHOSTNAMELEN
 #define	MAXHOSTNAMELEN	64
 #endif
+
 
 #define	OWP_MODE_UNDEFINED		(0)
 #define	OWP_MODE_OPEN			(01)
