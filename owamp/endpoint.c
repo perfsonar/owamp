@@ -210,6 +210,8 @@ OWPDefEndpointInit(
 	int			sopt;
 	socklen_t		opt_size;
 
+	*end_data_ret = NULL;
+
 	if(!ep)
 		return OWPErrFATAL;
 
@@ -279,6 +281,7 @@ OWPDefEndpointInit(
 	/*
 	 * Retrieve the ephemeral port picked by the system.
 	 */
+	memset(&sbuff,0,sizeof(sbuff));
 	if(getsockname(ep->sockfd,(void*)&sbuff,&sbuff_len) != 0){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"getsockname():%M");
 		goto error;
@@ -1062,14 +1065,14 @@ error:
 OWPErrSeverity
 OWPDefEndpointInitHook(
 	void		*app_data,
-	void		*end_data,
+	void		**end_data,
 	OWPAddr		remoteaddr,
 	OWPSID		sid
 )
 {
 	OWPPerConnData		cdata = (OWPPerConnData)app_data;
 	OWPContext		ctx = OWPGetContext(cdata->cntrl);
-	_DefEndpoint		ep=(_DefEndpoint)end_data;
+	_DefEndpoint		ep=*(_DefEndpoint*)end_data;
 	struct sigaction	act;
 	sigset_t		sigs,osigs;
 	int			i;
@@ -1086,6 +1089,7 @@ OWPDefEndpointInitHook(
 	if(connect(ep->sockfd,remoteaddr->saddr,remoteaddr->saddrlen) != 0){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"connect():%M");
 		EndpointFree(ep);
+		*end_data = NULL;
 		return OWPErrFATAL;
 	}
 
@@ -1105,6 +1109,7 @@ OWPDefEndpointInitHook(
 	if(sigprocmask(SIG_BLOCK,&sigs,&osigs) != 0){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"sigprocmask():%M");
 		EndpointFree(ep);
+		*end_data = NULL;
 		return OWPErrFATAL;
 	}
 
@@ -1115,6 +1120,7 @@ OWPDefEndpointInitHook(
 		(void)sigprocmask(SIG_SETMASK,&osigs,NULL);
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fork():%M");
 		EndpointFree(ep);
+		*end_data = NULL;
 		return OWPErrFATAL;
 	}
 
@@ -1298,15 +1304,15 @@ OWPDefEndpointInitHook(
 OWPErrSeverity
 OWPDefEndpointStart(
 	void	*app_data,
-	void	*end_data
+	void	**end_data
 	)
 {
 	OWPPerConnData		cdata = (OWPPerConnData)app_data;
-	_DefEndpoint		ep=(_DefEndpoint)end_data;
+	_DefEndpoint		ep=*(_DefEndpoint*)end_data;
 
 	if((ep->acceptval < 0) && ep->child && (kill(ep->child,SIGUSR1) == 0))
 		return OWPErrOK;
-	OWPError(OWPGetContext(cdata->cntrl),OWPErrFATAL,OWPErrUNKNOWN,
+	OWPError(cdata->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 			"EndpointStart:Can't signal child #%d:%M",ep->child);
 	return OWPErrFATAL;
 }
@@ -1314,12 +1320,12 @@ OWPDefEndpointStart(
 OWPErrSeverity
 OWPDefEndpointStatus(
 	void		*app_data,
-	void		*end_data,
+	void		**end_data,
 	OWPAcceptType	*aval		/* out */
 	)
 {
 	OWPPerConnData		cdata = (OWPPerConnData)app_data;
-	_DefEndpoint		ep=(_DefEndpoint)end_data;
+	_DefEndpoint		ep=*(_DefEndpoint*)end_data;
 	pid_t			p;
 	OWPErrSeverity		err=OWPErrOK;
 	int			childstatus;
@@ -1349,18 +1355,20 @@ AGAIN:
 OWPErrSeverity
 OWPDefEndpointStop(
 	void		*app_data,
-	void		*end_data,
+	void		**end_data,
 	OWPAcceptType	aval
 	)
 {
 	OWPPerConnData		cdata = (OWPPerConnData)app_data;
-	_DefEndpoint		ep=(_DefEndpoint)end_data;
+	_DefEndpoint		ep=*(_DefEndpoint*)end_data;
 	int			sig;
 	int			teststatus;
 	OWPErrSeverity		err;
 
-	if(ep->acceptval >= 0)
-		return OWPErrOK;
+	if(ep->acceptval >= 0){
+		err = OWPErrOK;
+		goto done;
+	}
 
 	if(aval)
 		sig = SIGINT;
@@ -1373,10 +1381,14 @@ OWPDefEndpointStop(
 	ep->wopts &= ~WNOHANG;
 	err = OWPDefEndpointStatus(app_data,end_data,&teststatus);
 	if(teststatus >= 0)
-		return err;
+		goto done;
 
 error:
 	OWPError(OWPGetContext(cdata->cntrl),OWPErrFATAL,OWPErrUNKNOWN,
 			"EndpointStart:Can't signal child #%d:%M",ep->child);
-	return OWPErrFATAL;
+done:
+	EndpointFree(ep);
+	*end_data = NULL;
+
+	return err;
 }

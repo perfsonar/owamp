@@ -796,13 +796,6 @@ main(int argc, char *argv[])
 		nfound = select(maxfd+1,&ready,NULL,NULL,NULL);
 
 		/*
-		 * This will only print out during debugging because
-		 * NDEBUG should be defined for non-development builds.
-		 * (see the error handler above.)
-		 */
-		OWPError(ctx,OWPErrINFO,errno,"select returned:(%d) [%M]",
-						nfound);
-		/*
 		 * Handle select interupts/errors.
 		 */
 		if(nfound < 0){

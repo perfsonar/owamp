@@ -783,7 +783,7 @@ foundaddr:
 		 */
 		if(!server_conf_sender){
 			if(!_OWPCallEndpointInitHook(cntrl,
-					tsession->send_end_data,receiver,
+					&tsession->send_end_data,receiver,
 					tsession->sid,err_ret))
 				goto error;
 		}
@@ -837,12 +837,12 @@ foundaddr:
 						 err_ret))
 				goto error;
 			if(!_OWPCallEndpointInitHook(cntrl,
-					tsession->send_end_data,receiver,
+					&tsession->send_end_data,receiver,
 					tsession->sid,err_ret))
 				goto error;
 		}
 		if(!_OWPCallEndpointInitHook(cntrl,
-					tsession->recv_end_data,sender,
+					&tsession->recv_end_data,sender,
 					tsession->sid,err_ret))
 			goto error;
 	}
@@ -896,7 +896,7 @@ OWPStartSessions(
 	for(tsession = cntrl->tests;tsession;tsession = tsession->next)
 		if(tsession->recv_end_data){
 			if(!_OWPCallEndpointStart(tsession,
-						tsession->recv_end_data,&err))
+						&tsession->recv_end_data,&err))
 				return _OWPFailControlSession(cntrl,err);
 			err2 = MIN(err,err2);
 		}
@@ -908,7 +908,7 @@ OWPStartSessions(
 	for(tsession = cntrl->tests;tsession;tsession = tsession->next)
 		if(tsession->send_end_data){
 			if(!_OWPCallEndpointStart(tsession,
-						tsession->send_end_data,&err))
+						&tsession->send_end_data,&err))
 				return _OWPFailControlSession(cntrl,err);
 			err2 = MIN(err,err2);
 		}

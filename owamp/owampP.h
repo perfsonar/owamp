@@ -491,7 +491,7 @@ _OWPCallEndpointInit(
 extern OWPBoolean
 _OWPCallEndpointInitHook(
         OWPControl      cntrl,
-	void            *end_data,
+	void            **end_data,
 	OWPAddr         remoteaddr,
 	OWPSID		sid,
 	OWPErrSeverity  *err_ret
@@ -500,14 +500,14 @@ _OWPCallEndpointInitHook(
 extern OWPBoolean
 _OWPCallEndpointStart(
 	OWPTestSession	tsession,
-	void		*end_data,
+	void		**end_data,
 	OWPErrSeverity	*err_ret
 	);
 
 extern OWPBoolean
 _OWPCallEndpointStatus(
 	OWPTestSession	tsession,
-	void		*end_data,
+	void		**end_data,
 	OWPAcceptType	*aval,
 	OWPErrSeverity	*err_ret
 	);
@@ -515,7 +515,7 @@ _OWPCallEndpointStatus(
 extern OWPBoolean
 _OWPCallEndpointStop(
 	OWPTestSession	tsession,
-	void		*end_data,
+	void		**end_data,
 	OWPAcceptType	aval,
 	OWPErrSeverity	*err_ret
 	);

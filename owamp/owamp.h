@@ -307,7 +307,7 @@ typedef OWPErrSeverity (*OWPEndpointInitFunc)(
  */
 typedef OWPErrSeverity (*OWPEndpointInitHookFunc)(
 	void		*app_data,
-	void		*end_data,
+	void		**end_data,
 	OWPAddr		remoteaddr,
 	OWPSID		sid
 );
@@ -317,7 +317,7 @@ typedef OWPErrSeverity (*OWPEndpointInitHookFunc)(
  */
 typedef OWPErrSeverity (*OWPEndpointStartFunc)(
 	void		*app_data,
-	void		*end_data
+	void		**end_data
 );
 
 /*
@@ -325,7 +325,7 @@ typedef OWPErrSeverity (*OWPEndpointStartFunc)(
  */
 typedef OWPErrSeverity (*OWPEndpointStatusFunc)(
 	void		*app_data,
-	void		*end_data,
+	void		**end_data,
 	OWPAcceptType	*aval
 );
 
@@ -334,7 +334,7 @@ typedef OWPErrSeverity (*OWPEndpointStatusFunc)(
  */
 typedef OWPErrSeverity (*OWPEndpointStopFunc)(
 	void		*app_data,
-	void		*end_data,
+	void		**end_data,
 	OWPAcceptType	aval
 );
 

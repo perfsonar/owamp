@@ -753,7 +753,7 @@ OWPProcessTestRequest(
 					tsession->sid,&err_ret)){
 			goto error;
 		}
-		if(!_OWPCallEndpointInitHook(cntrl,tsession->send_end_data,
+		if(!_OWPCallEndpointInitHook(cntrl,&tsession->send_end_data,
 						tsession->receiver,
 						tsession->sid,&err_ret)){
 			goto error;
@@ -763,7 +763,7 @@ OWPProcessTestRequest(
 
 	if(conf_receiver){
 		if(!_OWPCallEndpointInitHook(cntrl,
-					tsession->recv_end_data,
+					&tsession->recv_end_data,
 					tsession->sender,
 					tsession->sid,&err_ret)){
 			goto error;
@@ -826,7 +826,7 @@ OWPProcessStartSessions(
 	for(tsession = cntrl->tests;tsession;tsession = tsession->next){
 		if(tsession->recv_end_data){
 			if(!_OWPCallEndpointStart(tsession,
-						tsession->recv_end_data,&err)){
+						&tsession->recv_end_data,&err)){
 				(void)_OWPWriteStopSessions(cntrl,
 							    OWP_CNTRL_FAILURE);
 				return _OWPFailControlSession(cntrl,err);
@@ -835,7 +835,7 @@ OWPProcessStartSessions(
 		}
 		if(tsession->send_end_data){
 			if(!_OWPCallEndpointStart(tsession,
-						tsession->send_end_data,&err)){
+						&tsession->send_end_data,&err)){
 				(void)_OWPWriteStopSessions(cntrl,
 							    OWP_CNTRL_FAILURE);
 				return _OWPFailControlSession(cntrl,err);
@@ -862,12 +862,12 @@ OWPProcessStopSessions(
 
 	for(tsession = cntrl->tests;tsession;tsession = tsession->next){
 		if(tsession->recv_end_data){
-			_OWPCallEndpointStop(tsession,tsession->recv_end_data,
+			_OWPCallEndpointStop(tsession,&tsession->recv_end_data,
 					acceptval,&err);
 			err2 = MIN(err,err2);
 		}
 		if(tsession->send_end_data){
-			_OWPCallEndpointStop(tsession,tsession->send_end_data,
+			_OWPCallEndpointStop(tsession,&tsession->send_end_data,
 					acceptval,&err);
 			err2 = MIN(err,err2);
 		}

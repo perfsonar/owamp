@@ -595,10 +595,10 @@ _OWPTestSessionFree(
 		}
 
 	if(tsession->recv_end_data)
-		(void)_OWPCallEndpointStop(tsession,tsession->recv_end_data,
+		(void)_OWPCallEndpointStop(tsession,&tsession->recv_end_data,
 					   aval,&err);
 	if(tsession->send_end_data)
-		(void)_OWPCallEndpointStop(tsession,tsession->send_end_data,
+		(void)_OWPCallEndpointStop(tsession,&tsession->send_end_data,
 					   aval,&err2);
 
 	OWPAddrFree(tsession->sender);
@@ -776,10 +776,10 @@ OWPSessionStatus(
 	return False;
 found:
 	if(send && tsession->send_end_data)
-		return _OWPCallEndpointStatus(tsession,tsession->send_end_data,
+		return _OWPCallEndpointStatus(tsession,&tsession->send_end_data,
 								aval,&err);
 	if(!send && tsession->recv_end_data)
-		return _OWPCallEndpointStatus(tsession,tsession->recv_end_data,
+		return _OWPCallEndpointStatus(tsession,&tsession->recv_end_data,
 								aval,&err);
 	return False;
 }
@@ -796,12 +796,12 @@ OWPSessionsActive(
 
 	for(tsession = cntrl->tests;tsession;tsession = tsession->next){
 		if((tsession->recv_end_data) && _OWPCallEndpointStatus(tsession,
-					tsession->recv_end_data,&aval,&err)){
+					&tsession->recv_end_data,&aval,&err)){
 			if(aval < 0)
 				n++;
 		}
 		if((tsession->send_end_data) && _OWPCallEndpointStatus(tsession,
-					tsession->send_end_data,&aval,&err)){
+					&tsession->send_end_data,&aval,&err)){
 			if(aval < 0)
 				n++;
 		}

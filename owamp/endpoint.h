@@ -40,7 +40,7 @@ OWPDefEndpointInit(
 extern OWPErrSeverity
 OWPDefEndpointInitHook(
 	void		*app_data,
-	void		*end_data,
+	void		**end_data,
 	OWPAddr		remoteaddr,
 	OWPSID		sid
 );
@@ -48,20 +48,20 @@ OWPDefEndpointInitHook(
 extern OWPErrSeverity
 OWPDefEndpointStart(
 	void	*app_data,
-	void	*end_data
+	void	**end_data
 	);
 
 extern OWPErrSeverity
 OWPDefEndpointStatus(
 	void		*app_data,
-	void		*end_data,
+	void		**end_data,
 	OWPAcceptType	*aval
 	);
 
 extern OWPErrSeverity
 OWPDefEndpointStop(
 	void		*app_data,
-	void		*end_data,
+	void		**end_data,
 	OWPAcceptType	aval
 	);
 
