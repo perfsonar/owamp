@@ -28,10 +28,6 @@ const char *DefaultPasswdFile = DEFAULT_PASSWD_FILE;
 char *PasswdFile = NULL;
 u_int32_t DefaultMode = OWP_MODE_OPEN;
 
-char* ipaddr2class(u_int32_t ip_addr);
-datum* str2datum(const char *bytes);
-
-OWPContext ctx;
 hash_ptr ip2class_hash, class2limits_hash, passwd_hash;
 
 /* Global variable - the total number of allowed Control connections. */
@@ -57,19 +53,22 @@ usage(char *name)
 
 OWPBoolean
 owamp_first_check(void *app_data,
-		       struct sockaddr *local,
-		       struct sockaddr *remote,
-		       OWPErrSeverity *err_ret
-		       )
+		  struct sockaddr *local,
+		  struct sockaddr *remote,
+		  OWPErrSeverity *err_ret,
+		  hash_ptr ip2class_hash
+		  )
 {
 	u_int32_t ip_addr; 
 	switch (remote->sa_family){
 	case AF_INET:
 	    ip_addr = ntohl((((struct sockaddr_in *)remote)->sin_addr).s_addr);
 	    fprintf(stderr, "DEBUG: IP = %s\n", owamp_denumberize(ip_addr));
-	    fprintf(stderr, "DEBUG: class = %s\n", ipaddr2class(ip_addr));
+	    fprintf(stderr, "DEBUG: class = %s\n", 
+		    ipaddr2class(ip_addr, ip2class_hash));
 
-	        if (strcmp(ipaddr2class(ip_addr), BANNED_CLASS) == 0){ 
+	        if (strcmp(ipaddr2class(ip_addr, ip2class_hash), 
+			   BANNED_CLASS) == 0){ 
 		    *err_ret = OWPErrFATAL; /* prohibit access */
 		    return 0;
 	    } else {
@@ -85,7 +84,10 @@ owamp_first_check(void *app_data,
 }
 
 static int
-tcp_listen(const char *host, const char *serv, socklen_t *addrlenp)
+tcp_listen(OWPContext ctx, 
+	   const char *host, 
+	   const char *serv, 
+	   socklen_t *addrlenp)
 {
 	int listenfd, n;
 	const int on = 1;
@@ -249,7 +251,8 @@ doit(OWPControl ctrl, int connfd)
 		bcopy(buf + 4, kid, 8);
 
 		/* Fetch the shared secret and initialize the cipher. */
-		key = hash_fetch(passwd_hash, str2datum((const char *)kid));
+		key = hash_fetch(passwd_hash, 
+				 (const datum *)str2datum((const char *)kid));
 		r = makeKey(&keyInst, DIR_DECRYPT, 128, key->dptr);
 		if (TRUE != r) {
 			fprintf(stderr,"makeKey error %d\n",r);
@@ -391,13 +394,6 @@ main(int argc, char *argv[])
 		NULL
 	};
 
-#if SCRATCH
-	if ( (scratch = fopen("scratch.txt", "w")) == NULL){
-		perror("fopen scratch.txt for writing.\n");
-		exit(1);
-	}
-#endif
-
 	/* Parse command line options. */
 	while ((c = getopt(argc, argv, "f:a:p:n:h")) != -1) {
 		switch (c) {
@@ -454,7 +450,7 @@ main(int argc, char *argv[])
 			 "Could not initialize hash for %s", IPtoClassFile);
 		exit(1);
 	}
-	owamp_read_ip2class(path, ip2class_hash); 
+	owamp_read_ip2class(ctx, path, ip2class_hash); 
 	hash_print(ip2class_hash, stderr);
 
 	/* Open the class2limits hash for writing. */
@@ -481,7 +477,7 @@ main(int argc, char *argv[])
 	read_passwd_file(path, passwd_hash);
 	hash_print(passwd_hash, stderr);
 
-	listenfd = tcp_listen(host, port, &addrlen);
+	listenfd = tcp_listen(ctx, host, port, &addrlen);
 	if (signal(SIGCHLD, sig_chld) == SIG_ERR){
 		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
 			 "signal() failed. errno = %d", errno);	
@@ -510,7 +506,7 @@ main(int argc, char *argv[])
 				OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
 					 "accept error");
 		}
-		owamp_first_check(NULL, NULL, cliaddr, &out);
+		owamp_first_check(NULL, NULL, cliaddr, &out, ip2class_hash);
 		switch (out) {
 		case OWPErrFATAL:
 			fprintf(stderr, "DEBUG: access prohibited\n");

@@ -28,18 +28,11 @@
 
 #define DEBUG   0
 
-#define SCRATCH 1
-
-#if SCRATCH
-FILE *scratch;
-#endif
-
 struct subnet {
 	u_int32_t address;
 	u_int8_t offset;
 };
 
-hash_ptr ip2class_hash, class2limits_hash, passwd_hash;
 OWPContext ctx;
 
 u_int32_t
@@ -257,8 +250,8 @@ get_offset(const datum * dat)
 
 /*!
 ** This function reads the configuration file given by the path <ip2class>, 
-** processes it and saves the results in <hash>. The format of the file
-** is as follows: lines of the form 
+** processes it and saves the results in <ip2class_hash>. 
+** The format of the file is as follows: lines of the form 
 
 ** <network_address/offset> <class>
 
@@ -267,7 +260,9 @@ get_offset(const datum * dat)
 ** is the (ASCII) name of the corresponding user class.
 */
 void
-owamp_read_ip2class(const char *ip2class, hash_ptr hash)
+owamp_read_ip2class(OWPContext ctx,
+		    const char *ip2class, 
+		    hash_ptr ip2class_hash)
 {
 	char line[MAX_LINE], mask[MAX_LINE], class[MAX_LINE];
 	char err_msg[1024];
@@ -303,7 +298,7 @@ owamp_read_ip2class(const char *ip2class, hash_ptr hash)
 		if ( (val = str2datum(class)) == NULL )
 			continue;
 
-		if (hash_store(ctx, hash, key, val) != 0)
+		if (hash_store(ctx, ip2class_hash, key, val) != 0)
 			continue;
 	}
 
@@ -316,7 +311,7 @@ owamp_read_ip2class(const char *ip2class, hash_ptr hash)
 		goto CLOSE;
 	if ( (val = str2datum(DEFAULT_OPEN_CLASS)) == NULL)
 		goto CLOSE;
-	if (hash_store(ctx, hash, key, val) != 0)
+	if (hash_store(ctx, ip2class_hash, key, val) != 0)
 		OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, 
 			 "WARNING: hash_store failed to insert all key");
  CLOSE:
@@ -394,7 +389,7 @@ read_passwd_file(const char *passwd_file, hash_ptr hash)
 }
 
 char *
-ipaddr2class(u_int32_t ip)
+ipaddr2class(u_int32_t ip, hash_ptr ip2class_hash)
 {
 	int offset;
 	datum *key_dat_ptr, *val_dat;

@@ -2,7 +2,7 @@
 #include "table.h"
 
 void
-test_ip2class()
+test_ip2class(hash_ptr ip2class_hash)
 {
 	char line[MAX_LINE];
 	u_int32_t ip;
@@ -17,7 +17,8 @@ test_ip2class()
 			fprintf(stderr,"could not numberize IP = %s\n", line);
 			continue;
 		}
-		printf("the class for ip = %lu is %s\n", ip, ipaddr2class(ip));
+		printf("the class for ip = %lu is %s\n", ip, 
+		       ipaddr2class(ip, ip2class_hash));
 	}
 }
 

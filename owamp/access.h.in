@@ -47,3 +47,5 @@ typedef struct owamp_limits {
 	u_int32_t space;       /* bytes                              */
 	u_int8_t test_sessions; /* number of concurrent test sessions */
 } OWAMPLimits;
+
+extern char *ipaddr2class(u_int32_t ip, hash_ptr ip2class_hash);
