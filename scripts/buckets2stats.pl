@@ -258,11 +258,14 @@ sub plot_resolution {
     }
 
     my $gnu_dat = "$datadir/$res.dat";
-    open(GNUDAT, ">$gnu_dat") or die "Could not open $gnu_dat: $!";
-    autoflush GNUDAT 1;
-    unless (flock_tmout(GNUDAT, LOCK_EX, $timeout)) {
+
+    my $gnudat = new FileHandle $summary_file, O_RDWR|O_CREAT;
+
+    open($gnudat, ">$gnu_dat") or die "Could not open $gnu_dat: $!";
+    autoflush $gnudat 1;
+    unless (flock_tmout($gnudat, LOCK_EX, $timeout)) {
 	warn "Could not flock $gnu_dat: $!";
-	close GNUDAT;
+	close $gnudat;
 	return;
     }
 
@@ -342,7 +345,7 @@ sub plot_resolution {
 		     $lost_perc);
 
 	my $date = "$year/$mon/$day/$hour/$minute/$second";
-	print GNUDAT join " ", $date, @stats, "\n";
+	print $gnudat join " ", $date, @stats, "\n";
 	$got_data = 1;
 
 	if ($med eq 'inf') {
@@ -370,8 +373,8 @@ sub plot_resolution {
 	print "DEBUG: worst_prec = $worst_prec\n" if DEBUG;
     } else {
 	warn "no new data found in $datadir - creating an empty plot";
-	print GNUDAT join '/', ymdHMS($init - 0.5*$age);
-	print GNUDAT ' ', join ' ', 0, 0, 0, 0, 0, "\n";
+	print $gnudat join '/', ymdHMS($init - 0.5*$age);
+	print $gnudat ' ', join ' ', 0, 0, 0, 0, 0, "\n";
 	$psize = 0.0;
 	$err_line = '';
 	print "DEBUG: no data for the $sender -> $recv\n" if DEBUG;
@@ -447,7 +450,7 @@ STOP
 	warn "archived $archived_loss_file";
     }
 
-    close GNUDAT; # releases the lock for this resolution
+    close $gnudat; # releases the lock for this resolution
     warn "plotted files: $delays_png $loss_png" if VERBOSE;
     warn "data file: $gnu_dat" if VERBOSE;
 }
