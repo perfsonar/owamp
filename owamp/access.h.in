@@ -44,14 +44,14 @@
 #define MAXPATHLEN 1024
 #endif
 
-
 #define OWP_DEFAULT_OPEN_CLASS "open"
 #define OWP_AUTH_CLASS "authenticated"
 #define OWP_BANNED_CLASS "banned"
 
-#define KID_LEN 16
-#define PASSWD_LEN 16
-#define PASSWD_LEN_HEX (PASSWD_LEN * 2)
+#define OWP_KID_LEN 16
+#define OWP_PASSWD_LEN 16
+#define OWP_HEX_PASSWD_LEN (OWP_PASSWD_LEN * 2)
+#define OWP_MAX_CLASS_LEN 32
 
 /*
 ** This structure is used to keep track of usage resources.
@@ -69,18 +69,12 @@ typedef struct {
 	I2table passwd;
 } policy_data;
 
-
-typedef int idtype;
-#define OWP_IDTYPE_KID     (idtype)1
-#define OWP_IDTYPE_IPv4    (idtype)2
-#define OWP_IDTYPE_IPv6    (idtype)3
-
 typedef struct owp_access_id {
 	u_int32_t addr4;
 	u_int8_t  addr6[16];
 	u_int8_t  offset; /* not meaningful for KID */
-	char      kid[KID_LEN + 1];
-	idtype    type;  /* OWP_IDTYPE_KID, OWP_IDTYPE_IPv4, OWP_IDTYPE_IPv6 */
+	char      kid[OWP_KID_LEN + 1];
+	int    type;  /* OWP_IDTYPE_KID, OWP_IDTYPE_IPv4, OWP_IDTYPE_IPv6 */
 } owp_access_id;
 
 typedef struct owp_access_netmask {
@@ -90,23 +84,21 @@ typedef struct owp_access_netmask {
 	int       af;               /* AF_INET, AF_INET6 */
 } owp_access_netmask;
 
+typedef struct owp_kid_data {
+	char passwd[OWP_HEX_PASSWD_LEN + 1];
+	char class[OWP_MAX_CLASS_LEN + 1];
+} owp_kid_data;
+
 extern char *ipaddr2class(u_int32_t ip, I2table ip2class_hash);
 extern void owp_print_ip2class_binding(const struct I2binding *p, FILE* fp);
+void owp_print_kid2data_binding(const struct I2binding *p, FILE* fp);
 extern void print_class2limits_binding(const struct I2binding *p, FILE* fp);
 extern char *owamp_denumberize(unsigned long addr);
 
 extern unsigned long OWAMPGetBandwidth(OWAMPLimits * lim);
 extern unsigned long OWAMPGetSpace(OWAMPLimits * lim);
 extern unsigned long OWAMPGetNumSessions(OWAMPLimits * lim);
-extern u_int32_t owp_get_ip(const I2datum * dat);
-extern u_int8_t  owp_get_offset(const I2datum * dat);
 
-/*
- * Tolya: Shouldn't a prototype go here for this?
- *  - if not just remove it - but I needed the prototype to try and use it,
- *  and it didn't make sense to put it in the .c file - it is used from
- *  more than one place.
- */
 extern policy_data
 *PolicyInit(
 	OWPContext	ctx,

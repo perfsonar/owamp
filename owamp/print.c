@@ -47,6 +47,21 @@ owp_print_ip2class_binding(const struct I2binding *p, FILE* fp)
 	fprintf(fp, "DEBUG: class is %s\n\n", (char *)(p->value->dptr));
 }
 
+/*
+** Print the binding of a KID and its corresponding hex-encoded
+** password and usage class.
+*/
+void
+owp_print_kid2data_binding(const struct I2binding *p, FILE* fp)
+{
+	owp_kid_data* ptr = (owp_kid_data *)p->value->dptr;
+
+	fprintf(fp, "KID %s has password %s and class %s.\n",
+		(char *)p->key->dptr,
+		ptr->passwd, ptr->class);
+}
+
+#if 0
 void
 print_limits(OWAMPLimits * limits, FILE* fp)
 {
@@ -63,4 +78,5 @@ print_class2limits_binding(const struct I2binding *p, FILE* fp)
 	fprintf(fp, "the limits for class %s are: ", (char *)(p->key->dptr));
 	print_limits((OWAMPLimits *)(p->value->dptr), fp);
 }
+#endif
 

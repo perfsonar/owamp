@@ -29,14 +29,14 @@
 
 /*
 ** This function fills out a datum structure with the given string.
-** <len> typically should be strlen(bytes) + 1.
+** When saving a string, <len> typically should be strlen(bytes) + 1.
 */
 static I2datum*
-str2datum2(const char *bytes, size_t len)
+raw2datum(const void *bytes, size_t len)
 {
 	I2datum *dat;
 
-	if ( (dat = (void *)malloc(sizeof(I2datum))) == NULL){
+	if ( (dat = (void *)malloc(sizeof(*dat))) == NULL){
 		perror("malloc");
 		exit(1);
 	}
@@ -53,7 +53,7 @@ str2datum2(const char *bytes, size_t len)
 /*
 ** Check if a given IPv6 netmask is legal. Return 1 if yes, 0 otherwise.
 */
-int
+static int
 is_valid_netmask6(struct sockaddr_in6 *addr, u_int8_t num_offset)
 {
 	int i;
@@ -99,8 +99,8 @@ is_valid_netmask6(struct sockaddr_in6 *addr, u_int8_t num_offset)
 ** NOTE that when BOTH netmasks happen to be legal, the function
 ** behaves like a real honest comparison.
 */
-int
-cmp_netmask_match(const I2datum *address, const I2datum *netmask)
+static int
+owp_cmp_netmask_match(const I2datum *address, const I2datum *netmask)
 {
 	owp_access_netmask *addr, *net;
 	u_int8_t *ptra, *ptrb, nbytes, nbits;
@@ -141,7 +141,7 @@ cmp_netmask_match(const I2datum *address, const I2datum *netmask)
 /*
 ** Constructor function for a new datum struct.
 */
-I2datum *
+static I2datum *
 I2datum_new()
 {
 	I2datum *ret;
@@ -157,7 +157,7 @@ I2datum_new()
 /*
 ** Constructor function for a new owp_access_netmask struct.
 */
-owp_access_netmask *
+static owp_access_netmask *
 owp_access_netmask_new()
 {
 	owp_access_netmask *ret;
@@ -170,9 +170,24 @@ owp_access_netmask_new()
 }
 
 /*
+** Constructor function for a new owp_kid_data struct.
+*/
+static owp_kid_data *
+owp_kid_data_new()
+{
+	owp_kid_data *ret;
+	ret = (void *)malloc(sizeof(*ret));
+	if (!ret) {
+		perror("malloc");
+		exit(1);
+	}
+	return ret;
+}
+
+/*
 ** Create a hash key out of a netmask.
 */
-I2datum *
+static I2datum *
 owp_netmask2datum(owp_access_netmask *netmask)
 {
 	I2datum *ret = I2datum_new();
@@ -192,7 +207,7 @@ owp_netmask2datum(owp_access_netmask *netmask)
 ** (thus eventually keeping the address in the NETWORK byte
 ** order).
 */
-void
+static void
 owp_netmask2class_store(void *addr, 
 			u_int8_t num_offset, 
 			int family,         /* AF_INET, AF_INET6 */
@@ -224,46 +239,15 @@ owp_netmask2class_store(void *addr,
 		return;
 		break;
 	}
-	val = str2datum2(class, strlen(class) + 1);
+	val = raw2datum(class, strlen(class) + 1);
 	I2hash_store(id2class_hash, key, val);
 }
-
-#if 0
-/*
-** Given a string representing a KID, save it in the hash.
-*/ 
-void
-owp_id2class_store_kid(char *kid, char *class, I2table id2class_hash)
-{
-	I2datum *key, *val;
-	owp_access_id *ptr;
-
-	key = I2datum_new();
-
-	key->dptr = (void *)owp_access_id_new();
-	ptr = (owp_access_id *)(key->dptr);
-
-	ptr->addr4 = 0;
-	memset(ptr->addr6, 0, 16);
-	ptr->offset = (u_int8_t)0;
-
-	strncpy(ptr->kid, kid, KID_LEN);
-	ptr->kid[KID_LEN] = '\0';
-
-	ptr->type = OWP_IDTYPE_KID;
-	key->dsize = sizeof(owp_access_id);
-
-	val = str2datum2(class, strlen(class) + 1);
-
-	I2hash_store(id2class_hash, key, val);
-}
-#endif
 
 /*
 ** Read the file containing the mapping of IP netmasks to classes,
 ** Then save the data in the given hash.
 */
-int
+static int
 owp_read_ip2class(OWPContext ctx,
 		    const char *id2class, 
 		    I2table id2class_hash)
@@ -385,10 +369,22 @@ owp_read_ip2class(OWPContext ctx,
 	return 0;
 }
 
+/*
+** Look up the class corresponding to a given KID.
+** <len> typically should be strlen(kid) + 1.
+*/
 char *
-owp_kid2class()
+owp_kid2class(char *kid, int len, policy_data* policy)
 {
-	return NULL;
+	I2table hash;
+	I2datum *key, *val;
+	
+	assert(kid); assert(policy);
+	hash = policy->passwd;
+	key = raw2datum(kid, len);
+	val = I2hash_fetch(hash, key);
+
+	return val? val->dptr : NULL;
 }
 
 /*
@@ -398,13 +394,16 @@ owp_kid2class()
 ** If no such class is found, NULL is returned.
 */
 char *
-owp_netmask2class(owp_access_netmask *netmask, I2table hash)
+owp_netmask2class(owp_access_netmask *netmask, policy_data* policy)
 {
 	owp_access_netmask* cur_mask = owp_access_netmask_new();
 	I2datum *key, *val;
+	I2table hash;
 	u_int32_t mask_template  = 0xFFFFFFFF;
 	int offset;
 
+	assert(netmask); assert(policy);
+	hash = policy->ip2class;
 	switch (netmask->af) {
 	case AF_INET:
 		memset(cur_mask->addr6, 0, 16);
@@ -417,7 +416,7 @@ owp_netmask2class(owp_access_netmask *netmask, I2table hash)
 
 			key = owp_netmask2datum(cur_mask);
 			val = I2hash_fetch(hash, key);
-			if (val->dptr)
+			if (val)
 				return val->dptr;
 		}
 		break;
@@ -430,7 +429,7 @@ owp_netmask2class(owp_access_netmask *netmask, I2table hash)
 			cur_mask->offset = offset;
 			key = owp_netmask2datum(cur_mask);
 			val = I2hash_fetch(hash, key);
-			if (val->dptr)
+			if (val)
 				return val->dptr;
 		}
 		break;
@@ -441,26 +440,25 @@ owp_netmask2class(owp_access_netmask *netmask, I2table hash)
 }
 
 /*!
-** This function reads the file given by the path <passwd_file>,
-** parses it and saves results in <hash>. <password file> contains
-** the mapping from KIDs to OWAMP shared secrets. Its format is the
-** following: lines of the form 
+** Read the file given by the path <passwd_file>, parse it and save 
+** results in <hash>. <password file> assigns to each KID its OWAMP 
+** shared secret and usage class. Its format is: lines of the form 
 
-** <KID> <shared_secret>
+** <KID> <shared_secret> <class>
 
 ** where <KID> is an ASCII string of length at most 16,
-** and <shared_secret> is a sequence of hex digits of length 32
-** (corresponding to 16 bytes of binary data).
+** <shared_secret> is a sequence of hex digits of length 32
+** (corresponding to 16 bytes of binary data), and <class> is
+** the usage class.
 */
 
-#define HEX_SECRET_LEN  32 /* number of hex digits to encode a shared secret */
- 
-void
-read_passwd_file2(OWPContext ctx, const char *passwd_file, I2table hash)
+static void
+owp_read_passwd_file(OWPContext ctx, const char *passwd_file, I2table hash)
 {
 	char line[MAX_LINE];
-	char *kid, *secret;
+	char *kid, *secret, *class;
 	FILE *fp;
+	owp_kid_data *kid_data;
 	
 	I2datum *key, *val;
 
@@ -478,23 +476,32 @@ read_passwd_file2(OWPContext ctx, const char *passwd_file, I2table hash)
 		kid = strtok(line, " \t");
 		if (!kid)
 			continue;
-		if (strlen(kid) > KID_LEN){
-			kid[KID_LEN] = '\0';
+		if (strlen(kid) > OWP_KID_LEN){
+			kid[OWP_KID_LEN] = '\0';
 			OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, 
 				 "warning: KID %s too long - truncating",
-				 " to %d characters\n", kid, KID_LEN);
+				 " to %d characters\n", kid, OWP_KID_LEN);
 		}
 
 		secret = strtok(NULL, " \t");
 		if (!secret)
 			continue;
 
+		kid_data = owp_kid_data_new();
+		strncpy(kid_data->passwd, secret, OWP_HEX_PASSWD_LEN + 1);
+
 		/* truncate if necessary */
-		secret[HEX_SECRET_LEN] = '\0';
+		kid_data->passwd[OWP_HEX_PASSWD_LEN] = '\0';
+
+		class = strtok(NULL, " \t");
+		if (!class)
+			continue;
+		strncpy(kid_data->class, class, OWP_MAX_CLASS_LEN + 1);
+		kid_data->class[OWP_MAX_CLASS_LEN] = '\0';
 
 		/* Now save the key/class pair in a hash. */
-		key = str2datum2(kid, strlen(kid) + 1);
-		val = str2datum2(secret, strlen(secret) + 1);
+		key = raw2datum(kid, strlen(kid) + 1);
+		val = raw2datum(kid_data, sizeof(*kid_data));
 
 		if (I2hash_store(hash, key, val) != 0)
 			continue;
@@ -505,7 +512,11 @@ read_passwd_file2(OWPContext ctx, const char *passwd_file, I2table hash)
 			 "warning: fclose(%d) failed\n", fp);
 }
 
-void
+/*
+** Read the config file <class2limits> and save the data in the hash
+** for future lookups.
+*/
+static void
 owp_read_class2limits2(OWPContext ctx, const char *class2limits,I2table hash)
 {
 
@@ -536,7 +547,7 @@ PolicyInit(
 	}
 
 	/* Initialize the hashes. */
-	ret->ip2class = I2hash_init(ctx, 0, NULL, NULL, 
+	ret->ip2class = I2hash_init(ctx, 0, owp_cmp_netmask_match, NULL, 
 				    owp_print_ip2class_binding);
 	if (ret->ip2class == NULL){
 		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN,
@@ -545,8 +556,8 @@ PolicyInit(
 		return ret;
 	}
 
-	ret->class2limits = I2hash_init(ctx, 0, NULL, NULL, 
-					print_class2limits_binding);
+	ret->class2limits = I2hash_init(ctx, 0, NULL, NULL, NULL);
+
 	if (ret->class2limits == NULL){
 		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN,
 			 "could not init class2limits hash");
@@ -554,7 +565,8 @@ PolicyInit(
 		return ret;
 	}
 
-	ret->passwd = I2hash_init(ctx, 0, NULL, NULL, NULL);
+	ret->passwd = I2hash_init(ctx, 0, NULL, NULL, 
+				  owp_print_kid2data_binding);
 	if (ret->passwd == NULL){
 		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN,
 			 "could not init passwd hash");
@@ -565,10 +577,20 @@ PolicyInit(
 	/* Now read config files and save info in the hashes. */
 	owp_read_ip2class(ctx, ip2class_file, ret->ip2class); 
 	owp_read_class2limits2(ctx, class2limits_file, ret->class2limits);
-	read_passwd_file2(ctx, passwd_file, ret->passwd);
+	owp_read_passwd_file(ctx, passwd_file, ret->passwd);
 
 	*err_ret = OWPErrOK;
 	return ret;
+}
+
+unsigned long
+OWAMPGetBandwidth(OWAMPLimits * lim){
+	return lim->bandwidth;
+}
+
+unsigned long
+OWAMPGetSpace(OWAMPLimits * lim){
+	return lim->space;
 }
 
 #endif
