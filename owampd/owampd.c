@@ -606,11 +606,6 @@ main(int argc, char *argv[])
 	/*	get_aes_key_func	*/	owp_get_aes_key,
 	/*	check_control_func	*/	owp_check_control,
 	/*	check_test_func		*/	owp_check_test,
-	/*	endpoint_init_func	*/	NULL,
-	/*	endpoint_init_hook_func	*/	NULL,
-	/*	endpoint_start_func	*/	NULL,
-	/*	endpoint_status_func	*/	NULL,
-	/*	endpoint_stop_func	*/	NULL,
 	/*	rand_type		*/	I2RAND_DEV,
 	/*	rand_data		*/	NULL
 	};
@@ -733,10 +728,13 @@ main(int argc, char *argv[])
 	 */
 
 	/*
-	 * TODO: setup a config test for this - so gcc doesn't complain
-	 * about no-op.
+	 * TODO: a config test for this would probably be cleaner...
 	 */
-	assert(sizeof(pid_t)<=sizeof(data.dsize));/* ensure intcmp will work */
+	{	/* ensure intcmp will work */
+		size_t	psize = sizeof(pid_t);
+		assert(psize<=sizeof(data.dsize));
+	}
+
 	pidtable = I2hash_init(errhand,0,intcmp,inthash,NULL);
 	fdtable = I2hash_init(errhand,0,intcmp,inthash,NULL);
 	if(!pidtable || !fdtable){
