@@ -103,7 +103,7 @@ print_output_args()
 "   -h             print this message and exit",
 "   -Q             run the test and exit without reporting statistics",
 "   -R             print RAW data: \"SEQNO STIME SS SERR RTIME RS RERR\\n\"",
-"   [-v|-V]        print out individual delays, or full timestamps",
+"   -v             print out individual delays",
 "   -a alpha       report an additional percentile level for the delays"
 		);
 }
@@ -277,24 +277,6 @@ owp_record_out(
 		       (state->to)?  state->to : "***");
 
 	delay = OWPDelay(&rec->send, &rec->recv);
-	if (ping_ctx.opt.full) {
-		char		sendbuf[OWP_TSTAMPCHARS+1];
-		char		recvbuf[OWP_TSTAMPCHARS+1];
-
-		snprintf(sendbuf,sizeof(sendbuf),OWP_TSTAMPFMT,
-							rec->send.owptime);
-		snprintf(recvbuf,sizeof(recvbuf),OWP_TSTAMPFMT,
-							rec->recv.owptime);
-		fprintf(state->fp, 
-				"#%-10u send=%s %c%.5g     recv=%s %c%.5g\n",
-				rec->seq_no,
-				sendbuf,(rec->send.sync)? 'S' : 'U', 
-				(float)OWPGetTimeStampError(&rec->send),
-				recvbuf,(rec->recv.sync)? 'S' : 'U',
-				(float)OWPGetTimeStampError(&rec->recv)
-				);
-		return;
-	}
 
 	if (!OWPIsLostRecord(rec)) {
 		if (rec->send.sync && rec->recv.sync) {
@@ -942,7 +924,7 @@ main(
 	ctx = ping_ctx.lib_ctx;
 
 	/* Set default options. */
-	ping_ctx.opt.records = ping_ctx.opt.full = ping_ctx.opt.childwait 
+	ping_ctx.opt.records = ping_ctx.opt.childwait 
             = ping_ctx.opt.from = ping_ctx.opt.to = ping_ctx.opt.quiet
 	    = ping_ctx.opt.raw = False;
 	ping_ctx.opt.save_from_test = ping_ctx.opt.save_to_test 
@@ -1058,9 +1040,6 @@ main(
 
 
 		     /* Output options */
-             case 'V':
-		     ping_ctx.opt.full = True;
-		     /* fall-through */
              case 'v':
 		     ping_ctx.opt.records = True;
                      break;
