@@ -207,6 +207,20 @@ owp_netmask2class_store(void *addr,
 	return 0;
 }
 
+
+static int
+class_has_limits(char *class, policy_data *policy)
+{
+	I2datum temp_dat, *val;
+	I2table class2limits = policy->class2limits;
+
+	temp_dat.dptr = class;
+	temp_dat.dsize = strlen(class) + 1;
+	val = I2hash_fetch(class2limits, &temp_dat);
+
+	return (val)? 1 : 0;
+}
+
 /*
 ** Read the file containing the mapping of IP netmasks to classes,
 ** Then save the data in the given hash.
@@ -214,11 +228,17 @@ owp_netmask2class_store(void *addr,
 static int
 owp_read_ip2class(OWPContext ctx,
 		    const char *id2class, 
-		    I2table id2class_hash)
+		    policy_data *policy)
 {
 	FILE *fp;
 	char line[MAX_LINE];
 	unsigned long line_num = 0;
+	I2table id2class_hash = policy->ip2class;
+
+	/* two flags to keep track of whether 0/0 and ::0/0 masks have been
+	   given a class */
+	int ipv4_default_set = 0; 
+	int ipv6_default_set = 0;
 
 	printf("DEBUG: reading file %s...\n", id2class);
 
@@ -242,7 +262,6 @@ owp_read_ip2class(OWPContext ctx,
 		netmask = strtok_r(line, " \t", &brkt);
 		if (!netmask)             /* skip lines of whitespace */
 			continue;
-
 		class = strtok_r(NULL, " \t", &brkt);
 		if (!class){
 			OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN,
@@ -250,6 +269,14 @@ owp_read_ip2class(OWPContext ctx,
 				 id2class, line_num);
 			continue;
 		}
+
+		if (!class_has_limits(class, policy)){
+			OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
+			"FATAL: class %s has not been assigned limits",
+				 class); 
+			return -1;
+		}
+
 		/* Prepare the hints structure. */
 		memset(&hints, 0, sizeof(struct addrinfo));
 		hints.ai_flags = AI_NUMERICHOST;
@@ -289,7 +316,7 @@ owp_read_ip2class(OWPContext ctx,
 				goto BAD_MASK;
 			
 			num_offset = (u_int8_t)strtol(offset, NULL, 10);
-			if (num_offset == 0 && strncmp(offset, "0", 2))
+			if (num_offset == 0 && strcmp(offset, "0"))
 				goto BAD_MASK;
 		}
 
@@ -308,6 +335,9 @@ owp_read_ip2class(OWPContext ctx,
 				     & (((u_int8_t)1<<(32-num_offset)) - 1)))
 			     ) 
 				goto BAD_MASK;
+			/* If this is a 0/0 mask - set the flag. */
+			if (!strcmp(nodename, "0") && !num_offset)
+				ipv4_default_set = 1;
 			owp_netmask2class_store(&addr, num_offset, 
 					 res->ai_family, class, id2class_hash);
 			break;
@@ -316,6 +346,13 @@ owp_read_ip2class(OWPContext ctx,
 					 (struct sockaddr_in6 *)(res->ai_addr),
 					 num_offset))
 				goto BAD_MASK;
+			/* If this is a ::0/0 mask - set the flag. */
+			if (
+			    (!strcmp(nodename, "::0") 
+			     || !strcmp(nodename, "0::0"))
+			    && !num_offset
+			    )
+				ipv6_default_set = 1;
 		owp_netmask2class_store(res->ai_addr, num_offset, 
 					res->ai_family, class, id2class_hash);
 			break;
@@ -338,7 +375,7 @@ owp_read_ip2class(OWPContext ctx,
 ** <len> typically should be strlen(kid) + 1.
 */
 char *
-owp_kid2class(char *kid, int len, policy_data* policy)
+owp_kid2class(const char *kid, int len, policy_data* policy)
 {
 	I2table hash;
 	I2datum *key, *val;
@@ -474,14 +511,16 @@ owp_sockaddr2class(struct sockaddr *addr, policy_data* policy)
 ** the usage class.
 */
 static int
-owp_read_passwd_file(OWPContext ctx, const char *passwd_file, I2table hash)
+owp_read_passwd_file(OWPContext ctx, 
+		     const char *passwd_file, 
+		     policy_data *policy)
 {
 	char line[MAX_LINE];
 	char *kid, *secret, *class;
 	FILE *fp;
 	owp_kid_data *kid_data;
-	
 	I2datum *key, *val;
+	I2table hash = policy->passwd;
 
 	if ( (fp = fopen(passwd_file, "r")) == NULL){
 		OWPError(ctx, OWPErrFATAL, errno, 
@@ -523,6 +562,15 @@ owp_read_passwd_file(OWPContext ctx, const char *passwd_file, I2table hash)
 		class = strtok(NULL, " \t");
 		if (!class)
 			continue;
+
+		/* Check if the class has been assigned limits. */
+		if (!class_has_limits(class, policy)) {
+			OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
+			"FATAL: class %s has not been assigned limits",
+				 class); 
+			return -1;
+		}
+
 		strncpy(kid_data->class, class, OWP_MAX_CLASS_LEN + 1);
 		kid_data->class[OWP_MAX_CLASS_LEN] = '\0';
 
@@ -594,12 +642,11 @@ PolicyInit(
 	}
 	
 	/* Now read config files and save info in the hashes. */
-	owp_read_ip2class(ctx, ip2class_file, ret->ip2class); 
-	owp_read_passwd_file(ctx, passwd_file, ret->passwd);
-	owp_read_class2limits2(ctx, class2limits_file, ret->class2limits);
+	owp_read_class2limits2(ctx, class2limits_file, ret);
+	owp_read_ip2class(ctx, ip2class_file, ret); 
+	owp_read_passwd_file(ctx, passwd_file, ret);
 
 	*err_ret = OWPErrOK;
-	assert(ret->ip2class);
 	return ret;
 }
 
