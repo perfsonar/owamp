@@ -1,4 +1,5 @@
 /*! \file access.c */
+
 /*
 **      $Id$
 */
@@ -19,7 +20,6 @@
 **
 **	Description:	
 **	This file contains the OWAMP access policy functions.
-**	
 */
 
 #include "../libowamp/owampP.h"
@@ -189,10 +189,9 @@ is_valid_network(u_int32_t addr, u_int8_t offset)
 /*!
 ** This function takes a string of the form <address/netmask>
 ** where address is a dot-separated IP address, and netmask
-** is a mask offset. It fills in the location pointed to by dst 
-** with 5 bytes of data: the first four bytes are network address 
-** (host byte prder), and the last byte is the mask offset.
-** It returns 0 on success, and -1 on failure.
+** is a mask offset. The address and offset are returned through
+** the last 2 argument pointers. The function returns 0 on success, 
+** and -1 on failure.
 */
 
 static int
@@ -202,10 +201,6 @@ owamp_parse_mask(const char *text, u_int32_t *addr, u_int8_t *off)
 	char *addr_str = NULL;
 	char *mask_str = NULL;
 	unsigned long mask, host_bits;
-
-	if((addr_str = strdup(text)) == NULL)
-		return -1;
-
 
 	if((addr_str = strdup(text)) == NULL)
 		return -1;
@@ -331,9 +326,8 @@ owamp_read_ip2class(const char *ip2class, hash_ptr hash)
 	datum *key, *val;
 
 	if ( (fp = fopen(ip2class, "r")) == NULL){
-		snprintf(err_msg, sizeof(err_msg),"fopen %s for reading", 
-			ip2class);
-		perror(err_msg);
+		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
+			 "FATAL: fopen %s for reading", ip2class);
 		exit(1);
 	}
 
@@ -345,7 +339,8 @@ owamp_read_ip2class(const char *ip2class, hash_ptr hash)
 		if (sscanf(line, "%s%s", mask, class) != 2) 
 			continue;
 		if ((tmp = owamp_parse_mask(mask, &addr, &off)) != 0){
-			fprintf(stderr, "Warning: bad network %s\n", mask);
+			OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, 
+				 "Warning: bad network %s.", mask);
 			continue;
 		}
 		
@@ -360,7 +355,9 @@ owamp_read_ip2class(const char *ip2class, hash_ptr hash)
 			continue;
 	}
 
-	fclose(fp);
+	if (fclose(fp) < 0)
+		OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, 
+				 "Warning: fclose %d. failed", fp);
 
 	/* Assign DEFAULT_OPEN_CLASS for the widest mask. */
 	if ( (key = subnet2datum(0, 0)) == NULL)
@@ -368,7 +365,8 @@ owamp_read_ip2class(const char *ip2class, hash_ptr hash)
 	if ( (val = str2datum(DEFAULT_OPEN_CLASS)) == NULL)
 		goto CLOSE;
 	if (hash_store(hash, *key, *val, DBM_INSERT) != 0)
-		fprintf(stderr, "\nhash_store failed to insert all key\n\n");
+		OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, 
+			 "WARNING: hash_store failed to insert all key");
  CLOSE:
 	return;
 }
@@ -399,9 +397,8 @@ read_passwd_file(const char *passwd_file, hash_ptr hash)
 	datum *key, *val;
 
 	if ( (fp = fopen(passwd_file, "r")) == NULL){
-		snprintf(err_msg, sizeof(err_msg),"fopen %s for reading", 
-			passwd_file);
-		perror(err_msg);
+		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
+			 "FATAL: fopen %s for reading", passwd_file);
 		exit(1);
 	}
 
@@ -415,15 +412,16 @@ read_passwd_file(const char *passwd_file, hash_ptr hash)
 			continue;
 		if (strlen(kid) > KID_LEN){
 			kid[KID_LEN] = '\0';
-			fprintf(stderr, "Warning: KID %s too long - ",
-				"truncating to %d characters\n", kid, KID_LEN);
+			OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, 
+				 "Warning: KID %s too long - truncating",
+				 " to %d characters\n", kid, KID_LEN);
 		}
 
 		secret = strtok(NULL, " \t");
 		if ( strlen(secret) != PASSWD_LEN_HEX ){
-			fprintf(stderr, 
-		"Warning: shared_secret %s must consist of %d hex digits.\n", 
-				secret, PASSWD_LEN_HEX);
+		OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, 
+		   "Warning: shared_secret %s must consist of %d hex digits.", 
+			 secret, PASSWD_LEN_HEX);
 			continue;
 		}
 
@@ -438,7 +436,9 @@ read_passwd_file(const char *passwd_file, hash_ptr hash)
 			continue;
 	}
 
-	fclose(fp);
+	if (fclose(fp) < 0)
+		OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, 
+			 "Warning: fclose(%d)", fp);	;
 }
 
 char *
@@ -594,28 +594,52 @@ tcp_listen(const char *host, const char *serv, socklen_t *addrlenp)
 	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;
 
-	if ( (n = getaddrinfo(host, serv, &hints, &res)) != 0)
-		err_quit("tcp_listen error for %s, %s: %s",
-				 host, serv, gai_strerror(n));
+	if ( (n = getaddrinfo(host, serv, &hints, &res)) != 0){
+		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN,
+			 "tcp_listen error for %s, %s: %s",
+			 host, serv, gai_strerror(n));
+		exit(1);
+	}
+
 	ressave = res;
 
 	do {
 		listenfd = socket(res->ai_family, res->ai_socktype, 
 				  res->ai_protocol);
-		if (listenfd < 0)
-			continue;		/* error, try next one */
+		if (listenfd < 0){        /* error, try next one */
+			OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, 
+				 "socket() error");
+			continue;		
+		}
 
-		Setsockopt(listenfd, SOL_SOCKET,SO_REUSEADDR, &on, sizeof(on));
+		if (setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, 
+				&on, sizeof(on)) < 0 ){
+			OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, 
+				 "setsockopt() error");
+			continue;
+		}
 		if (bind(listenfd, res->ai_addr, res->ai_addrlen) == 0)
 			break;			/* success */
 
-		Close(listenfd);      /* bind error, close and try next one */
+		/* bind error, close and try next one */
+		OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, 
+			"bind() error");		
+		if (close(listenfd) < 0)
+			OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, 
+				"close() error");			
 	} while ( (res = res->ai_next) != NULL);
 
-	if (res == NULL)	/* errno from final socket() or bind() */
-		err_sys("tcp_listen error for %s, %s", host, serv);
+	if (res == NULL){	/* errno from final socket() or bind() */
+		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
+			 "FATAL: socket/bind error for %s, %s", host, serv);
+		exit(1);
+	}
 
-	Listen(listenfd, LISTENQ);
+	if (listen(listenfd, LISTENQ) < 0){
+		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
+			 "listen() error");
+		exit(1);
+	}
 
 	if (addrlenp)
 		*addrlenp = res->ai_addrlen;/* return size of proto address */
@@ -625,6 +649,55 @@ tcp_listen(const char *host, const char *serv, socklen_t *addrlenp)
 	return(listenfd);
 }
 /* end tcp_listen */
+
+ssize_t				       /* Read "n" bytes from a descriptor. */
+readn(int fd, void *vptr, size_t n)
+{
+	size_t	nleft;
+	ssize_t	nread;
+	char	*ptr;
+
+	ptr = vptr;
+	nleft = n;
+	while (nleft > 0) {
+		if ( (nread = read(fd, ptr, nleft)) < 0) {
+			if (errno == EINTR)
+				nread = 0;	   /* and call read() again */
+			else
+				return(-1);
+		} else if (nread == 0)
+			break;				/* EOF */
+
+		nleft -= nread;
+		ptr   += nread;
+	}
+	return(n - nleft);		/* return >= 0 */
+}
+/* end readn */
+
+ssize_t					/* Write "n" bytes to a descriptor. */
+writen(int fd, const void *vptr, size_t n)
+{
+	size_t		nleft;
+	ssize_t		nwritten;
+	const char	*ptr;
+
+	ptr = vptr;
+	nleft = n;
+	while (nleft > 0) {
+		if ( (nwritten = write(fd, ptr, nleft)) <= 0) {
+			if (errno == EINTR)
+				nwritten = 0;	  /* and call write() again */
+			else
+				return(-1);			/* error */
+		}
+
+		nleft -= nwritten;
+		ptr   += nwritten;
+	}
+	return(n);
+}
+/* end writen */
 
 /* XXX - currently default. Make configurable later. */
 u_int32_t
@@ -741,7 +814,7 @@ doit(int connfd)
 void
 do_ban(int fd)
 {
-	Close(fd);
+	close(fd);
 }
 
 /*
@@ -857,7 +930,7 @@ main(int argc, char *argv[])
 
 	ctx = OWPContextInitialize(&cfg);
 	
-
+	
 
 	/* 
 	   XXX - can't think of a better place to put it, but it doesn't
@@ -867,8 +940,8 @@ main(int argc, char *argv[])
 	
 	/* Open the ip2class hash for writing. */
 	if ((ip2class_hash = hash_init(IPtoClassFile)) == NULL){
-		syslog(LOG_ERR, "Could not initialize hash for %s",
-		       IPtoClassFile);
+		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
+			 "Could not initialize hash for %s", IPtoClassFile);
 		exit(1);
 	}
 	owamp_read_ip2class(IPtoClassFile, ip2class_hash); 
@@ -876,8 +949,8 @@ main(int argc, char *argv[])
 
 	/* Open the class2limits hash for writing. */
 	if ((class2limits_hash = hash_init(ClassToLimitsFile)) == NULL){
-		syslog(LOG_ERR, "Could not initialize hash for %s",
-		       ClassToLimitsFile);
+		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
+			"Could not initialize hash for %s", ClassToLimitsFile);
 		exit(1);
 	}
 	owamp_read_class2limits(ClassToLimitsFile, class2limits_hash);
@@ -885,20 +958,28 @@ main(int argc, char *argv[])
 
 	/* Open the passwd hash for writing. */
 	if ((passwd_hash = hash_init(PasswdFile)) == NULL){
-		syslog(LOG_ERR, "Could not initialize hash for %s",
-		       PasswdFile);
+		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
+			"Could not initialize hash for %s", PasswdFile);
 		exit(1);
 	}
 	read_passwd_file(PasswdFile, passwd_hash);
 
 	listenfd = tcp_listen(host, port, &addrlen);
-	Signal(SIGCHLD, sig_chld);
+	if (signal(SIGCHLD, sig_chld) == SIG_ERR){
+		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
+			 "signal() failed. errno = %d", errno);	
+		exit(1);
+	}
 
 #if 0
 	test_policy_check();
 #endif
 
-	cliaddr = (void*)Malloc(addrlen);
+	cliaddr = (void*)malloc(addrlen);
+	if (cliaddr == NULL){
+		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, "malloc");
+		exit(1);
+	}
 
 	for ( ; ; ) {
 		len = addrlen;
