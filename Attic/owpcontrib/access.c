@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
 #include <limits.h>
@@ -8,6 +9,7 @@
 #include <sys/stat.h>
 #include <assert.h>
 #include <netdb.h>
+#include <errno.h>
 #include <sys/wait.h>
 
 /* for inet_pton */
@@ -28,6 +30,7 @@
 ** Need this to define the initial policy check function.
 */
 #ifndef OWAMP_H
+typedef int		OWPBoolean;
 typedef enum {
 	OWPErrFATAL=-4,
 	OWPErrWARNING=-3,
@@ -138,7 +141,6 @@ owamp_numberize(const char *addr)
 
         return ntohl(sin_addr); 
 }
-
 
 /*
 ** Converts an IP address into dotted decimal
@@ -601,7 +603,8 @@ owamp_read_class2limits(const char *class2limits, hash_ptr hash)
 	}
 }
 
-void owamp_first_check(void *app_data,
+OWPBoolean
+owamp_first_check(void *app_data,
 		       struct sockaddr *local,
 		       struct sockaddr *remote,
 		       OWPErrSeverity *err_ret
@@ -616,12 +619,15 @@ void owamp_first_check(void *app_data,
 
 	    if (strcmp(ipaddr2class(ip_addr), BANNED_CLASS) == 0){
 		    *err_ret = OWPErrFATAL; /* prohibit access */
+		    return 0;
 	    } else {
 		    *err_ret = OWPErrOK;    /* allow access */
+		    return 1;
 	    };
 	    break;
 	    
 	default:
+		return 0;
 		break;
 	}
 }
@@ -656,12 +662,12 @@ test_policy_check()
 	while (1){
 		int len = sizeof(cliaddr);
 		connfd = accept(s, (struct sockaddr *)(&cliaddr), &len);
-		owamp_first_check(NULL,NULL,(struct sockaddr *)&cliaddr, &out);
-		switch (out) {
-		case OWPErrFATAL:
+		switch(owamp_first_check(NULL,NULL,
+				     (struct sockaddr *)&cliaddr, &out)){
+		case 0:
 			fprintf(stderr, "DEBUG: access prohibited\n");
 			break;
-		case OWPErrOK:
+		case 1:
 			fprintf(stderr, "DEBUG: access allowed\n");
 			break;
 		default:
@@ -675,8 +681,8 @@ test_policy_check()
 int
 tcp_listen(const char *host, const char *serv, socklen_t *addrlenp)
 {
-	int				listenfd, n;
-	const int		on = 1;
+	int listenfd, n;
+	const int on = 1;
 	struct addrinfo	hints, *res, *ressave;
 
 	bzero(&hints, sizeof(struct addrinfo));
@@ -720,19 +726,40 @@ tcp_listen(const char *host, const char *serv, socklen_t *addrlenp)
 u_int32_t
 get_mode()
 {
-	return 0;
+	return 4;
+}
+
+void
+random_byte(char *ptr)
+{
+	u_int8_t r = random() / (RAND_MAX / 1<<8);
+	*(u_int8_t *)ptr = r;
 }
 
 void
 do_control_client(pid_t connfd)
 {
 	char greeting[32];
+	char *cur;
 	u_int32_t mode;
+	int i;
 
 	/* first send server greeting */
 	bzero(greeting, 32);
 	mode = htonl(get_mode());
 	*(int32_t *)(greeting + 12) = mode;
+
+	/* generate random data for the last 16 bytes.
+	** We'll do it 16 times, one byte at a time
+	*/
+	cur = greeting + 16;
+	for (i = 0; i < 16; i++){
+		random_byte(cur);
+		cur++;
+	}
+
+	
+
 	;
 }
 
@@ -852,9 +879,13 @@ main(int argc, char *argv[])
 #if 1
 		break; /* XXX - remove */
 #endif
-
 		
-		connfd = Accept(listenfd, cliaddr, &len);
+		if ( (connfd = accept(listenfd, cliaddr, &len)) < 0){
+			if (errno == EINTR)
+				continue;
+			else
+				err_sys("accept error");
+		}
 		owamp_first_check(NULL, NULL, cliaddr, &out);
 		switch (out) {
 		case OWPErrFATAL:
