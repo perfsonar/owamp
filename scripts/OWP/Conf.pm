@@ -83,7 +83,7 @@ my %DEFS = (
 	UPTIMESENDTOADDR	=>	'netflow.internet2.edu',
 	UPTIMESENDTOPORT	=>	2345,
 	DATADIR			=>	'/data',
-	OWAMPDVARPATH		=>	'/var/run',
+	OWAMPDVARDIR		=>	'/var/run',
 	OWAMPDPIDFILE		=>	'owampd.pid',
 	OWAMPDINFOFILE		=>	'owampd.info',
 	UPTIME_DB               =>      'uptime.dat',
@@ -147,7 +147,6 @@ sub new {
 sub resolve_path{
 	my($self,$path) = @_;
 	my($home,$user,$key);
-	
 	
 	if(($path =~ m#^~/#o) || ($path =~ m#^~$#o)){
 		$home = $ENV{"HOME"} || $ENV{"LOGDIR"} || (getpwuid($<))[7] ||

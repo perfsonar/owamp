@@ -38,8 +38,8 @@
 # 
 
 # the path to your PID file
-_OWAMPDVARPATH
-PIDFILE=${OWAMPDVARPATH}/owampd.pid
+_OWAMPDVARDIR
+PIDFILE=${OWAMPDVARDIR}/owampd.pid
 
 # the path to your owampd binary, including options if necessary
 _OWAMPDBINDIR

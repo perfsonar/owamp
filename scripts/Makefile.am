@@ -25,7 +25,7 @@
 # 	UPTIMESENDTOADDR	=>	'netflow.internet2.edu',
 # 	UPTIMESENDTOPORT	=>	2345,
 # 	DATADIR			=>	'/data',
-# 	OWAMPDVARPATH		=>	'/var/run',
+# 	OWAMPDVARDIR		=>	'/var/run',
 # 	OWAMPDPIDFILE		=>	'owampd.pid',
 # 	OWAMPDINFOFILE		=>	'owampd.info',
 # 	UPTIME_DB               =>      'uptime.dat',
@@ -33,7 +33,7 @@
 # 	CONFDIR			=>	"$Conf::CONFPATH/",
 
 # 	DATADIR			=>	1,
-# 	OWAMPDVARPATH		=>	1,
+# 	OWAMPDVARDIR		=>	1,
 # 	OWPBINDIR		=>	1,
 # 	CONFDIR			=>	1,
 # 	CENTRALDATADIR		=
@@ -45,7 +45,7 @@ bin_SCRIPTS = owampd.sh collector.pl make_top_html.pl makecron.pl pairs_pages_in
 owampd.sh: owampd.sh.in
 	@echo bindir = $(bindir)
 	@perl -pe '                                               \
-	s!_OWAMPDVARPATH!OWAMPDVARPATH=$(sysconfdir)!;           \
+	s!_OWAMPDVARDIR!OWAMPDVARDIR=$(sysconfdir)!;           \
 	s!_OWAMPDBINDIR!OWAMPDBINDIR=$(bindir)!;                 \
 	s!_DATADIR!DATADIR=/data!;                               \
 	s!_CONFDIR!CONFDIR=$(sysconfdir)!                        \
