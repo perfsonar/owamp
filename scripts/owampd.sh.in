@@ -1,0 +1,148 @@
+#!/bin/sh
+#
+# Template for owampd control script largely modeled after (== stolen from?) 
+# apachectl.
+# 
+#
+#      $Id$
+#
+#########################################################################
+#									#
+#			   Copyright (C)  2002				#
+#	     			Internet2				#
+#			   All Rights Reserved				#
+#									#
+#########################################################################
+#
+#	File:		owampd.sh.in
+#
+#	Author:		Anatoly Karp
+#			Internet2
+#
+#	Date:		Fri Oct 18 17:53:58 EDT 2002
+#
+#	Description:	template for owampd rc script: owampd.sh
+
+# 
+# The exit codes returned are:
+#	0 - operation completed successfully
+#	2 - usage error
+#	3 - owampd could not be started
+#	4 - owampd could not be stopped
+#	5 - owampd could not be started during a restart
+#	6 - owampd could not be restarted during a restart
+#
+#
+# |||||||||||||||||||| START CONFIGURATION SECTION  ||||||||||||||||||||
+# --------------------                              --------------------
+# 
+
+# the path to your PID file
+_OWAMPDVARPATH
+PIDFILE=${OWAMPDVARPATH}/owampd.pid
+
+# the path to your owampd binary, including options if necessary
+_OWAMPDBINDIR
+
+# owampd data directory
+_DATADIR
+
+# directory for owampd configuration files
+_CONFDIR
+
+# owampd executable. XXX - FIX
+OWAMPD="${OWAMPDBINDIR}/owampd -d ${DATADIR} -C ${CONFDIR} 2>/dev/null"
+
+#
+# --------------------                              --------------------
+# ||||||||||||||||||||   END CONFIGURATION SECTION  ||||||||||||||||||||
+
+ERROR=0
+ARGV="$@"
+if [ "x$ARGV" = "x" ] ; then 
+    ARGS="help"
+fi
+
+for ARG in $@ $ARGS
+do
+    # check for pidfile
+    if [ -f $PIDFILE ] ; then
+	PID=`cat $PIDFILE`
+	if [ "x$PID" != "x" ] && kill -0 $PID 2>/dev/null ; then
+	    STATUS="owampd (pid $PID) running"
+	    RUNNING=1
+	else
+	    STATUS="owampd (pid $PID?) not running"
+	    RUNNING=0
+	fi
+    else
+	STATUS="owampd (no pid file) not running"
+	RUNNING=0
+    fi
+
+    case $ARG in
+    start)
+	if [ $RUNNING -eq 1 ]; then
+	    echo "$0 $ARG: owampd (pid $PID) already running"
+	    continue
+	fi
+
+	echo $OWAMPD
+
+	if $OWAMPD ; then
+	    echo "$0 $ARG: owampd started"
+	else
+	    echo "$0 $ARG: owampd could not be started"
+	    ERROR=3
+	fi
+	;;
+    stop)
+	if [ $RUNNING -eq 0 ]; then
+	    echo "$0 $ARG: $STATUS"
+	    continue
+	fi
+	if kill $PID ; then
+	    echo "$0 $ARG: owampd stopped"
+	else
+	    echo "$0 $ARG: owampd could not be stopped"
+	    ERROR=4
+	fi
+	;;
+    restart)
+	if [ $RUNNING -eq 0 ]; then
+	    echo "$0 $ARG: owampd not running, trying to start"
+	    if $OWAMPD ; then
+		echo "$0 $ARG: owampd started"
+	    else
+		echo "$0 $ARG: owampd could not be started"
+		ERROR=5
+	    fi
+	else
+	    if kill -HUP $PID ; then
+	       echo "$0 $ARG: owampd restarted"
+	    else
+	       echo "$0 $ARG: owampd could not be restarted"
+	       ERROR=6
+	    fi
+	fi
+	;;
+    *)
+	echo "usage: $0 (start|stop|restart|help)"
+	cat <<EOF
+
+start      - start owampd
+stop       - stop owampd
+restart    - restart owampd if running by sending a SIGHUP or start if 
+             not running
+help       - this screen
+
+EOF
+	ERROR=2
+    ;;
+
+    esac
+
+done
+
+exit $ERROR
+
