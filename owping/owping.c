@@ -560,7 +560,7 @@ printraw(
 {
 	FILE		*out = (FILE*)udata;
 
-	fprintf(out,RAWFMT,rec->seq_no,
+	fprintf(out,RAWFMT,(unsigned long)rec->seq_no,
 			rec->send.owptime,rec->send.sync,
 				OWPGetTimeStampError(&rec->send),
 			rec->recv.owptime,rec->recv.sync,
@@ -977,9 +977,9 @@ parse_slots(
 	 * parse string with strtok to grab each slot and fill the record
 	 */
 	i=0;
-	for(i=0,tstr = strtok(sched,',');
+	for(i=0,tstr = strtok(sched,",");
 			(i<nslots) && tstr;
-				tstr = strtok(NULL,','),i++){
+				tstr = strtok(NULL,","),i++){
 		char	*endptr;
 		double	dval;
 
@@ -1000,13 +1000,13 @@ parse_slots(
 			case '\0':
 			case 'e':
 				/* exponential slot */
-				slot[i].slot_type = OWPSlotRandExpType;
-				slot[i].rand_exp.mean = OWPDoubleToNum64(dval);
+				slots[i].slot_type = OWPSlotRandExpType;
+				slots[i].rand_exp.mean = OWPDoubleToNum64(dval);
 				break;
 			case 'f':
 				/* fixed offset slot */
-				slot[i].slot_type = OWPSlotLiteralType;
-				slot[i].literal.offset = OWPDoubleToNum64(dval);
+				slots[i].slot_type = OWPSlotLiteralType;
+				slots[i].literal.offset =OWPDoubleToNum64(dval);
 				break;
 			default:
 				I2ErrLogP(eh,errno,
@@ -1017,7 +1017,7 @@ parse_slots(
 		}
 	}
 
-	if(i >= nslots){
+	if(i != nslots){
 		I2ErrLogP(eh,errno,"Unable to parse schedule specification");
 			goto FAILED;
 	}
