@@ -53,6 +53,8 @@ typedef struct _EndpointRec{
 	int			wopts;
 	OWPBoolean		send;
 	int			sockfd;
+	OWPAddr			remoteaddr;
+
 	FILE			*datafile;
 	char			*filepath;
 	char			*linkpath;
@@ -161,13 +163,13 @@ reopen_datafile(
 	FILE	*fp;
 
 	if( (newfd = dup(fileno(infp))) < 0){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"dup(%d):%M",
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"dup(%d): %M",
 							fileno(infp));
 		return NULL;
 	}
 
 	if( !(fp = fdopen(newfd,"ab"))){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN, "fdopen(%d):%M",newfd);
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN, "fdopen(%d): %M",newfd);
 		return NULL;
 	}
 
@@ -191,7 +193,7 @@ opendatafile(
 	 * Ensure real_data_dir exists.
 	 */
 	if((mkdir(cdata->real_data_dir,0755) != 0) && (errno != EEXIST)){
-		 OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"mkdir(%s):%M",
+		 OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"mkdir(%s): %M",
 						  cdata->real_data_dir);
 		 return NULL;
 	}
@@ -203,7 +205,7 @@ opendatafile(
 		if((mkdir(cdata->link_data_dir,0755) != 0) &&
 							(errno != EEXIST)){
 			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"Unable to mkdir(%s):%M",
+					"Unable to mkdir(%s): %M",
 					cdata->link_data_dir);
 			return NULL;
 		}
@@ -216,7 +218,7 @@ opendatafile(
 				       + OWP_PATH_SEPARATOR_LEN
 				       + sizeof(OWPSID)*2
 				       + strlen(OWP_INCOMPLETE_EXT) + 1))) {
-			OWPError(ctx,OWPErrFATAL,errno,"malloc():%M");
+			OWPError(ctx,OWPErrFATAL,errno,"malloc(): %M");
 			return NULL;
 		}
 
@@ -246,12 +248,12 @@ opendatafile(
 	fp = fopen(ep->filepath,"wb");
 	if(!fp){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"Unable to open datafile(%s):%M",ep->filepath);
+				"Unable to open datafile(%s): %M",ep->filepath);
 		goto error;
 	}
 
 	if(ep->linkpath && (symlink(ep->filepath,ep->linkpath) != 0)){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"symlink():%M");
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"symlink(): %M");
 		goto error;
 	}
 
@@ -738,8 +740,13 @@ AGAIN:
 				rijndaelEncrypt(ep->aeskey->rk,ep->aeskey->Nr,
 					&clr_buffer[0],&ep->payload[0]);
 
-			if( (sent = send(ep->sockfd,ep->payload,
-						ep->len_payload,0)) < 0){
+			/*
+			 * TODO: Print address in send error messages!
+			 */
+			if( (sent = sendto(ep->sockfd,ep->payload,
+						ep->len_payload,0,
+						ep->remoteaddr->saddr,
+						ep->remoteaddr->saddrlen)) < 0){
 				switch(errno){
 					/* retry errors */
 					case ENOBUFS:
@@ -753,8 +760,7 @@ AGAIN:
 					case EAGAIN:
 						OWPError(ep->ctx,OWPErrFATAL,
 							OWPErrUNKNOWN,
-			"Unable to send:(PID %d,packet #%d): %M",getpid(),
-							i);
+				"Unable to send:(packet #%d): %M",i);
 						exit(OWP_CNTRL_FAILURE);
 						break;
 					/* ignore everything else */
@@ -764,8 +770,8 @@ AGAIN:
 
 				/* but do note it as INFO for debugging */
 				OWPError(ep->ctx,OWPErrINFO,OWPErrUNKNOWN,
-				       "Unable to send(PID %d,packet #%d): %M",
-				       getpid(),i);
+				       "Unable to send(packet #%d): %M",
+				       i);
 			}
 
 			i++;
@@ -814,7 +820,7 @@ AGAIN:
 			break;
 		if(errno != EINTR){
 			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"nanosleep():%M");
+					"nanosleep(): %M");
 			exit(OWP_CNTRL_FAILURE);
 		}
 	}
@@ -903,7 +909,7 @@ run_receiver(
 	 * Set timer for just past expected end of test.
 	 */
 	if(setitimer(ITIMER_REAL,&wake,NULL) != 0){
-		OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,"setitimer():%M");
+		OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,"setitimer(): %M");
 		goto error;
 	}
 
@@ -936,11 +942,11 @@ again:
 		}
 
 		if(recvfrom(ep->sockfd,ep->payload,ep->len_payload,0,
-				      NULL, NULL) != (ssize_t)ep->len_payload){
+				NULL,NULL) != (ssize_t)ep->len_payload){
 			if(errno == EINTR)
 				goto again;
 			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-							"recvfrom():%M");
+							"recvfrom(): %M");
 			goto error;
 		}
 
@@ -1016,13 +1022,13 @@ again:
 		/* write sequence number */
 		if(fwrite(seq,sizeof(u_int32_t),1,ep->datafile) != 1){
 			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"fwrite():%M");
+					"fwrite(): %M");
 			goto error;
 		}
 		/* write "sent" tstamp */
 		if(fwrite(tstamp,sizeof(u_int8_t),8,ep->datafile) != 8){
 			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-						"fwrite():%M");
+						"fwrite(): %M");
 			goto error;
 		}
 
@@ -1036,7 +1042,7 @@ again:
 		/* write "recv" tstamp */
 		if(fwrite(ep->clr_buffer,sizeof(u_int8_t),8,ep->datafile) !=8){
 			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-						"fwrite():%M");
+						"fwrite(): %M");
 			goto error;
 		}
 	}
@@ -1064,7 +1070,7 @@ test_over:
 			if(fwrite(ep->payload,sizeof(u_int8_t),20,ep->datafile)
 									!= 20){
 				OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-						"fwrite():%M");
+						"fwrite(): %M");
 				goto error;
 			}
 		}
@@ -1096,11 +1102,10 @@ error:
 }
 
 /*
- * The endpoint init_hook function is responsible for connecting the socket
- * to the remote endpoint. (We connect the UDP socket to improve performance,
- * we are only interested in packets coming from the sender - or sending to
- * the receiver and this lets the kernel deal with that instead of having
- * to mess with sendto/recvfrom.)
+ * Note: We explicitly do NOT connect the send udp socket. This is because
+ * each individual packet needs to be treated independant of the others. send
+ * causes the socket to close if ECONNREFUSED comes back. We specifically do
+ * NOT want this behavior.
  */
 OWPErrSeverity
 _OWPEndpointInitHook(
@@ -1112,10 +1117,9 @@ _OWPEndpointInitHook(
 	OWPContext		ctx = OWPGetContext(tsession->cntrl);
 	_Endpoint		ep=*(_Endpoint*)end_data;
 	struct sigaction	act;
-	struct sigaction	chldact,usr1act,usr2act,intact,alrmact;
+	struct sigaction	chldact,usr1act,usr2act,intact,pipeact,alrmact;
 	sigset_t		sigs,osigs;
 	int			i;
-	OWPAddr			remoteaddr;
 
 	if(!ep->send){
 		OWPSessionHeaderRec	hdr;
@@ -1139,17 +1143,23 @@ _OWPEndpointInitHook(
 			return OWPErrFATAL;
 		}
 
-		remoteaddr = tsession->sender;
+		ep->remoteaddr = tsession->sender;
+
+		/*
+		 * Connect the socket for recv case - the kernel will
+		 * ensure we are only dealing with packets from the
+		 * sender. This is more efficient.
+		 */
+		if(connect(ep->sockfd,ep->remoteaddr->saddr,
+					ep->remoteaddr->saddrlen) != 0){
+			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"connect(): %M");
+			EndpointFree(ep);
+			*end_data = NULL;
+			return OWPErrFATAL;
+		}
 	}
 	else{
-		remoteaddr = tsession->receiver;
-	}
-
-	if(connect(ep->sockfd,remoteaddr->saddr,remoteaddr->saddrlen) != 0){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"connect():%M");
-		EndpointFree(ep);
-		*end_data = NULL;
-		return OWPErrFATAL;
+		ep->remoteaddr = tsession->receiver;
 	}
 
 	/*
@@ -1171,9 +1181,11 @@ _OWPEndpointInitHook(
 	sigaddset(&sigs,SIGUSR2);
 	sigaddset(&sigs,SIGINT);
 	sigaddset(&sigs,SIGALRM);
+	sigaddset(&sigs,SIGPIPE);
+	sigaddset(&sigs,SIGCHLD);
 	
 	if(sigprocmask(SIG_BLOCK,&sigs,&osigs) != 0){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"sigprocmask():%M");
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"sigprocmask(): %M");
 		EndpointFree(ep);
 		*end_data = NULL;
 		return OWPErrFATAL;
@@ -1193,7 +1205,15 @@ _OWPEndpointInitHook(
 			(sigaction(SIGUSR2,&act,&usr2act) != 0) ||
 			(sigaction(SIGINT,&act,&intact) != 0) ||
 			(sigaction(SIGALRM,&act,&alrmact) != 0)){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"sigaction():%M");
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"sigaction(): %M");
+		EndpointFree(ep);
+		*end_data = NULL;
+		return OWPErrFATAL;
+	}
+	
+	act.sa_handler = SIG_IGN;
+	if(		(sigaction(SIGPIPE,&act,&pipeact) != 0)){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"sigaction(): %M");
 		EndpointFree(ep);
 		*end_data = NULL;
 		return OWPErrFATAL;
@@ -1211,7 +1231,7 @@ _OWPEndpointInitHook(
 	chldact.sa_flags = 0;
 	/* fetch current handler */
 	if(sigaction(SIGCHLD,NULL,&chldact) != 0){
-		OWPError(ctx,OWPErrWARNING,OWPErrUNKNOWN,"sigaction():%M");
+		OWPError(ctx,OWPErrWARNING,OWPErrUNKNOWN,"sigaction(): %M");
 		EndpointFree(ep);
 		*end_data = NULL;
 		return OWPErrFATAL;
@@ -1221,7 +1241,7 @@ _OWPEndpointInitHook(
 		chldact.sa_handler = sig_nothing;
 		if(sigaction(SIGCHLD,&chldact,NULL) != 0){
 			OWPError(ctx,OWPErrWARNING,OWPErrUNKNOWN,
-					"sigaction(DFL) failed:%M");
+					"sigaction(DFL) failed: %M");
 			EndpointFree(ep);
 			*end_data = NULL;
 			return OWPErrFATAL;
@@ -1235,7 +1255,7 @@ _OWPEndpointInitHook(
 	if(ep->child < 0){
 		/* fork error */
 		(void)sigprocmask(SIG_SETMASK,&osigs,NULL);
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fork():%M");
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fork(): %M");
 		EndpointFree(ep);
 		*end_data = NULL;
 		return OWPErrFATAL;
@@ -1251,34 +1271,31 @@ _OWPEndpointInitHook(
 		if(		(sigaction(SIGUSR1,&usr1act,NULL) != 0) ||
 				(sigaction(SIGUSR2,&usr2act,NULL) != 0) ||
 				(sigaction(SIGINT,&intact,NULL) != 0) ||
+				(sigaction(SIGPIPE,&pipeact,NULL) != 0) ||
 				(sigaction(SIGALRM,&alrmact,NULL) != 0)){
 			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-							"sigaction():%M");
-			kill(ep->child,SIGINT);
-			ep->wopts &= ~WNOHANG;
-			while((waitpid(ep->child,&childstatus,ep->wopts) < 0)
-					&& (errno == EINTR));
-			EndpointFree(ep);
-			*end_data = NULL;
-			return OWPErrFATAL;
+							"sigaction(): %M");
+			goto parenterr;
 		}
 	
 		/* reset sig_mask to the old one (-SIGCHLD)	*/
 		if(sigprocmask(SIG_SETMASK,&osigs,NULL) != 0){
 			OWPError(ctx,OWPErrWARNING,OWPErrUNKNOWN,
-							"sigprocmask():%M");
-			kill(ep->child,SIGINT);
-			ep->wopts &= ~WNOHANG;
-			while((waitpid(ep->child,&childstatus,ep->wopts) < 0)
-					&& (errno == EINTR));
-			EndpointFree(ep);
-			*end_data = NULL;
-			return OWPErrFATAL;
+							"sigprocmask(): %M");
+			goto parenterr;
 		}
 
 
 		EndpointClear(ep);
 		return OWPErrOK;
+parenterr:
+		kill(ep->child,SIGINT);
+		ep->wopts &= ~WNOHANG;
+		while((waitpid(ep->child,&childstatus,ep->wopts) < 0)
+					&& (errno == EINTR));
+		EndpointFree(ep);
+		*end_data = NULL;
+		return OWPErrFATAL;
 	}
 
 	/*
@@ -1322,6 +1339,7 @@ _OWPEndpointInitHook(
 	 * wait until signal to kick-off session.
 	 */
 	sigemptyset(&sigs);
+	sigaddset(&sigs,SIGPIPE);
 	while(!owp_usr1 && !owp_usr2 && !owp_int)
 		(void)sigsuspend(&sigs);
 
@@ -1342,7 +1360,7 @@ _OWPEndpointInitHook(
 		/* clear the sig mask so all sigs come through */
 		if(sigprocmask(SIG_SETMASK,&sigs,NULL) != 0){
 			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"sigprocmask():%M");
+					"sigprocmask(): %M");
 			exit(OWP_CNTRL_FAILURE);
 		}
 
@@ -1383,7 +1401,7 @@ _OWPEndpointStart(
 	if((ep->acceptval < 0) && ep->child && (kill(ep->child,SIGUSR1) == 0))
 		return OWPErrOK;
 	OWPError(cdata->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-			"EndpointStart:Can't signal child #%d:%M",ep->child);
+			"EndpointStart:Can't signal child #%d: %M",ep->child);
 	return OWPErrFATAL;
 }
 
@@ -1407,7 +1425,7 @@ AGAIN:
 				goto AGAIN;
 			OWPError(ep->ctx,OWPErrWARNING,
 				OWPErrUNKNOWN,
-				"_OWPEndpointStatus:Can't query child #%d:%M",
+				"_OWPEndpointStatus:Can't query child #%d: %M",
 				ep->child);
 			ep->acceptval = OWP_CNTRL_FAILURE;
 			err = OWPErrWARNING;
@@ -1461,7 +1479,7 @@ _OWPEndpointStop(
 
 error:
 	OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-			"EndpointStop:Can't signal child #%d:%M",ep->child);
+			"EndpointStop:Can't signal child #%d: %M",ep->child);
 done:
 	/*
 	 * To comply with throwing out unresolved sessions...
@@ -1490,7 +1508,7 @@ done:
 			newpath[lenpath-strlen(OWP_INCOMPLETE_EXT)] = '\0';
 			if(link(ep->filepath,newpath) != 0){
 				OWPError(ep->ctx,OWPErrWARNING,OWPErrUNKNOWN,
-					"link():%M");
+					"link(): %M");
 				err=OWPErrWARNING;
 			}
 			else if(ep->linkpath){
@@ -1505,7 +1523,7 @@ done:
 									'\0';
 				if(symlink(newpath,newlink) != 0){
 					OWPError(ep->ctx,OWPErrWARNING,
-						OWPErrUNKNOWN,"symlink():%M");
+						OWPErrUNKNOWN,"symlink(): %M");
 					err=OWPErrWARNING;
 				}
 
@@ -1519,13 +1537,13 @@ done:
 		if(ep->linkpath){
 			if((unlink(ep->linkpath) != 0) && (errno != ENOENT)){
 				OWPError(ep->ctx,OWPErrWARNING,OWPErrUNKNOWN,
-							"unlink():%M");
+							"unlink(): %M");
 				err=OWPErrWARNING;
 			}
 		}
 		if((unlink(ep->filepath) != 0) && (errno != ENOENT)){
 			OWPError(ep->ctx,OWPErrWARNING,OWPErrUNKNOWN,
-								"unlink():%M");
+								"unlink(): %M");
 			err=OWPErrWARNING;
 		}
 	}

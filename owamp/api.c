@@ -44,6 +44,7 @@ OWPContextInitialize(
 	OWPInitializeConfig	config
 )
 {
+	struct sigaction	act;
 	I2LogImmediateAttr	ia;
 	OWPContext		ctx = calloc(1,sizeof(OWPContextRec));
 
@@ -87,6 +88,30 @@ OWPContextInitialize(
 			     "Failed to initialize randomness sources");
 		OWPContextFree(ctx);
 		return NULL;
+	}
+
+	/*
+	 * Do NOT exit on SIGPIPE. To defeat this in the least intrusive
+	 * way only set SIG_IGN if SIGPIPE is currently set to SIG_DFL.
+	 * Presumably if someone actually set a SIGPIPE handler, they
+	 * knew what they were doing...
+	 */
+	sigemptyset(&act.sa_mask);
+	act.sa_handler = SIG_DFL;
+	act.sa_flags = 0;
+	if(sigaction(SIGPIPE,NULL,&act) != 0){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"sigaction(): %M");
+		OWPContextFree(ctx);
+		return NULL;
+	}
+	if(act.sa_handler == SIG_DFL){
+		act.sa_handler = SIG_IGN;
+		if(sigaction(SIGPIPE,&act,NULL) != 0){
+			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+					"sigaction(): %M");
+			OWPContextFree(ctx);
+			return NULL;
+		}
 	}
 
 	return ctx;

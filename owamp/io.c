@@ -21,66 +21,6 @@
 #include <fcntl.h>
 #include <owampP.h>
 
-/*
-** Robust low-level IO functions - out of Stevens. Read or write
-** the given number of bytes. Returns -1 on error. No short
-** count is possible.
-*/
-
-/*
- * TODO: Add timeout values for read's and write's. We don't want to wait
- * as long as kernel defaults - timeout is specified in the context.
- */
-
-ssize_t				       /* Read "n" bytes from a descriptor. */
-I2Readn(int fd, void *vptr, size_t n)
-{
-	size_t	nleft;
-	ssize_t	nread;
-	char	*ptr;
-
-	ptr = vptr;
-	nleft = n;
-	while (nleft > 0) {
-		if ( (nread = read(fd, ptr, nleft)) < 0) {
-			if (errno == EINTR)
-				nread = 0;	   /* and call read() again */
-			else
-				return(-1);
-		} else if (nread == 0)
-			break;				/* EOF */
-
-		nleft -= nread;
-		ptr   += nread;
-	}
-	return(n - nleft);		/* return >= 0 */
-}
-/* end I2Readn */
-
-ssize_t					/* Write "n" bytes to a descriptor. */
-I2Writen(int fd, const void *vptr, size_t n)
-{
-	size_t		nleft;
-	ssize_t		nwritten;
-	const char	*ptr;
-
-	ptr = vptr;
-	nleft = n;
-	while (nleft > 0) {
-		if ( (nwritten = write(fd, ptr, nleft)) <= 0) {
-			if (errno == EINTR)
-				nwritten = 0;	  /* and call write() again */
-			else
-				return(-1);			/* error */
-		}
-
-		nleft -= nwritten;
-		ptr   += nwritten;
-	}
-	return(n);
-}
-/* end I2Writen */
-
 int
 _OWPConnect(
 	int		fd,
@@ -198,7 +138,10 @@ _OWPReceiveBlocks(OWPControl cntrl, u_int8_t *buf, int num_blocks)
 				"I2Readn failed:(%s)",strerror(errno));
 		return -1;
 	} 
-	if(n == 0)
+	/*
+	 * Short reads mean socket was closed.
+	 */
+	if(n != (num_blocks*_OWP_RIJNDAEL_BLOCK_SIZE))
 		return 0;
 
 	if (cntrl->mode & _OWP_DO_CIPHER)
