@@ -362,6 +362,26 @@ CleanPipes(
 	return;
 }
 
+static I2Boolean
+ClosePipes(
+	I2Datum	key,
+	I2Datum	value,
+	void	*app_data	__attribute__((unused))
+	)
+{
+	ChldState	cstate = value.dptr;
+
+	while((close(cstate->fd) < 0) && (errno == EINTR));
+	if(I2HashDelete(fdtable,key) != 0){
+		OWPError(cstate->policy->ctx,OWPErrWARNING,OWPErrUNKNOWN,
+					"fd(%d) not in fdtable!?!",cstate->fd);
+	}
+	cstate->fd = -1;
+
+	return True;
+}
+
+
 /*
  * This function needs to create a new child process with a pipe to
  * communicate with it. It needs to add the new pipefd into the readfds,
@@ -697,25 +717,6 @@ FindMaxFD(
 	if((*maxfd < 0) || ((int)key.dsize > *maxfd)){
 		*maxfd = (int)key.dsize;
 	}
-
-	return True;
-}
-
-static I2Boolean
-ClosePipes(
-	I2Datum	key,
-	I2Datum	value,
-	void	*app_data	__attribute__((unused))
-	)
-{
-	ChldState	cstate = value.dptr;
-
-	while((close(cstate->fd) < 0) && (errno == EINTR));
-	if(I2HashDelete(fdtable,key) != 0){
-		OWPError(cstate->policy->ctx,OWPErrWARNING,OWPErrUNKNOWN,
-					"fd(%d) not in fdtable!?!",cstate->fd);
-	}
-	cstate->fd = -1;
 
 	return True;
 }

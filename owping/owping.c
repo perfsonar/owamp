@@ -1061,7 +1061,7 @@ parse_ports(
 		case '\0':
 			/* only allow a single value if it is 0 */
 			if(ping_ctx.portrec.low){
-				goto failed;
+				goto FAILED;
 			}
 			ping_ctx.portrec.high = ping_ctx.portrec.low;
 			goto DONE;
@@ -1083,7 +1083,7 @@ parse_ports(
 	ping_ctx.portrec.high = (u_int16_t)tint;
 
 	if(ping_ctx.portrec.high < ping_ctx.portrec.low){
-		goto failed;
+		goto FAILED;
 	}
 
 DONE:
