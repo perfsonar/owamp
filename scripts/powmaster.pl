@@ -451,6 +451,8 @@ while(1){
 		}
 
 		if($newuptimes[-2] > ${$pid2info{$pid}}[1]){
+			warn "Resetting $node:$pid powstream\n"
+				if defined($verbose);
 			kill 'HUP', $pid;
 			${$pid2info{$pid}}[1] = $newuptimes[-2];
 		}
