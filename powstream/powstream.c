@@ -85,7 +85,7 @@ print_test_args()
 {
 	fprintf(stderr,
 "              [Test Args]\n\n"
-"   -c count       number of test packets\n"
+"   -c count       number of test packets (per file)\n"
 "   -i wait        mean average time between packets (seconds)\n"
 "   -L timeout     maximum time to wait for a packet before declaring it lost\n"
 "   -s padding     size of the padding added to each packet (bytes)\n");
@@ -97,6 +97,7 @@ print_output_args()
 	fprintf(stderr,
 		"              [Output Args]\n\n"
 		"   -d dir         directory to save session file in\n"
+		"   -I Interval    duration for OWP test sessions(seconds)\n"
 		"   -h             print this message and exit\n"
 		);
 }
