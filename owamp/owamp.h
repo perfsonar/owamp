@@ -173,6 +173,9 @@ typedef OWPBoolean	(*OWPGetAESKeyFunc)(
  * This function will be called from OWPControlOpen and OWPServerAccept
  * to determine if the control connection should be accepted.
  * It is called after connecting, and after determining the kid.
+ * On failure, value of *err_ret can be inspected: if > OWPErrWARNING,
+ * this means rejection based on policy, otherwise there was an error
+ * in the function itself.
  */
 typedef OWPBoolean (*OWPCheckControlPolicyFunc)(
 	void		*app_data,
