@@ -578,7 +578,6 @@ owp_read_ip2class(OWPContext ctx,
 	return 0;
 }
 
-
 /*
 ** Look up the class corresponding to a given KID.
 ** <len> typically should be strlen(kid) + 1.
@@ -597,7 +596,6 @@ owp_kid2class(const char *kid, int len, policy_data* policy)
 
 	return val? val->dptr : NULL;
 }
-
 
 /*
 ** Look up the 32-byte hex-encoded password for a given KID.
