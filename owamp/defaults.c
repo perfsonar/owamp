@@ -67,6 +67,8 @@ owp_get_aes_key(void *app_data,
 	return True;
 }
 
+#define OWP_DEFAULTS_DEBUG
+
 /*
 ** Returns False if the class of the <remote_sa_addr> has "open_mode_ok"
 ** flag turned OFF, or on error, and True in all other cases. Also
@@ -86,7 +88,6 @@ owp_check_control(
 	policy_data* policy;
 	char *class;
 	owp_tree_node_ptr node;
-
 	*err_ret = OWPErrOK;
 	policy = ((OWPPerConnDataRec *)app_data)->policy;
 
@@ -94,6 +95,7 @@ owp_check_control(
 	   This implementation assumes that the KID has already
 	   been authenticated, and is valid.
 	*/
+
 	if (mode & _OWP_DO_CIPHER) { /* Look up class of the KID. */
 		if (!kid)  /* Paranoia */
 			return False;
@@ -103,19 +105,24 @@ owp_check_control(
 			return False;
 		class = owp_sockaddr2class(remote_sa_addr, policy);
 	}
-	
-	if (!class)  /*Internal error - every KID must have a class.*/
-		goto error;
 
-	node = owp_class2node(class, policy->class2limits);
+	if (!class)  /*Internal error - every KID must have a class.*/{
+		fprintf(stderr, "DEBUG: no class for the connection\n");
+		goto error;
+	}
+
+	node = owp_class2node(class, policy->class2node);
 	if (!node)  /* Internal error - every class must have a node. */
 		goto error;
 	
 	/* If request open mode which is forbidden for class, deny. */
-	if (!(mode & _OWP_DO_CIPHER) && !node->limits.values[5])
+	if (!(mode & (OWPSessionMode)_OWP_DO_CIPHER) 
+	    && !node->limits.values[5])
 		return False;
 
 	((OWPPerConnDataRec *)app_data)->node = node;
+	((OWPPerConnDataRec *)app_data)->mode = mode;
+	
 	return True;
 	
  error:
