@@ -1111,6 +1111,7 @@ _OWPEndpointInitHook(
 	OWPContext		ctx = OWPGetContext(tsession->cntrl);
 	_Endpoint		ep=*(_Endpoint*)end_data;
 	struct sigaction	act;
+	struct sigaction	chldact,usr1act,usr2act,intact,alrmact;
 	sigset_t		sigs,osigs;
 	int			i;
 	OWPAddr			remoteaddr;
@@ -1153,9 +1154,16 @@ _OWPEndpointInitHook(
 	/*
 	 * call sigprocmask to block signals before the fork.
 	 * (This ensures no race condition.)
+	 * First we set the new sig_handler for the child, saving the
+	 * currently installed handlers.
+	 * Then fork.
+	 * Then reset the previous sig_handlers for the parent.
 	 * Then unblock the signals in the parent.
-	 * Child sets new sig_handlers and waits for the signals
-	 * in the child using sigsuspend.
+	 * (This should ensure that this routine doesn't mess with what
+	 * the calling environment thinks is installed for these.)
+	 *
+	 * The Child then waits for the signals using sigsuspend, and the
+	 * newly installed handlers get called.
 	 */
 	sigemptyset(&sigs);
 	sigaddset(&sigs,SIGUSR1);
@@ -1169,6 +1177,51 @@ _OWPEndpointInitHook(
 		*end_data = NULL;
 		return OWPErrFATAL;
 	}
+	/*
+	 * set the sig handlers for the currently blocked signals.
+	 */
+	owp_usr1 = 0;
+	owp_usr2 = 0;
+	owp_int = 0;
+	owp_alrm = 0;
+	act.sa_handler = sig_catch;
+	sigemptyset(&act.sa_mask);
+	act.sa_flags = 0;
+
+	if(		(sigaction(SIGUSR1,&act,&usr1act) != 0) ||
+			(sigaction(SIGUSR2,&act,&usr2act) != 0) ||
+			(sigaction(SIGINT,&act,&intact) != 0) ||
+			(sigaction(SIGALRM,&act,&alrmact) != 0)){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"sigaction():%M");
+		exit(OWP_CNTRL_FAILURE);
+	}
+
+	/*
+	 * If there is currently no SIGCHLD handler:
+	 * setup an empty CHLD handler to ensure SIGCHLD is sent
+	 * to this process. (Just need the signal sent to break
+	 * us out of "select" with an EINTR when we trying to
+	 * determine if test sessions are complete.)
+	 */
+	sigemptyset(&chldact.sa_mask);
+	chldact.sa_handler = SIG_DFL;
+	chldact.sa_flags = 0;
+	/* fetch current handler */
+	if(sigaction(SIGCHLD,NULL,&chldact) != 0){
+		OWPError(ctx,OWPErrWARNING,OWPErrUNKNOWN,"sigaction():%M");
+		return OWPErrWARNING;
+	}
+	/* if there is currently no handler - set one. */
+	if(chldact.sa_handler == SIG_DFL){
+		chldact.sa_handler = sig_nothing;
+		if(sigaction(SIGCHLD,&chldact,NULL) != 0){
+			OWPError(ctx,OWPErrWARNING,OWPErrUNKNOWN,
+					"sigaction(DFL) failed:%M");
+			return OWPErrWARNING;
+		}
+	}
+	/* now make sure SIGCHLD won't be masked. */
+	sigdelset(&osigs,SIGCHLD);
 
 	ep->child = fork();
 
@@ -1184,42 +1237,25 @@ _OWPEndpointInitHook(
 	if(ep->child > 0){
 		/* parent */
 
-		struct sigaction	chldact;
-	
 		/*
-		 * If there is currently no SIGCHLD handler:
-		 * setup an empty CHLD handler to ensure SIGCHLD is sent
-		 * to this process. (Just need the signal sent to break
-		 * us out of "select" with an EINTR when we trying to
-		 * determine if test sessions are complete.)
+		 * Reset parent's sig handlers.
 		 */
-		sigemptyset(&chldact.sa_mask);
-		chldact.sa_handler = SIG_DFL;
-		chldact.sa_flags = 0;
-		/* fetch current handler */
-		if(sigaction(SIGCHLD,NULL,&chldact) != 0){
-			OWPError(ctx,OWPErrWARNING,OWPErrUNKNOWN,
-				"sigaction():%M");
-			return OWPErrWARNING;
+		if(		(sigaction(SIGUSR1,&usr1act,NULL) != 0) ||
+				(sigaction(SIGUSR2,&usr2act,NULL) != 0) ||
+				(sigaction(SIGINT,&intact,NULL) != 0) ||
+				(sigaction(SIGALRM,&alrmact,NULL) != 0)){
+			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+							"sigaction():%M");
+			exit(OWP_CNTRL_FAILURE);
 		}
-		/* if there is currently no handler - set one. */
-		if(chldact.sa_handler == SIG_DFL){
-			chldact.sa_handler = sig_nothing;
-			if(sigaction(SIGCHLD,&chldact,NULL) != 0){
-				OWPError(ctx,OWPErrWARNING,OWPErrUNKNOWN,
-					"sigaction(DFL) failed:%M");
-				return OWPErrWARNING;
-			}
-		}
-		/* now make sure SIGCHLD won't be masked. */
-		sigdelset(&osigs,SIGCHLD);
-
+	
 		/* reset sig_mask to the old one (-SIGCHLD)	*/
 		if(sigprocmask(SIG_SETMASK,&osigs,NULL) != 0){
 			OWPError(ctx,OWPErrWARNING,OWPErrUNKNOWN,
-				"sigprocmask():%M");
+							"sigprocmask():%M");
 			return OWPErrWARNING;
 		}
+
 
 		EndpointClear(ep);
 		return OWPErrOK;
@@ -1241,24 +1277,6 @@ _OWPEndpointInitHook(
 	}
 #endif
 
-	/*
-	 * set the sig handlers for the currently blocked signals.
-	 */
-	owp_usr1 = 0;
-	owp_usr2 = 0;
-	owp_int = 0;
-	owp_alrm = 0;
-	act.sa_handler = sig_catch;
-	sigemptyset(&act.sa_mask);
-	act.sa_flags = 0;
-
-	if(		(sigaction(SIGUSR1,&act,NULL) != 0) ||
-			(sigaction(SIGUSR2,&act,NULL) != 0) ||
-			(sigaction(SIGINT,&act,NULL) != 0) ||
-			(sigaction(SIGALRM,&act,NULL) != 0)){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"sigaction():%M");
-		exit(OWP_CNTRL_FAILURE);
-	}
 
 	if(!OWPCvtTimestamp2Timespec(&ep->start,&ep->test_spec.any.start_time)){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,

@@ -30,7 +30,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <netdb.h>
-#include <sys/signal.h>
+#include <signal.h>
 
 #include <I2util/util.h>
 /*
@@ -187,118 +187,6 @@ owp_set_auth(powapp_trec *pctx,
 #define	MAX_PADDING_SIZE	65000
 
 static void
-SetupSession(
-	OWPContext	ctx,
-	OWPPerConnData	conndata,
-	pow_cntrl	p,	/* connection we are configuring	*/
-	pow_cntrl	q,	/* other connection			*/
-	OWPTimeStamp	*stop	/* return by this time			*/
-	)
-{
-	OWPErrSeverity	err;
-	OWPTimeStamp	currtime;
-	OWPnum64	cnum;
-	unsigned int	stime;
-
-	if(p->numPackets)
-		return;
-	/*
-	 * First open a connection if we don't have one.
-	 */
-	while(!p->cntrl){
-
-		if(stop){
-			if(!OWPGetTimeOfDay(&currtime)){
-				I2ErrLog(eh,"OWPGetTimeOfDay:%M");
-				exit(1);
-			}
-
-			if(OWPTimeStampCmp(&currtime,stop,>)){
-				if(p->sessionStart){
-					q->sessionStart = &q->tstamp_mem;
-					*q->sessionStart = *p->sessionStart;
-				}else
-					q->sessionStart = NULL;
-				return;
-			}
-		}
-
-		if(!(p->cntrl = OWPControlOpen(ctx,
-				OWPAddrByNode(ctx, appctx.opt.srcaddr),
-				OWPAddrByNode(ctx, appctx.remote_serv),
-				appctx.auth_mode,appctx.opt.identity,
-				(void*)conndata, &err))){
-			stime = MIN(sessionTime,SETUP_ESTIMATE);
-			I2ErrLog(eh,"OWPControlOpen():%M:Retry in-%d seconds",
-									stime);
-			while((stime = sleep(stime)));
-		}
-	}
-
-	if(!OWPGetTimeOfDay(&currtime)){
-		I2ErrLogP(eh,errno,"OWPGetTimeOfDay:%M");
-		exit(1);
-	}
-	currtime.sec += SETUP_ESTIMATE;
-
-	if(p->sessionStart){
-		if(OWPTimeStampCmp(&currtime,p->sessionStart,>))
-			p->sessionStart = NULL;
-	}
-
-	if(!p->sessionStart){
-		p->tstamp_mem = currtime;
-		p->sessionStart = &p->tstamp_mem;
-	}
-	else
-		currtime = *p->sessionStart;
-
-	cnum = OWPTimeStamp2num64(p->sessionStart);
-
-	sprintf(&p->fname[file_offset],OWP_TSTAMPFMT,cnum);
-	strcpy(&p->fname[ext_offset],OWP_INCOMPLETE_EXT);
-	if(!(p->fp = fopen(p->fname,"wb+"))){
-		I2ErrLog(eh,"fopen(%s):%M",p->fname);
-		return;
-	}
-	if(unlink(p->fname) != 0){
-		I2ErrLog(eh,"unlink():%M");
-		while((fclose(p->fp) != 0) && errno==EINTR);
-		p->fp = NULL;
-		return;
-	}
-
-	test_spec.start_time = *p->sessionStart;
-	if(!OWPSessionRequest(p->cntrl,
-			OWPAddrByNode(ctx,appctx.remote_test),
-			True, NULL, False,
-			(OWPTestSpec*)&test_spec, p->sid,
-			p->fp,&err)){
-		while((fclose(p->fp) != 0) && errno==EINTR);
-		p->fp = NULL;
-		if(err == OWPErrFATAL){
-			OWPControlClose(p->cntrl);
-			p->cntrl = NULL;
-		}
-		return;
-	}
-	if(OWPStartSessions(p->cntrl) < OWPErrINFO){
-		fclose(p->fp);
-		p->fp = NULL;
-		OWPControlClose(p->cntrl);
-		p->cntrl = NULL;
-		return;
-	}
-	p->numPackets = test_spec.npackets;
-
-	cnum += OWPSessionDuration(p->cntrl,p->sid);
-	q->sessionStart = &q->tstamp_mem;
-	OWPnum64toTimeStamp(q->sessionStart,cnum);
-
-	return;
-}
-
-static void
 ResetSession(
 	pow_cntrl	p,	/* connection we are configuring	*/
 	pow_cntrl	q	/* other connection			*/
@@ -368,6 +256,126 @@ sig_check()
 		return 1;
 	}
 	
+	return 0;
+}
+
+static int
+SetupSession(
+	OWPContext	ctx,
+	OWPPerConnData	conndata,
+	pow_cntrl	p,	/* connection we are configuring	*/
+	pow_cntrl	q,	/* other connection			*/
+	OWPTimeStamp	*stop	/* return by this time			*/
+	)
+{
+	OWPErrSeverity	err;
+	OWPTimeStamp	currtime;
+	OWPnum64	cnum;
+	unsigned int	stime;
+
+	if(p->numPackets)
+		return 0;
+	/*
+	 * First open a connection if we don't have one.
+	 */
+	while(!p->cntrl){
+
+		if(stop){
+			if(!OWPGetTimeOfDay(&currtime)){
+				I2ErrLog(eh,"OWPGetTimeOfDay:%M");
+				exit(1);
+			}
+
+			if(OWPTimeStampCmp(&currtime,stop,>)){
+				if(p->sessionStart){
+					q->sessionStart = &q->tstamp_mem;
+					*q->sessionStart = *p->sessionStart;
+				}else
+					q->sessionStart = NULL;
+				return 0;
+			}
+		}
+
+		if(!(p->cntrl = OWPControlOpen(ctx,
+				OWPAddrByNode(ctx, appctx.opt.srcaddr),
+				OWPAddrByNode(ctx, appctx.remote_serv),
+				appctx.auth_mode,appctx.opt.identity,
+				(void*)conndata, &err))){
+			stime = MIN(sessionTime,SETUP_ESTIMATE);
+			I2ErrLog(eh,"OWPControlOpen():%M:Retry in-%d seconds",
+									stime);
+			while((stime = sleep(stime))){
+				if(sig_check())
+					return 1;
+			}
+		}
+	}
+	if(sig_check())
+		return 1;
+
+	if(!OWPGetTimeOfDay(&currtime)){
+		I2ErrLogP(eh,errno,"OWPGetTimeOfDay:%M");
+		exit(1);
+	}
+	currtime.sec += SETUP_ESTIMATE;
+
+	if(p->sessionStart){
+		if(OWPTimeStampCmp(&currtime,p->sessionStart,>))
+			p->sessionStart = NULL;
+	}
+
+	if(!p->sessionStart){
+		p->tstamp_mem = currtime;
+		p->sessionStart = &p->tstamp_mem;
+	}
+	else
+		currtime = *p->sessionStart;
+
+	cnum = OWPTimeStamp2num64(p->sessionStart);
+
+	sprintf(&p->fname[file_offset],OWP_TSTAMPFMT,cnum);
+	strcpy(&p->fname[ext_offset],OWP_INCOMPLETE_EXT);
+	if(!(p->fp = fopen(p->fname,"wb+"))){
+		I2ErrLog(eh,"fopen(%s):%M",p->fname);
+		return 0;
+	}
+	if(unlink(p->fname) != 0){
+		I2ErrLog(eh,"unlink():%M");
+		while((fclose(p->fp) != 0) && errno==EINTR);
+		p->fp = NULL;
+		return 0;
+	}
+
+	test_spec.start_time = *p->sessionStart;
+	if(!OWPSessionRequest(p->cntrl,
+			OWPAddrByNode(ctx,appctx.remote_test),
+			True, NULL, False,
+			(OWPTestSpec*)&test_spec, p->sid,
+			p->fp,&err)){
+		while((fclose(p->fp) != 0) && errno==EINTR);
+		p->fp = NULL;
+		if(err == OWPErrFATAL){
+			OWPControlClose(p->cntrl);
+			p->cntrl = NULL;
+		}
+		return 0;
+	}
+	if(sig_check())
+		return 1;
+
+	if(OWPStartSessions(p->cntrl) < OWPErrINFO){
+		fclose(p->fp);
+		p->fp = NULL;
+		OWPControlClose(p->cntrl);
+		p->cntrl = NULL;
+		return 0;
+	}
+	p->numPackets = test_spec.npackets;
+
+	cnum += OWPSessionDuration(p->cntrl,p->sid);
+	q->sessionStart = &q->tstamp_mem;
+	OWPnum64toTimeStamp(q->sessionStart,cnum);
+
 	return 0;
 }
 
@@ -504,7 +512,7 @@ main(
 	/* Set default options. */
 	memset(&appctx,0,sizeof(appctx));
 	appctx.opt.numPackets = 300;
-	appctx.opt.lossThreshold = 120;
+	appctx.opt.lossThreshold = 10;
 	appctx.opt.meanWait = (float)0.1;
 	appctx.opt.seriesInterval = 1;
 
@@ -698,6 +706,11 @@ main(
 		"%d sub-sessions per session:approx seriesInterval:%d seconds",
 				numSessions,numSessions*sessionTime);
 
+	if(sessionTime <  SETUP_ESTIMATE + appctx.opt.lossThreshold){
+		I2ErrLog(eh,"Holes in data are likely because lossThreshold"
+				" is too large a fraction of sessionTime");
+	}
+
 
 	test_spec.test_type = OWPTestPoisson;
 	test_spec.npackets = appctx.opt.numPackets * numSessions;
@@ -833,7 +846,7 @@ NextConnection:
 		q = &pcntrl[which];
 
 		if(!p->numPackets){
-			SetupSession(ctx,&conndata,q,p,NULL);
+			(void)SetupSession(ctx,&conndata,q,p,NULL);
 			goto NextConnection;
 	
 		}
@@ -898,9 +911,10 @@ NextConnection:
 
 			/*
 			 * Now try and setup the next session.
+			 * SetupSession checks for reset signals, and returns
+			 * non-zero if one happend.
 			 */
-			SetupSession(ctx,&conndata,q,p,&stop);
-			if(sig_check())
+			if(SetupSession(ctx,&conndata,q,p,&stop))
 				goto NextConnection;
 AGAIN:
 			/*
