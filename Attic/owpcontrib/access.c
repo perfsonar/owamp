@@ -28,6 +28,8 @@
 
 #define DEBUG 0
 
+#define DEFAULT_CLASS "open"
+
 struct subnet {
 	u_int32_t network ;
 	u_int8_t offset;
@@ -482,30 +484,23 @@ owamp_read_limits(const char *class2limits)
 	}
 }
 
-void
-ipaddr2class(u_int32_t ip, char *class)
+char *
+ipaddr2class(u_int32_t ip)
 {
-	char key_bytes[5];
 	int offset;
-	char *ascii;
-	datum *key_dat, val_dat;
+	datum *key_dat_ptr, val_dat;
 	u_int32_t mask_template = 0xFFFFFFFF;
 	
 	for(offset=32; offset>0; offset--){
 		int bits = 32 - offset;
 		u_int32_t mask = (mask_template>>bits)<<bits;
-		key_dat = subnet2datum(ip & mask, offset);
-		ascii = owamp_denumberize(ip & mask);
-		val_dat = hash_fetch(ip2class_hash, *key_dat);
-		if (val_dat.dptr){
-			bcopy(val_dat.dptr, class, val_dat.dsize);
-			class[val_dat.dsize] = '\0';
-			return;
-		}
+		key_dat_ptr = subnet2datum(ip & mask, offset);
+		val_dat = hash_fetch(ip2class_hash, *key_dat_ptr);
+		if (val_dat.dptr)
+			return val_dat.dptr;
 	}
 
-	/* If not found at this point, assign class "all" */
-	strcpy(class, "all");
+	return DEFAULT_CLASS;
 }
 
 int
@@ -548,9 +543,8 @@ main(int argc, char *argv[])
 			exit(0);
 		}
 
-		ipaddr2class(ip, class);
 #if 1
-		printf("the class for ip = %lu is %s\n", ip, class);
+		printf("the class for ip = %lu is %s\n", ip, ipaddr2class(ip));
 #endif	
 	}
 	exit(0);
