@@ -202,7 +202,8 @@ main(int argc, char *argv[])
 	u_int32_t hdr_len, num_rec, i, last_seqno, dup, sent, lost, debsent;
 	state s;
 	u_int8_t prec = PREC_THRESHOLD;
-	u_int32_t *counts, min_microsec;
+	u_int32_t *counts;
+	int32_t min_microsec;
 	double delay, min;
 	u_int8_t worst_prec_bits = 64;
 	
@@ -368,7 +369,7 @@ main(int argc, char *argv[])
 #ifdef DIGEST_DEBUG
 	fprintf(stderr, "sent=%u, debsent=%u\n", sent, debsent);
 #endif
-	min_microsec = (u_int32_t)(min * MILLION);
+	min_microsec = (int32_t)(min * MILLION);
 
 	/* 
 	   Header contains: magic number, version, header length,
