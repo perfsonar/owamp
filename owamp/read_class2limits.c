@@ -54,6 +54,39 @@ owp_tree_node_new()
 }
 
 /*
+** Generic tree traversal function. Caller provides the node-processing
+** function <func> along with any necessary data.
+*/
+void
+owp_tree_iterate_df(owp_tree_node_ptr root, owp_node_func func, void *data)
+{
+	owp_tree_node_ptr p;
+
+	if (!root)
+		return;
+
+	for (p = root->first_child; p; p = p->next_sibling)
+		owp_tree_iterate_df(p, func, data);
+
+	(*func)(root, data);
+}
+
+/*
+** Default function for printing node info to a given file stream
+** (to be cast as FILE* from <data>)
+*/
+void
+owp_print_node(owp_tree_node_ptr node, void *data)
+{
+	FILE* fp = (data)? (FILE *)data : stderr;
+
+	fprintf(fp, "DEBUG: printing node:\n");
+	if (!node)
+		return;
+	fprintf(fp, "DEBUG: node = %s\n", (node->data)?  node->data : "");
+}
+
+/*
 ** Initialize a dynamically allocated buffer for reading variable
 ** length fields. 
 */
@@ -360,6 +393,7 @@ owp_get_description(OWPContext ctx,
 	int newline = 1; /* set if the last character was '\n' */
 	int parent_set = 0;
 	owp_tree_node_ptr new_node = owp_tree_node_new();
+
 	if (!new_node) {
 		OWPError(ctx, OWPErrFATAL, errno, 
 		       "FATAL: owp_tree_node_new: could not allocate memory"); 
@@ -494,9 +528,16 @@ owp_get_description(OWPContext ctx,
 	};
 	/* Save the new node in class2node hash */
 	key = owp_raw2datum(new_node->data, strlen(new_node->data) + 1);
-	val = owp_raw2datum(new_node, sizeof(*new_node));
+	if (!(val = (void *)malloc(sizeof(I2datum)))) {
+		OWPError(ctx, OWPErrFATAL, errno, 
+			 "FATAL: owp_get_description: malloc(%d) failed",
+			 sizeof(I2datum));
+		return OWP_ERR;
+	}
+	val->dptr = new_node;
+	val->dsize = sizeof(*new_node);
 	I2hash_store(class2node, key, val);
-	
+
 	/* Remember to free buffer at the end. */
 	owp_buf_free(&buf);
 	return OWP_OK;
@@ -556,7 +597,10 @@ owp_read_class2limits2(OWPContext ctx,
 #ifndef VERBOSE
 	printf("DEBUG: owp_read_class2limits2: printing classnode hash:\n");
 	I2hash_print(class2node_hash, stdout);
+	fprintf(stderr, "DEBUG: printing out the tree...\n");
+	owp_tree_iterate_df(root, owp_print_node, NULL);
 #endif
+
 	return 0;
 }
 #endif

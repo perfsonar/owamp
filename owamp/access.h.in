@@ -78,6 +78,14 @@ typedef struct owp_tree_node {
 	owp_lim           limits;
 } owp_tree_node;
 
+/*
+** Generic type for a node-processing function.
+*/
+typedef void (*owp_node_func)(
+	owp_tree_node_ptr node,       /* Node to be processed.         */
+	void *data                    /* Additional data to be passed. */
+);
+
 typedef struct {
 	I2table ip2class;
 	I2table class2node;
@@ -111,10 +119,28 @@ typedef struct owp_kid_data {
 #define OWP_LAST          3
 #define OWP_END_DESCR     4
 
+/*
+** Fetch node corresponfing to a given classname string.
+*/
 extern owp_tree_node_ptr owp_class2node(char *class, I2table hash);
+
+/*
+** Generic tree traversal function. Caller provides the node-processing
+** function <func> along with any necessary data.
+*/
+extern void
+owp_tree_iterate_df(owp_tree_node_ptr root, owp_node_func func, void *data);
+
+/*
+** Default function for printing node info to a given file stream
+** (to be cast as FILE* from <data>)
+*/
+extern void owp_print_node(owp_tree_node_ptr node, void *data);
+
 extern char *ipaddr2class(u_int32_t ip, I2table ip2class_hash);
 extern char *owp_kid2passwd(const char *kid, int len, policy_data* policy);
 extern char *owp_kid2class(const char *kid, int len, policy_data* policy);
+
 extern char *owp_sockaddr2class(struct sockaddr *addr, policy_data* policy);
 extern void owp_print_ip2class_binding(const struct I2binding *p, FILE* fp);
 extern void owp_print_strnet(owp_access_netmask *ptr, FILE* fp);
