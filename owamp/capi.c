@@ -1025,6 +1025,7 @@ OWPSessionRequest(
 	struct addrinfo		*sai=NULL;
 	OWPTestSession		tsession = NULL;
 	int			rc=0;
+        OWPAcceptType           aval = OWP_CNTRL_ACCEPT;
 
 	*err_ret = OWPErrOK;
 
@@ -1156,7 +1157,7 @@ foundaddr:
 			 * create the local sender
 			 */
 			if(!_OWPEndpointInit(cntrl,tsession,sender,NULL,
-								err_ret)){
+							&aval,err_ret)){
 				goto error;
 			}
 		}
@@ -1214,7 +1215,7 @@ foundaddr:
 				goto error;
 			}
 
-			if(!_OWPEndpointInitHook(cntrl,tsession,err_ret)){
+			if(!_OWPEndpointInitHook(cntrl,tsession,&aval,err_ret)){
 				goto error;
 			}
 		}
@@ -1249,7 +1250,7 @@ foundaddr:
 					"Test not allowed");
 			goto error;
 		}
-		if(!_OWPEndpointInit(cntrl,tsession,receiver,fp,err_ret)){
+		if(!_OWPEndpointInit(cntrl,tsession,receiver,fp,&aval,err_ret)){
 			goto error;
 		}
 
@@ -1277,7 +1278,7 @@ foundaddr:
 					"Test not allowed");
 			goto error;
 		}
-		if(!_OWPEndpointInitHook(cntrl,tsession,err_ret)){
+		if(!_OWPEndpointInitHook(cntrl,tsession,&aval,err_ret)){
 			goto error;
 		}
 	}
@@ -1298,6 +1299,22 @@ foundaddr:
 	return True;
 
 error:
+        switch(aval){
+            case OWP_CNTRL_ACCEPT:
+                break;
+            case OWP_CNTRL_REJECT:
+		OWPError(cntrl->ctx,*err_ret,OWPErrPOLICY,"Test not allowed");
+                break;
+            case OWP_CNTRL_UNSUPPORTED:
+		OWPError(cntrl->ctx,*err_ret,OWPErrUNKNOWN,
+                        "Test type unsupported");
+                break;
+            case OWP_CNTRL_FAILURE:
+            default:
+		OWPError(cntrl->ctx,*err_ret,OWPErrUNKNOWN,"Test failed");
+                break;
+        }
+
 	if(tsession){
 		_OWPTestSessionFree(tsession,OWP_CNTRL_FAILURE);
 	}

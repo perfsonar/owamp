@@ -841,19 +841,12 @@ _OWPDecodeTestRequestPreamble(
 	_OWPDecodeTimeStamp(&tstamp,&buf[76]);
 	tspec->loss_timeout = tstamp.owptime;
 
+        /*
+         * Rely on implementation in endpoint.c to verify bits.
+         * (This allows typeP to be expanded in the future for
+         * implementations that understand it.)
+         */
 	tspec->typeP = ntohl(*(u_int32_t*)&buf[84]);
-
-	/*
-	 * This implementation currently only supports type-P descriptors
-	 * for valid DSCP types. (A valid DSCP value will be all 0's except
-	 * the last 6 bits.)
-	 */
-	if(*server_conf_sender && (tspec->typeP & ~0x3F)){
-		OWPError(ctx,OWPErrWARNING,OWPErrINVALID,
-		"_OWPDecodeTestRequestPreamble: Unsupported type-P value (%u)",
-								tspec->typeP);
-		return OWPErrWARNING;
-	}
 
 	return OWPErrOK;
 }

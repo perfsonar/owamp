@@ -252,6 +252,7 @@ _OWPEndpointInit(
 	OWPTestSession	tsession,
 	OWPAddr		localaddr,
 	FILE		*fp,
+        OWPAcceptType   *aval,
 	OWPErrSeverity	*err_ret
 )
 {
@@ -271,6 +272,7 @@ _OWPEndpointInit(
 	int			saveerr=0;
 
 	*err_ret = OWPErrFATAL;
+        *aval = OWP_CNTRL_FAILURE;
 
 	if( !(ep=EndpointAlloc(cntrl)))
 		return False;
@@ -692,19 +694,40 @@ success:
 				goto error;
 		}
 
-		/*
-		 * Use Type-P to set DSCP
-		 * (This is currently the only Type-P currently supported by
-		 * this implementation.)
-		 *
-		 * TODO: Verify this works! (I am highly suspicious of using
-		 * IP_TOS for IPv6... I have seen IP_CLASS as a possible
-		 * replacement...)
-		 */
-		if(ep->tsession->test_spec.typeP &&
-				!(ep->tsession->test_spec.typeP & ~0x3F)){
+		if(ep->tsession->test_spec.typeP){
 			int	optname = IP_TOS;
 			int	optlevel = IP_TOS;
+
+                        /*
+                         * TODO: Decoding of typeP will need to change if
+                         * the code can ever support PHB (RFC 2836). (Need
+                         * support in the socket API to do this...)
+                         * Will need to look at first two bits and do
+                         * something different (copy more than
+                         * the next 6 bits).
+                         *
+                         * For now, just verify typeP set to valid value
+                         * for DSCP mode:
+                         * Only 6 bits can be set for it to be valid
+                         * (bits 2-7 of the high-order byte)
+                         */
+		        if(ep->tsession->test_spec.typeP & ~0x3F000000){
+			    OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNSUPPORTED,
+					"Unsupported TypeP requested");
+                            /*
+                             * Set err_ret to OK - this was a valid
+                             * request, this implementation just doesn't
+                             * support it.
+                             */
+                            *aval = OWP_CNTRL_UNSUPPORTED;
+	                    *err_ret = OWPErrOK;
+                            goto error;
+                        }
+		        /*
+		         * TODO: Verify this works! (I am highly suspicious
+                         * of using IP_TOS for IPv6... I have seen IP_CLASS
+                         * as a possible replacement...)
+		         */
 			switch(localaddr->saddr->sa_family){
 			case AF_INET:
 				optlevel = IPPROTO_IP;
@@ -721,7 +744,12 @@ success:
 				break;
 			}
 
-			sopt = ep->tsession->test_spec.typeP << 2;
+                        /* Copy high-order byte (minus first two bits) */
+			sopt = (u_int8_t)(ep->tsession->test_spec.typeP >> 24);
+                        sopt &= 0x3F; /* this should be a no-op until PHB... */
+
+                        /* shift for setting TOS */
+                        sopt <<= 2;
 			if(setsockopt(ep->sockfd,optlevel,optname,
 					 (void*)&sopt,sizeof(sopt)) < 0){
 				OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
@@ -736,6 +764,7 @@ success:
 	}
 
 	tsession->endpoint = ep;
+        *aval = OWP_CNTRL_ACCEPT;
 	*err_ret = OWPErrOK;
 	return True;
 
@@ -1825,7 +1854,13 @@ _OWPEndpointInitHook(
 	struct sigaction	chldact,usr1act,usr2act,intact,pipeact,alrmact;
 	sigset_t		sigs,osigs;
 
-	*err_ret = OWPErrFATAL;
+        /*
+         * By default, failures from here are recoverable... Set this
+         * to OWPErrFATAL to make the connection close. And by default,
+         * the "reason" given for Accept is failure.
+         */
+	*err_ret = OWPErrWARNING;
+        *aval = OWP_CNTRL_FAILURE;
 
 	if(!ep){
 		return False;
@@ -1965,6 +2000,7 @@ _OWPEndpointInitHook(
 
 		EndpointClear(ep);
 		*err_ret = OWPErrOK;
+                *aval = OWP_CNTRL_ACCEPT;
 		return True;
 parenterr:
 		kill(ep->child,SIGINT);

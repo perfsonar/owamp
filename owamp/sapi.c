@@ -780,9 +780,7 @@ OWPProcessTestRequest(
 
 		/* receiver first (sid comes from there) */
 		if(!_OWPEndpointInit(cntrl,tsession,tsession->receiver,NULL,
-								&err_ret)){
-			err_ret = OWPErrWARNING;
-			acceptval = OWP_CNTRL_FAILURE;
+							&acceptval,&err_ret)){
 			goto error;
 		}
 	}
@@ -823,14 +821,10 @@ OWPProcessTestRequest(
 			goto error;
 		}
 		if(!_OWPEndpointInit(cntrl,tsession,tsession->sender,NULL,
-								&err_ret)){
-			err_ret = OWPErrWARNING;
-			acceptval = OWP_CNTRL_FAILURE;
+                            &acceptval,&err_ret)){
 			goto error;
 		}
-		if(!_OWPEndpointInitHook(cntrl,tsession,&err_ret)){
-			err_ret = OWPErrWARNING;
-			acceptval = OWP_CNTRL_FAILURE;
+		if(!_OWPEndpointInitHook(cntrl,tsession,&acceptval,&err_ret)){
 			goto error;
 		}
 		/*
@@ -844,9 +838,7 @@ OWPProcessTestRequest(
 	}
 
 	if(tsession->conf_receiver){
-		if(!_OWPEndpointInitHook(cntrl,tsession,&err_ret)){
-			err_ret = OWPErrWARNING;
-			acceptval = OWP_CNTRL_FAILURE;
+		if(!_OWPEndpointInitHook(cntrl,tsession,&acceptval,&err_ret)){
 			goto error;
 		}
 		/*
@@ -883,7 +875,7 @@ error:
 
 err2:
 	if(tsession)
-		_OWPTestSessionFree(tsession,OWP_CNTRL_FAILURE);
+		_OWPTestSessionFree(tsession,acceptval);
 
 	return err_ret;
 }

@@ -738,6 +738,7 @@ _OWPEndpointInit(
 	OWPTestSession	tsession,
 	OWPAddr		localaddr,
 	FILE		*fp,
+        OWPAcceptType   *aval,
 	OWPErrSeverity	*err_ret
 );
 
@@ -745,6 +746,7 @@ extern OWPBoolean
 _OWPEndpointInitHook(
         OWPControl      cntrl,
 	OWPTestSession	tsession,
+        OWPAcceptType   *aval,
 	OWPErrSeverity  *err_ret
 );
 
