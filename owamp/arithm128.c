@@ -76,7 +76,7 @@ static unsigned short mask1[16] = {
 };
 
 static unsigned short mask2[16] = {
-	0,                 /* fake */ 
+	0xffff,                 /* fake */ 
 	0x7fff, 0x3fff, 0x1fff, 0xfff, 0x7ff, 0x3ff, 0x1ff, 
 	0xff, 0x7f, 0x3f, 0x1f, 0xf, 0x7, 0x3, 0x1
 };
@@ -98,7 +98,7 @@ static unsigned short mask2[16] = {
 ** This function embeds the unsigned 32-bit integers into the
 ** num space.
 */
-struct num_128
+static struct num_128
 ulong2num(unsigned long a)
 {
 	int i;
@@ -146,7 +146,7 @@ num_binprint(num_128 x)
 ** operation in the num space. The result is saved
 ** in the variable z.
 */
-void 
+static void 
 num_add(num_128 x, num_128 y, num_128 z)
 {
 	int i;
@@ -172,7 +172,7 @@ num_add(num_128 x, num_128 y, num_128 z)
 	}
 }
 
-void 
+static void 
 num_mul(num_128 x, num_128 y, num_128 z)
 {
 	int i, j;
@@ -203,11 +203,51 @@ num_mul(num_128 x, num_128 y, num_128 z)
 }
 
 /*
+** Left-shift the fractional part of a num_128 struct U by <count> many bits.
+** <count> must be in the interval [1, 64].
+*/
+static void
+num_leftshift(num_128 U, int count)
+{
+	int num_blocks, num_bits, i;
+
+	if (count == 64){
+		for (i = 0; i < 4; i++)
+			U->digits[i] = (unsigned short)0;
+		return;
+	}
+	
+	num_blocks = count/16; /* integer number of 16-bit blocks to shift */
+	num_bits   = count%16; /* remaining number of bits                 */
+
+	if (num_blocks > 0){ /* do the whole number of blocks first */
+		for (i = 3; i >= num_blocks; i--)
+			U->digits[i] = U->digits[i - num_blocks];
+
+		for (i = num_blocks - 1; i >= 0; i--)
+			U->digits[i] = (unsigned short)0;
+	}
+
+	if (num_bits == 0) 
+		return;     
+
+	for (i = 3; i >= 1; i--){
+		U->digits[i] = second(U->digits[i], num_bits)
+			| first(U->digits[i-1], num_bits);
+	}
+	
+	U->digits[0] = 
+		second(U->digits[0], num_bits);
+	
+}
+
+
+/*
 ** This functions compares numerically fractional parts of the numbers 
 ** represented by x and y. It returns a negative number, 0, or a positive
 ** number depending as x is <, =, or > than y, respectively.
 */
-int
+static int
 num_cmp(num_128 x, num_128 y)
 {
 	int i = 3;
@@ -359,50 +399,35 @@ raw2num(const unsigned char *raw)
 ** Knuth's v.2 of "Art of Computer Programming" (1998), p.133.
 */
 struct num_128 
-random_exp()
+exp_rand()
 {
-	struct num_128 ret;
-	int i, j, k, count;
-	struct num_128 U, V; 
-	struct num_128 tmp1, tmp2;   /* structs to hold intermediate results */
+	int i, k, count = 1;
+	struct num_128 U, V, J, tmp, ret; 
 
-	U = rand_get();
-#if EXPDEBUG
-	printf("Start of random_exp - generated rand number\n");
-	num_print(&U);
-#endif
 	/* Get U and shift */
-	count = 1;
+	U = unif_rand();
 	for (i = 3; i >= 0; i--){
 		unsigned short mask = 0x8000;
 
-		for (j = 0; j < 16; j++){
-
+		for (k = 0; k < 16; k++){
 			if (!(U.digits[i] & mask))
-				goto FOUND; /* found the first '1' */
+				goto FOUND; /* found the first '0' */
 			mask >>= 1;
 			count++;
 		}
 	}
 
  FOUND: 
-	if (count == 65){ /* '1' was never found. */
-		/* XXX - TODO - handle this case */
-	}
+	if (count == 65) /* '0' was never found. VERY exceptional case*/
+		return U;
 
-	j = count - 1;
 	num_leftshift(&U, count);
-#if EXPDEBUG	
-	printf("shifted U now is:\n");
-	num_print(&U);
-#endif		
+	J = ulong2num(count - 1);     
 
 	/* Immediate acceptance? */
-	if (num_cmp(&U, LN2) < 0){ 
-		/* return  (j*ln2 + U) */ 
-		tmp1 = ulong2num(j);     
-		num_mul(&tmp1, LN2, &tmp2);   
-		num_add(&tmp2, &U, &ret);
+	if (num_cmp(&U, LN2) < 0){ 	   /* return  (j*ln2 + U) */ 
+		num_mul(&J, LN2, &tmp);   
+		num_add(&tmp, &U, &ret);
 		return ret;
 	}
 	
@@ -410,24 +435,19 @@ random_exp()
 	for (k = 2; k < K; k++)
 		if (num_cmp(&U, &Q[k]) < 0)
 			break;
-
-	if (k == K){
-		fprintf(stderr, "FATAL: random_exp");
-		exit(1);
-	}
-
-	V = rand_get();
 	
+	assert(k < K);
+
+	V = unif_rand();
 	for (i = 2; i <= k; i++){
-		tmp1 = rand_get();
-		if (num_cmp(&tmp1, &V) < 0)
-			V = tmp1;
+		tmp = unif_rand();
+		if (num_cmp(&tmp, &V) < 0)
+			V = tmp;
 	}
 
 	/* Return (j+V)*ln2 */
-	tmp1 = ulong2num(j);     
-	num_add(&tmp1, &V, &tmp2);
-	num_mul(&tmp2, LN2, &ret);
+	num_add(&J, &V, &tmp);
+	num_mul(&tmp, LN2, &ret);
 	return ret;
 }
 
@@ -446,7 +466,7 @@ print_macros()
 }
 
 /*
-** Print out binary expansion of an unsigned short.
+** DEBUG only. Print out binary expansion of an unsigned short.
 */
 void
 print_bin(unsigned short n)
@@ -468,38 +488,6 @@ print_bin(unsigned short n)
 	fprintf(stderr, "%hu ", tmp);
 }
 
-/*
-** Left-shift the fractional part of a num_128 struct U by <count> many bits.
-*/
-void
-num_leftshift(num_128 U, int count)
-{
-	int num_blocks, num_bits, i;
-	
-	assert(1 <= count);
-	assert(count <= 64);
-
-	/* Normal case. 1 <= count <= 64. Shift by count bits. */
-	num_blocks = count/16; /* integer number of 16-bit blocks to shift */
-	num_bits   = count%16; /* remaining number of bits                 */
-
-	if (num_blocks > 0){ /* do the whole number of blocks first */
-		for (i = 3; i >= num_blocks; i--)
-			U->digits[i] = U->digits[i - num_blocks];
-
-		for (i = num_blocks - 1; i >= 0; i--)
-			U->digits[i] = (unsigned short)0;
-	}
-
-	for (i = 3; i >= 1; i--){
-		U->digits[i] = second(U->digits[i], num_bits)
-			| first(U->digits[i-1], num_bits);
-	}
-	
-	U->digits[0] = 
-		second(U->digits[0], num_bits);
-	
-}
 
 /*
 ** Seed the random number generator using a 16-byte string.
@@ -520,17 +508,16 @@ rand_context_init(BYTE *sid)
 ** part of the struct.
 */
 struct num_128
-rand_get()
+unif_rand()
 {
 	static int reuse = 1;
 	BYTE input[16];
 	int j;
 	u_long dig;
-#if 1
+
 	reuse = 1 - reuse;
 	if (reuse)
 		return raw2num(next.out + 8);
-#endif
 
 	/* Prepare the block for encryption */
 	memset(input, 0, 16);

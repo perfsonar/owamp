@@ -56,21 +56,17 @@ typedef struct {
 	unsigned long t[2];
 } *OWPFormattedTime;
 
-/* Constructors. */
-struct num_128 ulong2num(unsigned long a);
-
-/* Arithmetic operations */
-void num_add(num_128 x, num_128 y, num_128 z);
-void num_mul(num_128 x, num_128 y, num_128 z);
-int num_cmp(num_128 x, num_128 y);
-void num_leftshift(num_128 x, int count);
-
 /* Conversion operations */
 void num2formatted(num_128 from, OWPFormattedTime to);
 void formatted2num(OWPFormattedTime from, num_128 to);
 void num2timeval(num_128 from, struct timeval *to);
 void timeval2num(struct timeval *from, num_128 to);
 struct num_128 raw2num(const unsigned char *raw);
+
+/* Random number generating functions */
+void rand_context_init(BYTE *sid);  /* Initialize the generator */
+struct num_128 exp_rand();       /* Generate an exponential (mean 1) deviate */
+struct num_128 unif_rand();      /* Generate a Unif(0,1) deviate */
 
 /* Debugging and auxilliary functions */
 void num_print(num_128 x);
@@ -81,9 +77,4 @@ void print_macros();
 void print_bin(unsigned short n);
 void num_binprint(num_128 x);
 
-/* Generate an exponential deviate using 64-bit binary string as an input. */
-struct num_128 random_exp();
-
-void rand_context_init(BYTE *sid); 
-struct num_128 rand_get();
 #endif
