@@ -142,7 +142,8 @@ do_single_record(void *calldata, OWPDataRecPtr rec)
 void
 usage()
 {
-	fprintf(stderr, "usage: owdigest [-p prec_bits] datafile out_file\n");
+	fprintf(stderr, 
+		"usage: owdigest [-p prec_bits] [-v] datafile out_file\n");
 	exit(1);
 }
 
@@ -204,11 +205,12 @@ main(int argc, char *argv[])
 	double delay;
 	
 	char     *progname;
-	int num_buckets, ch;
+	int num_buckets, ch, verbose = 0;
 	I2LogImmediateAttr	ia;
 	u_int8_t out_hdrlen = sizeof(magic) + sizeof(version) 
 		+ sizeof(prec) + sizeof(out_hdrlen) + sizeof(sent) 
 		+ sizeof(lost) + sizeof(dup);
+
 	OWPInitializeConfigRec	owpcfg = {{0,0},NULL,NULL,NULL,NULL,0,NULL};
 	OWPContext		ctx;
 
@@ -232,11 +234,14 @@ main(int argc, char *argv[])
 	}
 
 
-	while ((ch = getopt(argc, argv, "hp:")) != -1)
+	while ((ch = getopt(argc, argv, "hp:v")) != -1)
              switch (ch) {
 		     /* Connection options. */
              case 'p':
 		     prec = (u_int8_t)atoi(optarg);
+		     break;
+	     case 'v':
+		     verbose = 1;
 		     break;
 	     case 'h':
              case '?':
@@ -249,6 +254,17 @@ main(int argc, char *argv[])
 
 	if (argc != 2)
 		usage();
+
+	if (verbose) {
+		fprintf(stderr, "hdr_len = %u\n", out_hdrlen);
+		fprintf(stderr, 
+		    "magic: %u\nversion: %u\nheader_len: %u\n", sizeof(magic), 
+			sizeof(version), sizeof(out_hdrlen));
+		
+		fprintf(stderr, 
+			"precision: %u\nsent: %u\nlost: %u\ndup: %u\n", 
+			sizeof(prec), sizeof(sent), sizeof(lost), sizeof(dup));
+	}
 
 	num_buckets = OWP_NUM_LOW + OWP_NUM_MID + OWP_NUM_HIGH;
 	counts = (u_int16_t *)malloc(num_buckets*sizeof(*counts));
@@ -302,8 +318,6 @@ main(int argc, char *argv[])
 	for (i = 0; i < num_rec; i++) {
 		int bucket;
 
-		/* XXX - throw out records with bad precision here */
-
 		if (OWPGetPrecBits(&s.records[i]) < prec)
 			continue;
 
@@ -324,23 +338,25 @@ main(int argc, char *argv[])
 		bucket = owp_bucket(delay);
 		assert((0 <= bucket) && (bucket <= OWP_MAX_BUCKET));
 		counts[bucket]++;
-
-		print_rec(&s.records[i], 0);
+		
+		if (verbose)
+			print_rec(&s.records[i], 0);
 	}
 	
 	/* 
-	   Header contains: magic number, version, precision,
-	   sent, lost, dup and header length. NOTE: precision is
+	   Header contains: magic number, version, header length,
+	   precision, sent, lost and dup. NOTE: precision is
 	   given as the worse of send/recv - rather than the sum.
 	   Otherwise every merge would lead to worsening precision.
+	   Meaning of the first 3 fields are fixed for all header versions.
 	*/
 	if ((fwrite(magic, 1, sizeof(magic), out) < 1) 
 	    || (fwrite(&version, sizeof(version), 1, out) < 1)
+	    || (fwrite(&out_hdrlen, sizeof(out_hdrlen), 1, out) < 1)
 	    || (fwrite(&prec, sizeof(prec), 1, out) < 1)
 	    || (fwrite(&sent, sizeof(sent), 1, out) < 1)
 	    || (fwrite(&lost, sizeof(lost), 1, out) < 1)
-	    || (fwrite(&dup, sizeof(dup), 1, out) < 1)
-	    || (fwrite(&hdr_len, sizeof(hdr_len), 1, out) < 1)) {
+	    || (fwrite(&dup, sizeof(dup), 1, out) < 1)) {
 		I2ErrLog(eh, "FATAL: fwrite() failed: %M");
 		exit(1);     
 	}
@@ -353,11 +369,14 @@ main(int argc, char *argv[])
 				I2ErrLog(eh, "FATAL: fwrite() failed: %M");
 				exit(1);
 			}
-			fprintf(stderr, "printed index = %u, counts = %u\n", 
-				i, counts[i]);
+			if (verbose)
+				fprintf(stderr, "index = %u, counts = %u\n", 
+					i, counts[i]);
 		}
 	}
-	fprintf(stderr, "sent = %u, lost = %u, dup = %u\n", sent, lost, dup); 
+	if (verbose)
+		fprintf(stderr, "sent = %u, lost = %u, dup = %u\n", 
+			sent, lost, dup); 
 
 	free(counts);
 	fclose(fp);
