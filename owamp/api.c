@@ -19,8 +19,8 @@
 **	Description:	
 */
 #include <owampP.h>
-extern jmp_buf jmpbuffer;
-extern int free_connections;
+#include <rijndael-api-fst.h>
+#include "../contrib/table.h"
 
 static OWPInitializeConfigRec	def_cfg = {
 	/* tm_out.tv_sec		*/	0,
@@ -507,7 +507,7 @@ _OWPControlAlloc(
 	 * Init encryption fields
 	 */
 	memset(&cntrl->kid,0,sizeof(OWPKID));
-	memset(&cntrl->key,0,sizeof(OWPKey));
+	memset(&cntrl->key,0,sizeof(&cntrl->key));
 	memset(cntrl->challenge,0,sizeof(cntrl->challenge));
 	memset(cntrl->session_key,0,sizeof(cntrl->session_key));
 	memset(cntrl->readIV,0,sizeof(cntrl->readIV));
@@ -577,8 +577,8 @@ OWPControlOpen(
 	int		fd;
 	OWPControl	cntrl = _OWPControlAlloc(ctx,err_ret);
 	u_int32_t	mode_avail;
-	OWPKey		key_value;
-	OWPKey		*key=NULL;
+	OWPByte		key_value[16];
+	OWPByte		*key=NULL;
 	struct sockaddr	*local=NULL, *remote;
 
 	*err_ret = OWPErrOK;
@@ -614,7 +614,7 @@ OWPControlOpen(
 			}
 		}
 		else
-			key = &key_value;
+			key = key_value;
 	}
 	/*
 	 * If no key, then remove auth/crypt modes
@@ -747,61 +747,138 @@ OWPSetSessionKey(OWPControl ctrl, char* ptr)
 OWPControl
 OWPControlAccept(
 		 OWPContext     ctx,       /* control context               */
-		 void           *app_data, /* policy                        */
-		 socklen_t      len,       /* length of the sockaddr struct */
-		 int            listenfd,  /* listening socket              */
+		 int            connfd,    /* connected socket              */
+		 void*          app_data,  /* policy                        */
 		 OWPErrSeverity *err_ret   /* err - return                  */
 )
 {
-	int connfd;
-	pid_t pid;
-	socklen_t addrlen = len;
-	struct sockaddr *cliaddr;
 	OWPControl cntrl;
+	char buf[MAX_MSG]; 
+
+	char *cur;
+	u_int32_t mode = 4; /* XXX - fix later */
+	int i, r, encrypt;
+	u_int32_t mode_requested;
+	u_int8_t challenge[16], token[32], read_iv[16], write_iv[16];
+	u_int8_t kid[8]; /* XXX - assuming Stas will extend KID to 8 bytes */
+
+	/* Remove what's not needed. */
+	datum *key;
+	keyInstance keyInst;
+	cipherInstance cipherInst;
+
+	/* 
+	   XXX - need to hide this
+	   hash_ptr passwd_hash = ((struct data *)app_data)->passwd; 
+	*/
+
 	*err_ret = OWPErrOK;
-	
 	if ( !(cntrl = _OWPControlAlloc(ctx, err_ret)))
 		return NULL;
 
-	cliaddr = (void*)malloc(addrlen);
-	if (cliaddr == NULL){
-		OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, "malloc");
-		return NULL;
-	}
+	_OWPServerSendServerGreeting(cntrl, mode, err_ret);
 
- AGAIN:
-	if ( (connfd = accept(listenfd, cliaddr, &addrlen)) < 0){
-		if (errno == EINTR)
-			goto AGAIN;
-		else {
-			OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, 
-				 "accept error");
-			return NULL;
-				}
-	}
+	/* first generate server greeting */
+	memset(buf, 0, sizeof(buf));
+	mode = htonl(get_mode());
+	*(int32_t *)(buf + 12) = mode; /* first 12 bytes unused */
 
-	if (ctx->cfg.check_addr_func(app_data, NULL, cliaddr, err_ret) == 0){
-		return NULL;     /* access denied */
-	};
-	
-	if (free_connections == 0)
-		return NULL;
+	/* generate 16 random bytes and save them away. */
+	random_bytes(challenge, 16);
+	bcopy(challenge, buf + 16, 16); /* the last 16 bytes */
 
-	free_connections--;
-
-	if ( (pid = fork()) < 0){
-		OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, "fork");
-		return NULL;
-	}
-
-	if (pid > 0){  /* parent */
+	/* Send server greeting. */
+	encrypt = 0;
+	if (send_data(connfd, buf, 32, encrypt) < 0){
+		fprintf(stderr, "Warning: send_data failed.\n");
 		close(connfd);
-		longjmp(jmpbuffer, 1);
-		/* UNREACHED */
-		return NULL;
+		exit(1);
 	}
 
-	/* Child */
-	/* XXX - TODO: finish up. */
+	/* Read client greeting. */
+	if (readn(connfd, buf, 60) != 60){
+		fprintf(stderr, "Warning: client greeting too short.\n");
+		exit(1);
+	}
+
+	mode_requested = htonl(*(u_int32_t *)buf);
+	if (mode_requested & ~mode){ /* can't provide requested mode */
+		OWPServerOK(cntrl, connfd, CTRL_REJECT, buf);
+		close(connfd);
+		exit(0);
+	}
+	if (mode_requested & OWP_MODE_AUTHENTICATED){
+
+		/* Save 8 bytes of kid */
+		bcopy(buf + 4, kid, 8);
+
+		/* Fetch the shared secret and initialize the cipher. */
+		/* XXX - this needs to be redone to respect abstraction 
+		key = hash_fetch(passwd_hash, 
+				 (const datum *)str2datum((const char *)kid));
+		r = makeKey(&keyInst, DIR_DECRYPT, 128, key->dptr);
+		*/
+
+		if (TRUE != r) {
+			fprintf(stderr,"makeKey error %d\n",r);
+			exit(-1);
+		}
+		r = cipherInit(&cipherInst, MODE_CBC, NULL);
+		if (TRUE != r) {
+			fprintf(stderr,"cipherInit error %d\n",r);
+			exit(-1);
+		}
+
+		/* Decrypt two 16-byte blocks - save the result into token.*/
+		blockDecrypt(&cipherInst, &keyInst, buf + 12, 2*(16*8), token);
+
+		/* Decrypted challenge is in the first 16 bytes */
+		if (bcmp(challenge, token, 16)){
+			OWPServerOK(cntrl, connfd, CTRL_REJECT, buf);
+			close(connfd);
+			exit(0);
+		}
+
+		/* Save 16 bytes of session key and 16 bytes of client IV*/
+		/* OWPSetSessionKey(cntrl, token + 16); */
+		bcopy(buf + 44, read_iv, 16);
+
+		/* Apparently everything is ok. Accept the Control session. */
+		OWPServerOK(cntrl, connfd, CTRL_ACCEPT, buf);
+
+	}
+
 	return cntrl;
+}
+
+/*
+** This function does the initial policy check on the remote host.
+** It returns True if it is ok to start Control protocol converstion,
+** and False otherwise.
+*/
+OWPBoolean
+OWPAddrCheck(
+	     OWPContext ctx,
+	     void *app_data, 
+	     struct sockaddr *local, 
+	     struct sockaddr *remote, 
+	     OWPErrSeverity *err_ret)
+{
+	*err_ret = OWPErrOK;
+	
+	if(!ctx){
+		OWPErrorLine(NULL,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
+			     "OWPAddrCheck:No Context!");
+		*err_ret = OWPErrFATAL;
+		return False;
+	}
+
+
+	/*
+	 * Default action is deny access.
+	 */
+	if(!ctx->cfg.check_addr_func)
+		return False;
+
+	return (*ctx->cfg.check_addr_func)(app_data, local, remote, err_ret);
 }
