@@ -28,6 +28,7 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <sys/time.h>
+#include <setjmp.h>
 
 #ifndef	False
 #define	False	(0)
@@ -497,5 +498,21 @@ OWPSendStopSessions(
 	OWPControl	control_handle,
 	OWPErrSeverity	*err_ret
 );
+
+/*
+** This function talks Control Protocol on the server side,
+** up until on of the followinf events happends:
+** 1) the Control connection is accepted and valid OWPControl handle returned;
+** 2) the Control connection is rejected, and NULL is returned;
+** 3) an error occurs, NULL is returned, plus extra diagnostics via err_ret.
+*/
+extern OWPControl
+OWPControlAccept(
+		 OWPContext     ctx,       /* control context               */
+		 void           *app_data, /* policy                        */
+		 socklen_t      len,       /* length of the sockaddr struct */
+		 int            listenfd,  /* listening socket              */
+		 OWPErrSeverity *err_ret   /* err - return                  */
+		 );
 
 #endif	/* OWAMP_H */
