@@ -435,7 +435,7 @@ _OWPEndpointInit(
 	 */
 	if(bind(ep->sockfd,localaddr->saddr,localaddr->saddrlen) != 0){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-						"bind call failed: %M");
+			"bind([%s]:%s): %M",localaddr->node,localaddr->port);
 		goto error;
 	}
 
@@ -556,10 +556,12 @@ _OWPEndpointInit(
 
 error:
 	if(ep->filepath && (unlink(ep->filepath) != 0) && (errno != ENOENT)){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"unlink(): %M");
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+				"unlink(%s): %M",ep->filepath);
 	}
 	if(ep->linkpath && (unlink(ep->linkpath) != 0) && (errno != ENOENT)){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"unlink(): %M");
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+				"unlink(%s): %M",ep->linkpath);
 	}
 	EndpointFree(ep);
 	return OWPErrFATAL;
@@ -763,7 +765,9 @@ AGAIN:
 					case EAGAIN:
 						OWPError(ep->ctx,OWPErrFATAL,
 							OWPErrUNKNOWN,
-				"Unable to send:(packet #%d): %M",i);
+					"Unable to send([%s]:%s:(#%d): %M",
+							ep->remoteaddr->node,
+							ep->remoteaddr->port,i);
 						exit(OWP_CNTRL_FAILURE);
 						break;
 					/* ignore everything else */
@@ -773,8 +777,9 @@ AGAIN:
 
 				/* but do note it as INFO for debugging */
 				OWPError(ep->ctx,OWPErrINFO,OWPErrUNKNOWN,
-				       "Unable to send(packet #%d): %M",
-				       i);
+					"Unable to send([%s]:%s:(#%d): %M",
+							ep->remoteaddr->node,
+							ep->remoteaddr->port,i);
 			}
 
 			i++;
@@ -823,7 +828,8 @@ AGAIN:
 			break;
 		if(errno != EINTR){
 			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"nanosleep(): %M");
+					"nanosleep(%u.%u,nil): %M",
+					sleeptime.tv_sec,sleeptime.tv_nsec);
 			exit(OWP_CNTRL_FAILURE);
 		}
 	}
@@ -917,6 +923,8 @@ run_receiver(
 	}
 
 	while(1){
+		struct sockaddr_storage	peer_addr;
+		socklen_t		peer_addr_len;
 again:
 		/*
 		 * ALARM indicates it is time to declare a packet
@@ -944,8 +952,11 @@ again:
 			goto test_over;
 		}
 
+		peer_addr_len = sizeof(peer_addr);
+		memset(&peer_addr,0,sizeof(peer_addr));
 		if(recvfrom(ep->sockfd,ep->payload,ep->len_payload,0,
-				NULL,NULL) != (ssize_t)ep->len_payload){
+				(struct sockaddr*)&peer_addr,
+				&peer_addr_len) != (ssize_t)ep->len_payload){
 			if(errno == EINTR)
 				goto again;
 			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
@@ -953,12 +964,27 @@ again:
 			goto error;
 		}
 
+		/*
+		 * Fetch time before ANYTHING else to minimize time errors.
+		 */
 		if(!GetTimespec(&currtime,&esterror,&sync)){
 			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 				"Problem retrieving time");
 			goto error;
 		}
 
+		/*
+		 * Verify peer before looking at packet.
+		 */
+		if(!I2SockAddrEqual(	ep->remoteaddr->saddr,
+					ep->remoteaddr->saddrlen,
+					(struct sockaddr*)&peer_addr,
+					peer_addr_len))
+			goto again;
+
+		/*
+		 * Decode the packet
+		 */
 		if(ep->mode & _OWP_DO_CIPHER){
 			rijndaelDecrypt(ep->aeskey->rk,ep->aeskey->Nr,
 					&ep->payload[0],&ep->payload[0]);
@@ -1148,6 +1174,7 @@ _OWPEndpointInitHook(
 
 		ep->remoteaddr = tsession->sender;
 
+#ifdef	NOT
 		/*
 		 * Connect the socket for recv case - the kernel will
 		 * ensure we are only dealing with packets from the
@@ -1160,6 +1187,7 @@ _OWPEndpointInitHook(
 			*end_data = NULL;
 			return OWPErrFATAL;
 		}
+#endif
 	}
 	else{
 		ep->remoteaddr = tsession->receiver;

@@ -562,7 +562,7 @@ OWPControlAccept(
 		goto error;
 	}
 	OWPError(ctx,OWPErrINFO,OWPErrPOLICY,
-		"ControlSession to (%s:%s) accepted from kid(%s):(%s:%s)",
+		"ControlSession to ([%s]:%s) accepted from kid(%s):([%s]:%s)",
 		cntrl->local_addr->node,cntrl->local_addr->port,
 		(cntrl->kid)?cntrl->kid:"nil",
 		cntrl->remote_addr->node,

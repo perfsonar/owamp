@@ -872,6 +872,9 @@ main(
 #endif
 
 	ia.line_info = (I2NAME | I2MSG);
+#ifndef	NDEBUG
+	ia.line_info |= (I2LINE | I2FILE);
+#endif
 	ia.fp = stderr;
 
 	progname = (progname = strrchr(argv[0], '/')) ? ++progname : *argv;
