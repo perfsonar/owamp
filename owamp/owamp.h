@@ -509,7 +509,9 @@ OWPStartSessions(
  * If you do specify a wake time, you are required to poll the status
  * of each local endpoint using OWPTestSessionStatus until it comes back
  * complete.  (OWPSessionsActive is a simple way to poll all of them - you
- * know you are done when it returns 0.)
+ * know you are done when it returns 0.) This is especially true if
+ * 2 is returned, because it probably means a child send/recv process
+ * died.
  *
  * Client and Server
  */
@@ -574,12 +576,16 @@ OWPSessionSchedule(
  * (effectively calls the OWPTestSessionStatus function on all endpoints
  * and determines if they are complete yet.)
  *
+ * If acceptval is non-null it is set to the MAX acceptval of any
+ * complete session.
+ *
  * returns:
  * 	number of active endpoints.
  */
 extern int
 OWPSessionsActive(
-		OWPControl	cntrl
+		OWPControl	cntrl,
+		OWPAcceptType	*acceptval	/* rtn */
 		);
 
 /*

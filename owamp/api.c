@@ -948,26 +948,35 @@ found:
 
 int
 OWPSessionsActive(
-		OWPControl	cntrl
+		OWPControl	cntrl,
+		OWPAcceptType	*aval
 		)
 {
 	OWPTestSession	tsession;
-	OWPAcceptType	aval;
+	OWPAcceptType	laval;
+	OWPAcceptType	raval = 0;
 	int		n=0;
 	OWPErrSeverity	err;
 
 	for(tsession = cntrl->tests;tsession;tsession = tsession->next){
 		if((tsession->recv_end_data) && _OWPCallEndpointStatus(tsession,
-					&tsession->recv_end_data,&aval,&err)){
-			if(aval < 0)
+					&tsession->recv_end_data,&laval,&err)){
+			if(laval < 0)
 				n++;
+			else
+				raval = MAX(laval,raval);
 		}
 		if((tsession->send_end_data) && _OWPCallEndpointStatus(tsession,
-					&tsession->send_end_data,&aval,&err)){
-			if(aval < 0)
+					&tsession->send_end_data,&laval,&err)){
+			if(laval < 0)
 				n++;
+			else
+				raval = MAX(laval,raval);
 		}
 	}
+
+	if(aval)
+		*aval = raval;
 
 	return n;
 }
@@ -997,8 +1006,16 @@ OWPStopSessionsWait(
 		return -1;
 	}
 
-	if(acceptval)
-		*acceptval = aval;
+	/*
+	 * If there are no active sessions, get the status and return.
+	 */
+	if(!OWPSessionsActive(cntrl,NULL)){
+		/*
+		 * Sessions are complete - send StopSessions message.
+		 */
+		*err_ret = OWPStopSessions(cntrl,acceptval);
+		return 0;
+	}
 
 	if(wake){
 		if(gettimeofday(&currtime,NULL) != 0){
@@ -1037,7 +1054,7 @@ AGAIN:
 		 * If there are tests still happening - go back to select
 		 * and wait for them to complete.
 		 */
-		if(OWPSessionsActive(cntrl))
+		if(OWPSessionsActive(cntrl,NULL))
 			goto AGAIN;
 
 		/*
@@ -1336,7 +1353,7 @@ OWPParseRecords(
 	 * supported. which is assumed if !hdr or hdr->rec_size == 20.
 	 */
 	if(hdr && hdr->rec_size != _OWP_TS_REC_SIZE)
-		OWPErrFATAL;
+		return OWPErrFATAL;
 
 	for(i=0;i<num_rec;i++){
 		if(fread(rbuf,_OWP_TS_REC_SIZE,1,fp) < 1)
