@@ -1,4 +1,5 @@
 #include "access.h"
+#include "table.h"
 
 void
 test_ip2class()
@@ -31,6 +32,7 @@ print_limits(OWAMPLimits * limits)
 	       );
 }
 
+/*
 void
 owamp_print_class2limits(hash_ptr hash)
 {
@@ -44,6 +46,7 @@ owamp_print_class2limits(hash_ptr hash)
 		print_limits((OWAMPLimits *)val.dptr);
 	}
 }
+*/
 
 
 /*
@@ -51,6 +54,7 @@ owamp_print_class2limits(hash_ptr hash)
 ** It is used mostly for debugging.
 */
 
+/*
 void
 owamp_print_ip2class(hash_ptr hash)
 {
@@ -64,8 +68,15 @@ owamp_print_ip2class(hash_ptr hash)
 	     owamp_denumberize(get_ip_addr(&key)), get_offset(&key), val.dptr);
 	}
 }
+*/
 
+void
+test_policy_check()
+{
+	;
+}
 
+/*
 void
 test_policy_check()
 {
@@ -111,3 +122,4 @@ test_policy_check()
 		close(connfd); 
 	}
 }
+*/
