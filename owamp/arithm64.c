@@ -60,6 +60,19 @@ S3. [Minimize.] Find the least k >= 2 sich that U < Q[k]. Generate
 
 S4. [Deliver the answer.] Set X <- mu*(j + V)*ln2.
 */
+
+/*
+** Example usage: generate a stream of exponential (mean 1)
+** random quantities (ignoring error checking during initialization).
+**
+** unsigned char sid[] = "7a91b6d691c2d36d";
+** OWPrand_context* next = OWPrand_context_init(sid);
+**
+** while (1) {
+**    OWPnum64 num = OWPexp_rand64(next);
+** }
+*/
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
@@ -103,7 +116,7 @@ OWPulong2num64(u_int32_t a)
 }
 
 /*
-** Arithmetic functions on OWPnum64 structs.
+** Arithmetic functions on OWPnum64 numbers.
 */
 
 /*
@@ -123,12 +136,12 @@ OWPnum64_add(OWPnum64 x, OWPnum64 y)
 OWPnum64
 OWPnum64_mul(OWPnum64 x, OWPnum64 y)
 {
-	unsigned long tmp[4];
-	unsigned long long xdec[2];
-	unsigned long long ydec[2];
+	unsigned long w[4];
+	u_int64_t xdec[2];
+	u_int64_t ydec[2];
 
 	int i, j;
-	unsigned long long k, t;
+	u_int64_t k, t;
 	OWPnum64 ret;
 
 	xdec[0] = x & 0xFFFFFFFF;
@@ -137,27 +150,27 @@ OWPnum64_mul(OWPnum64 x, OWPnum64 y)
 	ydec[1] = y >> 32;
 
 	for (j = 0; j < 4; j++)
-		tmp[j] = 0; 
+		w[j] = 0; 
 
 	for (j = 0;  j < 2; j++) {
 		k = 0;
 		for (i = 0; ; ) {
-			t = k + (xdec[i]*ydec[j]) + tmp[i + j];
-			tmp[i + j] = t%0xFFFFFFFF;
+			t = k + (xdec[i]*ydec[j]) + w[i + j];
+			w[i + j] = t%0xFFFFFFFF;
 			k = t/0xFFFFFFFF;
 			if (++i < 2)
 				continue;
 			else {
-				tmp[j + 2] = k;
+				w[j + 2] = k;
 				break;
 			}
 			
 		}
 	}
 
-	ret = tmp[2];
+	ret = w[2];
 	ret <<= 32;
-	return tmp[1] + ret;
+	return w[1] + ret;
 }
 
 #if 0
@@ -247,7 +260,7 @@ OWPtimeval2num(struct timeval *from)
 
 /*
 ** This function converts a 32-bit binary string (network byte order)
-** into num struct (fractional part only). The integer part iz zero.
+** into a OWPnum64 number (fractional part only). The integer part iz zero.
 */
 static OWPnum64
 OWPraw2num64(const unsigned char *raw)
@@ -313,17 +326,15 @@ OWPrand_context64_free(OWPrand_context64 *next)
 }
 
 /* 
-** Generate an exponential deviate using 64-bit binary string as an input
+** Generate an exponential deviate using a 32-bit binary string as an input
 ** This is algorithm 3.4.1.S from Knuth's v.2 of "Art of Computer Programming" 
 ** (1998), p.133.
 */
 OWPnum64 
 OWPexp_rand64(OWPrand_context64 *next)
 {
-	static unsigned long ct = 0;
 	unsigned long i, k;
 	u_int32_t j = 0;
-	OWPnum64 two = OWPulong2num64(2);
 	OWPnum64 U, V, J, tmp; 
 	u_int32_t mask = 0x80000000; /* see if first bit in the lower
 			   		     32 bits is zero */
@@ -366,7 +377,7 @@ OWPexp_rand64(OWPrand_context64 *next)
 */
 
 /*
-** Print out a OWPnum64 struct. More significant digits are printed first.
+** Print out a OWPnum64 number.
 */
 void
 OWPnum_print64(OWPnum64 x)
