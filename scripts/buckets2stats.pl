@@ -29,7 +29,11 @@ use lib ("$FindBin::Bin");
 use IO::Handle;
 use File::Path;
 use File::Temp qw/ tempfile /;
+use Fcntl qw(:flock);
+use FileHandle;
+
 use OWP::Syslog;
+use OWP::Digest;
 
 use OWP;
 
@@ -58,10 +62,14 @@ die "Usage: buckets2stats.pl <resolution> [mode]" unless (@ARGV >= 1);
 my $res = $ARGV[0]; # current resolution we are working with
 my $mode = $ARGV[1] || 1;
 
+warn "DEBUG: starting 0";
+
 $| = 1;
 
 my $conf = new OWP::Conf(CONFDIR => "$FindBin::Bin");
 # setup syslog
+
+if (0) {
 local(*MYLOG);
 my $slog = tie *MYLOG, 'OWP::Syslog',
 		facility	=> $conf->must_get_val(ATTR=>'SyslogFacility'),
@@ -70,12 +78,14 @@ my $slog = tie *MYLOG, 'OWP::Syslog',
 # make die/warn goto syslog, and also to STDERR.
 $slog->HandleDieWarn();
 undef $slog;	# Don't keep tie'd ref's around unless you need them...
+}
 
 my(@mtypes, @nodes, $val, $rec_addr, $send_addr);
 @mtypes = $conf->get_val(ATTR=>'MESHTYPES');
 @nodes = $conf->get_val(ATTR=>'MESHNODES');
 my $dataroot = $conf->{'CENTRALDATADIR'};
 my $digest_suffix = $conf->get_val(ATTR=>'DigestSuffix');
+my $summ_period = $conf->get_val(ATTR => 'SUMMARY_PERIOD') || 300;
 
 open(GNUPLOT, "| gnuplot") or die "cannot execute gnuplot";
 autoflush GNUPLOT 1;
@@ -86,6 +96,7 @@ my $period_name = $conf->must_get_val(DIGESTRES=>$res,
 				      ATTR=>'PLOT_PERIOD_NAME');
 my $vtimefile = $conf->must_get_val(ATTR=>'CentralPerDirValidFile');
 
+warn "DEBUG: starting";
 
 foreach my $mtype (@mtypes){
     foreach my $recv (@nodes){
@@ -99,6 +110,7 @@ foreach my $mtype (@mtypes){
 
 	    # Recover the last validated time
 	    my $dir = "$dataroot/$mtype/$recv/$sender";
+	    warn "trying $dir" if DEBUG;
 	    my $end;
 	    if (open TFILE, "<$dir/$vtimefile") {
 		$end = <TFILE>;
@@ -108,7 +120,77 @@ foreach my $mtype (@mtypes){
 		warn "Open Error $dir/$vtimefile: $!" if 0;
 	    }
 
-	    plot_resolution($conf, $mtype, $recv, $sender, $age, $mode);
+	    if ($mode == 1) {
+		plot_resolution($conf, $mtype, $recv, $sender, $age);
+	    } else { # make_summary($summ_period)
+		# Create a plain-text file with data for the last period -
+		# it will be picked up by make_top_html.pl to fill entries
+		# in its tables.
+
+		my ($datadir, $summary_file, undef) =
+			$conf->get_names_info($mtype, $recv, $sender, $res,
+					      $mode);
+		unless (-d $datadir) {
+		    warn "directory $datadir does not exist - skipping";
+		    return;
+		}
+
+		my $fh = new FileHandle $summary_file, O_RDWR|O_CREAT;
+		unless ($fh) {
+		    warn "Could not open $summary_file: $!";
+		    next;
+		}
+
+		next unless flock($fh, LOCK_EX);
+		# compute stats here
+		warn "plot_resolution: trying datadir = $datadir" if VERBOSE;
+
+		my @all = split /\n/, `ls $datadir`;
+		my $init = time();
+
+		my $got_data = 0;
+		my ($worst_median_delay, $worst_loss) = (0.0, 0.0);
+		foreach my $file (@all) {
+		    my $ofile = $file;
+		    next unless $file =~ s/$digest_suffix$//;
+
+		    my $sec = is_younger_than($file, $summ_period, $init);
+
+		    next unless $sec;
+		    $sec -= OWP::Utils::JAN_1970;
+		    my ($mon, $day, $hour, $minute, $second) = mdHMS($sec);
+
+		    my $datafile = "$datadir/$ofile";
+		    my $dat_fh = new FileHandle "<$datafile";
+		    die "Could not open $datafile: $!" unless $dat_fh;
+		    my ($buckets, $sent, $min, $lost) =
+			    @{get_buck_ref($dat_fh, $datafile)};
+		    undef $dat_fh;
+
+		    unless ($sent) {
+			warn "sent == 0 in $datafile - skipping";
+			next;
+		    }
+		    my $lost_perc = ($lost/$sent)*100.0;
+
+		    # Compute stats for a new data point.
+		    my $median = get_percentile(0.5, $sent, $buckets);
+		    $worst_loss = $lost_perc if ($lost_perc > $worst_loss);
+		    $worst_median_delay = $median
+			    if ($median > $worst_median_delay);
+
+		    $got_data = 1;
+		}
+
+		($worst_median_delay, $worst_loss) = map {sprintf "%.6f", $_}
+			($worst_median_delay, $worst_loss);
+
+		my $out = ($got_data)? 
+			join " ", $worst_median_delay, $worst_loss, "\n" :
+				"* *\n";
+		print $fh $out;
+		close $fh;
+	    }
 	}
     }
 }
@@ -117,7 +199,7 @@ close GNUPLOT;
 
 # This sub creates plots for the given combination of parameters.
 sub plot_resolution {
-    my ($conf, $mtype, $recv, $sender, $age, $mode) = @_;
+    my ($conf, $mtype, $recv, $sender, $age) = @_;
     my $body = "$mtype/$recv/$sender/$res";
     my ($datadir, $summary_file, $wwwdir) =
 	    $conf->get_names_info($mtype, $recv, $sender, $res, $mode);
@@ -161,122 +243,41 @@ sub plot_resolution {
 	$sec -= OWP::Utils::JAN_1970;
 
 	my ($mon, $day, $hour, $minute, $second) = mdHMS($sec);
-	warn join " ", "DEBUG: sec=$second", "min=$minute", "hour=$hour",
-		"mon=$mon", '' if DEBUG;
 
-	# Read the header.
 	my $datafile = "$datadir/$ofile";
-	open(FH, "<$datafile") or die "Could not open $datafile: $!";
-	my ($header, $prec, $sent, $lost, $dup, $buf, $min, $pre);
-
-	$pre = MAGIC_SIZE + VERSION_SIZE + HDRSIZE_SIZE;
-
-	die "Cannot read header: $!" if (read(FH, $buf, $pre) != $pre);
-	my ($magic, $version, $hdr_len) = unpack "a8xCC", $buf;
-
-	my $remain_bytes = $hdr_len - $pre;
-
-	die "Currently only work with version 1: $file" unless ($version == 1);
-	die "Cannot read header"
-		if (read(FH, $buf, $remain_bytes) != $remain_bytes);
-	($prec, $sent, $lost, $dup, $min) = unpack "CLLLL", $buf;
-	$min /= THOUSAND; # convert from usec to ms
-	if (VERBOSE) {
-	    printlist("magic = $magic", "version = $version",
-		       "hdr_len = $hdr_len", "prec = $prec", "sent = $sent",
-		       "lost = $lost", "dup = $dup", "min = $min");
-	}
-
-	# Compute the number of non-empty buckets (== records in the file).
-	my @stat = stat FH;
-	die "stat failed: $!" unless @stat;
-	my $size = $stat[7];
-	my ($num_records, @buckets);
-	{
-	    use integer;
-	    $num_records = ($size - $hdr_len) / 8;
-	    warn "num_rec = $num_records\n" if DEBUG;
-	}
-
-	for (0..MAX_BUCKET) {
-	    $buckets[$_] = 0;
-	}
-
-	for (my $i = 0; $i < $num_records; $i++) {
-	    my $buf;
-	    read FH, $buf, 8 or die "Could not read: $!";
-	    my ($index, $count) = unpack "LL", $buf;
-	    $buckets[$index] = $count;
-	}
-	close FH;
-
-# Suppose the file "data" contains records like
-
-# 03/21/95 10:00  6.02e23
-
-# This file can be plotted by
-
-# set xdata time
-#       set timefmt "%m/%d/%y"
-#       set xrange ["03/21/95":"03/22/95"]
-#       set format x "%m/%d"
-#       set timefmt "%m/%d/%y %H:%M"
-#       plot "data" using 1:3
-
-# which will produce xtic labels that look like "03/21".
-
-# http://amath.colorado.edu/computing/software/man/gnuplot.html
-
+	my $dat_fh = new FileHandle "<$datafile";
+	die "Could not open $datafile: $!" unless $dat_fh;
+	my ($buckets, $sent, $min, $lost)=@{get_buck_ref($dat_fh, $datafile)};
+	undef $dat_fh;
 
 	unless ($sent) {
 	    warn "sent == 0 in $datafile - skipping";
 	    next;
 	}
 
+#	die "DEBUG: found sent != 0: $datafile";
+
 	my $lost_perc = sprintf "%.6f", ($lost/$sent)*100;
+
 	# Compute stats for a new data point.
 	my @stats = map {sprintf "%.6f", $_} 
-		(get_percentile(0.5, $sent, \@buckets), $min,
-		 get_percentile(0.9, $sent, \@buckets), $lost_perc);
+		(get_percentile(0.5, $sent, $buckets), $min,
+		 get_percentile(0.9, $sent, $buckets), $lost_perc);
 
 	warn join "\n", "Stats for the file $datafile are:",
 		@stats, '' if DEBUG;
 	print GNUDAT join " ", "$mon/$day/$hour/$minute/$second", @stats, "\n";
 	$got_data = 1;
+    }
 
-	next if ($mode == 1);
-
-	# Create a plain-text file with data for the last period -
-	# it will be picked up by make_top_html.pl to fill entries
-	# in its tables.
-	my ($tmp_fh, $tmp_name) = tempfile("XXXXXX", DIR => $wwwdir,
-					   SUFFIX => "last$res.tmp");
-	print $tmp_fh join " ", @stats, "\n";
-	close $tmp_fh;
-
-	warn "renaming to newname $summary_file" if DEBUG;
-	rename $tmp_name, "$summary_file"
-		or die "Could not rename $tmp_name to $summary_file: $!";
+    my $psize = ($got_data)? 1 : 0.0;
+    unless ($got_data) {
+	warn "no new data found in $datadir - creating an empty plot";
+	print GNUDAT join '/', mdHMS($init - 0.5*$age);
+	print GNUDAT ' ', join ' ', 0, 0, 0, 0, 0, "\n";
     }
 
     close GNUDAT;
-
-    my ($dfile, $psize);
-    unless ($got_data) {
-	my $fh;
-	warn "no new data found in $datadir - no plot is done";
-	$psize = 0.0;
-	($fh, $dfile) = tempfile(DIR => $datadir, UNLINK => 1);
-
-	die "DEBUG: datadir=$datadir dfile = $dfile";
-
-	print $fh join '/', mdHMS($init - 0.5*$age);
-	print $fh ' ', join ' ', 0, 0, 0, 0, 0, "\n";
-	close $fh;
-    } else {
-	$psize = 1;
-	$dfile = $gnu_dat;
-    }
 
     my $delays_png = "$wwwdir/$png_file-delays.png";
     my $delays_title = "Delays: Min, Median, and 90th Percentile " .
@@ -289,21 +290,18 @@ sub plot_resolution {
     my $fmt_xlabel = join '/', map {code2unit($_)} @tmp;
 
     $fmt = join ':', map {"%$_"} split //, $fmt;
+    my $xrange = (defined $ARGV[2] && $ARGV[2] eq 'fake')? '' :
+	    "set xrange [\"$xr_start\":\"$xr_end\"]\n";
+    my $xtics = ($res == 30)? "set xtics 300\nset mxtics\n" : "";
+
+    warn "xrange = $xrange" if DEBUG;
 
     print GNUPLOT <<"STOP";
 set terminal png small color
 set xdata time
 set format x \"$fmt\"
 set timefmt "%m/%d/%H/%M/%S"
-STOP
-    unless (defined $ARGV[2] && $ARGV[2] eq 'fake') {
-	print GNUPLOT "set xrange [\"$xr_start\":\"$xr_end\"]\n";
-    }
-
-    my $xtics = ($res == 30)? "set xtics 300\nset mxtics\n" : "";
-    warn "DEBUG: xtics=\n$xtics";
-
-    print GNUPLOT <<"STOP";
+$xrange
 set nokey
 set grid
 $xtics
@@ -311,11 +309,11 @@ set xlabel "Time ($fmt_xlabel)"
 set ylabel "Delay (ms)"
 set title \"$delays_title\"
 set output "$delays_png"
-plot "$dfile" using 1:2:3:4 with errorbars ps $psize
+plot "$gnu_dat" using 1:2:3:4 with errorbars ps $psize
 set ylabel "Loss (%)"
 set title \"$loss_title\"
 set output "$loss_png"
-plot [] [0:100] "$dfile" using 1:5 ps $psize
+plot [] [0:100] "$gnu_dat" using 1:5 ps $psize
 STOP
 
     warn "plotted files: $delays_png $loss_png" if VERBOSE;
@@ -393,10 +391,55 @@ sub mdHMS {
     my ($second, $minute, $hour, $day, $mon, $year, $wday, $yday)
 	    = gmtime($_[0]);
     $mon++;
-#    warn "DEBUG: mdHMS: year=$year";
-
     my $str = gmtime($_[0]);
-#    warn "DEBUG: mdHMS: $str";
 
     return ($mon, $day, $hour, $minute, $second);
+}
+
+sub get_buck_ref {
+    my ($fh, $fname) = @_;
+
+    my ($header, $prec, $sent, $lost, $dup, $buf, $min, $pre);
+
+    $pre = MAGIC_SIZE + VERSION_SIZE + HDRSIZE_SIZE;
+
+    die "Cannot read header: $!" if (read($fh, $buf, $pre) != $pre);
+    my ($magic, $version, $hdr_len) = unpack "a8xCC", $buf;
+
+    my $remain_bytes = $hdr_len - $pre;
+
+    die "Currently only work with version 1: $fname" unless ($version == 1);
+    die "Cannot read header"
+	    if (read($fh, $buf, $remain_bytes) != $remain_bytes);
+    ($prec, $sent, $lost, $dup, $min) = unpack "CLLLL", $buf;
+    $min /= THOUSAND; # convert from usec to ms
+    if (VERBOSE) {
+	printlist("magic = $magic", "version = $version",
+		  "hdr_len = $hdr_len", "prec = $prec", "sent = $sent",
+		  "lost = $lost", "dup = $dup", "min = $min");
+    }
+
+    # Compute the number of non-empty buckets (== records in the file).
+    my @stat = stat $fh;
+    die "stat failed: $!" unless @stat;
+    my $size = $stat[7];
+    my ($num_records, @buckets);
+    {
+	use integer;
+	$num_records = ($size - $hdr_len) / 8;
+	warn "num_rec = $num_records\n" if DEBUG;
+    }
+
+    for (0..MAX_BUCKET) {
+	$buckets[$_] = 0;
+    }
+
+    for (my $i = 0; $i < $num_records; $i++) {
+	my $buf;
+	read $fh, $buf, 8 or die "Could not read: $!";
+	my ($index, $count) = unpack "LL", $buf;
+	$buckets[$index] = $count;
+    }
+
+    return [\@buckets, $sent, $min, $lost];
 }
