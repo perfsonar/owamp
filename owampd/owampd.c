@@ -14,7 +14,6 @@
 #define CNTRLNEXT return True
 #define CNTRLSTOP return False
 
-
 int ip2class_flag = 0;
 int class2limits_flag = 0;
 int passwd_flag = 0;
@@ -445,6 +444,7 @@ main(int argc, char *argv[])
 	* Start an error loggin session for reporting errors to the
 	* standard error
 	*/
+	progname = (progname = strrchr(argv[0], '/')) ? ++progname : *argv;
 	eh = I2ErrOpen(progname, I2ErrLogImmediate, &ia, NULL, NULL);
 	if(! eh) {
 		fprintf(stderr, "%s : Couldn't init error module\n", progname);
@@ -509,24 +509,15 @@ main(int argc, char *argv[])
 		/* check if any signals have occurred */
 		if (sig_received){
 			switch (sig_name) {
-				pid_t kidpid;
 				int stat;
-
 			case SIGCHLD:
-				while ( (kidpid = waitpid(-1, &stat, 
-							  WNOHANG)) > 0){
+				while (waitpid(-1, &stat, WNOHANG) > 0)
 					free_connections++;
-					fprintf(stderr, 
-						"picked up kid %d\n", kidpid);
-				}
 				sig_received = 0;
 				break;
 			default:
 				sig_received = 0;
-				fprintf(stderr, 
-					"DEBUG: received unknown signal\n");
 				break;
-				
 			}
 		}
 	AGAIN:
@@ -536,19 +527,10 @@ main(int argc, char *argv[])
 			nfound);
 	
 		if (nfound < 0){
-			if (errno == EINTR){
-				fprintf(stderr, 
-				      "DEBUG: select interrupted by signal\n");
+			if (errno == EINTR)
 				goto AGAIN;
-			}
 			else {
-				fprintf(stderr, "DEBUG: calling I2ErrLog\n");
-
-				/* XXX - I2ErrLog causes core dump */
-			     /* I2ErrLog(eh, "select() failed. Exiting...");*/
-
-				fprintf(stderr, 
-				"DEBUG: FATAL select error. Parent exiting\n");
+				I2ErrLog(eh, "select() failed. Exiting...");
 				exit(1);
 			}
 		}
@@ -557,7 +539,7 @@ main(int argc, char *argv[])
 			continue;
 
 		if (FD_ISSET(listenfd, &mask)){ /* new connection */
-			int mode_available;
+			int        mode_available = default_offered_mode;
 			int        new_pipe[2];
 			pid_t      pid;
 			OWPBoolean auth_ok;
@@ -620,9 +602,14 @@ main(int argc, char *argv[])
 				exit(1);
 			}
 
-			mode_available = default_offered_mode;
-			close(new_pipe[0]);
-			close(listenfd);
+			if (close(new_pipe[0]) < 0){
+				perror("close");
+				exit(1);
+			}
+			if (close(listenfd) < 0){
+				perror("close");
+				exit(1);
+			}
 
 			if (free_connections <= 0)
 				mode_available &= OWP_MODE_OPEN;
