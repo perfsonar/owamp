@@ -771,22 +771,28 @@ main(
 	char	**argv
 ) {
 	char			*progname;
-	OWPErrSeverity		err_ret=OWPErrOK;
+	OWPErrSeverity		err_ret = OWPErrOK;
 	I2LogImmediateAttr	ia;
 	owp_policy_data		*policy;
-	int			ch;
 	OWPContext		ctx;
 	OWPTestSpecPoisson	test_spec;
-	OWPSID			tosid,fromsid;
-	OWPTimeStamp		start_time_rec={0,0,0,0};
+	OWPSID			tosid, fromsid;
+	OWPTimeStamp		start_time_rec = {0,0,0,0};
 	OWPPerConnDataRec	conndata;
 	OWPAcceptType		acceptval;
 	OWPErrSeverity		err;
 	fetch_state             state;
-	int			tofd=-1,fromfd=-1;
+	int			tofd = -1, fromfd = -1;
 	OWPAddr                 local;
 	char                    local_str[NI_MAXHOST], *remote;
+
+	int			ch;
 	char                    *endptr;
+	char                    optstring[128];
+	static char              *conn_opts = "A:S:k:u:";
+	static char              *test_opts = "fF:tT:c:i:s:L:";
+	static char              *out_opts = "a:vVQ";
+	static char              *gen_opts = "h";
 
 	ia.line_info = (I2NAME | I2MSG);
 	ia.fp = stderr;
@@ -829,22 +835,36 @@ main(
 	ping_ctx.opt.mean_wait = (float)0.1;
 	ping_ctx.opt.padding = 0;
 
-	while ((ch = getopt(argc, argv, 
-			    "A:F:L:QS:T:Va:c:fhi:k:s:tu:vw")) != -1)
+	/* Create options strings for this program. */
+	if (!strcmp(progname, "owping")) {
+		strcpy(optstring, conn_opts);
+		strcat(optstring, test_opts);
+		strcat(optstring, out_opts);
+	} else if (!strcmp(progname, "owstats")) {
+		strcpy(optstring, out_opts);
+	} else if (!strcmp(progname, "owfetch")) {
+		strcpy(optstring, conn_opts);
+		strcat(optstring, out_opts);
+	}
+	strcat(optstring, gen_opts);
+		
+	while ((ch = getopt(argc, argv, optstring)) != -1)
              switch (ch) {
-             case 'v':
-		     ping_ctx.opt.records = True;
+		     /* Connection options. */
+             case 'A':
+		     ping_ctx.opt.authmode = strdup(optarg);
                      break;
-             case 'V':
-		     ping_ctx.opt.full = True;
+             case 'S':
+		     ping_ctx.opt.srcaddr = strdup(optarg);
                      break;
-             case 'h':
-		     ping_ctx.opt.help = True;
+             case 'u':
+		     ping_ctx.opt.identity = strdup(optarg);
                      break;
-             case 'Q':
-		     ping_ctx.opt.quiet = True;
+	     case 'k':
+		     ping_ctx.opt.passwd = strdup(optarg);
                      break;
 
+		     /* Test options. */
   	     case 'F':
 		     ping_ctx.opt.save_from_test = strdup(optarg);
 		     /* fall through */
@@ -857,40 +877,41 @@ main(
              case 't':
 		     ping_ctx.opt.to = True;
                      break;
-  
-             case 'A':
-		     ping_ctx.opt.authmode = strdup(optarg);
-                     break;
-             case 'u':
-		     ping_ctx.opt.identity = strdup(optarg);
-                     break;
-             case 'c':
+               case 'c':
 		     ping_ctx.opt.numPackets = strtoul(optarg, &endptr, 10);
                      break;
-
-             case 'L':
-		     ping_ctx.opt.lossThreshold = strtoul(optarg, &endptr, 10);
-                     break;
-             case 'a':
-		     ping_ctx.opt.percentile =(float)(strtod(optarg, &endptr));
-		     break;
-
-	     case 'k':
-		     ping_ctx.opt.passwd = strdup(optarg);
-                     break;
-             case 'S':
-		     ping_ctx.opt.srcaddr = strdup(optarg);
-                     break;
-
-	     case 'w':
-		     ping_ctx.opt.childwait = True;
-                     break;
-
              case 'i':
 		     ping_ctx.opt.mean_wait = (float)(strtod(optarg, &endptr));
                      break;
              case 's':
 		     ping_ctx.opt.padding = strtoul(optarg, &endptr, 10);
+                     break;
+             case 'L':
+		     ping_ctx.opt.lossThreshold = strtoul(optarg, &endptr, 10);
+                     break;
+
+
+		     /* Output options */
+             case 'v':
+		     ping_ctx.opt.records = True;
+                     break;
+             case 'V':
+		     ping_ctx.opt.full = True;
+                     break;
+             case 'Q':
+		     ping_ctx.opt.quiet = True;
+                     break;
+
+             case 'a':
+		     ping_ctx.opt.percentile =(float)(strtod(optarg, &endptr));
+		     break;
+	     case 'w':
+		     ping_ctx.opt.childwait = True;
+                     break;
+
+		     /* Generic options.*/
+             case 'h':
+		     ping_ctx.opt.help = True;
                      break;
              case '?':
              default:
