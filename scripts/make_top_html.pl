@@ -47,7 +47,7 @@ print <<"STOP";
 Each mesh (IPv4, IPv6) is described by a separate table. For each
 link within a mesh we print the worst median delay (ms) and loss percentage
 of 30-sec sessions over the last 5 minutes.
-Senders are listed going down the column, and receivers along the row.
+Receivers are listed going down the column, and senders along the row.
 Cells with delay of more than $del_thresh ms, or loss of more than
 $loss_thresh\%, are marked in red.
 STOP
