@@ -56,6 +56,7 @@ typedef int		OWAMPBoolean;
 typedef u_int32_t	OWAMPSID[4];
 typedef u_int32_t	OWAMPSequence;
 typedef char		OWAMPKID[8];
+typedef u_int8_t	OWAMPKey[16];
 typedef u_int32_t	OWAMPSessionModes;
 
 
