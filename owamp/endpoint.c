@@ -281,7 +281,7 @@ error:
  */
 static int
 InitNTP(
-		OWPContext	ctx
+		OWPContext	ctx	__attribute__((unused))
 		)
 {
 	struct timex	ntp_conf;

@@ -125,7 +125,7 @@ usage(const char *progname, const char *msg)
 	if(msg) fprintf(stderr, "%s: %s\n", progname, msg);
 	if (!strcmp(progname, "owping")) {
 		fprintf(stderr,
-			"usage: %s %s\n", 
+			"usage: %s %s\n%s\n", 
 			progname, "[arguments] testaddr [servaddr]",
 			"[arguments] are as follows: "
 			);
@@ -140,7 +140,7 @@ usage(const char *progname, const char *msg)
 		
 	} else if (!strcmp(progname, "owstats")) {
 		fprintf(stderr,
-			"usage: %s %s\n", 
+			"usage: %s %s\n%s\n",
 			progname, "[arguments] sessionfile",
 			"[arguments] are as follows: "
 			);
@@ -148,7 +148,7 @@ usage(const char *progname, const char *msg)
 		print_output_args();
 	} else if (!strcmp(progname, "owfetch")) {
 		fprintf(stderr,
-			"usage: %s %s\n", 
+			"usage: %s %s\n%s\n",
 			progname, "[arguments] servaddr [SID savefile]+",
 			"[arguments] are as follows: "
 			);
