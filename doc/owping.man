@@ -62,6 +62,14 @@ Unset.
 .RE
 .SS Test Configuration Arguments:
 .TP
+\fB\-c\fR \fIcount\fR
+.br
+Number of test packets to send in the test session.
+.RS
+.IP Default:
+100
+.RE
+.TP
 \fB\-f\fR
 .br
 Perform a One-way test \fBf\fRrom the target \fIpeerhost\fR.
@@ -79,31 +87,6 @@ save the results in \fIfromfile\fR.
 Unset.
 .RE
 .TP
-\fB\-t\fR
-.br
-Perform a One-way test \fBt\fRoward the target \fIpeerhost\fR.
-.RS
-.IP Default:
-True, unless the \fI\-f\fR or \fI\-F\fR have been specified.
-.RE
-.TP
-\fB\-T\fR \fItofile\fR
-.br
-Perform a One-way test \fBt\fRoward the target \fIpeerhost\fR, and
-save the results in \fItofile\fR.
-.RS
-.IP Default:
-Unset.
-.RE
-.TP
-\fB\-c\fR \fIcount\fR
-.br
-Number of test packets to send in the test session.
-.RS
-.IP Default:
-100
-.RE
-.TP
 \fB\-i\fR \fIwait\fR
 .br
 Wait \fIwait\fR seconds between sending packets. This wait period is not
@@ -113,16 +96,6 @@ between each packet will average \fIwait\fR seconds.
 .RS
 .IP Default:
 0.1 (seconds)
-.RE
-.TP
-\fB\-s\fR \fIsize\fR
-.br
-Size of the padding to add to each minimally sized test packet. The minimal
-size for a test packet in \fIopen\fR mode is 14 bytes. The minimal size
-for a test packet in \fIauthenticated\fR or \fIencrypted\fR mode is 32 bytes.
-.RS
-.IP Default:
-0 (bytes)
 .RE
 .TP
 \fB\-L\fR \fItimeout\fR
@@ -141,6 +114,33 @@ the \fItimeout\fR option should be specified.
 .RS
 .IP Default:
 2 seconds longer than the round-trip estimate. (seconds)
+.RE
+.TP
+\fB\-s\fR \fIsize\fR
+.br
+Size of the padding to add to each minimally sized test packet. The minimal
+size for a test packet in \fIopen\fR mode is 14 bytes. The minimal size
+for a test packet in \fIauthenticated\fR or \fIencrypted\fR mode is 32 bytes.
+.RS
+.IP Default:
+0 (bytes)
+.RE
+.TP
+\fB\-t\fR
+.br
+Perform a One-way test \fBt\fRoward the target \fIpeerhost\fR.
+.RS
+.IP Default:
+True, unless the \fI\-f\fR or \fI\-F\fR have been specified.
+.RE
+.TP
+\fB\-T\fR \fItofile\fR
+.br
+Perform a One-way test \fBt\fRoward the target \fIpeerhost\fR, and
+save the results in \fItofile\fR.
+.RS
+.IP Default:
+Unset.
 .RE
 .SS Connection/Authentication Arguments:
 .TP
@@ -170,16 +170,6 @@ in the form of an AES key.
 "AEO".
 .RE
 .TP
-\fB\-S\fR \fIsrcaddr\fR
-.br
-Bind the local address of the client socket to \fIsrcaddr\fR. \fIsrcaddr\fR
-can be specified using a DNS name or using standard textual notations for
-the IP addresses.
-.RS
-.IP Default:
-Unspecified (wild-card address selection).
-.RE
-.TP
 \fB\-k\fR \fIkeyfile\fR
 .br
 Indicates that \fBowping\fR should use the AES key in \fIkeyfile\fR for
@@ -190,6 +180,16 @@ application.
 .IP Default:
 Unset. (If the \fB\-U\fR option was specified, user will be prompted for a
 \fIpassphrase\fR.)
+.RE
+.TP
+\fB\-S\fR \fIsrcaddr\fR
+.br
+Bind the local address of the client socket to \fIsrcaddr\fR. \fIsrcaddr\fR
+can be specified using a DNS name or using standard textual notations for
+the IP addresses.
+.RS
+.IP Default:
+Unspecified (wild-card address selection).
 .RE
 .TP
 \fB\-u\fR \fIusername\fR
@@ -222,14 +222,6 @@ Suppress the printing of summary statistics.
 Unset.
 .RE
 .TP
-\fB\-v\fR
-.br
-Print delays for individual packet records.
-.RS
-.IP Default:
-Unset.
-.RE
-.TP
 \fB\-R\fR
 .br
 Print individual packet records one per line in the raw format:
@@ -251,6 +243,16 @@ RERR	Estimate of RECVTIME error.
 The timestamps are ASCII representation of 64 bit integers with the
 high-order 32 bits representing the number of seconds since Jan 1, 1900
 and the low-order 32 bits representing fractional seconds.
+.PP
+(Implies \fI\-Q\fR.)
+.IP Default:
+Unset.
+.RE
+.TP
+\fB\-v\fR
+.br
+Print delays for individual packet records.
+.RS
 .IP Default:
 Unset.
 .RE

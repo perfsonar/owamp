@@ -1,0 +1,124 @@
+'\"t
+." The first line of this file must contain the '"[e][r][t][v] line
+." to tell man to run the appropriate filter "t" for table.
+."
+."	$Id$
+."
+."######################################################################
+."#									#
+."#			   Copyright (C)  2004				#
+."#	     			Internet2				#
+."#			   All Rights Reserved				#
+."#									#
+."######################################################################
+."
+."	File:		owstats.man
+."
+."	Author:		Jeff Boote
+."			Internet2
+."
+."	Date:		Wed Apr 28 08:48:05 MDT 2004
+."
+."	Description:	
+."
+.TH owstats 1 "$Date$"
+.SH NAME
+owstats \- Command line application used to parse \fBOWAMP\fR data files.
+.SH SYNOPSIS
+.B owstats 
+[\fIoptions\fR] datafile.owp
+.SH DESCRIPTION
+\fBowstats\fR is a command line application that is used to parse \fBOWAMP\fR
+data files. It is used to display the results in a number of different
+textual formats.
+.SH OPTIONS
+.TP
+\fB\-h\fR
+.br
+Print a usage message and exit.
+.RS
+.IP Default:
+Unset.
+.RE
+.SS Output Arguments:
+.TP
+\fB\-a\fR \fIpercentile\fR
+.br
+Specify an additional \fIpercentile\fR to print out in addition to the 
+minimum and the median when printing summary statistics.
+.RS
+.IP Default:
+Unset.
+.RE
+.TP
+\fB\-Q\fR
+.br
+Suppress the printing of summary statistics. (Not really useful in the
+context of \fBowstats\fR but documented here for consistancy.)
+.RS
+.IP Default:
+Unset.
+.RE
+.TP
+\fB\-R\fR
+.br
+Print individual packet records one per line in the raw format:
+.RS
+.PP
+\fISEQNO SENDTIME SSYNC SERR RECVTIME RSYNC RERR\fR
+.br
+.TS
+li l .
+SEQNO	Sequence Number.
+SENDTIME	Send timestamp.
+SSYNC	Sending system synchronized (0 or 1).
+SERR	Estimate of SENDTIME error.
+RECVTIME	Receive timestamp.
+RSYNC	Receiving system synchronized (0 or 1).
+RERR	Estimate of RECVTIME error.
+.TE
+.PP
+The timestamps are ASCII representation of 64 bit integers with the
+high-order 32 bits representing the number of seconds since Jan 1, 1900
+and the low-order 32 bits representing fractional seconds.
+.PP
+(Implies \fI\-Q\fR.)
+.IP Default:
+Unset.
+.RE
+.TP
+\fB\-v\fR
+.br
+Print delays for individual packet records.
+.RS
+.IP Default:
+Unset.
+.RE
+.SH EXAMPLES
+.LP
+\fBowstats datafile.owp\fR
+.IP
+Report the summary statistics from the file datafile.owp.
+.LP
+\fBowstats -a 95 datafile.owp\fR
+.IP
+Report the summary statistics from the file datafile.owp. Additionally
+report the 95th percentile of delay as an extra statistic.
+.LP
+\fBowstats -R datafile.owp\fR
+.IP
+Print out the packets in a more machine readable format with no
+statistics computed at all.
+.LP
+\fBowstats -v datafile.owp\fR
+.IP
+Show individual delays for each packet with summary statistics
+printed at the end.
+.SH SEE ALSO
+owampd(8), owping(1), owfetch(1) and the \%http://e2epi.internet2.edu/owamp/
+web sites.
+.SH ACKNOWLEDGMENTS
+This material is based in part on work supported by the National Science
+Foundation (NSF) under Grant No. ANI-0314723. Any opinions, findings and
+conclusions or recommendations expressed in this material are those of
+the author(s) and do not necessarily reflect the views of the NSF.
