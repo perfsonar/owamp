@@ -27,11 +27,6 @@
 #include <owamp/owamp.h>
 #include "access.h"
 
-#define OWP_IDTYPE_KID     1
-#define OWP_IDTYPE_IPADDR  2
-#define OWP_IDTYPE_IPv4    3
-#define OWP_IDTYPE_IPv6    4
-
 /*
 ** This function fills out a datum structure with the given string.
 ** <len> typically should be strlen(bytes) + 1.
@@ -105,7 +100,8 @@ owp_access_id *
 owp_access_id_new()
 {
 	owp_access_id *ret;
-	if ((ret = (void *)malloc(sizeof ret)) == NULL) {
+	ret = (void *)malloc(sizeof(*ret));
+	if (!ret) {
 		perror("malloc");
 		exit(1);
 	}
@@ -148,6 +144,23 @@ owp_id2class_store_netmask(void *addr,
 	I2hash_store(id2class_hash, key, val);
 }
 
+void
+owp_print_id(I2datum *key)
+{
+	owp_access_id *ptr;
+
+	ptr = (owp_access_id *)(key->dptr);
+	
+	switch (ptr->type) {
+	case OWP_IDTYPE_KID:
+		printf("DEBUG: KID is %s\n", ptr->kid);
+		break;
+	default:
+		printf("DEBUG: type = %d\n", ptr->type);
+		break;
+	}
+}
+
 /*
 ** Given a string representing a KID, save it in the hash.
 */ 
@@ -173,6 +186,10 @@ owp_id2class_store_kid(char *kid, char *class, I2table id2class_hash)
 	key->dsize = sizeof(owp_access_id);
 
 	val = str2datum2(class, strlen(class) + 1);
+
+#if 0
+	owp_print_id(key);
+#endif
 	I2hash_store(id2class_hash, key, val);
 }
 
@@ -222,9 +239,9 @@ owamp_read_id2class(OWPContext ctx,
 		slash = strchr(id, '/');
 
 		if (!slash) { /* Either KID or single IP address. */
-			if (getaddrinfo(nodename, NULL, &hints, &res) < 0) {
+			if (getaddrinfo(id, NULL, &hints, &res) != 0) {
 				/* id is KID */
-				owp_id2class_store_kid(nodename, class, 
+				owp_id2class_store_kid(id, class, 
 						       id2class_hash);
 				continue;
 			}
@@ -398,7 +415,7 @@ PolicyInit2(
 	}
 
 	/* Initialize the hashes. */
-	ret->ip2class = I2hash_init(ctx, 0, NULL, NULL,print_ip2class_binding);
+	ret->ip2class = I2hash_init(ctx, 0, NULL, NULL,print_id2class_binding);
 	if (ret->ip2class == NULL){
 		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN,
 			 "could not init ip2class hash");

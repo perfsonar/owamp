@@ -17,9 +17,26 @@ print_ip2class_binding(const struct I2binding *p, FILE* fp)
 void
 print_id2class_binding(const struct I2binding *p, FILE* fp)
 {
-	u_int8_t type;
+	idtype type;
+	owp_access_id *ptr;
+	char *class;
 
-	type = ((owp_access_id *)(p->key->dptr))->type;
+	ptr = (owp_access_id *)(p->key->dptr);
+	class = (char *)(p->value->dptr);
+	type = ptr->type;
+
+	switch (type) {
+	case OWP_IDTYPE_KID:
+		fprintf(fp, "DEBUG: class of KID `%s' is `%s'\n", 
+			ptr->kid, class);
+		break;
+	case OWP_IDTYPE_IPv4:
+		break;
+	case OWP_IDTYPE_IPv6:
+		break;
+	default:
+		break;
+	}
 }
 
 
