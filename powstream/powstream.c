@@ -69,6 +69,7 @@ static	u_int32_t		sessionTime;
 static	u_int32_t		file_offset,ext_offset;
 static	int			pow_reset = 0;
 static	int			pow_exit = 0;
+static	int			pow_error = SIGCONT;
 static	double			inf_delay;
 
 static void
@@ -104,6 +105,7 @@ print_output_args()
 		"   -b bucketWidth create summary files with buckets(seconds)\n"
 		"   -h             print this message and exit\n"
 		"   -e             syslog facility to log to\n"
+		"   -r             syslog facility to STDERR\n"
 		);
 }
 
@@ -241,9 +243,8 @@ sig_catch(
 			pow_reset++;
 			break;
 		default:
-			I2ErrLog(eh,"sig_catch(%d):UNEXPECTED SIGNAL NUMBER",
-									signo);
-			exit(1);
+			pow_error = signo;
+			break;
 	}
 
 	return;
@@ -252,10 +253,16 @@ sig_catch(
 static int
 sig_check()
 {
+	if(pow_error != SIGCONT){
+		I2ErrLog(eh,"sig_check(%d):UNEXPECTED SIGNAL NUMBER",pow_error);
+		exit(1);
+	}
+
 	if(pow_exit || pow_reset){
 		CloseSessions();
 	}
 	if(pow_exit){
+		I2ErrLog(eh,"SIGTERM/SIGINT: Exiting.");
 		exit(0);
 	}
 	if(pow_reset){
@@ -322,6 +329,7 @@ SetupSession(
 				OWPAddrByNode(ctx, appctx.remote_serv),
 				appctx.auth_mode,appctx.opt.identity,
 				NULL,&err))){
+			if(sig_check()) return 1;
 			stime = MIN(sessionTime,SETUP_ESTIMATE);
 			I2ErrLog(eh,"OWPControlOpen():%M:Retry in-%d seconds",
 									stime);
