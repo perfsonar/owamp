@@ -787,7 +787,7 @@ main(
 	char                    local_str[NI_MAXHOST], *remote;
 
 	int			ch;
-	char                    *endptr;
+	char                    *endptr = NULL;
 	char                    optstring[128];
 	static char              *conn_opts = "A:S:k:u:";
 	static char              *test_opts = "fF:tT:c:i:s:L:";
@@ -823,9 +823,8 @@ main(
 	ctx = ping_ctx.lib_ctx;
 
 	/* Set default options. */
-	ping_ctx.opt.records = ping_ctx.opt.full = ping_ctx.opt.help 
-		= ping_ctx.opt.from = ping_ctx.opt.to = ping_ctx.opt.childwait 
-		= ping_ctx.opt.quiet = False;
+	ping_ctx.opt.records = ping_ctx.opt.full = ping_ctx.opt.childwait 
+            = ping_ctx.opt.from = ping_ctx.opt.to = ping_ctx.opt.quiet = False;
 	ping_ctx.opt.save_from_test = ping_ctx.opt.save_to_test 
 		= ping_ctx.opt.identity = ping_ctx.opt.passwd 
 		= ping_ctx.opt.srcaddr = ping_ctx.opt.authmode = NULL;
@@ -852,42 +851,80 @@ main(
              switch (ch) {
 		     /* Connection options. */
              case 'A':
-		     ping_ctx.opt.authmode = strdup(optarg);
+		     if (!(ping_ctx.opt.authmode = strdup(optarg))) {
+			     perror("malloc:");
+			     exit(1);
+		     }
                      break;
              case 'S':
-		     ping_ctx.opt.srcaddr = strdup(optarg);
+		     if (!(ping_ctx.opt.srcaddr = strdup(optarg))) {
+			     perror("malloc:");
+			     exit(1);
+		     }
                      break;
              case 'u':
-		     ping_ctx.opt.identity = strdup(optarg);
+		     if (!(ping_ctx.opt.identity = strdup(optarg))) {
+			     perror("malloc:");
+			     exit(1);
+		     }
                      break;
 	     case 'k':
-		     ping_ctx.opt.passwd = strdup(optarg);
+		     if (!(ping_ctx.opt.passwd = strdup(optarg))) {
+			     perror("malloc:");
+			     exit(1);
+		     }
                      break;
 
 		     /* Test options. */
   	     case 'F':
-		     ping_ctx.opt.save_from_test = strdup(optarg);
+		     if (!(ping_ctx.opt.save_from_test = strdup(optarg))) {
+			     perror("malloc:");
+			     exit(1);
+		     }     
 		     /* fall through */
              case 'f':
 		     ping_ctx.opt.from = True;
                      break;
 	     case 'T':
-		     ping_ctx.opt.save_to_test = strdup(optarg);
+		     if (!(ping_ctx.opt.save_to_test = strdup(optarg))) {
+			     perror("malloc:");
+			     exit(1);
+		     }
 		     /* fall through */
              case 't':
 		     ping_ctx.opt.to = True;
                      break;
                case 'c':
 		     ping_ctx.opt.numPackets = strtoul(optarg, &endptr, 10);
+		     if (*endptr != '\0') {
+			     usage(progname, 
+				   "Invalid value. Positive integer expected");
+			     exit(1);
+		     }
                      break;
              case 'i':
 		     ping_ctx.opt.mean_wait = (float)(strtod(optarg, &endptr));
+		     if (*endptr != '\0') {
+			     usage(progname, 
+			   "Invalid value. Positive floating number expected");
+			     exit(1);
+		     }
                      break;
              case 's':
 		     ping_ctx.opt.padding = strtoul(optarg, &endptr, 10);
+		     if (*endptr != '\0') {
+			     usage(progname, 
+				   "Invalid value. Positive integer expected");
+			     exit(1);
+		     }
                      break;
              case 'L':
 		     ping_ctx.opt.lossThreshold = strtoul(optarg, &endptr, 10);
+		     if (*endptr != '\0') {
+			     usage(progname, 
+				   "Invalid value. Positive integer expected");
+			     exit(1);
+		     }
                      break;
 
 
@@ -904,6 +941,13 @@ main(
 
              case 'a':
 		     ping_ctx.opt.percentile =(float)(strtod(optarg, &endptr));
+		     if ((*endptr != '\0')
+			 || (ping_ctx.opt.percentile < 0.0) 
+			 || (ping_ctx.opt.percentile > 100.0)){
+			     usage(progname, 
+	     "Invalid value. Floating number between 0.0 and 100.0 expected");
+			     exit(1);
+		     }
 		     break;
 	     case 'w':
 		     ping_ctx.opt.childwait = True;
@@ -911,8 +955,6 @@ main(
 
 		     /* Generic options.*/
              case 'h':
-		     ping_ctx.opt.help = True;
-                     break;
              case '?':
              default:
                      usage(progname, "");
@@ -921,14 +963,6 @@ main(
              }
 	argc -= optind;
 	argv += optind;
-
-	/*
-	 * Print help.
-	 */
-	if(ping_ctx.opt.help) {
-		usage(progname, NULL);
-		exit(0);
-	}
 
 	/*
 	 * Handle 3 possible cases (owping, owfetch, owstats) one by one.
@@ -1133,7 +1167,7 @@ main(
 	if (!strcmp(progname, "owfetch")) {
 		int i;
 		if (argc%2 == 0) {
-			usage(progname, "even number of arguments required");
+			usage(progname, NULL);
 			exit(1);
 		}
 

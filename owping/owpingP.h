@@ -30,13 +30,12 @@ typedef	struct {
 	*/
 	struct  {
 		/* Flags */
-		I2Boolean       records; /* -v */
-		I2Boolean       full;    /* -V */
-		I2Boolean	help;    /* -h */
-		I2Boolean	quiet;    /* -Q */
+		I2Boolean       records;          /* -v */
+		I2Boolean       full;             /* -V */
+		I2Boolean	quiet;            /* -Q */
 
-		I2Boolean	to;      /* -t */
-		I2Boolean	from;    /* -f */
+		I2Boolean	to;               /* -t */
+		I2Boolean	from;             /* -f */
 		char            *save_to_test;    /* -T */
 		char            *save_from_test;  /* -F */
 
@@ -56,10 +55,6 @@ typedef	struct {
 
 		float		mean_wait;        /* -i  (seconds) */
 		u_int32_t	padding;          /* -s */
-
-#if 0
-		char            *sid;
-#endif
 
 	} opt;
 
