@@ -417,10 +417,9 @@ OWPControlAccept(
 		goto error;
 
 	OWPError(ctx,OWPErrINFO,OWPErrPOLICY,
-			"Connection to (%s:%s) from (%s:%s)",
-				cntrl->local_addr->node,cntrl->local_addr->port,
-				cntrl->remote_addr->node,
-				cntrl->remote_addr->port);
+		 "Connection to (%s:%s) from (%s:%s)",
+		 cntrl->local_addr->node,cntrl->local_addr->port,
+		 cntrl->remote_addr->node, cntrl->remote_addr->port);
 
 	/* generate 16 random bytes of challenge and save them away. */
 	if(I2RandomBytes(ctx->rand_src,challenge, 16) != 0){
@@ -434,8 +433,7 @@ OWPControlAccept(
 	}
 
 	if( (rc=_OWPReadClientGreeting(cntrl,&cntrl->mode,rawtoken,
-								cntrl->readIV))
-									< OWPErrOK){
+				       cntrl->readIV)) < OWPErrOK){
 		*err_ret = (OWPErrSeverity)rc;
 		goto error;
 	}
@@ -450,11 +448,11 @@ OWPControlAccept(
 
 	if(!(cntrl->mode | mode_offered)){ /* can't provide requested mode */
 		OWPError(cntrl->ctx,OWPErrINFO,OWPErrPOLICY,
-			"Control request to (%s:%s) denied from (%s:%s):mode not offered (%u)",
-				cntrl->local_addr->node,cntrl->local_addr->port,
-				cntrl->remote_addr->node,
-				cntrl->remote_addr->port,cntrl->mode);
-		if( (rc = _OWPWriteServerOK(cntrl, OWP_CNTRL_REJECT)) < OWPErrOK)
+	"Control request to (%s:%s) denied from (%s:%s):mode not offered (%u)",
+			 cntrl->local_addr->node,cntrl->local_addr->port,
+			 cntrl->remote_addr->node,
+			 cntrl->remote_addr->port,cntrl->mode);
+		if( (rc = _OWPWriteServerOK(cntrl, OWP_CNTRL_REJECT))<OWPErrOK)
 			*err_ret = (OWPErrSeverity)rc;
 		goto error;
 	}
@@ -489,8 +487,8 @@ OWPControlAccept(
 		/* Decrypted challenge is in the first 16 bytes */
 		if (memcmp(challenge,token,16) != 0){
 			OWPError(cntrl->ctx,OWPErrINFO,OWPErrPOLICY,
-				"Control request to (%s:%s) denied from (%s:%s):Invalid challenge encryption",
-				cntrl->local_addr->node,cntrl->local_addr->port,
+ "Control request to (%s:%s) denied from (%s:%s):Invalid challenge encryption",
+			       cntrl->local_addr->node,cntrl->local_addr->port,
 				cntrl->remote_addr->node,
 				cntrl->remote_addr->port);
 			(void)_OWPWriteServerOK(cntrl,OWP_CNTRL_REJECT);
@@ -499,7 +497,7 @@ OWPControlAccept(
 		
 		/* Authentication ok - set encryption fields */
 		cntrl->kid = cntrl->kid_buffer;
-		if(I2RandomBytes(cntrl->ctx->rand_src,cntrl->writeIV, 16) != 0){
+		if(I2RandomBytes(cntrl->ctx->rand_src,cntrl->writeIV,16) != 0){
 			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 					"Unable to fetch randomness...");
 			(void)_OWPWriteServerOK(cntrl,OWP_CNTRL_FAILURE);
@@ -526,8 +524,7 @@ OWPControlAccept(
 		else{
 			OWPError(ctx,*err_ret,OWPErrUNKNOWN,
 						"Policy function failed.");
-			(void)_OWPWriteServerOK(cntrl,
-						OWP_CNTRL_FAILURE);
+			(void)_OWPWriteServerOK(cntrl, OWP_CNTRL_FAILURE);
 		}
 		goto error;
 	}
