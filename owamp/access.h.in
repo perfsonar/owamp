@@ -26,7 +26,7 @@
 /* for ntohl */
 #include <sys/param.h>
 
-#include <I2util/util.h>
+#include <I2util/table.h>
 
 #define MAX_LINE 1024
 
@@ -53,6 +53,14 @@ typedef struct owamp_limits {
 	u_int8_t test_sessions; /* number of concurrent test sessions */
 } OWAMPLimits;
 
+typedef struct {
+	I2table ip2class;
+	I2table class2limits;
+	I2table passwd;
+} policy_data;
+
 extern char *ipaddr2class(u_int32_t ip, I2table ip2class_hash);
+extern void print_ip2class_binding(const struct I2binding *p, FILE* fp);
+extern void print_class2limits_binding(const struct I2binding *p, FILE* fp);
 
 #endif	/* _owamp_contrib_h_ */
