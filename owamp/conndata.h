@@ -30,7 +30,6 @@
 
 typedef struct OWPPerConnDataRec{
 	OWPContext		ctx;
-	OWPControl		cntrl;
 
 	int			pipefd;		  /* pipe to parent	  */
 

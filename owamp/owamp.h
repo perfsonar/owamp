@@ -283,7 +283,7 @@ typedef OWPBoolean (*OWPCheckTestPolicyFunc)(
  * This structure encodes parameters needed to initialize the library.
  */ 
 typedef struct {
-	struct timeval			tm_out;
+	struct timeval			tm_out;	/* connect timeout for cntrl */
 	I2ErrHandle                     eh;
 	OWPGetAESKeyFunc		get_aes_key_func;
 	OWPCheckControlPolicyFunc	check_control_func;
@@ -881,6 +881,13 @@ OWPHexDecode(
 		timespecsub(&ts1_,&ts2_);				\
 		*vvp = ts1_;						\
 	} while(0)
+#endif
+
+#ifndef	OWPTimeStampCmp
+#define	OWPTimeStampCmp(tvp,uvp,cmp)					\
+	(((tvp)->sec == (uvp)->sec) ?					\
+		((tvp)->frac_sec cmp (uvp)->frac_sec) :			\
+		((tvp)->sec cmp (uvp)->sec))
 #endif
 
 extern OWPTimeStamp *

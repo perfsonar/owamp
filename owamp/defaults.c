@@ -99,7 +99,6 @@ owp_check_control(
 	*err_ret = OWPErrOK;
 
 	conndata->ctx = OWPGetContext(cntrl);
-	conndata->cntrl = cntrl;
 
 	/* 
 	   This implementation assumes that the KID has already
@@ -117,11 +116,11 @@ owp_check_control(
 	}
 
 	if (!class)  /*Internal error - every KID must have a class.*/{
-		OWPError(conndata->ctx,OWPErrFATAL,OWPErrPOLICY,
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrPOLICY,
 				"no class for the connection");
 		goto error;
 	}
-	OWPError(conndata->ctx,OWPErrINFO,OWPErrUNKNOWN,
+	OWPError(cntrl->ctx,OWPErrINFO,OWPErrUNKNOWN,
 			"DEBUG: class = %s",class);
 
 	node = owp_class2node(class, policy->class2node);

@@ -514,7 +514,6 @@ ACCEPT:
 		if(!cntrl){
 			exit(out);	
 		}
-		conndata.cntrl = cntrl;
 
 		/*
 		 * Send the mode to the parent.

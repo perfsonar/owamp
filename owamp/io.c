@@ -122,9 +122,8 @@ AGAIN:
 	wset = rset;
 
 	/*
-	 * Set tout to (end_time-curr_time) - curr_time will get updated
-	 * if there is an intr, so this is the "time left" from the original
-	 * timeout.
+	 * Set tout to (end_time-curr_time) - curr_time is updated
+	 * when there is an intr, so this still calculates the "time left".
 	 */
 	tvalclear(&tout);
 	tvaladd(&tout,&end_time);

@@ -1503,12 +1503,11 @@ _OWPEndpointStart(
 
 OWPErrSeverity
 _OWPEndpointStatus(
-	void		*app_data,
+	void		*app_data	__attribute__((unused)),
 	void		**end_data,
 	OWPAcceptType	*aval		/* out */
 	)
 {
-	OWPPerConnData		cdata = (OWPPerConnData)app_data;
 	_Endpoint		ep=*(_Endpoint*)end_data;
 	pid_t			p;
 	OWPErrSeverity		err=OWPErrOK;
@@ -1520,7 +1519,7 @@ AGAIN:
 		if(p < 0){
 			if(errno == EINTR)
 				goto AGAIN;
-			OWPError(OWPGetContext(cdata->cntrl),OWPErrWARNING,
+			OWPError(ep->ctx,OWPErrWARNING,
 				OWPErrUNKNOWN,
 				"EndpointStart:Can't query child #%d:%M",
 				ep->child);
@@ -1538,12 +1537,11 @@ AGAIN:
 
 OWPErrSeverity
 _OWPEndpointStop(
-	void		*app_data,
+	void		*app_data	__attribute__((unused)),
 	void		**end_data,
 	OWPAcceptType	aval
 	)
 {
-	OWPPerConnData		cdata = (OWPPerConnData)app_data;
 	_Endpoint		ep=*(_Endpoint*)end_data;
 	int			sig;
 	int			teststatus;
@@ -1563,12 +1561,12 @@ _OWPEndpointStop(
 		goto error;
 
 	ep->wopts &= ~WNOHANG;
-	err = _OWPEndpointStatus(app_data,end_data,&teststatus);
+	err = _OWPEndpointStatus(NULL,end_data,&teststatus);
 	if(teststatus >= 0)
 		goto done;
 
 error:
-	OWPError(OWPGetContext(cdata->cntrl),OWPErrFATAL,OWPErrUNKNOWN,
+	OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 			"EndpointStart:Can't signal child #%d:%M",ep->child);
 done:
 	EndpointFree(ep);

@@ -673,13 +673,13 @@ do_records_all(
 */
 void
 owp_fetch_sid(
-	      char *savefile,        
-	      OWPControl cntrl, 
-	      OWPSID sid,       
-	      fetch_state_ptr statep,
-	      char *local,           
-	      char *remote,
-	      int do_stats
+	char		*savefile,
+	OWPControl	cntrl,
+	OWPSID		sid,
+	fetch_state_ptr	statep,
+	char		*local,
+	char		*remote,
+	int		do_stats
 	      )
 {
 	char		*path;
@@ -1100,8 +1100,6 @@ main(
 			exit(1);
 		}
 
-		conndata.cntrl = ping_ctx.cntrl;
-		
 		(void)OWPGetDelay(ping_ctx.cntrl,&delay_tval);
 		/*
 		 * Set the loss threshold to 2 seconds longer then the
@@ -1221,7 +1219,7 @@ main(
 		}
 		
 		if(ping_ctx.opt.to)
-			owp_fetch_sid(ping_ctx.opt.save_to_test,conndata.cntrl,
+			owp_fetch_sid(ping_ctx.opt.save_to_test,ping_ctx.cntrl,
 				      tosid, &state, local_str, remote, 1);
 
 		if(ping_ctx.opt.from){
@@ -1261,7 +1259,7 @@ main(
 	
 	if (!strcmp(progname, "owfetch")) {
 		int i;
-		if (argc%2 == 0) {
+		if((argc%2 == 0) || (argc < 3)){
 			usage(progname, NULL);
 			exit(1);
 		}
@@ -1286,12 +1284,11 @@ main(
 			I2ErrLog(eh, "Unable to open control connection.");
 			exit(1);
 		}
-		conndata.cntrl = ping_ctx.cntrl;
 
 		for (i = 0; i < argc/2; i++) {
 			OWPSID sid;
-			OWPHexDecode(argv[i], sid, 16);
-			owp_fetch_sid(argv[i+1], conndata.cntrl, sid, &state,
+			OWPHexDecode(*argv++, sid, 16);
+			owp_fetch_sid(*argv++, ping_ctx.cntrl, sid, &state,
 				      NULL, NULL, 0);
 		}
 	}	
