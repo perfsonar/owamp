@@ -165,7 +165,7 @@ typedef int (*OWPErrFunc)(
  */	
 typedef OWPBoolean	(*OWPGetAESKeyFunc)(
 	void		*app_data,
-	char		*kid,
+	const char	*kid,
 	OWPByte		*key_ret,
 	OWPErrSeverity	*err_ret
 );
@@ -200,7 +200,7 @@ typedef OWPBoolean (*OWPCheckAddrPolicy)(
 typedef OWPBoolean (*OWPCheckControlPolicyFunc)(
 	void		*app_data,
 	OWPSessionMode	*mode_req,	/* in/out	*/
-	char		*kid,
+	const char	*kid,
 	struct sockaddr	*local_sa_addr,
 	struct sockaddr	*remote_sa_addr,
 	OWPErrSeverity	*err_ret
@@ -220,7 +220,7 @@ typedef OWPBoolean (*OWPCheckControlPolicyFunc)(
 typedef OWPBoolean (*OWPCheckTestPolicyFunc)(
 	void		*app_data,
 	OWPSessionMode	mode,
-	char		*kid,
+	const char	*kid,
 	struct sockaddr	*local_sa_addr,
 	struct sockaddr	*remote_sa_addr,
 	OWPTestSpec	*test_spec,
@@ -432,7 +432,7 @@ OWPRequestTestSession(
 	OWPBoolean	server_conf_sender,
 	OWPAddr		receiver,
 	OWPBoolean	server_conf_receiver,
-	OWPTestSpec	test_spec,
+	OWPTestSpec	*test_spec,
 	OWPSID		sid_ret,
 	OWPErrSeverity	*err_ret
 );

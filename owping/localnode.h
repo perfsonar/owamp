@@ -9,7 +9,7 @@
 *									*
 ************************************************************************/
 /*
- *	File:		localaddr.h
+ *	File:		localnode.h
  *
  *	Author:		Jeff Boote
  *			Internet2
@@ -20,13 +20,14 @@
  *
  * 		Find local addresses and put them in a hash.
  */
-#ifndef	_localaddr_h_
-#define	_localaddr_h_
+#ifndef	_localnode_h_
+#define	_localnode_h_
 #include <I2util/util.h>
 
 extern I2Boolean
 is_local_node(
-	const char	*nodename
+	const char	*nodename,
+	int		socktype
 	);
 
-#endif	/* _localaddr_h_ */
+#endif	/* _localnode_h_ */

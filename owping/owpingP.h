@@ -63,7 +63,6 @@ typedef	struct {
 	char			*local_addr;
 	char			*remote_addr;
 
-	OWPKID			kid;
 	u_int32_t		auth_mode;
 
 	OWPContext		lib_ctx;

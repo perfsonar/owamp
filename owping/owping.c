@@ -27,7 +27,7 @@
 #include <ctype.h>
 
 #include "./owpingP.h"
-#include "./localaddr.h"
+#include "./localnode.h"
 
 /*
  * The owping context
@@ -72,8 +72,8 @@ static	OWPInitializeConfigRec	OWPCfg = {
 	/* endpoint_init_func		*/	NULL,
 	/* endpoint_init_hook_func	*/	NULL,
 	/* endpoint_start_func		*/	NULL,
-	/* endpoint_stop_func		*/	NULL
-	/* get_timestamp_func		*/	NULL,
+	/* endpoint_stop_func		*/	NULL,
+	/* get_timestamp_func		*/	NULL
 };
 
 /*
@@ -199,7 +199,8 @@ main(
 	int			od;
 	OWPContext		ctx;
 	I2table			local_addr_table;
-	OWPPoissonTestSpec	poisson_test;
+	OWPPoissonTestSpec	test_spec;
+	OWPSID			sid_ret;
 
 	ia.line_info = (I2NAME | I2MSG);
 	ia.fp = stderr;
@@ -292,8 +293,8 @@ main(
 	/*
 	 * Determine "locality" of server addresses.
 	 */
-	OWPingCtx.sender_local = is_local_addr(OWPingCtx.opt.senderServ,0);
-	OWPingCtx.receiver_local = is_local_addr(OWPingCtx.opt.receiverServ,0);
+	OWPingCtx.sender_local = is_local_node(OWPingCtx.opt.senderServ,0);
+	OWPingCtx.receiver_local = is_local_node(OWPingCtx.opt.receiverServ,0);
 
 	/*
 	 * If both send/recv server addrs are not local, then they MUST be the
@@ -358,7 +359,7 @@ main(
 			!OWPingCtx.sender_local,
 			OWPAddrByNode(ctx,OWPingCtx.opt.receiver),
 			!OWPingCtx.receiver_local,
-			test_spec,
+			(OWPTestSpec*)&test_spec,
 			sid_ret,
 			&err_ret))
 		FailSession(OWPingCtx.cntrl);

@@ -48,6 +48,7 @@ AC_ARG_WITH(I2util,
 #
 I2UTILLDFLAGS=""
 I2UTILLIBS=""
+I2UTILLIBDEPS=""
 I2UTILINCS=""
 if test "$with_I2util" != "no"; then
 	# first, check for directory given.
@@ -59,6 +60,7 @@ if test "$with_I2util" != "no"; then
 		esac
 		I2UTILINCS="-I$I2util_dir/include $I2UTILINCS"
 		I2UTILLDFLAGS="-L$I2util_dir/lib $I2UTILLDFLAGS"
+		I2UTILLIBDEPS="$I2util_dir/lib/libI2util.a"
 	# now, check for sub-build/sub-configure
 	elif test -d I2util/I2util; then
 		AC_CONFIG_SUBDIRS(I2util)
@@ -66,11 +68,13 @@ if test "$with_I2util" != "no"; then
 		I2util_dir='${top_srcdir}/I2util'
 		I2UTILINCS="-I$I2util_dir $I2UTILINCS"
 		I2UTILLDFLAGS="-L$I2util_dir/I2util $I2UTILLDFLAGS"
+		I2UTILLIBDEPS="$I2util_dir/I2util/libI2util.a"
 		
 	# now, check for installed I2util
 	elif test -d /usr/local/I2util; then
 		I2UTILINCS="-I/usr/local/I2util/include $I2UTILINCS"
-		I2UTILLDFLAGS="-L$I2util_dir $I2UTILLDFLAGS"
+		I2UTILLDFLAGS="-L/usr/local/I2util/lib $I2UTILLDFLAGS"
+		I2UTILLIBDEPS="/usr/local/I2util/lib/libI2util.a"
 	fi
 
 	if test -z "$I2UTILLDFLAGS"; then
@@ -84,11 +88,14 @@ OWAMP_dir='${top_srcdir}'
 OWPINCS="-I$OWAMP_dir"
 OWPLDFLAGS="-L$OWAMP_dir/owamp"
 OWPLIBS="$OWPLDFLAGS -lowamp"
+OWPLIBDEPS="$OWAMP_dir/owamp/libowamp.a"
 
 AC_SUBST(I2UTILINCS)
 AC_SUBST(I2UTILLIBS)
+AC_SUBST(I2UTILLIBDEPS)
 AC_SUBST(OWPINCS)
 AC_SUBST(OWPLIBS)
+AC_SUBST(OWPLIBDEPS)
 
 AC_SUBST(TOP_BUILD_DIRS)
 

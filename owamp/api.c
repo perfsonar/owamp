@@ -524,7 +524,7 @@ _OWPControlAlloc(
 	return cntrl;
 }
 
-static OWPErrSeverity
+OWPErrSeverity
 OWPControlClose(OWPControl cntrl)
 {
 	OWPErrSeverity	err = OWPErrOK;
@@ -676,6 +676,29 @@ error:
 		OWPAddrFree(server_addr);
 	OWPControlClose(cntrl);
 	return NULL;
+}
+
+OWPBoolean
+OWPRequestTestSession(
+	OWPControl	cntrl,
+	OWPAddr		sender,
+	OWPBoolean	server_conf_sender,
+	OWPAddr		receiver,
+	OWPBoolean	server_conf_receiver,
+	OWPTestSpec	*test_spec,
+	OWPSID		sid_ret,
+	OWPErrSeverity	*err_ret
+)
+{
+	return False;
+}
+
+OWPErrSeverity
+OWPStartTestSessions(
+	OWPControl	cntrl
+)
+{
+	return OWPErrFATAL;
 }
 
 /*

@@ -9,7 +9,7 @@
 *									*
 ************************************************************************/
 /*
- *	File:		localaddr.c
+ *	File:		localnode.c
  *
  *	Author:		Jeff Boote
  *			Internet2
@@ -20,9 +20,11 @@
  *
  * 		Find local addresses and put them in a hash.
  */
-#include <unistd.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
 
-#include "./localaddr.h"
+#include "./localnode.h"
 
 /*
  * Function:	is_local_node

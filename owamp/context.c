@@ -137,9 +137,11 @@ _OWPCallCheckControlPolicy(
 OWPBoolean
 _OWPCallCheckTestPolicy(
 	OWPContext	ctx,		/* library context		*/
+	OWPSessionMode	mode,		/* authentication mode		*/
+	const char	*kid,		/* kid or null			*/
+	struct sockaddr	*local,		/* local endpoint		*/
+	struct sockaddr	*remote,	/* remote endpoint		*/
 	OWPTestSpec	*test_spec,	/* test requested		*/
-	OWPEndpoint	local,		/* local endpoint		*/
-	OWPEndpoint	remote,		/* remote endpoint		*/
 	OWPErrSeverity	*err_ret	/* error - return		*/
 )
 {
@@ -158,6 +160,6 @@ _OWPCallCheckTestPolicy(
 	if(!ctx->cfg.check_test_func)
 		return True;
 
-	return (*ctx->cfg.check_test_func)(ctx->cfg.app_data,test_spec,local,remote,
-								err_ret);
+	return (*ctx->cfg.check_test_func)(ctx->cfg.app_data,mode,kid,
+						local,remote,test_spec,err_ret);
 }
