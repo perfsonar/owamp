@@ -36,8 +36,6 @@ typedef struct {
 	char		cwd[MAXPATHLEN];
 	char		*confdir;
 	char		*vardir;
-	char		*ip2class;
-	char		*class2limits;
 	char		*passwd;
 
 	char		*datadir;

@@ -19,5 +19,5 @@
 #	Description:	constructing owamp conf files from templates
 #		This doesn't really do this yet - it just provides
 #		examples.
-noinst_DATA	= owampd.conf owampd.passwd owampd.limits
-EXTRA_DIST	= owampd.conf owampd.passwd owampd.limits
+noinst_DATA	= owampd.conf owampd.limits
+EXTRA_DIST	= owampd.conf owampd.limits

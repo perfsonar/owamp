@@ -929,8 +929,6 @@ main(int argc, char *argv[])
 
 	/* Set up options defaults */
 	opts.verbose = False;
-	opts.ip2class = "ip2class.conf";
-	opts.class2limits = "class2limits.conf";
 	opts.passwd = "passwd.conf";
 	opts.vardir = opts.confdir = opts.datadir = NULL;
 	opts.authmode = NULL; 
