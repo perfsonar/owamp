@@ -83,9 +83,15 @@ typedef struct owp_access_id {
 	idtype    type;  /* OWP_IDTYPE_KID, OWP_IDTYPE_IPv4, OWP_IDTYPE_IPv6 */
 } owp_access_id;
 
+typedef struct owp_access_netmask {
+	u_int32_t addr4;            /* In host byte order. */
+	u_int8_t  addr6[16];        /* In network byte order. */
+	u_int8_t  offset; 
+	int       af;               /* AF_INET, AF_INET6 */
+} owp_access_netmask;
+
 extern char *ipaddr2class(u_int32_t ip, I2table ip2class_hash);
-extern void print_ip2class_binding(const struct I2binding *p, FILE* fp);
-extern void print_id2class_binding(const struct I2binding *p, FILE* fp);
+extern void owp_print_ip2class_binding(const struct I2binding *p, FILE* fp);
 extern void print_class2limits_binding(const struct I2binding *p, FILE* fp);
 extern char *owamp_denumberize(unsigned long addr);
 
@@ -103,15 +109,6 @@ extern u_int8_t  owp_get_offset(const I2datum * dat);
  */
 extern policy_data
 *PolicyInit(
-	OWPContext	ctx,
-	char		*ip2class_file,
-	char		*class2limits_file,
-	char		*passwd_file,
-	OWPErrSeverity	*err_ret
-);
-
-extern policy_data
-*PolicyInit2(
 	OWPContext	ctx,
 	char		*ip2class_file,
 	char		*class2limits_file,

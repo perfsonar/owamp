@@ -3,49 +3,27 @@
 #include "access.h"
 
 /*
-** Basic function to print out ip2class.
+** Print the value (address + offset) of a given netmask.
 */
-
-#if 0
-extern void owp_print_id(I2datum *key);
-#endif
-
 void
-print_ip2class_binding(const struct I2binding *p, FILE* fp)
+owp_print_netmask(const I2datum *key, FILE* fp)
 {
-	fprintf(fp, "DEBUG: the value of key %s/%u is = %s\n",
-	       owamp_denumberize(owp_get_ip(p->key)), 
-	       owp_get_offset(p->key), (char *)(p->value->dptr));
-}
-
-void
-print_id2class_binding(const struct I2binding *p, FILE* fp)
-{
-	idtype type;
-	owp_access_id *ptr;
-	char *class;
+	owp_access_netmask *ptr;
 	struct in_addr addr4;
 	struct in6_addr addr6;
 	char buf[INET6_ADDRSTRLEN];
-	char *ret;
 
-	ptr = (owp_access_id *)(p->key->dptr);
-	class = (char *)(p->value->dptr);
-	type = ptr->type;
+	ptr = (owp_access_netmask *)(key->dptr);
 
-	switch (type) {
-	case OWP_IDTYPE_KID:
-		fprintf(fp, "DEBUG: class of KID `%s' is `%s'\n", 
-			ptr->kid, class);
-		return;
-	case OWP_IDTYPE_IPv4:
-		addr4.s_addr = htonl(ptr->addr4); 
+	switch (ptr->af) {
+	case AF_INET:
+		addr4.s_addr = htonl(ptr->addr4);
 		if (inet_ntop(AF_INET, &addr4, buf, sizeof(buf)) == NULL) {
 			fprintf(stderr, "DEBUG: inet_ntop failed\n");
 			return;
 		}
 		break;
-	case OWP_IDTYPE_IPv6:
+	case AF_INET6:
 		memcpy(addr6.s6_addr, ptr->addr6, 16); 
 		if (inet_ntop(AF_INET6, &addr6, buf, sizeof(buf)) == NULL) {
 			fprintf(stderr, "DEBUG: inet_ntop failed\n");
@@ -53,11 +31,21 @@ print_id2class_binding(const struct I2binding *p, FILE* fp)
 		}
 		break;
 	default:
+		printf("DEBUG: warning: unusual type = %d...\n", ptr->af);
 		return;
 	}
-	fprintf(fp, "DEBUG: class of %s/%d is %s\n", buf, ptr->offset, class);
+	fprintf(fp, "DEBUG: netmask  is %s/%d\n", buf, ptr->offset);
 }
 
+/*
+** Print the binding of a netmask and a corresponding usage class.
+*/
+void
+owp_print_ip2class_binding(const struct I2binding *p, FILE* fp)
+{
+	owp_print_netmask(p->key, fp);
+	fprintf(fp, "DEBUG: class is %s\n\n", (char *)(p->value->dptr));
+}
 
 void
 print_limits(OWAMPLimits * limits, FILE* fp)

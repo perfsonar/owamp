@@ -82,7 +82,65 @@ is_valid_netmask6(struct sockaddr_in6 *addr, u_int8_t num_offset)
 	return 1;
 }
 
+/*
+** Mask out all but i first bits of the byte x.
+*/
+#define FIRST_BITS(x, i) ((x) & ((0xFF >> (8-(i))) << (8-(i))))
 
+/*
+** Return 0 if address belongs to a given netmask and both netmasks
+** have the same offset, and non-zero otherwise.
+**
+** Assumes that AT LEAST one of the arguments is an actual legal
+** netmask. This should be true since no illegal netmask should
+** ever enter the hash in the first place (i.e. they should all
+** be checked before being put in a hash).
+**
+** NOTE that when BOTH netmasks happen to be legal, the function
+** behaves like a real honest comparison.
+*/
+int
+cmp_netmask_match(const I2datum *address, const I2datum *netmask)
+{
+	owp_access_netmask *addr, *net;
+	u_int8_t *ptra, *ptrb, nbytes, nbits;
+
+	assert(addr); assert(net);
+	addr = (owp_access_netmask *)(address->dptr);
+	net = (owp_access_netmask *)(netmask->dptr);
+	if (addr->af != net->af || addr->offset != net->offset)
+		return 1;
+
+	switch (addr->af) {
+	case AF_INET:
+		return (addr->addr4 != net->addr4);
+		break;
+	case AF_INET6:
+		nbytes = net->offset/8;
+		nbits = net->offset%8;
+		ptra = addr->addr6;
+		ptrb = net->addr6;
+		
+		if (nbytes)
+			if (memcmp(ptra, ptrb, 16))
+				return 1;
+		
+		ptra += nbytes;
+		ptrb += nbytes;
+		
+		return (nbits)? 
+			(FIRST_BITS(*ptra, nbits) != FIRST_BITS(*ptrb, nbits)) 
+			: 0;
+		break;
+	default:
+		break;
+	}
+	return 1;
+}
+
+/*
+** Constructor function for a new datum struct.
+*/
 I2datum *
 I2datum_new()
 {
@@ -96,10 +154,13 @@ I2datum_new()
 	return ret;
 }
 
-owp_access_id *
-owp_access_id_new()
+/*
+** Constructor function for a new owp_access_netmask struct.
+*/
+owp_access_netmask *
+owp_access_netmask_new()
 {
-	owp_access_id *ret;
+	owp_access_netmask *ret;
 	ret = (void *)malloc(sizeof(*ret));
 	if (!ret) {
 		perror("malloc");
@@ -108,66 +169,56 @@ owp_access_id_new()
 	return ret;
 }
 
-
-void
-owp_print_id(I2datum *key)
+/*
+** Create a hash key out of a netmask.
+*/
+I2datum *
+owp_netmask2datum(owp_access_netmask *netmask)
 {
-	owp_access_id *ptr;
-	struct in6_addr addr6;
-	char buf[INET6_ADDRSTRLEN];
+	I2datum *ret = I2datum_new();
+	
+	ret->dptr = (void *)netmask;
+	ret->dsize = sizeof(*netmask);
 
-	ptr = (owp_access_id *)(key->dptr);
-
-	printf("DEBUG: from owp_print_id we have:\n");
-
-	switch (ptr->type) {
-	case OWP_IDTYPE_KID:
-		printf("DEBUG: KID is %s\n", ptr->kid);
-		break;
-	case OWP_IDTYPE_IPv6:
-		memcpy(addr6.s6_addr, ptr->addr6, 16); 
-		if (inet_ntop(AF_INET6, &addr6, buf, sizeof(buf)) == NULL) {
-			fprintf(stderr, "DEBUG: inet_ntop failed\n");
-			return;
-		}
-		break;
-	default:
-		printf("DEBUG: type = %d\n", ptr->type);
-		break;
-	}
-	printf("DEBUG class is %s/%d\n", buf, ptr->offset);
+	return ret;
 }
 
-
+/*
+** Given raw data describing a netmask, and a usage class,
+** create a hash binding and save it in the hash. The raw
+** data is as follows: in the IPv4 case <addr> points to
+** a u_int32_t IP address in the HOST byte order. In the
+** IPv6 case <addr> points to a struct sockaddr_in6
+** (thus eventually keeping the address in the NETWORK byte
+** order).
+*/
 void
-owp_id2class_store_netmask(void *addr, 
-			   u_int8_t num_offset, 
-			   u_int8_t family, 
-			   char *class, 
-			   I2table id2class_hash)
+owp_netmask2class_store(void *addr, 
+			u_int8_t num_offset, 
+			int family,         /* AF_INET, AF_INET6 */
+			char *class,        /* name of the class */
+			I2table id2class_hash)
 {
 	I2datum *key, *val;
-	owp_access_id *ptr;
+	owp_access_netmask *ptr;
 
 	key = I2datum_new();
-	key->dptr = (void *)owp_access_id_new();
-	key->dsize = sizeof(owp_access_id);
+	key->dptr = (void *)owp_access_netmask_new();
+	key->dsize = sizeof(owp_access_netmask);
 
-	ptr = (owp_access_id *)(key->dptr);
-	memset(ptr->kid, 0, KID_LEN + 1);
+	ptr = (owp_access_netmask *)(key->dptr);
 	ptr->offset = num_offset;
+	ptr->af = family;
 
 	switch (family) {
 	case AF_INET:
 		ptr->addr4 = *(u_int32_t *)addr;
 		memset(ptr->addr6, 0, 16);
-		ptr->type = OWP_IDTYPE_IPv4;
 		break;
 	case AF_INET6:
 		ptr->addr4 = (u_int32_t)0;
 		memcpy(ptr->addr6, 
 		       ((struct sockaddr_in6 *)addr)->sin6_addr.s6_addr, 16);
-		ptr->type = OWP_IDTYPE_IPv6;
 		break;
 	default:
 		return;
@@ -177,6 +228,7 @@ owp_id2class_store_netmask(void *addr,
 	I2hash_store(id2class_hash, key, val);
 }
 
+#if 0
 /*
 ** Given a string representing a KID, save it in the hash.
 */ 
@@ -205,9 +257,14 @@ owp_id2class_store_kid(char *kid, char *class, I2table id2class_hash)
 
 	I2hash_store(id2class_hash, key, val);
 }
+#endif
 
+/*
+** Read the file containing the mapping of IP netmasks to classes,
+** Then save the data in the given hash.
+*/
 int
-owamp_read_id2class(OWPContext ctx,
+owp_read_ip2class(OWPContext ctx,
 		    const char *id2class, 
 		    I2table id2class_hash)
 {
@@ -226,20 +283,23 @@ owamp_read_id2class(OWPContext ctx,
 		struct addrinfo hints, *res;
 		u_int8_t num_offset;
 		u_int32_t addr;
-		char *brkt, *brkb, *id, *class, *slash, *nodename, *offset;
+		char *brkt, *brkb, *netmask, *class, 
+			*slash, *nodename, *offset;
 
 		line_num++;
 		if (line[0] == '#')
 			continue;
 		line[strlen(line) - 1] = '\0';
 
-		id = strtok_r(line, " \t", &brkt);
-		if (!id)             /* skip lines of whitespace */
+		netmask = strtok_r(line, " \t", &brkt);
+		if (!netmask)             /* skip lines of whitespace */
 			continue;
 
 		class = strtok_r(NULL, " \t", &brkt);
 		if (!class){
-			OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, "Warning: reading config file %s...\nLine %lu: no classname given\n", id2class, line_num);
+			OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN,
+				 "warning: %s: line %lu: no classname given.",
+				 id2class, line_num);
 			continue;
 		}
 		/* Prepare the hints structure. */
@@ -248,18 +308,13 @@ owamp_read_id2class(OWPContext ctx,
 		hints.ai_family = PF_UNSPEC;
 		hints.ai_socktype = SOCK_STREAM;
 
-		slash = strchr(id, '/');
+		slash = strchr(netmask, '/');
 
-		if (!slash) { /* Either KID or single IP address. */
-			if (getaddrinfo(id, NULL, &hints, &res) != 0) {
-				/* id is KID */
-				owp_id2class_store_kid(id, class, 
-						       id2class_hash);
-				continue;
-			}
+		if (!slash) { /* Single IP address. */
+			if (getaddrinfo(netmask, NULL, &hints, &res) != 0)
+				goto BAD_MASK;
 			
-			/* Otherwise this is a single IP address. 
-			 Assume maximum offset by default.*/
+			/* Assume maximum offset by default.*/
 			switch (res->ai_family) {
 			case AF_INET:
 				num_offset = 32;
@@ -272,7 +327,7 @@ owamp_read_id2class(OWPContext ctx,
 				break;
 			}
 		} else { /* The IP netmask case. */
-			nodename = strtok_r(id, "/", &brkb);
+			nodename = strtok_r(netmask, "/", &brkb);
 			if (!nodename)           /* paranoia */
 				continue;
 			
@@ -305,7 +360,7 @@ owamp_read_id2class(OWPContext ctx,
 				     & (((u_int8_t)1<<(32-num_offset)) - 1)))
 			     ) 
 				goto BAD_MASK;
-			owp_id2class_store_netmask(&addr, num_offset, 
+			owp_netmask2class_store(&addr, num_offset, 
 					 res->ai_family, class, id2class_hash);
 			break;
 		case AF_INET6:
@@ -313,7 +368,7 @@ owamp_read_id2class(OWPContext ctx,
 					 (struct sockaddr_in6 *)(res->ai_addr),
 					 num_offset))
 				goto BAD_MASK;
-		owp_id2class_store_netmask(res->ai_addr, num_offset, 
+		owp_netmask2class_store(res->ai_addr, num_offset, 
 					res->ai_family, class, id2class_hash);
 			break;
 		default:
@@ -322,13 +377,67 @@ owamp_read_id2class(OWPContext ctx,
 		continue;
 
 	BAD_MASK:
-		OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, 
-			 "Warning: reading config file %s...\nLine %lu: bad netmask.\n", id2class, line_num); 
-		continue;		
+		OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN,
+			 "warning: %s: line %lu: bad netmask.",
+			 id2class, line_num);
 		
-	} /* while */
-
+	}
 	return 0;
+}
+
+char *
+owp_kid2class()
+{
+	return NULL;
+}
+
+/*
+** Given IPv4 or IPv6 address (the offset field is ignored)
+** return the tightest class containing it (i.e. the class
+** corresponding to the netmask with the largest offset).
+** If no such class is found, NULL is returned.
+*/
+char *
+owp_netmask2class(owp_access_netmask *netmask, I2table hash)
+{
+	owp_access_netmask* cur_mask = owp_access_netmask_new();
+	I2datum *key, *val;
+	u_int32_t mask_template  = 0xFFFFFFFF;
+	int offset;
+
+	switch (netmask->af) {
+	case AF_INET:
+		memset(cur_mask->addr6, 0, 16);
+		for (offset = 32; offset >= 0; offset--){
+			/* Prepare the netmask with the given offset. */
+			int bits = 32 - offset;
+			cur_mask->addr4 = (offset == 0)? 0 :
+				((mask_template>>bits)<<bits) & netmask->addr4;
+			cur_mask->offset = offset;
+
+			key = owp_netmask2datum(cur_mask);
+			val = I2hash_fetch(hash, key);
+			if (val->dptr)
+				return val->dptr;
+		}
+		break;
+	case AF_INET6:
+		/* Prepare the address part of the mask */
+		cur_mask->addr4 = 0;
+		memcpy(cur_mask->addr6, netmask->addr6, 16);
+
+		for (offset = 128; offset >= 0; offset--){
+			cur_mask->offset = offset;
+			key = owp_netmask2datum(cur_mask);
+			val = I2hash_fetch(hash, key);
+			if (val->dptr)
+				return val->dptr;
+		}
+		break;
+	default:
+		break;
+	}
+	return NULL;
 }
 
 /*!
@@ -372,14 +481,14 @@ read_passwd_file2(OWPContext ctx, const char *passwd_file, I2table hash)
 		if (strlen(kid) > KID_LEN){
 			kid[KID_LEN] = '\0';
 			OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, 
-				 "Warning: KID %s too long - truncating",
+				 "warning: KID %s too long - truncating",
 				 " to %d characters\n", kid, KID_LEN);
 		}
 
 		secret = strtok(NULL, " \t");
 		if (!secret)
 			continue;
-		
+
 		/* truncate if necessary */
 		secret[HEX_SECRET_LEN] = '\0';
 
@@ -393,11 +502,11 @@ read_passwd_file2(OWPContext ctx, const char *passwd_file, I2table hash)
 
 	if (fclose(fp) < 0)
 		OWPError(ctx, OWPErrWARNING, errno, 
-			 "Warning: fclose(%d)", fp);	;
+			 "warning: fclose(%d) failed\n", fp);
 }
 
 void
-owamp_read_class2limits2(OWPContext ctx, const char *class2limits,I2table hash)
+owp_read_class2limits2(OWPContext ctx, const char *class2limits,I2table hash)
 {
 
 }
@@ -410,7 +519,7 @@ owamp_read_class2limits2(OWPContext ctx, const char *class2limits,I2table hash)
 */
 
 policy_data *
-PolicyInit2(
+PolicyInit(
 	   OWPContext ctx, 
 	   char *ip2class_file,
 	   char *class2limits_file,
@@ -427,7 +536,8 @@ PolicyInit2(
 	}
 
 	/* Initialize the hashes. */
-	ret->ip2class = I2hash_init(ctx, 0, NULL, NULL,print_id2class_binding);
+	ret->ip2class = I2hash_init(ctx, 0, NULL, NULL, 
+				    owp_print_ip2class_binding);
 	if (ret->ip2class == NULL){
 		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN,
 			 "could not init ip2class hash");
@@ -453,10 +563,11 @@ PolicyInit2(
 	}
 	
 	/* Now read config files and save info in the hashes. */
-	owamp_read_id2class(ctx, ip2class_file, ret->ip2class); 
-	owamp_read_class2limits2(ctx, class2limits_file, ret->class2limits);
+	owp_read_ip2class(ctx, ip2class_file, ret->ip2class); 
+	owp_read_class2limits2(ctx, class2limits_file, ret->class2limits);
 	read_passwd_file2(ctx, passwd_file, ret->passwd);
 
+	*err_ret = OWPErrOK;
 	return ret;
 }
 
