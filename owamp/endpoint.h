@@ -28,41 +28,36 @@
  * session id.
  */
 extern OWPErrSeverity
-OWPDefEndpointInit(
+_OWPEndpointInit(
 	void		*app_data,
-	void		**end_data_ret,
-	OWPBoolean	send,
+	OWPTestSession	tsession,
 	OWPAddr		localaddr,
-	OWPTestSpec	*test_spec,
-	OWPSID		sid_ret,
-	int		fd
+	FILE		*fp,
+	void		**end_data_ret
 );
 
 extern OWPErrSeverity
-OWPDefEndpointInitHook(
+_OWPEndpointInitHook(
 	void		*app_data,
-	void		**end_data,
-	OWPAddr		remoteaddr,
-	OWPSID		sid,
-	OWPBoolean      send,
-	OWPAddr         localaddr
+	OWPTestSession	tsession,
+	void		**end_data
 );
 
 extern OWPErrSeverity
-OWPDefEndpointStart(
+_OWPEndpointStart(
 	void	*app_data,
 	void	**end_data
 	);
 
 extern OWPErrSeverity
-OWPDefEndpointStatus(
+_OWPEndpointStatus(
 	void		*app_data,
 	void		**end_data,
 	OWPAcceptType	*aval
 	);
 
 extern OWPErrSeverity
-OWPDefEndpointStop(
+_OWPEndpointStop(
 	void		*app_data,
 	void		**end_data,
 	OWPAcceptType	aval

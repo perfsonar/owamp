@@ -430,36 +430,30 @@ OWPReadRequestType(
  *	92|                                                               |
  *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  */
-OWPErrSeverity
-_OWPWriteTestRequest(
-	OWPControl	cntrl,
-	struct sockaddr	*sender,
-	struct sockaddr	*receiver,
-	OWPBoolean	server_conf_sender,
-	OWPBoolean	server_conf_receiver,
-	OWPSID		sid,             /* XXX - unused. remove later */
-	OWPTestSpec	*test_spec
-)
+
+int
+_OWPEncodeTestRequest(
+		OWPContext	ctx,
+		u_int8_t	*buf,
+		struct sockaddr	*sender,
+		struct sockaddr	*receiver,
+		OWPBoolean	server_conf_sender, 
+		OWPBoolean	server_conf_receiver,
+		OWPSID		sid,
+		OWPTestSpec	*test_spec
+		)
 {
-	u_int8_t		*buf = (u_int8_t*)cntrl->msg;
+	OWPTestSpecPoisson	*ptest = (OWPTestSpecPoisson*)test_spec;
 	u_int8_t		version;
-#ifdef CUT
-	OWPTestSpecPoisson	*ptest;
-#endif
-	if(!_OWPStateIsRequest(cntrl) || _OWPStateIsPending(cntrl)){
-		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-			"_OWPWriteTestRequest:called in wrong state.");
-		return OWPErrFATAL;
-	}
 
 	if(!server_conf_sender && !server_conf_receiver){
-		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+		OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
 			"_OWPWriteTestRequest:Request for empty config?");
 		return OWPErrFATAL;
 	}
 
 	if(sender->sa_family != receiver->sa_family){
-		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+		OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
 					"Address Family mismatch");
 		return OWPErrFATAL;
 	}
@@ -477,19 +471,16 @@ _OWPWriteTestRequest(
 			break;
 #endif
 		default:
-			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+			OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
 					"Invalid IP Address Family");
-			return OWPErrFATAL;
+			return 1;
 	}
 
 	if(test_spec->test_type != OWPTestPoisson){
-		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+		OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
 				"Invalid test distribution function");
 		return OWPErrFATAL;
 	}
-
-#ifdef CUT
-	ptest = (OWPTestSpecPoisson*)test_spec;
 
 	*(u_int8_t*)&buf[0] = 1;	/* Request-Session message # */
 	*(u_int8_t*)&buf[1] = (version<<4) | version;
@@ -543,13 +534,39 @@ _OWPWriteTestRequest(
 	/*
 	 * timestamp...
 	 */
-	OWPEncodeTimeStamp((u_int32_t*)&buf[68],&ptest->start_time);
+	OWPEncodeTimeStamp(&buf[68],&ptest->start_time);
 
 	*(u_int32_t*)&buf[76] = htonl(ptest->typeP);
 
 	memset(&buf[80],0,16);
 
-#endif /* #ifdef CUT */
+	return 0;
+}
+
+OWPErrSeverity
+_OWPWriteTestRequest(
+	OWPControl	cntrl,
+	struct sockaddr	*sender,
+	struct sockaddr	*receiver,
+	OWPBoolean	server_conf_sender,
+	OWPBoolean	server_conf_receiver,
+	OWPSID		sid,
+	OWPTestSpec	*test_spec
+)
+{
+	u_int8_t		*buf = (u_int8_t*)cntrl->msg;
+
+	if(!_OWPStateIsRequest(cntrl) || _OWPStateIsPending(cntrl)){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+			"_OWPWriteTestRequest:called in wrong state.");
+		return OWPErrFATAL;
+	}
+
+	if(_OWPEncodeTestRequest(cntrl->ctx,buf,
+				sender,receiver,
+				server_conf_sender,server_conf_receiver,
+				sid,test_spec) != 0)
+		return OWPErrFATAL;
 
 	/*
 	 * Now - send the request!
@@ -596,7 +613,7 @@ _OWPReadTestRequest(
 		return OWPErrFATAL;
 	}
 
-	if(memcmp(cntrl->zero,&buf[80],16)){
+	if(memcmp(cntrl->zero,&buf[80],_OWP_RIJNDAEL_BLOCK_SIZE)){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
 				"_OWPReadTestRequest:Invalid zero padding");
 		cntrl->state = _OWPStateInvalid;
@@ -730,7 +747,7 @@ _OWPReadTestRequest(
 	/*
 	 * timestamp...
 	 */
-	OWPDecodeTimeStamp(&ptest->start_time,(u_int32_t*)&buf[68]);
+	OWPDecodeTimeStamp(&ptest->start_time,&buf[68]);
 
 	ptest->typeP = ntohl(*(u_int32_t*)&buf[76]);
 
@@ -1098,8 +1115,8 @@ _OWPWriteRetrieveSession(
 #ifndef	NDEBUG
 	memset(&buf[1],0,7);	/* Unused	*/
 #endif
-	*(u_int32_t*)&buf[8] = begin;
-	*(u_int32_t*)&buf[12] = end;
+	*(u_int32_t*)&buf[8] = htonl(begin);
+	*(u_int32_t*)&buf[12] = htonl(end);
 	memcpy(&buf[16],sid,16);
 	memset(&buf[32],0,16);	/* Zero padding */
 
@@ -1114,8 +1131,8 @@ _OWPWriteRetrieveSession(
 OWPErrSeverity
 _OWPReadRetrieveSession(
 	OWPControl	cntrl,
-	u_int32_t	*begin, /* returns in network byte order */
-	u_int32_t	*end,   /* returns in network byte order */
+	u_int32_t	*begin,
+	u_int32_t	*end,
 	OWPSID		sid
 )
 {
@@ -1150,8 +1167,8 @@ _OWPReadRetrieveSession(
 		return OWPErrFATAL;
 	}
 
-	*begin = *(u_int32_t*)&buf[8];
-	*end = *(u_int32_t*)&buf[12];
+	*begin = ntohl(*(u_int32_t*)&buf[8]);
+	*end = ntohl(*(u_int32_t*)&buf[12]);
 	memcpy(sid,&buf[16],16);
 
 	/*
@@ -1269,21 +1286,26 @@ _OWPReadControlAck(
 }
 
 /*
-** During Fetch session, read the first 16 bytes of data transmission.
-** Save the promised number of records into *num_rec (host byte order).
-** NOTE: In version 5 this will change to read the whole Session Request -
-** keeping typeP for now to minimize changes, but won't use it anywhere.
-*/
+ * During Fetch session, read the first 16 bytes of data transmission.
+ * Save the promised number of records into *num_rec (host byte order).
+ * NOTE: In version 5 this will change to read the whole Session Request -
+ * keeping typeP arg for now to minimize changes, but won't use it anywhere.
+ *
+ * TODO: v5 - this should return full TestSession information.
+ *
+ */
 OWPErrSeverity
-_OWPReadDataHeader(OWPControl cntrl, u_int32_t *num_rec, u_int8_t *typeP)
+_OWPReadFetchHeader(
+	OWPControl	cntrl,
+	u_int32_t	*num_rec,
+	u_int8_t	*typeP	__attribute__((unused))
+	)
 {
 	u_int8_t *buf = (u_int8_t*)cntrl->msg;
-	u_int8_t *tmp;
-	int i;
 
 	if(!_OWPStateIs(_OWPStateFetch,cntrl)){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-			 "_OWPReadDataHeader called in wrong state.");
+			 "_OWPReadFetchHeader called in wrong state.");
 		return OWPErrFATAL;
 	};
 
@@ -1293,43 +1315,20 @@ _OWPReadDataHeader(OWPControl cntrl, u_int32_t *num_rec, u_int8_t *typeP)
 	}
 
 	/* Check for 8 bytes of zero padding. */
-	tmp = &buf[8];
-	for (i = 0; i < 8; i++) {
-		if (*tmp) {
-			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-			    "Non-zero padding in data header sent by server.");
-			return OWPErrFATAL;
-		}
+	if(memcmp(cntrl->zero,&buf[8],8)){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+				"_OWPReadFetchHeader:Invalid zero padding");
+		cntrl->state = _OWPStateInvalid;
+		return OWPErrFATAL;
 	}
 
-	*num_rec = ntohl(*(u_int32_t *)buf);
-	memcpy(typeP, &buf[4], 4);
-	
+	if(num_rec)
+		*num_rec = ntohl(*(u_int32_t *)buf);
+
 	return OWPErrOK;
 }
 
 /*
  * TODO:Send session data functions...
+ * ???
  */
-
-OWPErrSeverity
-_OWPSendData(OWPControl cntrl, FILE *fp)
-{
-	u_int8_t buf[16];
-
-	memset(buf, 0, 16);
-
-	/*
-	  TODO: set the fields in buf:
-	  4 octets of num_packs
-	  4 octets of Type-P descriptor
-	  8 octets of zero padding (ok already)
-	*/
-
-	if(_OWPSendBlocks(cntrl, buf, 1) != 1){
-		cntrl->state = _OWPStateInvalid;
-		return OWPErrFATAL;
-	}
-
-	return OWPErrOK;
-}

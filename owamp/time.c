@@ -50,17 +50,17 @@
  */
 void
 OWPEncodeTimeStamp(
-	u_int32_t	buf_aligned[2],
+	u_int8_t	buf[8],
 	OWPTimeStamp	*tstamp
 	)
 {
 	u_int32_t	t32;
-	u_int8_t	*buf = (u_int8_t *)buf_aligned;
 
 	/*
 	 * seconds is straight forward.
 	 */
-	*(u_int32_t*)&buf[0] = htonl(tstamp->sec);
+	t32 = htonl(tstamp->sec);
+	memcpy(&buf[0],&t32,4);
 
 	/*
 	 * frac_sec: to get byte ordering correct - need to convert to big
@@ -84,16 +84,16 @@ OWPEncodeTimeStamp(
 void
 OWPDecodeTimeStamp(
 	OWPTimeStamp	*tstamp,
-	u_int32_t	buf_aligned[2]
+	u_int8_t	buf[8]
 	)
 {
 	u_int32_t	t32 = 0;
-	u_int8_t	*buf = (u_int8_t*)buf_aligned;
 
 	/*
 	 * seconds is straight forward.
 	 */
-	tstamp->sec = ntohl(*(u_int32_t*)&buf[0]);
+	memcpy(&tstamp->sec,&buf[0],4);
+	tstamp->sec = ntohl(tstamp->sec);
 
 	/*
 	 * network order is big endien - so copy 24 bit fraction to low

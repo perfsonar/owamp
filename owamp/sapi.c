@@ -668,6 +668,11 @@ OWPProcessTestRequest(
 	memset(sendaddr,0,sizeof(struct sockaddr_storage));
 	memset(recvaddr,0,sizeof(struct sockaddr_storage));
 
+	/*
+	 * TODO: In v5 this will just read the TestRequest header - then
+	 * another function will have to read the slots and compute the
+	 * schedule.
+	 */
 	if( (rc = _OWPReadTestRequest(cntrl,sendaddr,recvaddr,&addrlen,
 				      &ipvn,&conf_sender,&conf_receiver,sid,
 				      &tspec)) < OWPErrOK){
@@ -717,6 +722,21 @@ OWPProcessTestRequest(
 					RecvAddr,conf_receiver,&tspec)))
 		goto error;
 
+	if(conf_receiver){
+		if(_OWPCreateSID(tsession) != 0)
+			goto error;
+	}else{
+		memcpy(tsession->sid,sid,sizeof(sid));
+	}
+
+	/*
+	 * TODO: In v5, alloc space for slots and read them in, then use
+	 * them to compute the schedule.
+	 */
+
+	if(_OWPTestSessionCreateSchedule(tsession) != 0)
+		goto error;
+
 	/*
 	 * if conf_receiver - open port and get SID.
 	 */
@@ -734,14 +754,10 @@ OWPProcessTestRequest(
 		}
 
 		/* receiver first (sid comes from there) */
-		if(!_OWPCallEndpointInit(cntrl,&tsession->recv_end_data,
-				False,tsession->receiver,&tsession->test_spec,
-				tsession->sid,-1,&err_ret)){
+		if(!_OWPCallEndpointInit(cntrl,tsession,tsession->receiver,NULL,
+					&tsession->recv_end_data,&err_ret)){
 			goto error;
 		}
-	}else{
-		/* if !conf_receiver, sid comes from TestRequest message */
-		memcpy(tsession->sid,sid,sizeof(sid));
 	}
 
 	if(conf_sender){
@@ -762,27 +778,20 @@ OWPProcessTestRequest(
 			err_ret = OWPErrINFO;
 			goto error;
 		}
-		if(!_OWPCallEndpointInit(cntrl, &tsession->send_end_data,
-					 True,tsession->sender,
-					 &tsession->test_spec,
-					 tsession->sid, -1, &err_ret)){
+		if(!_OWPCallEndpointInit(cntrl,tsession,tsession->sender,NULL,
+					&tsession->send_end_data,&err_ret)){
 			goto error;
 		}
-		if(!_OWPCallEndpointInitHook(cntrl,&tsession->send_end_data,
-					     tsession->receiver,
-					     tsession->sid, &err_ret, 1,
-					     tsession->sender)){
+		if(!_OWPCallEndpointInitHook(cntrl,tsession,
+					&tsession->send_end_data,&err_ret)){
 			goto error;
 		}
 		port = *sendport;
 	}
 
 	if(conf_receiver){
-		if(!_OWPCallEndpointInitHook(cntrl,
-					     &tsession->recv_end_data,
-					     tsession->sender,
-					     tsession->sid,&err_ret, 0,
-					     tsession->receiver)){
+		if(!_OWPCallEndpointInitHook(cntrl,tsession,
+					&tsession->recv_end_data,&err_ret)){
 			goto error;
 		}
 		port = *recvport;
@@ -864,102 +873,88 @@ OWPProcessStartSessions(
 	return err2;
 }
 
+static
+OWPErrSeverity
+_OWPSendDataHeader(
+	OWPControl	cntrl,
+	u_int32_t	num_records
+	)
+{
+	u_int8_t	buf[_OWP_RIJNDAEL_BLOCK_SIZE];
+
+	/*
+	 * Send data header information.
+	 * TODO: v5 - need to send the original Test-Request record.
+	 */
+	memset(buf,0,sizeof(buf));
+	*(u_int32_t*)&buf[0] = htonl(num_records);
+	*(u_int32_t*)&buf[4] = htonl(0);	/* bogus typeP */
+	if (_OWPSendBlocks(cntrl,buf,1) != 1)
+		return OWPErrFATAL;
+	return OWPErrOK;
+}
+
 /*
 ** Read records from the given descriptor and send it to the OWPControl socket.
 */
 static OWPErrSeverity
-OWPSendFullDataFile(OWPControl cntrl, int fd, u_int32_t blksize,off_t filesize)
+OWPSendFullDataFile(
+	OWPControl	cntrl,
+	FILE		*fp,
+	u_int32_t	nrecs
+	)
 {
-	u_int8_t    *p, *q, *r;
-	u_int32_t    num_records, i;
-	off_t        bytes_left, saved_bytes;
+	/*
+	 * buf is 80 because:
+	 * (80) == (_OWP_RIJNDAEL_BLOCK_SIZE*5) == (_OWP_TS_REC_SIZE*4)
+	 */
+#if	(80 != (_OWP_RIJNDAEL_BLOCK_SIZE*5))
+#error "Block-sizes have changed! Fix this function."
+#endif
+#if	(80 != (_OWP_TS_REC_SIZE*4))
+#error "Record sizes have changed! Fix this function."
+#endif
+	u_int8_t	buf[80];
+	u_int32_t	num_records;
+	int		blks;
 
-	if ((p = (u_int8_t *)malloc(blksize + (4*_OWP_TS_REC_SIZE))) == NULL) {
-		OWPError(cntrl->ctx, OWPErrFATAL, errno, 
-			 "OWPSendDataFile: malloc(%d) failed: ", 
-			 blksize);	
-		return OWPErrFATAL;
+	memset(buf,0,sizeof(buf));
+
+	/*
+	 * Now start sending data blocks. (4 records at a time)
+	 */
+	for(num_records=nrecs;num_records >= 4;num_records-=4){
+		if(fread(buf,_OWP_TS_REC_SIZE,4,fp) < 4)
+			return _OWPFailControlSession(cntrl,OWPErrFATAL);
+		if(_OWPSendBlocks(cntrl,buf,5) != 5)
+			return _OWPFailControlSession(cntrl,OWPErrFATAL);
 	}
 
-	q = &p[(4*_OWP_TS_REC_SIZE)];
+	memset(buf,0,sizeof(buf)); /* ensure zero padding */
 
-	/* 
-	   Compute the number of records. 
-	   '4' for Type-P descriptor at file start.
-	*/
-	num_records = (filesize - 4) / _OWP_TS_REC_SIZE; 
-	*(u_int32_t *)p = htonl(num_records);
-	if (I2Readn(fd, &p[4], 4) == -1) {
-		OWPError(cntrl->ctx, OWPErrFATAL, errno, 
-			 "OWPSendDataFile: read failure");
-		free(p);
-		return OWPErrFATAL;
-	}
-	memset(&p[8], 0, 8);
-	if (_OWPSendBlocks(cntrl, p, 1) != 1)
-		goto send_err;
-
-	saved_bytes = 0;
-	bytes_left = (filesize - 4);
-	while (bytes_left >= blksize) {
-
-		if (I2Readn(fd, q, blksize) == -1) {
-			OWPError(cntrl->ctx, OWPErrFATAL, errno, 
-				 "OWPSendDataFile: read failure");
-			free(p);
-			return OWPErrFATAL;
-		}
-		bytes_left -= blksize;
-		r = p + ((4*_OWP_TS_REC_SIZE) - saved_bytes);
-		for (i = 0; i<(blksize + saved_bytes)/(4*_OWP_TS_REC_SIZE);i++){
-			if (_OWPSendBlocks(cntrl, r, 5) != 5)
-				goto send_err;
-			r += (4*_OWP_TS_REC_SIZE);
-		}
-		saved_bytes = (blksize + saved_bytes)%(4*_OWP_TS_REC_SIZE);
-		memcpy(p + ((4*_OWP_TS_REC_SIZE) - saved_bytes), r,saved_bytes);
+	if(num_records){
+		/*
+		 * Now do remaining records if necessary - less than 4 left.
+		 */
+		if(fread(buf,_OWP_TS_REC_SIZE,num_records,fp) < num_records)
+			return _OWPFailControlSession(cntrl,OWPErrFATAL);
+		/*
+		 * Determine number of AES blocks needed to hold remaining
+		 * records. (earlier memset ensures zero padding for
+		 * the remainder of the last block)
+		 */
+		blks = num_records*_OWP_TS_REC_SIZE/_OWP_RIJNDAEL_BLOCK_SIZE+1;
+		if(_OWPSendBlocks(cntrl,buf,blks) != blks)
+			return _OWPFailControlSession(cntrl,OWPErrFATAL);
 	}
 
-	/* Read any remaining bytes from file. */
-	if (bytes_left) {
-			if (I2Readn(fd, q, bytes_left) == -1) {
-				OWPError(cntrl->ctx, OWPErrFATAL, errno, 
-					 "OWPSendDataFile: read failure");
-				free(p);
-				return OWPErrFATAL;
-			}
-	}
+	/*
+	 * Send 1 block of complete zero pad to finalize transaction.
+	 */
+	if(_OWPSendBlocks(cntrl,&buf[64],1) != 1)
+		return _OWPFailControlSession(cntrl,OWPErrFATAL);
 
-	r = p + ((4*_OWP_TS_REC_SIZE) - saved_bytes);
-	for (i = 0; i < (bytes_left + saved_bytes) / (4*_OWP_TS_REC_SIZE); i++){
-		if (_OWPSendBlocks(cntrl, r, 5) != 5)
-			goto send_err;
-		r += (4*_OWP_TS_REC_SIZE);
-	}
-
-	/* At most 79 bytes remain now */
-	bytes_left = (bytes_left + saved_bytes)%(4*_OWP_TS_REC_SIZE);
-	if (bytes_left) {
-		u_int32_t nblocks, padding_bytes;
-		nblocks       =  bytes_left / 16;
-		padding_bytes =  16 -  (bytes_left%16);
-		memset(&r[bytes_left], 0, padding_bytes + 16);
-		if (_OWPSendBlocks(cntrl, r, nblocks + 2) < 0)
-			goto send_err;	
-	} else {
-		memset(r, 0, 16);
-		if (_OWPSendBlocks(cntrl, r, 1) != 1)
-			goto send_err;	
-	}
-
-	free(p);
 	return OWPErrOK;
-
- send_err:
-	free(p);
-	OWPError(cntrl->ctx, OWPErrFATAL, errno, 
-		 "OWPSendDataFile: _OWPSendBlocks failure");
-	return OWPErrFATAL;
 }
 
 
@@ -971,7 +966,14 @@ OWPSendFullDataFile(OWPControl cntrl, int fd, u_int32_t blksize,off_t filesize)
 static int
 _OWPRecordIsInRange(u_int8_t *record, u_int32_t begin, u_int32_t end)
 {
-	u_int32_t seq_no = ntohl(*(u_int32_t *)record);
+	u_int32_t seq_no;
+
+	/*
+	 * Must memcpy because record memory is not aligned for
+	 * "long" access.
+	 */
+	memcpy(&seq_no,record,sizeof(u_int32_t));
+	seq_no = ntohl(seq_no);
 	
 	return ((seq_no >= begin) && (seq_no <= end))? 1 : 0;
 }
@@ -987,111 +989,87 @@ _OWPRecordIsInRange(u_int8_t *record, u_int32_t begin, u_int32_t end)
 ** <type> is OWP_SEND the return value can be ignored).
 */
 static u_int32_t
-OWPProcessRecordsInRange(OWPControl      cntrl, 
-			 int             fd, 
-			 u_int32_t       begin,
-			 u_int32_t       end,
-			 u_int32_t       blksize,
-			 off_t           rem_bytes,
-			 int             type,       /* OWP_COUNT, OWP_SEND */
-			 OWPErrSeverity* err_ret
+OWPProcessRecordsInRange(OWPControl	cntrl, 
+			 FILE		*fp,
+			 u_int32_t	nrecs,
+			 u_int32_t	begin,
+			 u_int32_t	end,
+			 int		type,       /* OWP_COUNT, OWP_SEND */
+			 OWPErrSeverity	*err_ret
 )
 {
-	u_int32_t    m = 0;      /* number of unprocessed bytes in buffer */
-	off_t        bytes_left = rem_bytes;     /* unread bytes from file */
-	u_int8_t     send_buf[4*_OWP_TS_REC_SIZE];
-	u_int8_t     *p, *q, *r;
+	/*
+	 * sbuf is 80 because:
+	 * 80 == (_OWP_RIJNDAEL_BLOCK_SIZE*5) == (_OWP_TS_REC_SIZE*4)
+	 * Make sure record sizes have not changed since 80 was figured.
+	 */
+#if	(80 != (_OWP_RIJNDAEL_BLOCK_SIZE*5))
+#error "Block-sizes have changed! Fix this function."
+#endif
+#if	(80 != (_OWP_TS_REC_SIZE*4))
+#error "Record sizes have changed! Fix this function."
+#endif
+	u_int8_t	rbuf[_OWP_TS_REC_SIZE];
+	u_int8_t	sbuf[80];
+	int		sbufi=0;
+	u_int32_t	num_records;
+	u_int32_t	count=0;
 
-	u_int32_t    bytes_to_read, ret = 0;
-	int          k; /* from 0 to 3 - index of current record in
-			   send_buf */
-	int did_send = 0; /* flag */
-
-
-	if (!(p = (u_int8_t *)malloc(blksize + _OWP_TS_REC_SIZE))) {
-		OWPError(cntrl->ctx, OWPErrFATAL, errno, 
-		     "OWPProcessRecordsInRange: malloc(%d) failed: ", blksize);
-		*err_ret = OWPErrFATAL;
-		return 0;
-	}
-
-	q = &p[_OWP_TS_REC_SIZE];
-	r = q;
-
-	while (bytes_left > 0) { /* try read 4 records at a time */
-		int nblocks, padbytes;
-
-		for (k = 0; k < 4; ) {
-			if (m < _OWP_TS_REC_SIZE) { /* refill */
-				/* Save away remaining odd bytes if any */
-				if (m) {
-					memcpy(p +(_OWP_TS_REC_SIZE - m), r, m);
-					r = p + (_OWP_TS_REC_SIZE - m);
-				}
-
-				bytes_to_read = MIN(bytes_left, blksize);
-				if (I2Readn(fd, q, bytes_to_read) == -1) {
-					OWPError(cntrl->ctx,OWPErrFATAL,errno, 
-					"OWPSendRecordsInRange: read failure");
-					return 0;
-				}
-				m +=  bytes_to_read;
-				bytes_left -= bytes_to_read;
-			}
-			if (m < _OWP_TS_REC_SIZE)
-				break;
-			m -= _OWP_TS_REC_SIZE;
-			if (_OWPRecordIsInRange(r, begin, end)) {
-				memcpy(&send_buf[k*_OWP_TS_REC_SIZE], r, 
-				       _OWP_TS_REC_SIZE);
-				r += _OWP_TS_REC_SIZE;
-				k++;
-			}
-		}
-
-		if (type == OWP_COUNT) {
-			ret += k;
+	for(num_records = nrecs;num_records > 0; num_records--){
+		if(fread(rbuf,_OWP_TS_REC_SIZE,1,fp) < 1)
+			goto readerr;
+		if(!_OWPRecordIsInRange(rbuf,begin,end))
 			continue;
-		}
+		count++;
+		if(type != OWP_SEND)
+			continue;
+		/*
+		 * copy this record to the send buffer
+		 */
+		memcpy(&sbuf[_OWP_TS_REC_SIZE*sbufi++],rbuf,_OWP_TS_REC_SIZE);
 
-		/* 2 possible reasons: no more bytes, or got 4 records. */
-		switch (k) {
-		case 4: 
-			if (_OWPSendBlocks(cntrl, send_buf, 5) != 5)
-				goto send_err;
-			did_send = 1;
-			break;
-		case 0:
-			break;
-		default:      /* add odd zero padding */
-			nblocks = (k * 20) / 16 + 1;
-			padbytes = 16 - (k * 20) % 16;
-			memset(&send_buf[k*20], 0, padbytes);
-			if (_OWPSendBlocks(cntrl, send_buf,nblocks) != nblocks)
-				goto send_err;
-			did_send = 1;
-			break;
-		}
+		/*
+		 * If the send buffer is full, send it and reset sbufi
+		 */
+		if(sbufi < 4)
+			continue;
+		if(_OWPSendBlocks(cntrl,sbuf,5) != 5)
+			goto senderr;
+		sbufi = 0;
 	}
 
-	if (type == OWP_COUNT) {
-		*err_ret = OWPErrOK;
-		return ret;
+	/*
+	 * If there are any remaining records in the send buffer - send them.
+	 */
+	if((type == OWP_SEND) && sbufi){
+		int blks;
+
+		/* fill remainder of buffer with 0's */
+		memset(&sbuf[_OWP_TS_REC_SIZE*sbufi],0,
+					sizeof(sbuf)-_OWP_TS_REC_SIZE*sbufi);
+		/*
+		 * Send as many blocks as is necessary to send remaining
+		 * records - incomplete blocks are padded with 0's.
+		 * (+2 - 1: round up incomplete block
+		 * 	 1: full AES block of MBZ
+		 */
+		blks = sbufi*_OWP_TS_REC_SIZE/_OWP_RIJNDAEL_BLOCK_SIZE+2;
+		if(_OWPSendBlocks(cntrl,sbuf,blks) != blks)
+			goto senderr;
 	}
 
-	if (did_send) {
-		memset(send_buf, 0, 16);
-		if (_OWPSendBlocks(cntrl, send_buf, 1) != 1)
-				goto send_err;
-	}
+	return count;
 
-	*err_ret = OWPErrOK;
+readerr:
+	OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+					"OWPSendRecordsInRange:fread():%M");
+	*err_ret = OWPErrFATAL;
 	return 0;
 
- send_err:
-	OWPError(cntrl->ctx, OWPErrFATAL, errno, 
+senderr:
+	OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN, 
 		 "OWPSendRecordsInRange: _OWPSendBlocks failure");
-	*err_ret = OWPErrFATAL;
+	*err_ret = _OWPFailControlSession(cntrl,OWPErrFATAL);
 	return 0;
 }
 
@@ -1103,26 +1081,29 @@ OWPProcessRetrieveSession(
 {
 	int		rc;
 	OWPSID		sid;
-	u_int32_t	begin; /* both in network byte order */
+	u_int32_t	filerecs;
+	u_int32_t	begin;
 	u_int32_t	end;
-	struct stat     stat_buf;
 
 	char            path[PATH_MAX];  /* path for data file */
 	char		sid_name[(sizeof(OWPSID)*2)+1];
-	int             fd;
+	FILE		*fp;
 	char*           datadir;
 	OWPErrSeverity  err;
+	u_int32_t	hdr_len;
 
 	if( (rc = _OWPReadRetrieveSession(cntrl,&begin,&end,sid)) < OWPErrOK)
 		return _OWPFailControlSession(cntrl,rc);
 
 	/*
-	  XXX - TODO: check for path length overflow
-	*/
+	 * TODO: All this path/file opening code should be combined
+	 * with the similar code in endpoint.c (receiver) somehow.
+	 */
 
 	/* Construct the base pathname */
 	datadir = ((OWPPerConnData)(cntrl->app_data))->link_data_dir;
-	assert(datadir);
+	if(!datadir)
+		goto denied;
 
 	strcpy(path, datadir);
 	strcat(path, OWP_PATH_SEPARATOR);
@@ -1132,105 +1113,88 @@ OWPProcessRetrieveSession(
 	/* First look for incomplete file */
 	strcat(path, OWP_INCOMPLETE_EXT);
 
- try_incomplete_file:
-	if ((fd = open(path, O_RDONLY)) < 0) {
-		if (errno == EINTR )
+try_incomplete_file:
+	if( !(fp = fopen(path,"r"))){
+		if(errno == EINTR )
 			goto try_incomplete_file;
+		if(errno != ENOENT){
+			OWPError(cntrl->ctx,OWPErrFATAL,errno,"fopen(%s):%M",
+					path);
+			goto failed;
+		}
 
 		/* If not found - look for the completed one. */
 		path[strlen(path) - strlen(OWP_INCOMPLETE_EXT)] = '\0';
 		
-	try_complete_file:
-		if ((fd = open(path, O_RDONLY )) < 0) {
+try_complete_file:
+		if( !(fp = fopen(path,"r"))){
 			if (errno == EINTR )
 				goto try_complete_file;
-			OWPError(cntrl->ctx, OWPErrFATAL, errno, 
-              "WARNING: OWPProcessRetrieveSession: open(%s) failed: %M", path);
-			goto fail;
+			if(errno != ENOENT){
+				OWPError(cntrl->ctx,OWPErrFATAL,errno,
+						"fopen(%s):%M",path);
+				goto failed;
+			}
+			OWPError(cntrl->ctx,OWPErrINFO,OWPErrPOLICY,
+		              "FetchRequest for non-existant SID:%s",sid_name);
+			goto denied;
 		}
 	}
 
-	if (fstat(fd, &stat_buf) < 0) {
-		OWPError(cntrl->ctx, OWPErrFATAL, errno, 
-			 "OWPCountRecordsInRange: fstat() failed: ");	
-		return OWPErrFATAL;
+	if( !(filerecs = OWPReadDataHeader(fp,&hdr_len))){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+						"OWPReadDataHeader():%M");
+		goto failed;
 	}
 
 	if ((begin == 0) && (end == 0xFFFFFFFF)) /* complete session  */ {
 		if((rc = _OWPWriteControlAck(cntrl,OWP_CNTRL_ACCEPT))<OWPErrOK)
 			return _OWPFailControlSession(cntrl,rc);
-		return OWPSendFullDataFile(cntrl, fd, stat_buf.st_blksize,
-					   stat_buf.st_size);
-	} else {                        /* range of sequence numbers */
-		u_int8_t buf[16];
-		u_int32_t numrec; 
-		u_int32_t hdr_len = 92; /* XXX - compute it properly !!! */
-
-		begin = ntohl(begin);
-		end = ntohl(end);
-
-		/* First pass - start at offset hdr_len. */
-		if (lseek(fd, hdr_len, SEEK_SET) < 0)
-			goto lseek_err;
-		
-		numrec = OWPProcessRecordsInRange(cntrl, fd, begin, end,
-						stat_buf.st_blksize,
-						stat_buf.st_size - hdr_len, 
-						OWP_COUNT, &err);
-		if (err != OWPErrOK)
-			goto fail;
-
-		/* 
-		   Ready to start the second pass through the file. 
-		   Start right at the offset
-		*/
-		if (lseek(fd, hdr_len, SEEK_SET) < 0)
-			goto lseek_err;
-
-		/* Prepare first 16 bytes for transmission. */
-		*(u_int32_t *)buf = htonl(numrec);
-#ifdef CUT
-		if (I2Readn(fd, &buf[4], 4) == -1) {
-			OWPError(cntrl->ctx, OWPErrFATAL, errno, 
-				 "OWPSendDataFile: read failure");
-			return OWPErrFATAL;
-		}
-#endif
-		
-		memset(&buf[4], 0, 4); /* former typeP field */  
-		memset(&buf[8], 0, 8);
-
-		/* 
-		   Can't wait any longer - send ACCEPT, can't predict
-		   any errors down the road.
-		*/
-		if( (rc = _OWPWriteControlAck(cntrl, OWP_CNTRL_ACCEPT)) < OWPErrOK) {
+		if((rc = _OWPSendDataHeader(cntrl,filerecs)) < OWPErrOK)
 			return _OWPFailControlSession(cntrl,rc);
+		return OWPSendFullDataFile(cntrl,fp,filerecs);
+	} else {                        /* range of sequence numbers */
+		u_int32_t numrec; 
+
+		/*
+		 * First pass - OWPReadDataHeader has the fp positioned,
+		 * find out how many records are in range.
+		 */
+		numrec = OWPProcessRecordsInRange(cntrl,fp,filerecs,begin,end,
+								OWP_COUNT,&err);
+		if (err != OWPErrOK)
+			goto failed;
+
+		/* 
+		 * Ready to start the second pass through the file
+		 * to actually send records.
+		 * Start right at the offset
+		 */
+		if(fseek(fp,hdr_len,SEEK_SET) != 0){
+			OWPError(cntrl->ctx,OWPErrFATAL,errno,"fseek():%M");
+			goto failed;
 		}
+
+		if( (rc=_OWPWriteControlAck(cntrl,OWP_CNTRL_ACCEPT))<OWPErrOK)
+			return _OWPFailControlSession(cntrl,rc);
+		if( (rc = _OWPSendDataHeader(cntrl,numrec)) < OWPErrOK)
+			return _OWPFailControlSession(cntrl,rc);
 		
-		if (_OWPSendBlocks(cntrl, buf, 1) != 1){ /* First 16 bytes */
-			OWPError(cntrl->ctx, OWPErrFATAL, errno, 
-			"OWPProcessRetrieveSession: _OWPSendBlocks failure");
-			return OWPErrFATAL;
-		}
-		OWPProcessRecordsInRange(cntrl, fd, begin, end,
-					 stat_buf.st_blksize,
-					 stat_buf.st_size - 4, OWP_SEND, &err);
+		(void)OWPProcessRecordsInRange(cntrl,fp,filerecs,begin,end,
+								OWP_SEND,&err);
 		return err;
 		
-	lseek_err:
-		OWPError(cntrl->ctx, OWPErrFATAL, errno, 
-			 "OWPProcessRetrieveSession: lseek failure");
-		goto fail;
 	}
-	return OWPErrOK;
 
- fail:
-	if( (rc = _OWPWriteControlAck(cntrl,
-				      OWP_CNTRL_FAILURE)) < OWPErrOK)
+denied:
+	if( (rc = _OWPWriteControlAck(cntrl,OWP_CNTRL_REJECT)) < OWPErrOK)
 		return _OWPFailControlSession(cntrl,rc);
 	return OWPErrOK;
 
+failed:
+	if( (rc = _OWPWriteControlAck(cntrl, OWP_CNTRL_FAILURE)) < OWPErrOK)
+		return _OWPFailControlSession(cntrl,rc);
+	return OWPErrOK;
 }
 
 /*

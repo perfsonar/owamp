@@ -219,8 +219,7 @@ typedef union _OWPTestSpec{
 	OWPTestType		test_type;
 	OWPTestSpecAny		any;
 	OWPTestSpecPoisson	poisson;
-	u_int8_t                session_request[80];
-	u_int32_t		padding[10]; /* bigger than any test... */
+	u_int32_t		padding[15]; /* bigger than any test... */
 } OWPTestSpec;
 
 /*
@@ -262,12 +261,10 @@ typedef OWPBoolean (*OWPCheckControlPolicyFunc)(
 
 /*
  * This function will be called by OWPRequestTestSession if
- * one of the endpoints of the test is on the localhost before
- * it calls the EndpointInit*Func's. If err_ret returns
- * OWPErrFATAL, OWPRequestTestSession will not continue, and return
- * OWPErrFATAL as well.
+ * one of the endpoints of the test is on the localhost.
+ * If err_ret returns OWPErrFATAL, OWPRequestTestSession/OWPProcessTestSession
+ * will not continue, and return OWPErrFATAL as well.
  *
- * endpoint->sid will not be valid yet.
  * Only the IP address values will be set in the sockaddr structures -
  * i.e. port numbers will not be valid.
  */
@@ -282,75 +279,6 @@ typedef OWPBoolean (*OWPCheckTestPolicyFunc)(
 	OWPErrSeverity	*err_ret
 );
 
-/*
- * The endpoint_handle data returned from this function is used by the
- * application to keep track of a particular endpoint of an OWAMP test.
- * It is opaque from the point of view of the library.
- * (It is simply a more specific app_data.)
- *
- * This function needs to allocate port and return it in the localsaddr
- * structure.
- * If "recv" - (send == False) then also allocate and return sid.
- */
-typedef OWPErrSeverity (*OWPEndpointInitFunc)(
-	void		*app_data,
-	void		**end_data_ret,
-	OWPBoolean	send,
-	OWPAddr		localaddr,
-	OWPTestSpec	*test_spec,
-	OWPSID		sid_ret,	/* only used if !send */
-	int		fd		/* only used if !send */
-);
-
-/*
- * Given remote_addr/port (can "connect" to remote addr now)
- * return OK
- * set the sid (if this is a recv - MUST be the same as came from Initfunc)
- */
-typedef OWPErrSeverity (*OWPEndpointInitHookFunc)(
-	void		*app_data,
-	void		**end_data,
-	OWPAddr		remoteaddr,
-	OWPSID		sid,
-	OWPBoolean      send,
-	OWPAddr         localaddr
-);
-
-/*
- * Given start session
- */
-typedef OWPErrSeverity (*OWPEndpointStartFunc)(
-	void		*app_data,
-	void		**end_data
-);
-
-/*
- * Get status of session
- */
-typedef OWPErrSeverity (*OWPEndpointStatusFunc)(
-	void		*app_data,
-	void		**end_data,
-	OWPAcceptType	*aval
-);
-
-/*
- * Given stop session
- */
-typedef OWPErrSeverity (*OWPEndpointStopFunc)(
-	void		*app_data,
-	void		**end_data,
-	OWPAcceptType	aval
-);
-
-/*
- * Given retrieve session
- */
-typedef void (*OWPRetrieveSessionDataFunc)(
-	void		*app_data,
-	OWPSID		sid,
-	OWPErrSeverity	*err_ret
-);
-
 /* 
  * This structure encodes parameters needed to initialize the library.
  */ 
@@ -360,11 +288,6 @@ typedef struct {
 	OWPGetAESKeyFunc		get_aes_key_func;
 	OWPCheckControlPolicyFunc	check_control_func;
 	OWPCheckTestPolicyFunc		check_test_func;
-	OWPEndpointInitFunc		endpoint_init_func;
-	OWPEndpointInitHookFunc		endpoint_init_hook_func;
-	OWPEndpointStartFunc		endpoint_start_func;
-	OWPEndpointStatusFunc		endpoint_status_func;
-	OWPEndpointStopFunc		endpoint_stop_func;
 	int                             rand_type;
 	void*                           rand_data;
 } OWPInitializeConfigRec, *OWPInitializeConfig;
@@ -508,7 +431,7 @@ OWPSessionRequest(
 	OWPBoolean	server_conf_receiver,
 	OWPTestSpec	*test_spec,
 	OWPSID		sid_ret,
-	int		fd,	/* only used if !server_conf_receiver */
+	FILE		*fp,		/* only used if !server_conf_receiver */
 	OWPErrSeverity	*err_ret
 );
 
@@ -728,92 +651,125 @@ typedef u_int32_t OWPPacketSizeT;
 ** Given the protocol family, OWAMP mode and packet padding,
 ** compute the size of resulting full IP test packet.
 */
-OWPPacketSizeT OWPTestPayloadSize(
+extern OWPPacketSizeT
+OWPTestPayloadSize(
 		int		mode,
 		u_int32_t	padding
 		);
-OWPPacketSizeT OWPTestPacketSize(
+extern OWPPacketSizeT
+OWPTestPacketSize(
 		int		af,
 		int		mode,
 		u_int32_t	padding
 		);
 
 /*
+ * This function is used to request that the data for the TestSession
+ * identified by sid be fetched from the server and copied to the
+ * file pointed at by fp. This function assumes fp is currently pointing
+ * at an open file, and that fp is ready to write at the begining of the file.
+ * (If there are any file i/o errors it is currently treated as a hard
+ * error and the cntrl connection is disabled.)
+ *
+ * To request an entire session set begin = 0, and end = 0xFFFFFFFF.
+ *
+ * TODO: In v5, this function should return interesting information about
+ * the session in question.
+ *
+ * Returns: Number of records that were fetched.
+ * 	0 indicates no records fetched - if err_ret is OK, then server
+ * 	denied request and cntrl is still valid for other requests.
+ */
+extern int
+OWPFetchSession(
+	OWPControl	cntrl,
+	FILE		*fp,
+	u_int32_t	begin,
+	u_int32_t	end,
+	OWPSID		sid,
+	OWPErrSeverity	*err_ret
+	);
+/*
+ * Write data header to the file. <len> is the length of the buffer - 
+ * any other fields have to be accounted for separately in the
+ * header length value.
+ * Returns:
+ * 0	Success
+ */
+int
+OWPWriteDataHeader(FILE *fp,
+		u_int32_t version,
+		u_int8_t *buf,
+		u_int32_t len);
+
+/*
+ * Read data header from file. TODO: v5 .. more interesting.
+ *
+ * Returns:
+ * number of records in the file. 0 on error. (errno will be set.)
+ */
+u_int32_t
+OWPReadDataHeader(
+		FILE		*fp,
+		u_int32_t	*hdr_len
+		);
+
+/*
+** Processing Session data from local disk.
+*/
+
+/*
 ** Applications use this type to manipulate timestamp data records.
 */
-typedef struct OWPCookedDataRec {
+typedef struct OWPDataRec {
 	u_int32_t    seq_no;
 	OWPTimeStamp send;
 	OWPTimeStamp recv;
-} OWPCookedDataRec, *OWPCookedDataRecPtr;
+} OWPDataRec, *OWPDataRecPtr;
 
+extern OWPBoolean
+OWPIsLostRecord(
+	OWPDataRecPtr	rec
+	);
 /*
-** This (type of) function is used by Fetch-Client to process (cooked)
-** data records. 
-*/
+ * This (type of) function is used by Fetch-Client to process
+ * data records.
+ *
+ * The function should return < 0 to indicate an error condition in which
+ * case OWPParseRecords will return OWPErrFATAL.
+ * It should return 0 to continue parsing.
+ * It should return 1 to terminate parsing in which case OWPParseRecords will
+ * return OWPErrOK.
+ *
+ * num_rec can be any number less than or equal to the number of valid
+ * records in the file reported by OWPReadDataHeader. This function assumes
+ * the fp is currently pointing at the beginning of the data records.
+ * (This can be done simply by calling OWPReadDataHeader or fseek'ing to
+ * the offset reported by OWPReadDataHeader.)
+ *
+ * If OWPParseRecords completes parsing "num_rec" records with out error,
+ * it will return OWPErrOK.
+ * If OWPParseRecords is unable to complete parsing because of file i/o problems
+ * it will return OWPErrFATAL.
+ */
 typedef int (*OWPDoDataRecord)(
-			       void                *calldata,
-			       OWPCookedDataRecPtr rec
-			       );
+       void		*calldata,
+       OWPDataRecPtr	rec
+       );
 
 OWPErrSeverity
-OWPFetchSessionInfo(OWPControl cntrl,
-		    u_int32_t  begin,
-		    u_int32_t  end,
-		    OWPSID     sid,
-		    u_int32_t  *num_rec,
-		    u_int8_t  *typeP
-		    );
-
-OWPErrSeverity
-OWPWriteDataHeader(OWPControl cntrl, int fd, u_int8_t *typeP);
-
-/*
-** Read the promised number of records 
-** and write them to the provided file descriptor <fd>. Return OWPErrOK
-** on success, or OWPErrFATAL on failure.
-*/
-OWPErrSeverity
-OWPFetchRecords(OWPControl cntrl, int fd, u_int32_t num_rec);
-
-OWPErrSeverity
-OWPReadDataHeader(int fd, u_int32_t *typeP);
-
-/*
-** "Fetching" data from local disk.
-*/
-OWPErrSeverity
-OWPFetchLocalRecords(int fd, 
-		     u_int32_t num_rec, 
-		     OWPDoDataRecord proc_rec,
-		     void *app_data);
-
-/*
-** Read the final 16 bytes of data stream and make sure it's all zeros.
-*/
-OWPErrSeverity
-OWPCheckPadding(OWPControl cntrl);
+OWPParseRecords(
+	FILE		*fp,
+	u_int32_t	num_rec, 
+	OWPDoDataRecord	proc_rec,
+	void		*app_data
+	);
 
 /*
 ** Compute delay between send time and receive time.
 */
 double
 owp_delay(OWPTimeStamp *send_time, OWPTimeStamp *recv_time);
-
-/*
-** Given a 20-byte timestamp record, return its sequence number.
-*/
-u_int32_t
-OWPGetSeqno(u_int8_t *rec);
-
-/*
-** Parse the 20-byte timestamp data record for application to use.
-*/
-void
-OWPParseDataRecord(u_int8_t *rec, 
-		   OWPTimeStamp *send, 
-		   OWPTimeStamp *recv, 
-		   u_int32_t     *seq_no);
 
 /*
  * buff must be at least (nbytes*2) +1 long or memory will be over-run.
@@ -959,29 +915,4 @@ OWPCvtTimestamp2Timespec(
 	OWPTimeStamp	*tstamp
 	);
 
-extern OWPBoolean
-OWPIsLostRecord(OWPCookedDataRecPtr rec);
-
-/*
-** Write header to the data file.
-** XXX - for now just works for TestSpecPoissson. Assumes that <buf>
-** has at least 96 bytes (fixed-size of Poisson Session Request).
-*/
-void
-OWPEncodeDataHeader(OWPTestSpec	*test_spec, 
-		    u_int8_t version,
-		    OWPBoolean server_conf_sender, 
-		    OWPBoolean server_conf_receiver,
-		    struct sockaddr *sender,
-		    struct sockaddr *receiver,
-		    OWPSID		sid,
-		    u_int8_t *buf);
-
-/*
-** Write data header to the file. <len> is the length of the buffer - 
-** any other fields have to be accounted for separately in the
-** header length value.
-*/
-void
-OWPWriteDataHeadeR(FILE *fp, u_int32_t version, u_int8_t *buf, u_int32_t len);
 #endif	/* OWAMP_H */

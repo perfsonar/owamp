@@ -136,17 +136,13 @@ _OWPCallCheckTestPolicy(
 OWPBoolean
 _OWPCallEndpointInit(
 	OWPControl	cntrl,
-	void		**end_data_ret,
-	OWPBoolean	send,
+	OWPTestSession	tsession,
 	OWPAddr		localaddr,
-	OWPTestSpec	*test_spec,
-	OWPSID		sid,
-	int		fd,
+	FILE		*fp,
+	void		**end_data_ret,
 	OWPErrSeverity	*err_ret
 )
 {
-	OWPEndpointInitFunc	init_func = OWPDefEndpointInit;
-
 	if(!cntrl){
 		OWPError(NULL,OWPErrFATAL,OWPErrINVALID,
 				"_OWPCallCheckTestPolicy:No Control record!");
@@ -154,11 +150,9 @@ _OWPCallEndpointInit(
 		return False;
 	}
 
-	if(cntrl->ctx->cfg.endpoint_init_func)
-		init_func = cntrl->ctx->cfg.endpoint_init_func;
+	*err_ret = _OWPEndpointInit(cntrl->app_data,tsession,localaddr,fp,
+								end_data_ret);
 
-	*err_ret = (*init_func)(cntrl->app_data,end_data_ret,send,
-						localaddr,test_spec,sid,fd);
 	return (*err_ret > OWPErrFATAL);
 }
 
@@ -168,16 +162,11 @@ _OWPCallEndpointInit(
 OWPBoolean
 _OWPCallEndpointInitHook(
 	OWPControl	cntrl,
+	OWPTestSession	tsession,
 	void		**end_data,
-	OWPAddr		remoteaddr,
-	OWPSID		sid,
-	OWPErrSeverity	*err_ret,
-	OWPBoolean      send,
-	OWPAddr         localaddr
+	OWPErrSeverity	*err_ret
 )
 {
-	OWPEndpointInitHookFunc	initH_func = OWPDefEndpointInitHook;
-
 	if(!cntrl){
 		OWPError(NULL,OWPErrFATAL,OWPErrINVALID,
 				"_OWPCallCheckTestPolicy:No Control record!");
@@ -185,14 +174,7 @@ _OWPCallEndpointInitHook(
 		return False;
 	}
 
-	/*
-	 * Default action is to allow anything.
-	 */
-	if(cntrl->ctx->cfg.endpoint_init_hook_func)
-		initH_func = cntrl->ctx->cfg.endpoint_init_hook_func;
-
-	*err_ret=(*initH_func)(cntrl->app_data,end_data,remoteaddr,sid,
-			       send, localaddr);
+	*err_ret = _OWPEndpointInitHook(cntrl->app_data,tsession,end_data);
 	return (*err_ret > OWPErrFATAL);
 }
 
@@ -203,8 +185,6 @@ _OWPCallEndpointStart(
 	OWPErrSeverity	*err_ret
 )
 {
-	OWPEndpointStartFunc	func = OWPDefEndpointStart;
-
 	if(!tsession){
 		OWPError(NULL,OWPErrFATAL,OWPErrINVALID,
 			       "_OWPCallEndpointStart:No TestSession record!");
@@ -212,10 +192,7 @@ _OWPCallEndpointStart(
 		return False;
 	}
 
-	if(tsession->cntrl->ctx->cfg.endpoint_start_func)
-		func = tsession->cntrl->ctx->cfg.endpoint_start_func;
-
-	*err_ret = (*func)(tsession->cntrl->app_data,end_data);
+	*err_ret = _OWPEndpointStart(tsession->cntrl->app_data,end_data);
 	return (*err_ret > OWPErrFATAL);
 }
 
@@ -227,19 +204,14 @@ _OWPCallEndpointStatus(
 	OWPErrSeverity	*err_ret
 )
 {
-	OWPEndpointStatusFunc	func = OWPDefEndpointStatus;
-
 	if(!tsession){
 		OWPError(NULL,OWPErrFATAL,OWPErrINVALID,
-				"_OWPCallEndpointStatus:No TestSession record!");
+			"_OWPCallEndpointStatus:No TestSession record!");
 		*err_ret = OWPErrFATAL;
 		return False;
 	}
 
-	if(tsession->cntrl->ctx->cfg.endpoint_status_func)
-		func = tsession->cntrl->ctx->cfg.endpoint_status_func;
-
-	*err_ret = (*func)(tsession->cntrl->app_data,end_data,aval);
+	*err_ret = _OWPEndpointStatus(tsession->cntrl->app_data,end_data,aval);
 
 	return (*err_ret > OWPErrFATAL);
 }
@@ -253,8 +225,6 @@ _OWPCallEndpointStop(
 	OWPErrSeverity	*err_ret
 )
 {
-	OWPEndpointStopFunc	func = OWPDefEndpointStop;
-
 	if(!tsession){
 		OWPError(NULL,OWPErrFATAL,OWPErrINVALID,
 				"_OWPCallEndpointStop:No TestSession record!");
@@ -262,10 +232,7 @@ _OWPCallEndpointStop(
 		return False;
 	}
 
-	if(tsession->cntrl->ctx->cfg.endpoint_stop_func)
-		func = tsession->cntrl->ctx->cfg.endpoint_stop_func;
-
-	*err_ret = (*func)(tsession->cntrl->app_data,end_data,aval);
+	*err_ret = _OWPEndpointStop(tsession->cntrl->app_data,end_data,aval);
 
 	return (*err_ret > OWPErrFATAL);
 }

@@ -36,7 +36,7 @@
  * This type holds all the information needed for an endpoint to be
  * managed by these functions.
  */
-typedef struct _DefEndpointRec{
+typedef struct _EndpointRec{
 	OWPContext		ctx;
 	I2RandomSource		rand_src;
 	OWPTestSpec		test_spec;
@@ -48,7 +48,6 @@ typedef struct _DefEndpointRec{
 	I2Boolean		childwait;
 #endif
 
-	OWPSID			sid;
 	OWPAcceptType		acceptval;
 	pid_t			child;
 	int			wopts;
@@ -66,17 +65,17 @@ typedef struct _DefEndpointRec{
 	size_t			len_payload;
 	struct timespec		*relative_offsets;
 	u_int8_t		*received_packets;
-} _DefEndpointRec, *_DefEndpoint;
+} _EndpointRec, *_Endpoint;
 
-static _DefEndpoint
+static _Endpoint
 EndpointAlloc(
 	OWPContext	ctx
 	)
 {
-	_DefEndpoint	ep = calloc(1,sizeof(_DefEndpointRec));
+	_Endpoint	ep = calloc(1,sizeof(_EndpointRec));
 
 	if(!ep){
-		OWPError(ctx,OWPErrFATAL,errno,"malloc(DefEndpointRec)");
+		OWPError(ctx,OWPErrFATAL,errno,"malloc(EndpointRec)");
 		return NULL;
 	}
 
@@ -90,7 +89,7 @@ EndpointAlloc(
 
 static void
 EndpointClear(
-	_DefEndpoint	ep
+	_Endpoint	ep
 	)
 {
 	if(!ep)
@@ -139,7 +138,7 @@ EndpointClear(
 
 static void
 EndpointFree(
-	_DefEndpoint	ep
+	_Endpoint	ep
 	)
 {
 	if(!ep)
@@ -155,14 +154,15 @@ EndpointFree(
 static FILE*
 reopen_datafile(
 		OWPContext	ctx,
-		int		fd
+		FILE		*infp
 		)
 {
 	int	newfd;
 	FILE	*fp;
 
-	if( (newfd = dup(fd)) < 0){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"dup(%d):%M",fd);
+	if( (newfd = dup(fileno(infp))) < 0){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"dup(%d):%M",
+							fileno(infp));
 		return NULL;
 	}
 
@@ -178,7 +178,7 @@ static FILE *
 opendatafile(
 	OWPContext		ctx,
 	OWPPerConnData		cdata,
-	_DefEndpoint		ep,
+	_Endpoint		ep,
 	OWPSID			sid
 )
 {
@@ -343,21 +343,19 @@ GetTimespec(
  * session id.
  */
 OWPErrSeverity
-OWPDefEndpointInit(
+_OWPEndpointInit(
 	void		*app_data,
-	void		**end_data_ret,
-	OWPBoolean	send,
+	OWPTestSession	tsession,
 	OWPAddr		localaddr,
-	OWPTestSpec	*test_spec,
-	OWPSID		sid,
-	int		fd
+	FILE		*fp,
+	void		**end_data_ret
 )
 {
 	OWPPerConnData		cdata = (OWPPerConnData)app_data;
 	struct sockaddr_storage	sbuff;
 	socklen_t		sbuff_len=sizeof(sbuff);
-	OWPContext		ctx = OWPGetContext(cdata->cntrl);
-	_DefEndpoint		ep;
+	OWPContext		ctx = OWPGetContext(tsession->cntrl);
+	_Endpoint		ep;
 	OWPPacketSizeT		tpsize;
 	int			sbuf_size;
 	int			sopt;
@@ -374,20 +372,15 @@ OWPDefEndpointInit(
 	if( !(ep=EndpointAlloc(ctx)))
 		return OWPErrFATAL;
 
-	ep->send = send;
+	ep->send = (localaddr == tsession->sender);
 
-	if(test_spec->test_type != OWPTestPoisson){
-		OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
-				"Incorrect test type");
-		goto error;
-	}
-	ep->test_spec = *test_spec;
-	ep->mode = OWPGetMode(cdata->cntrl);
-	ep->aeskey = OWPGetAESkeyInstance(cdata->cntrl,send);
+	ep->test_spec = tsession->test_spec;
+	ep->mode = OWPGetMode(tsession->cntrl);
+	ep->aeskey = OWPGetAESkeyInstance(tsession->cntrl,ep->send);
 	ep->lossThreshold = cdata->lossThreshold;
 	ep->ctx = ctx;
 	ep->rand_src = ctx->rand_src;
-	OWPGetDelay(cdata->cntrl,(struct timeval*)&ep->delay);
+	OWPGetDelay(tsession->cntrl,(struct timeval*)&ep->delay);
 	ep->delay.tv_nsec *= 1000;
 
 #ifndef	NDEBUG
@@ -395,7 +388,7 @@ OWPDefEndpointInit(
 #endif
 
 	tpsize = OWPTestPacketSize(localaddr->saddr->sa_family,
-				ep->mode,test_spec->any.packet_size_padding);
+			ep->mode,tsession->test_spec.any.packet_size_padding);
 	tpsize += 128;	/* Add fuzz space for IP "options" */
 	sbuf_size = tpsize;
 	if((OWPPacketSizeT)sbuf_size != tpsize){
@@ -405,7 +398,7 @@ OWPDefEndpointInit(
 	}
 
 	if(!(ep->relative_offsets = malloc(sizeof(struct timespec) *
-						ep->test_spec.any.npackets))){
+					tsession->test_spec.any.npackets))){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"malloc():%M");
 		goto error;
 	}
@@ -458,12 +451,9 @@ OWPDefEndpointInit(
 	memcpy(localaddr->saddr,&sbuff,sbuff_len);
 
 	/*
-	 * If we are receiver - set the sid and open the file.
+	 * If we are receiver, sid is valid and we need to open file.
 	 */
-	if(!send){
-		OWPTimeStamp	tstamp;
-		u_int8_t	*aptr;
-		u_int32_t	tval[2];
+	if(!ep->send){
 		size_t		size;
 
 		/*
@@ -475,51 +465,11 @@ OWPDefEndpointInit(
 			goto error;
 		}
 
-		/*
-		 * Generate a "unique" SID from
-		 * addr(4)/time(8)/random(4) values.
-		 */
 
-#ifdef	AF_INET6
-		if(localaddr->saddr->sa_family == AF_INET6){
-			struct sockaddr_in6	*s6;
-
-			s6 = (struct sockaddr_in6*)localaddr->saddr;
-			/* point at last 4 bytes of addr */
-			aptr = &s6->sin6_addr.s6_addr[12];
-		}else
-#endif
-		if(localaddr->saddr->sa_family == AF_INET){
-			struct sockaddr_in	*s4;
-
-			s4 = (struct sockaddr_in*)localaddr->saddr;
-			aptr = (u_int8_t*)&s4->sin_addr;
-		}
-		else{
-			OWPError(ctx,OWPErrFATAL,OWPErrUNSUPPORTED,
-				       "EndpointInit:Unknown address family.");
-			goto error;
-		}
-
-		memcpy(&sid[0],aptr,4);	/* addr part */
-
-		/*
-		 * time part
-		 */
-		(void)OWPGetTimeOfDay(&tstamp);
-		OWPEncodeTimeStamp(tval,&tstamp);
-		memcpy(&sid[4],tval,8);
-
-		/*
-		 * Random bytes.
-		 */
-		if(I2RandomBytes(ep->rand_src,&sid[12],4) != 0)
-			goto error;
-
-		if(fd >= 0)
-			ep->datafile = reopen_datafile(ctx,fd);
+		if(fp)
+			ep->datafile = reopen_datafile(ctx,fp);
 		else
-			ep->datafile = opendatafile(ctx,cdata,ep,sid);
+			ep->datafile = opendatafile(ctx,cdata,ep,tsession->sid);
 
 		if(!ep->datafile){
 			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
@@ -543,36 +493,6 @@ OWPDefEndpointInit(
 		
 		if(size)
 			setvbuf(ep->datafile,ep->fbuff,_IOFBF,size);
-
-
-		/*
-		  XXX - 
-		  get rid of if:
-		  write data header
-		  flush
-
-		  Also - this part goes into InitHook altogether
-		  but not open/reopen business
-		*/
-		
-		/*
-		 * Write typeP as first 4-octets of file.
-		 */
-#ifdef CUT
-		if (fd < 0) {
-
-			*(u_int32_t *)&ep->payload[0] 
-				= htonl(ep->test_spec.any.typeP);
-			if (fwrite(ep->payload, sizeof(u_int32_t), 1,
-				   ep->datafile) != 1){
-				OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					 "fwrite(1,u_int32_t):%M");
-				goto error;
-			}
-			fflush(ep->datafile);
-
-		}
-#endif
 
 		/*
 		 * receiver - need to set the recv buffer size large
@@ -625,7 +545,7 @@ OWPDefEndpointInit(
 
 	}
 
-	*(_DefEndpoint*)end_data_ret = ep;
+	*(_Endpoint*)end_data_ret = ep;
 
 	return OWPErrOK;
 
@@ -708,7 +628,7 @@ sig_catch(
  */
 static void
 run_sender(
-		_DefEndpoint	ep
+		_Endpoint	ep
 		)
 {
 	u_int32_t	i=0;
@@ -722,7 +642,7 @@ run_sender(
 	u_int32_t	*seq;
 	u_int8_t	*clr_buffer;
 	u_int8_t	*payload;
-	u_int32_t	*tstamp;
+	u_int8_t	*tstamp;
 	OWPTimeStamp	owptstamp;
 
 	/*
@@ -732,18 +652,18 @@ run_sender(
 	switch(ep->mode){
 		case OWP_MODE_OPEN:
 			seq = (u_int32_t*)ep->payload;
-			tstamp = (u_int32_t*)&ep->payload[4];
+			tstamp = &ep->payload[4];
 			payload = &ep->payload[12];
 			break;
 		case OWP_MODE_AUTHENTICATED:
 			seq = (u_int32_t*)ep->clr_buffer;
-			tstamp = (u_int32_t*)&ep->payload[16];
+			tstamp = &ep->payload[16];
 			payload = &ep->payload[24];
 			memset(&ep->clr_buffer[4],0,12);
 			break;
 		case OWP_MODE_ENCRYPTED:
 			seq = (u_int32_t*)ep->clr_buffer;
-			tstamp = (u_int32_t*)&ep->clr_buffer[4];
+			tstamp = &ep->clr_buffer[4];
 			payload = &ep->payload[16];
 			memset(&ep->clr_buffer[12],0,4);
 			break;
@@ -903,7 +823,7 @@ AGAIN:
 
 static void
 run_receiver(
-		_DefEndpoint	ep,
+		_Endpoint	ep,
 		struct timespec	*signal_time
 		)
 {
@@ -917,7 +837,7 @@ run_receiver(
 	struct itimerval	wake;
 	u_int32_t		seq_num;
 	u_int32_t		*seq;
-	u_int32_t		*tstamp;
+	u_int8_t		*tstamp;
 	u_int8_t		*zero;
 	int			zero_len;
 	u_int32_t		esterror,lasterror=0;
@@ -939,17 +859,17 @@ run_receiver(
 		case OWP_MODE_OPEN:
 			zero = NULL;
 			zero_len = 0;
-			tstamp = (u_int32_t*)&ep->payload[4];
+			tstamp = &ep->payload[4];
 			break;
 		case OWP_MODE_ENCRYPTED:
 			zero = &ep->payload[12];
 			zero_len = 4;
-			tstamp = (u_int32_t*)&ep->payload[4];
+			tstamp = &ep->payload[4];
 			break;
 		case OWP_MODE_AUTHENTICATED:
 			zero = &ep->payload[4];
 			zero_len = 12;
-			tstamp = (u_int32_t*)&ep->payload[16];
+			tstamp = &ep->payload[16];
 			break;
 		default:
 			/*
@@ -1166,7 +1086,7 @@ again:
 			goto error;
 		}
 		/* write "sent" tstamp */
-		if(fwrite(tstamp,sizeof(u_int32_t),2,ep->datafile) != 2){
+		if(fwrite(tstamp,sizeof(u_int8_t),8,ep->datafile) != 8){
 			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 						"fwrite():%M");
 			goto error;
@@ -1177,10 +1097,10 @@ again:
 						       &esterror,&lasterror);
 		lasterror = esterror;
 		owptstamp.sync = sync;
-		OWPEncodeTimeStamp((u_int32_t*)ep->clr_buffer,&owptstamp);
+		OWPEncodeTimeStamp(ep->clr_buffer,&owptstamp);
 
 		/* write "recv" tstamp */
-		if(fwrite(ep->clr_buffer,sizeof(u_int32_t),2,ep->datafile) !=2){
+		if(fwrite(ep->clr_buffer,sizeof(u_int8_t),8,ep->datafile) !=8){
 			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 						"fwrite():%M");
 			goto error;
@@ -1235,8 +1155,7 @@ test_over:
 			timespecadd(&expecttime, &ep->start);
 			(void)OWPCvtTimespec2Timestamp(&owptstamp,&expecttime,
 								NULL,NULL);
-			OWPEncodeTimeStamp((u_int32_t*)&ep->payload[4],
-								&owptstamp);
+			OWPEncodeTimeStamp(&ep->payload[4],&owptstamp);
 
 			/* write the record */
 			if(fwrite(ep->payload,sizeof(u_int8_t),20,ep->datafile)
@@ -1253,6 +1172,14 @@ test_over:
 	fclose(ep->datafile);
 	ep->datafile = NULL;
 
+	/*
+	 * TODO: To comply with throwing out unresolved sessions, this
+	 * should move to the StopSession function below, and if accept
+	 * is non-zero, the file should be unlinked instead of renamed.
+	 * (If the higher level api passed in a fd, then it should pay
+	 * attention to the accept value returned from the StopSessions
+	 * api call, and throw the data out as necessary.)
+	 */
 	if(ep->filepath){
 		/*
 		 * First create new link for SID in "nodes" hierarchy.
@@ -1326,26 +1253,47 @@ error:
  * to mess with sendto/recvfrom.)
  */
 OWPErrSeverity
-OWPDefEndpointInitHook(
-	void		*app_data,
-	void		**end_data,
-	OWPAddr		remoteaddr,
-	OWPSID		sid,
-	OWPBoolean      send,
-	OWPAddr         localaddr
+_OWPEndpointInitHook(
+	void		*app_data	__attribute__((unused)),
+	OWPTestSession	tsession,
+	void		**end_data
 )
 {
-	OWPPerConnData		cdata = (OWPPerConnData)app_data;
-	OWPContext		ctx = OWPGetContext(cdata->cntrl);
-	_DefEndpoint		ep=*(_DefEndpoint*)end_data;
+	OWPContext		ctx = OWPGetContext(tsession->cntrl);
+	_Endpoint		ep=*(_Endpoint*)end_data;
 	struct sigaction	act;
 	sigset_t		sigs,osigs;
 	int			i;
-	OWPnum64		InvLambda,sum,val;
-	OWPrand_context64	*rand_ctx;
 	u_int8_t                buf[96]; /* size of Session request */
+	OWPAddr			remoteaddr;
 
-	memcpy(ep->sid,sid,sizeof(OWPSID));
+	if(ep->send){
+		remoteaddr = tsession->receiver;
+	}
+	else{
+		remoteaddr = tsession->sender;
+
+		/*
+		 * Prepare the header -
+		 * this function should just take a tsession...
+		 */
+		if(_OWPEncodeTestRequest(tsession->cntrl->ctx,buf,
+				tsession->sender->saddr,
+				tsession->receiver->saddr,
+				!tsession->send_local,!tsession->recv_local,
+				tsession->sid,&tsession->test_spec) != 0){
+			EndpointFree(ep);
+			*end_data = NULL;
+			return OWPErrFATAL;
+		}
+
+		if(OWPWriteDataHeader(ep->datafile,(u_int32_t)1,buf,
+							sizeof(buf)-16) != 0){
+			EndpointFree(ep);
+			*end_data = NULL;
+			return OWPErrFATAL;
+		}
+	}
 
 	if(connect(ep->sockfd,remoteaddr->saddr,remoteaddr->saddrlen) != 0){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"connect():%M");
@@ -1445,29 +1393,6 @@ OWPDefEndpointInitHook(
 	}
 #endif
 
-
-	/* Prepare the header - just use stub values for now */
-	OWPEncodeDataHeader(&ep->test_spec,
-			    (u_int8_t)4,      /* XXX - fix these */
-			    1, 0,  /* conf send/recv */
-			    (send)? localaddr->saddr : remoteaddr->saddr, 
-			    (send)? remoteaddr->saddr : localaddr->saddr, 
-			    ep->sid, buf);
-
-	OWPWriteDataHeadeR(ep->datafile, (u_int32_t)1, buf, sizeof(buf) - 16);
-
-#ifdef CUT
-	*(u_int32_t *)&ep->payload[0] 
-		= htonl(ep->test_spec.any.typeP);
-	if (fwrite(ep->payload, sizeof(u_int32_t), 1,
-		   ep->datafile) != 1){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-			 "fwrite(1,u_int32_t):%M");
-		exit(OWP_CNTRL_FAILURE);
-	}
-	fflush(ep->datafile);
-#endif
-
 	/*
 	 * set the sig handlers for the currently blocked signals.
 	 */
@@ -1487,37 +1412,19 @@ OWPDefEndpointInitHook(
 		exit(OWP_CNTRL_FAILURE);
 	}
 
-	if(!OWPCvtTimestamp2Timespec(&ep->start,&ep->test_spec.any.start_time))
-		{
-			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				 "TStamp2TSpec conversion?");
-			exit(OWP_CNTRL_FAILURE);
-		}
-
-	/*
-	 * compute all relative offsets for sending/receiving packets.
-	 * (This may need to move to the policy area once more advanced
-	 * time distribution's are supported, so that rates etc. can
-	 * be determined before passing the "policy" phase.)
-	 */
-	if(!(rand_ctx = OWPrand_context64_init(ep->sid))){
+	if(!OWPCvtTimestamp2Timespec(&ep->start,&ep->test_spec.any.start_time)){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"Unable to init random context");
+					 "TStamp2TSpec conversion?");
 		exit(OWP_CNTRL_FAILURE);
 	}
 
 	/*
-	 * Compute the relative offsets from the start time.
+	 * Convert relative offsets in OWPnum64 into timespec.
 	 */
-	sum = OWPulong2num64(0);
-	InvLambda = OWPusec2num64(ep->test_spec.poisson.InvLambda);
-	for(i=0;(unsigned)i<ep->test_spec.poisson.npackets;i++){
-		val = OWPexp_rand64(rand_ctx);
-		sum = OWPnum64_add(sum,val);
-		val = OWPnum64_mul(sum,InvLambda);
-		OWPnum64totimespec(val,&ep->relative_offsets[i]);
-	}
-	OWPrand_context64_free(rand_ctx);
+	assert(tsession->schedule);
+	for(i=0;(unsigned)i<ep->test_spec.poisson.npackets;i++)
+		OWPnum64totimespec(tsession->schedule[i],
+						&ep->relative_offsets[i]);
 
 	/*
 	 * SIGUSR1 is StartSessions
@@ -1579,13 +1486,13 @@ OWPDefEndpointInitHook(
 }
 
 OWPErrSeverity
-OWPDefEndpointStart(
+_OWPEndpointStart(
 	void	*app_data,
 	void	**end_data
 	)
 {
 	OWPPerConnData		cdata = (OWPPerConnData)app_data;
-	_DefEndpoint		ep=*(_DefEndpoint*)end_data;
+	_Endpoint		ep=*(_Endpoint*)end_data;
 
 	if((ep->acceptval < 0) && ep->child && (kill(ep->child,SIGUSR1) == 0))
 		return OWPErrOK;
@@ -1595,14 +1502,14 @@ OWPDefEndpointStart(
 }
 
 OWPErrSeverity
-OWPDefEndpointStatus(
+_OWPEndpointStatus(
 	void		*app_data,
 	void		**end_data,
 	OWPAcceptType	*aval		/* out */
 	)
 {
 	OWPPerConnData		cdata = (OWPPerConnData)app_data;
-	_DefEndpoint		ep=*(_DefEndpoint*)end_data;
+	_Endpoint		ep=*(_Endpoint*)end_data;
 	pid_t			p;
 	OWPErrSeverity		err=OWPErrOK;
 	int			childstatus;
@@ -1630,19 +1537,19 @@ AGAIN:
 
 
 OWPErrSeverity
-OWPDefEndpointStop(
+_OWPEndpointStop(
 	void		*app_data,
 	void		**end_data,
 	OWPAcceptType	aval
 	)
 {
 	OWPPerConnData		cdata = (OWPPerConnData)app_data;
-	_DefEndpoint		ep=*(_DefEndpoint*)end_data;
+	_Endpoint		ep=*(_Endpoint*)end_data;
 	int			sig;
 	int			teststatus;
 	OWPErrSeverity		err;
 
-	if(ep->acceptval >= 0){
+	if((ep->acceptval >= 0) || (ep->child == 0)){
 		err = OWPErrOK;
 		goto done;
 	}
@@ -1656,7 +1563,7 @@ OWPDefEndpointStop(
 		goto error;
 
 	ep->wopts &= ~WNOHANG;
-	err = OWPDefEndpointStatus(app_data,end_data,&teststatus);
+	err = _OWPEndpointStatus(app_data,end_data,&teststatus);
 	if(teststatus >= 0)
 		goto done;
 

@@ -740,7 +740,7 @@ OWPSessionRequest(
 	OWPBoolean	server_conf_receiver,
 	OWPTestSpec	*test_spec,
 	OWPSID		sid_ret,
-	int		fd,
+	FILE		*fp,
 	OWPErrSeverity	*err_ret
 )
 {
@@ -849,22 +849,10 @@ foundaddr:
 		 */
 		if(!server_conf_sender){
 			/*
-			 * check local policy for this sender
-			 */
-			if(!_OWPCallCheckTestPolicy(cntrl,True,
-					sender->saddr,receiver->saddr,
-					test_spec,err_ret)){
-				OWPError(cntrl->ctx,*err_ret,OWPErrPOLICY,
-					"Test not allowed");
-				goto error;
-			}
-			/*
 			 * create the local sender
 			 */
-			if(!_OWPCallEndpointInit(cntrl,
-						&tsession->send_end_data,
-						True,sender,test_spec,
-						tsession->sid,-1,err_ret))
+			if(!_OWPCallEndpointInit(cntrl,tsession,sender,NULL,
+					&tsession->send_end_data,err_ret))
 				goto error;
 		}
 		/*
@@ -879,17 +867,43 @@ foundaddr:
 		}
 
 		/*
+		 * Now that we know the SID we can create the schedule.
+		 */
+		if(_OWPTestSessionCreateSchedule(tsession) != 0)
+			goto error;
+
+		/*
 		 * If sender is local, complete it's initialization now that
 		 * we know the receiver port number.
 		 */
 		if(!server_conf_sender){
-			if(!_OWPCallEndpointInitHook(cntrl,
-					&tsession->send_end_data,receiver,
-					tsession->sid,err_ret, 1, sender))
+			/*
+			 * check local policy for this sender
+			 * (had to call policy check after initialize
+			 * because schedule couldn't be computed until
+			 * we got the SID from the server.)
+			 */
+			if(!_OWPCallCheckTestPolicy(cntrl,True,
+					sender->saddr,receiver->saddr,
+					test_spec,err_ret)){
+				OWPError(cntrl->ctx,*err_ret,OWPErrPOLICY,
+					"Test not allowed");
+				goto error;
+			}
+
+			if(!_OWPCallEndpointInitHook(cntrl,tsession,
+					&tsession->send_end_data,err_ret))
 				goto error;
 		}
 	}
 	else{
+		/*
+		 * local receiver - create SID and compute schedule.
+		 */
+		if(_OWPCreateSID(tsession) ||
+				_OWPTestSessionCreateSchedule(tsession))
+			goto error;
+
 		/*
 		 * Local receiver - first check policy, then create.
 		 */
@@ -899,9 +913,8 @@ foundaddr:
 					"Test not allowed");
 			goto error;
 		}
-		if(!_OWPCallEndpointInit(cntrl,&tsession->recv_end_data,
-					False,receiver,test_spec,tsession->sid,
-					fd,err_ret))
+		if(!_OWPCallEndpointInit(cntrl,tsession,receiver,fp,
+					&tsession->recv_end_data,err_ret))
 			goto error;
 
 
@@ -931,20 +944,16 @@ foundaddr:
 					"Test not allowed");
 				goto error;
 			}
-			if(!_OWPCallEndpointInit(cntrl,
+			if(!_OWPCallEndpointInit(cntrl,tsession,sender,NULL,
 						&tsession->send_end_data,
-						True,sender,
-						test_spec,tsession->sid,
-						-1,err_ret))
+						err_ret))
 				goto error;
-			if(!_OWPCallEndpointInitHook(cntrl,
-					&tsession->send_end_data,receiver,
-					tsession->sid,err_ret, 0, sender))
+			if(!_OWPCallEndpointInitHook(cntrl,tsession,
+					&tsession->send_end_data,err_ret))
 				goto error;
 		}
-		if(!_OWPCallEndpointInitHook(cntrl,
-					&tsession->recv_end_data,sender,
-					tsession->sid,err_ret, 0, receiver))
+		if(!_OWPCallEndpointInitHook(cntrl,tsession,
+					&tsession->recv_end_data,err_ret))
 			goto error;
 	}
 
@@ -1046,221 +1055,133 @@ owp_delay(OWPTimeStamp *send_time, OWPTimeStamp *recv_time)
 	return (t2 > t1)? (double)(t2 - t1)/scale : (double)(t1 - t2)/(-scale);
 }
 
-#define OWP_NUM_BLOCKS 512
-#define OWP_APP_BUFSIZ (OWP_NUM_BLOCKS*_OWP_RIJNDAEL_BLOCK_SIZE)
-
 /*
-** Request records with numbers from <begin> to <end>
-** of a given session <SID>. Process server response (Control-Ack).
-** On success, read the first 16 octets of data transmitted
-** by the server, parse it.
-*/
-OWPErrSeverity
-OWPFetchSessionInfo(OWPControl cntrl,
-		    u_int32_t  begin,
-		    u_int32_t  end,
-		    OWPSID     sid,
-		    u_int32_t  *num_rec,
-		    u_int8_t  *typeP     /* 4 bytes in network byte order */
-		    )
+ * Returns the number of data records in the file. If < 1, check err_ret to
+ * find out if it was an error condition: ErrOK just means the request
+ * was denied by the server.
+ *
+ * (If the caller doesn't really want to save the information, they can
+ * open a file to /dev/null so everything gets thrown away. We need to
+ * download the entire session in any case, so it doesn't make sense
+ * to split the api.)
+ *
+ * TODO: In v5 this should return complete information about the session
+ * in question via the same mechanism used to request a TestSession.
+ * (Same datastructures should be used.)
+ */
+int
+OWPFetchSession(
+	OWPControl	cntrl,
+	FILE		*fp,
+	u_int32_t	begin,
+	u_int32_t	end,
+	OWPSID		sid,
+	OWPErrSeverity	*err_ret
+	)
 {
-	OWPAcceptType acc_type;
+	/*
+	 * buf is 80 because:
+	 * 80 == (_OWP_RIJNDAEL_BLOCK_SIZE*5) == (_OWP_TS_REC_SIZE*4)
+	 * if this changes, this routine must change.
+	 */
+#if	(80 != (_OWP_RIJNDAEL_BLOCK_SIZE*5))
+#error "Block-sizes have changed! Fix this function."
+#endif
+#if     (80 != (_OWP_TS_REC_SIZE*4))
+#error "Record sizes have changed! Fix this function."
+#endif
+	OWPAcceptType	acc_type;
+	u_int32_t	num_rec,n;
+	u_int8_t	buf[80];
+	int		i;
 
-	if (_OWPWriteRetrieveSession(cntrl, begin, end, sid) != OWPErrOK) 
-		return OWPErrFATAL;
-	
-	if (_OWPReadControlAck(cntrl, &acc_type) != OWPErrOK)
-		return OWPErrFATAL;
-	
-	if (acc_type != OWP_CNTRL_ACCEPT)
-		return OWPErrFATAL;
-	
-	if (_OWPReadDataHeader(cntrl, num_rec, typeP) != OWPErrOK)
-		return OWPErrFATAL;
-	return OWPErrOK;
-}
+	/*
+	 * Make the request of the server.
+	 */
+	if((*err_ret = _OWPWriteRetrieveSession(cntrl,begin,end,sid)) <
+								OWPErrWARNING)
+		goto failure;
 
-/*
-** Read the promised number of records and write them to provided descriptor 
-** <fd>. Return OWPErrOK on success, or OWPErrFATAL on failure.
-*/
-OWPErrSeverity
-OWPFetchRecords(OWPControl cntrl, int fd, u_int32_t num_rec)
-{
-	int          more_blocks;
-	u_int8_t     buf[OWP_APP_BUFSIZ];
-	u_int64_t    nbytes, rem_bytes, i; 
+	/*
+	 * Read the response
+	 */
+	if((*err_ret = _OWPReadControlAck(cntrl, &acc_type)) < OWPErrWARNING)
+		goto failure;
+	
+	/*
+	 * If the server didn't accept, we are done.
+	 */
+	if(acc_type != OWP_CNTRL_ACCEPT)
+		return 0;
 
-	nbytes   = (u_int64_t)num_rec * _OWP_TS_REC_SIZE;
-	for (i = 0; i < nbytes / OWP_APP_BUFSIZ; i++) {
-		if (_OWPReceiveBlocks(cntrl, buf, OWP_NUM_BLOCKS) 
-		    != OWP_NUM_BLOCKS)
-			goto read_err;
-		if (I2Writen(fd, buf, OWP_APP_BUFSIZ) < 0)
-			goto write_err;
+	/*
+	 * Read the DataHeader from the server.
+	 * (Currently the only useful info is num_rec - in v5 this will
+	 * return full session info on this sid's session.)
+	 */
+	if((*err_ret=_OWPReadFetchHeader(cntrl,&num_rec,NULL)) < OWPErrWARNING)
+		goto failure;
+
+	/*
+	 * Currently write boring header - again, in v5 this will
+	 * need to save more interesting information.
+	 */
+	if(OWPWriteDataHeader(fp,0,NULL,0) != 0){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+						"OWPWriteDataHeader():%M");
+		goto failure;
 	}
-	rem_bytes = nbytes % OWP_APP_BUFSIZ;
 
-	/* Now rem_bytes < OWP_APP_BUFSIZ */
-	if (rem_bytes) {
-		more_blocks = rem_bytes / _OWP_RIJNDAEL_BLOCK_SIZE;
-		if (_OWPReceiveBlocks(cntrl, buf, more_blocks) != more_blocks)
-			goto read_err;
-		if (I2Writen(fd, buf, more_blocks*_OWP_RIJNDAEL_BLOCK_SIZE)< 0)
-			goto write_err;
-
-		rem_bytes -= more_blocks*_OWP_RIJNDAEL_BLOCK_SIZE;
+	for(n=num_rec;n>=4;n-=4){
+		if(_OWPReceiveBlocks(cntrl,buf,5) != 5)
+			goto failure;
+		if(fwrite(buf,_OWP_TS_REC_SIZE,4,fp) < 4){
+			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+						"OWPFetchSession:fwrite():%M");
+			goto failure;
+		}
 	}
 
-	/* Now rem_bytes < _OWP_RIJNDAEL_BLOCK_SIZE */
-	if (rem_bytes) {
-		if (_OWPReceiveBlocks(cntrl, buf, 1) != 1)
-			goto read_err;
+	if(n){
+		/*
+		 * Read enough AES blocks to get remaining records.
+		 */
+		int	blks = n*_OWP_TS_REC_SIZE/_OWP_RIJNDAEL_BLOCK_SIZE + 1;
 
-		if (I2Writen(fd, buf, rem_bytes) < 0)
-			goto write_err;
-
-		/* Check zero padding */
-		for (i = rem_bytes; i < 16; i++)
-			if (buf[i]) {
-				OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-		      "OWPCheckPadding: Non-zero padding in the data stream.");
-				return OWPErrFATAL;
+		if(_OWPReceiveBlocks(cntrl,buf,blks) != blks)
+			goto failure;
+		if(fwrite(buf,_OWP_TS_REC_SIZE,n,fp) < n){
+			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+						"OWPFetchSession:fwrite():%M");
+			goto failure;
+		}
+		/* check MBZ padding */
+		for(i=(n*_OWP_TS_REC_SIZE);
+					i < (blks*_OWP_RIJNDAEL_BLOCK_SIZE);i++)
+			if(buf[i] != 0){
+				OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+					"OWPFetchSession:MBZ padding corrupt");
 			}
 	}
 
-	/* Check the final 16 bytes of zero padding */
-	if (_OWPReceiveBlocks(cntrl, buf, 1) != 1)
-		return OWPErrFATAL;
+	fflush(fp);
 
-	for (i = 0; i < 16; i++)
-		if (buf[i]) {
-			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-		     "OWPCheckPadding: Non-zero padding in the data stream.");
-			return OWPErrFATAL;
-		}
-
-	return OWPErrOK;
-
- write_err:
-	OWPError(cntrl->ctx, OWPErrFATAL, OWPErrUNKNOWN,
-				 "FATAL: OWPFetchSession: write failure");
-	return OWPErrFATAL;
-	
- read_err:
-	OWPError(cntrl->ctx, OWPErrFATAL, OWPErrUNKNOWN,
-		 "FATAL: OWPFetchSession: read failure");
-	return OWPErrFATAL;
-}
-
-#define OWP_BUFSIZ 960 /* must be divisible by 20 */
-
-OWPErrSeverity
-OWPReadDataHeader(int fd, u_int32_t *typeP)
-{
-	u_int8_t buf[4];
-
-	if (I2Readn(fd, buf, 4) != 4) {
-		perror("I2readn");
-		return OWPErrFATAL;
+	/*
+	 * Read final MBZ AES block to finalize transaction.
+	 */
+	if(_OWPReceiveBlocks(cntrl,buf,1) != 1)
+		goto failure;
+	if(memcmp(cntrl->zero,buf,_OWP_RIJNDAEL_BLOCK_SIZE)){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+				"OWPFetchSession:Final MBZ block corrupt");
+		*err_ret = OWPErrFATAL;
+		goto failure;
 	}
-	
-	*typeP = ntohl(*(u_int32_t *)buf);
-	return OWPErrOK;
-}
-
-/*
-** Write header to a data file. 
-*/
-OWPErrSeverity
-OWPWriteDataHeader(OWPControl cntrl, int fd, u_int8_t *typeP)
-{
-	/* Write header to data file. */
-	if (I2Writen(fd, typeP, 4) < 0) {
-		OWPError(cntrl->ctx, OWPErrFATAL, OWPErrUNKNOWN,
-			 "FATAL: OWPWriteDataHeader: write failure");
-		return OWPErrFATAL;
-	}
-	return OWPErrOK;
-}
-
-/*
-** "Fetching" data from local disk. Get <num_rec> many records
-** from data file, parse each one and call user-provided
-*/
-OWPErrSeverity
-OWPFetchLocalRecords(int fd, 
-		     u_int32_t num_rec, 
-		     OWPDoDataRecord proc_rec,
-		     void *app_data)
-{
-	u_int64_t        nbytes, nchunks, rem_bytes;
-	u_int32_t        i, j;
-	u_int8_t         *cur_rec;
-	u_int8_t	 buf[OWP_BUFSIZ];
-	OWPCookedDataRec rec;
-
-	/* 
-	   Compute the number of OWP_BUFIZE-byte blocks to read. 
-	*/
-	nbytes = (u_int64_t)num_rec * _OWP_TS_REC_SIZE;
-	nchunks = nbytes / sizeof(buf);
-	rem_bytes = nbytes % sizeof(buf);
-	for (i = 0; i < nchunks; i++) {
-		if (I2Readn(fd, buf, sizeof(buf)) != sizeof(buf))
-			return OWPErrFATAL;
-		cur_rec = buf;
-		for (j = 0; j < sizeof(buf) / _OWP_TS_REC_SIZE; j++) {
-			OWPParseDataRecord(cur_rec, &(rec.send), 
-					   &(rec.recv), &(rec.seq_no));
-			if (proc_rec(app_data, &rec) < 0)
-				return OWPErrFATAL;
-			cur_rec += _OWP_TS_REC_SIZE;
-		}
-	}
-	
-	/* Read and process the remaining records. */
-	if (I2Readn(fd, buf, rem_bytes) < 0)
-		return OWPErrFATAL;
-	cur_rec = buf;
-	for (j = 0; j < rem_bytes / _OWP_TS_REC_SIZE; j++) {
-		OWPParseDataRecord(cur_rec, &(rec.send), 
-				   &(rec.recv), &(rec.seq_no));
-		if (proc_rec(app_data, &rec) < 0)
-			return OWPErrFATAL;
-		cur_rec += _OWP_TS_REC_SIZE;
-	}
-	return OWPErrOK;
-}
 
 
-/*
-** Given a 20-byte timestamp record, return its sequence number.
-*/
-u_int32_t
-OWPGetSeqno(u_int8_t *rec)
-{
-	return ntohl(*(u_int32_t *)rec);
-}
+	return num_rec;
 
-/*
-** Parse the 20-byte timestamp data record for application to use.
-*/
-void
-OWPParseDataRecord(u_int8_t *rec, 
-		   OWPTimeStamp *send, 
-		   OWPTimeStamp *recv, 
-		   u_int32_t     *seq_no)
-{
-	assert(rec);
-
-	*seq_no = OWPGetSeqno(rec);
-	OWPDecodeTimeStamp(send, (u_int32_t *)&rec[4]);
-	OWPDecodeTimeStamp(recv, (u_int32_t *)&rec[12]);
-}
-
-OWPBoolean
-OWPIsLostRecord(OWPCookedDataRecPtr rec)
-{
-	return (rec->recv.frac_sec || rec->recv.sec)? False : True;
+failure:
+	(void)_OWPFailControlSession(cntrl,*err_ret);
+	return 0;
 }

@@ -20,8 +20,11 @@
 */
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <netinet/in.h>
 #include <string.h>
+#include <assert.h>
 
 #include "./owampP.h"
 
@@ -32,11 +35,6 @@ static OWPInitializeConfigRec	def_cfg = {
 	/* get_aes_key			*/	NULL,
 	/* check_control_func		*/	NULL,
 	/* check_test_func		*/	NULL,
-	/* endpoint_init_func		*/	NULL,
-	/* endpoint_init_hook_func	*/	NULL,
-	/* endpoint_start_func		*/	NULL,
-	/* endpoint_status_func		*/	NULL,
-	/* endpoint_stop_func		*/	NULL,
 	/* rand_type			*/	I2RAND_DEV,
 	/* rand_data			*/	NULL
 };
@@ -608,10 +606,127 @@ _OWPTestSessionFree(
 
 	OWPAddrFree(tsession->sender);
 	OWPAddrFree(tsession->receiver);
+
+	if(tsession->schedule)
+		free(tsession->schedule);
+
 	free(tsession);
 
 	return MIN(err,err2);
 }
+
+
+/*
+ * Function:	_OWPCreateSID
+ *
+ * Description:	
+ * 	Generate a "unique" SID from addr(4)/time(8)/random(4) values.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * 	0 on success
+ * Side Effect:	
+ */
+int
+_OWPCreateSID(
+	OWPTestSession	tsession
+	)
+{
+	OWPTimeStamp	tstamp;
+	u_int8_t	*aptr;
+
+#ifdef	AF_INET6
+	if(tsession->receiver->saddr->sa_family == AF_INET6){
+		struct sockaddr_in6	*s6;
+
+		s6 = (struct sockaddr_in6*)tsession->receiver->saddr;
+		/* point at last 4 bytes of addr */
+		aptr = &s6->sin6_addr.s6_addr[12];
+	}else
+#endif
+	if(tsession->receiver->saddr->sa_family == AF_INET){
+		struct sockaddr_in	*s4;
+
+		s4 = (struct sockaddr_in*)tsession->receiver->saddr;
+		aptr = (u_int8_t*)&s4->sin_addr;
+	}
+	else{
+		OWPError(tsession->cntrl->ctx,OWPErrFATAL,OWPErrUNSUPPORTED,
+				"_OWPCreateSID:Unknown address family");
+		return 1;
+	}
+
+	memcpy(&tsession->sid[0],aptr,4);
+
+	(void)OWPGetTimeOfDay(&tstamp);
+	OWPEncodeTimeStamp(&tsession->sid[4],&tstamp);
+
+	if(I2RandomBytes(tsession->cntrl->ctx->rand_src,&tsession->sid[12],4)
+									!= 0){
+		return 1;
+	}
+
+	return 0;
+}
+
+int
+_OWPTestSessionCreateSchedule(
+	OWPTestSession	tsession
+	)
+{
+	OWPrand_context64	*rand_ctx;
+	OWPnum64		InvLambda,sum,val;
+	u_int64_t		i;
+
+	if(!tsession)
+		return 1;
+
+	if(tsession->schedule){
+		OWPError(tsession->cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+			"_OWPTestSessionCreateSchedule:schedule present");
+		return 1;
+	}
+
+	if(tsession->test_spec.test_type != OWPTestPoisson){
+		OWPError(tsession->cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+				"Incorrect test type");
+		return 1;
+	}
+
+	if( !(rand_ctx = OWPrand_context64_init(tsession->sid))){
+		OWPError(tsession->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+				"Unable to init random context for exp dist");
+		return 1;
+	}
+
+	if( !(tsession->schedule =
+		malloc(sizeof(OWPnum64)*tsession->test_spec.any.npackets))){
+
+		OWPError(tsession->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+								"malloc():%M");
+		OWPrand_context64_free(rand_ctx);
+		return 1;
+	}
+
+	sum = OWPulong2num64(0);
+	InvLambda = OWPusec2num64(tsession->test_spec.poisson.InvLambda);
+	for(i=0;i<tsession->test_spec.any.npackets;i++){
+		val = OWPexp_rand64(rand_ctx);
+		val = OWPnum64_mul(val,InvLambda);
+		sum = OWPnum64_add(sum,val);
+		tsession->schedule[i] = sum;
+	}
+	OWPrand_context64_free(rand_ctx);
+
+	tsession->last = sum;
+
+	return 0;
+}
+
 
 OWPErrSeverity
 OWPControlClose(OWPControl cntrl)
@@ -949,84 +1064,6 @@ OWPAddr2string(OWPAddr addr, char *buf, size_t len)
 }
 
 /*
-** Write header to the data file.
-** XXX - for now just works for TestSpecPoissson. Assumes that <buf>
-** has at least 96 bytes (fixed-size of Poisson Session Request).
-*/
-void
-OWPEncodeDataHeader(OWPTestSpec	*test_spec, 
-		   u_int8_t version,
-		   OWPBoolean server_conf_sender, 
-		   OWPBoolean server_conf_receiver,
-		   struct sockaddr *sender,
-		   struct sockaddr *receiver,
-		   OWPSID		sid,
-		   u_int8_t *buf)
-{
-	OWPTestSpecPoisson *ptest = (OWPTestSpecPoisson*)test_spec;
-
-	*(u_int8_t*)&buf[0] = 1;	/* Request-Session message # */
-	*(u_int8_t*)&buf[1] = (version<<4) | version;
-	*(u_int8_t*)&buf[2] = (server_conf_sender)?1:0;
-	*(u_int8_t*)&buf[3] = (server_conf_receiver)?1:0;
-
-	switch(version){
-	struct sockaddr_in	*saddr4;
-#ifdef	AF_INET6
-	struct sockaddr_in6	*saddr6;
-		case 6:
-			/* sender address  and port */
-			saddr6 = (struct sockaddr_in6*)sender;
-			memcpy(&buf[4],saddr6->sin6_addr.s6_addr,16);
-			*(u_int16_t*)&buf[36] = saddr6->sin6_port;
-
-			/* receiver address and port  */
-			saddr6 = (struct sockaddr_in6*)receiver;
-			memcpy(&buf[20],saddr6->sin6_addr.s6_addr,16);
-			*(u_int16_t*)&buf[38] = saddr6->sin6_port;
-
-			break;
-#endif
-		case 4:
-			/* sender address and port  */
-			saddr4 = (struct sockaddr_in*)sender;
-			*(u_int32_t*)&buf[4] = saddr4->sin_addr.s_addr;
-			*(u_int16_t*)&buf[36] = saddr4->sin_port;
-
-			/* receiver address and port  */
-			saddr4 = (struct sockaddr_in*)receiver;
-			*(u_int32_t*)&buf[20] = saddr4->sin_addr.s_addr;
-			*(u_int16_t*)&buf[38] = saddr4->sin_port;
-
-			break;
-		default:
-			/*
-			 * This can't happen, but default keeps compiler
-			 * warnings away.
-			 */
-			break;
-	}
-
-	if(sid)
-		memcpy(&buf[40],sid,16);
-
-	*(u_int32_t*)&buf[56] = htonl(ptest->InvLambda);
-	*(u_int32_t*)&buf[60] = htonl(ptest->npackets);
-	*(u_int32_t*)&buf[64] = htonl(ptest->packet_size_padding);
-
-	/*
-	 * timestamp...
-	 */
-	OWPEncodeTimeStamp((u_int32_t*)&buf[68],&ptest->start_time);
-
-	*(u_int32_t*)&buf[76] = htonl(ptest->typeP);
-
-	memset(&buf[80],0,16);
-
-	return;
-}
-
-/*
 ** Functions for writing and reading headers. The format varies
 ** according to the version. In all cases the files starts
 ** with 4 bytes of magic number, 4 bytes of version, and
@@ -1043,18 +1080,136 @@ OWPEncodeDataHeader(OWPTestSpec	*test_spec,
 ** any other fields have to be accounted for separately in the
 ** header length value.
 */
-void
-OWPWriteDataHeadeR(FILE *fp, u_int32_t version, u_int8_t *buf, u_int32_t len)
+int
+OWPWriteDataHeader(
+	FILE		*fp,
+	u_int32_t	version,
+	u_int8_t	*buf,
+	u_int32_t	len
+	)
 {
-	static char magic[] = "OwA";
+	static char magic[4] = "OwA";
 	u_int32_t net_ver = htonl(version);
 	u_int32_t hdr_len = htonl(sizeof(magic) + sizeof(version) 
 		+ sizeof(hdr_len) + len);
 
-	fwrite(magic, 1, 4, fp);
-	fwrite(&net_ver, sizeof(net_ver), 1, fp);
-	fwrite(&hdr_len, sizeof(hdr_len), 1, fp);
+	if(fwrite(magic, 1, sizeof(magic), fp) < sizeof(magic))
+		goto error;
+	if(fwrite(&net_ver, sizeof(net_ver), 1, fp) < 1)
+		goto error;
+	if(fwrite(&hdr_len, sizeof(hdr_len), 1, fp) < 1)
+		goto error;
 
 	if (buf != NULL)
-		fwrite(buf, sizeof(*buf), len, fp);
+		if(fwrite(buf, sizeof(*buf), len, fp) < len)
+			goto error;
+
+	fflush(fp);
+	return 0;
+
+error:
+	fclose(fp);
+	return 1;
+}
+
+#define OWP_BUFSIZ 960 /* must be divisible by 20 */
+
+/*
+ * For now, this function doesn't return any header information - it
+ * simply positions the FILE* past the the header.
+ *
+ * TODO:Change this and all other functions to use FILE*'s.
+ */
+u_int32_t
+OWPReadDataHeader(
+	FILE		*fp,
+	u_int32_t	*hdr_len
+	)
+{
+	char		magic[4];
+	u_int32_t	ver;
+	u_int32_t	hlen;
+	struct stat	stat_buf;
+
+	if(fstat(fileno(fp),&stat_buf) < 0)
+		goto error;
+	if(fseek(fp,0,SEEK_SET))
+		goto error;
+	if(fread(magic, 1, sizeof(magic), fp) < sizeof(magic))
+		goto error;
+	if(fread(&ver, sizeof(ver), 1, fp) < 1)
+		goto error;
+	ver = ntohl(ver);
+	if(fread(&hlen, sizeof(hlen), 1, fp) < 1)
+		goto error;
+	hlen = ntohl(hlen);
+
+	if(fseek(fp,hlen,SEEK_SET))
+		goto error;
+
+	if(hdr_len)
+		*hdr_len = hlen;
+
+	return (stat_buf.st_size-hlen)/_OWP_TS_REC_SIZE;
+
+error:
+	fclose(fp);
+	return 0;
+}
+
+/*
+** Parse the 20-byte timestamp data record for application to use.
+*/
+static void
+OWPParseDataRecord(
+		u_int8_t	*buf, 
+		OWPDataRec	*rec
+		)
+{
+	/*
+	 * Have to memcpy buf because it is not 32bit aligned.
+	 */
+	memcpy(&rec->seq_no,buf,4);
+	rec->seq_no = ntohl(rec->seq_no);
+
+	OWPDecodeTimeStamp(&rec->send,&buf[4]);
+	OWPDecodeTimeStamp(&rec->recv,&buf[12]);
+}
+
+/*
+** "Fetching" data from local disk. Get <num_rec> many records
+** from data file, parse each one and call user-provided
+*/
+OWPErrSeverity
+OWPParseRecords(
+	FILE		*fp,
+	u_int32_t	num_rec,
+	OWPDoDataRecord	proc_rec,
+	void		*app_data
+	)
+{
+	u_int8_t	rbuf[_OWP_TS_REC_SIZE];
+	u_int32_t	i;
+	OWPDataRec	rec;
+	int		rc;
+
+	for(i=0;i<num_rec;i++){
+		if(fread(rbuf,_OWP_TS_REC_SIZE,1,fp) < 1)
+			return OWPErrFATAL;
+		OWPParseDataRecord(rbuf,&rec);
+		rc = proc_rec(app_data,&rec);
+		if(!rc) continue;
+		if(rc < 0)
+			return OWPErrFATAL;
+		return OWPErrOK;
+
+	}
+
+	return OWPErrOK;
+}
+
+OWPBoolean
+OWPIsLostRecord(OWPDataRecPtr rec)
+{
+	return (rec->recv.frac_sec || rec->recv.sec)? False : True;
 }

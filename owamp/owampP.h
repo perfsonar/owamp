@@ -212,6 +212,8 @@ struct OWPTestSessionRec{
 	void				*send_end_data;
 	void				*recv_end_data;
 	OWPTestSpec			test_spec;
+	OWPnum64			*schedule;
+	OWPnum64			last;
 	OWPTestSession			next;
 };
 
@@ -250,6 +252,16 @@ _OWPTestSessionFree(
 	OWPTestSession	tsession,
 	OWPAcceptType	aval
 	);
+
+extern int
+_OWPCreateSID(
+	OWPTestSession	tsession
+	);
+
+extern int
+_OWPTestSessionCreateSchedule(
+		OWPTestSession	tsession
+		);
 
 /*
  * io.c prototypes
@@ -361,6 +373,18 @@ OWPReadRequestType(
 	OWPControl	cntrl
 	);
 
+extern int
+_OWPEncodeTestRequest(
+	OWPContext	ctx,
+	u_int8_t	*buf,
+	struct sockaddr	*sender,
+	struct sockaddr	*receiver,
+	OWPBoolean	server_conf_sender,
+	OWPBoolean	server_conf_receiver,
+	OWPSID		sid,
+	OWPTestSpec	*test_spec
+	);
+
 extern OWPErrSeverity
 _OWPWriteTestRequest(
 	OWPControl	cntrl,
@@ -452,7 +476,11 @@ _OWPReadControlAck(
 );
 
 extern OWPErrSeverity
-_OWPReadDataHeader(OWPControl cntrl, u_int32_t *num_rec, u_int8_t *typeP);
+_OWPReadFetchHeader(
+	OWPControl	cntrl,
+	u_int32_t	*num_rec,
+	u_int8_t	*typeP
+	);
 
 /*
  * TODO:Send session data functions...
@@ -492,24 +520,19 @@ _OWPCallCheckTestPolicy(
 extern OWPBoolean
 _OWPCallEndpointInit(
         OWPControl	cntrl,
-	void		**end_data_ret,
-        OWPBoolean	send,
+	OWPTestSession	tsession,
 	OWPAddr		localaddr,
-	OWPTestSpec	*test_spec,
-	OWPSID		sid_ret,	/* only used if !send */
-	int		fd,		/* only used if !send */
+	FILE		*fp,	/* only used if localaddr!=tsession->sender */
+	void		**end_data_ret,
 	OWPErrSeverity	*err_ret
 );
 
 extern OWPBoolean
 _OWPCallEndpointInitHook(
         OWPControl      cntrl,
+	OWPTestSession	tsession,
 	void            **end_data,
-	OWPAddr         remoteaddr,
-	OWPSID		sid,
-	OWPErrSeverity  *err_ret,
-	OWPBoolean      send,
-	OWPAddr         localaddr
+	OWPErrSeverity  *err_ret
 );
 
 extern OWPBoolean
@@ -551,16 +574,19 @@ _OWPFailControlSession(
  * time.c
  */
 
+/*
+ * En/DecodeTimeStamp functions do not assume any alignment requirements
+ * for buf.
+ */
 extern void
 OWPEncodeTimeStamp(
-	u_int32_t	buf[2],
+	u_int8_t	buf[8],
 	OWPTimeStamp	*tstamp
 	);
-
 extern void
 OWPDecodeTimeStamp(
 	OWPTimeStamp	*tstamp,
-	u_int32_t	buf[2]
+	u_int8_t	buf[8]
 	);
 
 extern void owp_print_sockaddr(FILE *fp, struct sockaddr *sock);
