@@ -198,15 +198,16 @@ opendatafile(
 	char	*path;
 
 	/*
-	 * 3 is ".i" + '\0'.
+	 * 1 for the final '\0'.
 	 */
 	if(!(path = make_data_dir(ctx,datadir,node,
-				OWP_PATH_SEPARATOR_LEN+sizeof(OWPSID)*2+3)))
+				OWP_PATH_SEPARATOR_LEN+sizeof(OWPSID)*2
+				  + strlen(OWP_INCOMPLETE_EXT) + 1 )))
 		return NULL;
 
 	strcat(path,OWP_PATH_SEPARATOR);
 	strcat(path,sid_name);
-	strcat(path,".i");	/* in-progress	*/
+	strcat(path, OWP_INCOMPLETE_EXT);	/* in-progress	*/
 
 	dp = fopen(path,"wb");
 	if(!dp){
@@ -390,11 +391,13 @@ OWPDefEndpointInit(
 
 		/*
 		 * Open file for saving data.
-		 * 8 = "sessions", 2 = ".i", 1 = '\0'
+		 * 1  for the final '\0'
 		 */
 		ep->linkpath = malloc(strlen(cdata->datadir) +
 			OWP_PATH_SEPARATOR_LEN*2 +
-			sizeof(OWPSID)*2 + 8 + 2 + 1);
+			sizeof(OWPSID)*2 + strlen(OWP_SESSIONS_DIR) 
+				      + strlen(OWP_INCOMPLETE_EXT) + 1);
+				      
 		if(!ep->linkpath){
 			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"malloc():%s",
 					strerror(errno));
@@ -417,7 +420,7 @@ OWPDefEndpointInit(
 		strcat(ep->linkpath,OWP_PATH_SEPARATOR);
 		OWPHexEncode(sid_name,sid,sizeof(OWPSID));
 		strcat(ep->linkpath,sid_name);
-		strcat(ep->linkpath,".i");
+		strcat(ep->linkpath, OWP_INCOMPLETE_EXT);
 
 		ep->datafile = opendatafile(ctx,cdata->datadir,sid_name,
 				cdata->node,&ep->filepath);
@@ -953,7 +956,7 @@ run_receiver(
 	}
 
 	/*
-	 * Move file from "SID.i" in-progress test to "SID".
+	 * Move file from "SID^OWP_INCOMPLETE_EXT" in-progress test to "SID".
 	 */
 	fclose(ep->datafile);
 	ep->datafile = NULL;
@@ -963,7 +966,8 @@ run_receiver(
 	 */
 	lenpath = strlen(ep->filepath);
 	strcpy(newpath,ep->filepath);
-	newpath[lenpath-2] = '\0';	/* remove the ".i" from the end. */
+	newpath[lenpath-strlen(OWP_INCOMPLETE_EXT)] = '\0'; /* remove the 
+						     extension from the end. */
 	if(link(ep->filepath,newpath) != 0){
 		OWPError(NULL,OWPErrFATAL,OWPErrUNKNOWN,
 					"link():%s",strerror(errno));
@@ -975,7 +979,8 @@ run_receiver(
 	 */
 	lenpath = strlen(ep->linkpath);
 	strcpy(newlink,ep->linkpath);
-	newlink[lenpath-2] = '\0';	/* remove the ".i" from the end. */
+	newlink[lenpath-strlen(OWP_INCOMPLETE_EXT)] = '\0'; /* remove the 
+						    extension from the end. */
 	if(symlink(newpath,newlink) != 0){
 		OWPError(NULL,OWPErrFATAL,OWPErrUNKNOWN,
 				"symlink():%s",strerror(errno));
@@ -983,8 +988,8 @@ run_receiver(
 	}
 
 	/*
-	 * Now remove old ".i" files - this is done in this order to ensure
-	 * no race conditions.
+	 * Now remove old  incomplete  files - this is done in this order 
+	 * to ensure no race conditions.
 	 */
 	if((unlink(ep->linkpath) != 0) || (unlink(ep->filepath) != 0)){
 		OWPError(NULL,OWPErrFATAL,OWPErrUNKNOWN,
