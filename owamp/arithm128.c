@@ -340,7 +340,7 @@ OWPraw2num(const unsigned char *raw)
 ** Generate a 64-bit uniform random string and save it in the lower
 ** part of the struct.
 */
-static struct OWPnum128
+struct OWPnum128
 OWPunif_rand(OWPrand_context *next)
 {
 	int j;

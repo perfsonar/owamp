@@ -37,11 +37,11 @@ typedef struct OWPrand_context64 {
 } OWPrand_context64;
 
 /* Conversion operations */
+void OWPnum64totimeval(OWPnum64 from, struct timeval *to);
+OWPnum64  OWPtimeval2num64(struct timeval *from);
 #if 0
-void OWPnum2timeval(OWPnum64 from, struct timeval *to);
-OWPnum64  OWPtimeval2num(struct timeval *from);
-void OWPnum2timespec(OWPnum64 from, struct timespec *to);
-OWPnum64 OWPtimespec2num(struct timespec *from);
+void OWPnum64totimespec(OWPnum64 from, struct timespec *to);
+OWPnum64 OWPtimespec2num64(struct timespec *from);
 #endif
 
 /* Random number generating functions */

@@ -36,6 +36,7 @@
 #endif
 
 #include <owamp/arithm128.h>
+#include <owamp/arithm64.h>
 
 #define	OWP_MODE_UNDEFINED		(0)
 #define	OWP_MODE_OPEN			(01)

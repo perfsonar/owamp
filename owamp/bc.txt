@@ -2,7 +2,7 @@
 ** (vol.2 p.133). 
 ** Usage: bc -ql bc.txt
 */
-scale=100
+scale=1000
 obase=16
 l=l(2);
 cur=l(2);

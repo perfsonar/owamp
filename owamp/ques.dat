@@ -6,6 +6,10 @@
 
 # These values can now be used for Knuth algorithm S.
 
+# to split up into long int hex-encoded values: 
+# perl -lwne 'next unless m/^[A-Z]/; $_=~ m/(.{8})(.{8})/; \
+# print "0x$1, 0x$2,"' ques.dat
+
 B17217F7D1CF79AB
 EEF193F6D75A96FC
 FD27186259AAF6C2

@@ -34,22 +34,23 @@ Algorithm S: the constants
 Q[k] = (ln2)/(1!) + (ln2)^2/(2!) + ... + (ln2)^k/(k!),    1 <= k <= 18
 
 are precomputed. NOTE: all scalar quantities and arithmetical
-operations are in fixed-precision 128-bit arithmetic (64 bits before
-and after the decimal point). All 64-bit uniform random strings are
+operations are in fixed-precision 64-bit arithmetic (32 bits before
+and after the decimal point). All 32-bit uniform random strings are
 obtained by applying AES in counter mode to a 128-bit unsigned integer
 (initialized to be zero) written in network byte order, then picking the
-lower or upper half of the encrypted 128-bit block, depending as the
-counter is even or odd, respectively.
+i_th quartet of bytes of the encrypted block, where i is equal to
+the value of the counter modulo 4. (Thus, one encrypted block gives
+rise to four 32-bit random strings)
 
-S1. [Get U and shift.] Generate a 64-bit uniform random binary fraction
+S1. [Get U and shift.] Generate a 32-bit uniform random binary fraction
 
-              U = (.b0 b1 b2 ... b63)    [note the decimal point]
+              U = (.b0 b1 b2 ... b31)    [note the decimal point]
 
     Locate the first zero bit b_j, and shift off the leading (j+1) bits,
-    setting U <- (.b_{j+1} ... b63)
+    setting U <- (.b_{j+1} ... b31)
 
     NOTE: in the rare case that the zero has not been found it is prescribed
-    that the algorithm return (mu*64*ln2).
+    that the algorithm return (mu*32*ln2).
 
 S2. [Immediate acceptance?] If U < ln2, set X <- mu*(j*ln2 + U) and terminate
     the algorithm. (Note that Q[1] = ln2.)
@@ -87,7 +88,8 @@ S4. [Deliver the answer.] Set X <- mu*(j + V)*ln2.
 **
 **       Q[k] = (ln2)/(1!) + (ln2)^2/(2!) + ... + (ln2)^k/(k!)
 **
-** as described in the Knuth algorithm.
+** as described in the Knuth algorithm. (The values below have been
+** multiplied by 2^32 and rounded to the nearest integer.)
 */
 static OWPnum64 Q[K] = {
 	0,          /* Placeholder. */
@@ -120,7 +122,7 @@ OWPulong2num64(u_int32_t a)
 */
 
 /*
-** Addition. The result is saved in the variable z.
+** Addition.
 */
 static OWPnum64
 OWPnum64_add(OWPnum64 x, OWPnum64 y)
@@ -132,7 +134,6 @@ OWPnum64_add(OWPnum64 x, OWPnum64 y)
 ** Multiplication. Allows overflow. Straightforward implementation
 ** of Knuth vol.2 Algorithm 4.3.1.M (p.268)
 */
-
 OWPnum64
 OWPnum64_mul(OWPnum64 x, OWPnum64 y)
 {
@@ -173,101 +174,56 @@ OWPnum64_mul(OWPnum64 x, OWPnum64 y)
 	return w[1] + ret;
 }
 
-#if 0
 /*
 ** Conversion functions.
 */
 
 /* 
-** The next two functions perform conversion between the num space and
+** The next two functions perform conversion between the OWPnum64 space and
 ** Unix timeval structs.
 */
 
+#define MILLION 1000000UL
+
 /*
-** Discussion: fractional part - e/(2^16) + f/(2^32) = (B/10^6), 
-** hence B = [e/(2^16) + f/(2^32)]*(10^6) < 2^20.
-** Integer part: A = c*(2^16) + d. 
+** Discussion: A + B/(2^32) = C + D/(10^6), so
+** C = A, and
+** D = (B*10^6)/(2^32)
 */
 void
-OWPnum2timeval(OWPnum64 from, struct timeval *to)
+OWPnum64totimeval(OWPnum64 from, struct timeval *to)
 {
-	OWPnum64 res;
-	static OWPnum64 million = {{0, 0, 0, 0, 16960, 15, 0, 0}}; 
-
-	/* first convert the fractional part */
-	OWPnum64 tmp = {{0, 0, 0, 0, 0, 0, 0, 0}};
-	tmp.digits[2] = from->digits[2];
-	tmp.digits[3] = from->digits[3];
-
-	/* See discussion: it may take two digits of res to express tv_usec. */
-	OWPnum64_mul(&tmp, &million, &res);
-	to->tv_usec = ((unsigned long)(res.digits[5]) << 16) +
-		(unsigned long)(res.digits[4]); 
-
-	/* now the integer part */
-	to->tv_sec = ((unsigned long)(from->digits[5]) << 16) + 
-		(unsigned long)(from->digits[4]);
+	to->tv_sec = from >> 32;
+	to->tv_usec = (MASK32(from)*MILLION) >> 32;
 }
 
 /*
-** Discussion: given struct timeval {sec, u_sec}, the goal is
-** to compute C/(10^6), where C = [sec*(10^6) + u_sec] < (2^64).
-** It is done as follows: observe that
+** Discussion: given struct timeval {sec, u_sec}, the goal is to compute 
+**   OWPnum64 C = (sec*10^6 + usec)*2^32 / 10^6 
+**              = (sec*10^6 + usec)*2^26 / 5^6 
+**              = (sec*10^6 + usec)*[4294 +  15114/(5^6 )]
 **
-** C/(10^6) = {C/[(10^6) >> 4]} << 4
-**
-** where '>>' and '<<' are right and left shift operations
-** in the base 2^16.
-**
-** Thus, assume that C = a*(2^48) + b*(2^32) + c*(2^16) + d, 
-** 0 <= a,b,c,d <= 2^16 - 1, is the expansion of C in base 2^16.
-** Similarly, (10^6) = e*(2^16) + f, where e = 15 and f = 16960.
-** An integer-arithmetic division of "abcd0000" by "ef" is performed,
-** and the 7-digit result, when interpreted as a OWPnum64 struct
-** is the sought answer. The task is, moreover, simplified by
-** being implemented as *single*-digit division in the base 2^32.
+** - the rest is obvious from the code
 */ 
 OWPnum64
-OWPtimeval2num(struct timeval *from)
+OWPtimeval2num64(struct timeval *from)
 {
-	unsigned long carry = 0;
-	static OWPnum64 million = {{0, 0, 0, 0, 16960, 15, 0, 0}}; 
+	u_int64_t res = ((u_int64_t)(from->tv_sec))*MILLION + from->tv_usec;
 
-	int i;
-	OWPnum64 C, tmp; 
-
-	OWPnum64 sec = OWPulong2num(from->tv_sec);
-	OWPnum64 usec = OWPulong2num(from->tv_usec);
-
-	OWPnum64_mul(&sec, &million, &tmp);
-	OWPnum64_add(&tmp, &usec, &C);
-
-	/* First divide by 2^6 using shifts. */
-	C.digits[7] = 0; 
-	for (i = 0; i < 7; i++)
-		C.digits[i] = MASK16(C.digits[i] >> 6) 
-			| MASK16(C.digits[i+1] << 10);
-
-	/* Do division by 5^6 (= 0x3D09). */
-	for (i = 7; i >= 0; i--){
-		carry = (carry << 16) + (unsigned long)(C.digits[i]);
-		to->digits[i] = carry/0x3D09;
-		carry %= 0x3D09;
-	}
+	return (res*4294) + (res*15114)/0x3D09; 
 }
-#endif
 
 
 /*
 ** This function converts a 32-bit binary string (network byte order)
-** into a OWPnum64 number (fractional part only). The integer part iz zero.
+** into a OWPnum64 number (32 least significant bits).
 */
 static OWPnum64
 OWPraw2num64(const unsigned char *raw)
 {
-	return (u_int32_t)(raw[0] << 24) 
-		+ (u_int32_t)(raw[1] << 16) 
-		+ (u_int32_t)(raw[2] << 8) 
+	return ((u_int32_t)(raw[0]) << 24) 
+		+ ((u_int32_t)(raw[1]) << 16) 
+		+ ((u_int32_t)(raw[2]) << 8) 
 		+ (u_int32_t)raw[3];
 }
 
@@ -277,7 +233,7 @@ OWPraw2num64(const unsigned char *raw)
 
 /*
 ** Generate and return a 32-bit uniform random string (saved in the lower
-** ha.
+** half of the OWPnum64.
 */
 OWPnum64
 OWPunif_rand64(OWPrand_context64 *next)
@@ -386,7 +342,6 @@ OWPnum_print64(OWPnum64 x)
 #if 0
 	fprintf(stdout, "%llX \n", x);
 #endif
-
 	fprintf(stdout, "%.16f\n", (double)x/(double)0xFFFFFFFF);
 }
 
