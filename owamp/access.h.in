@@ -11,6 +11,8 @@
 #include <netdb.h>
 #include <errno.h>
 #include <sys/wait.h>
+#include <syslog.h>
+#include <stdarg.h>
 
 /* for inet_pton */
 #include <sys/socket.h>
@@ -60,7 +62,7 @@ typedef void (*OWPCheckAddrPolicy)(
 typedef struct owamp_limits {
 	u_int32_t bandwidth;   /* bytes/sec                          */
 	u_int32_t space;       /* bytes                              */
-	u_int8_t num_sessions; /* number of concurrent test sessions */
+	u_int8_t test_sessions; /* number of concurrent test sessions */
 } OWAMPLimits;
 
 
