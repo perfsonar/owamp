@@ -339,7 +339,7 @@ get_ip2class_line(OWPContext ctx, FILE *fp, policy_data *policy)
 	/* Skip white-spaces - newline disallowed. */
 	while (1) {
 		if ((c = fgetc(fp)) == EOF) {
-			if ferror(fp) {
+			if (ferror(fp)) {
 				free(netmask);
 				OWPError(ctx, OWPErrFATAL, errno,
 					 "FATAL: physical read error");
