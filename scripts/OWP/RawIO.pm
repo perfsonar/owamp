@@ -29,52 +29,83 @@ package OWP::RawIO;
 require 5.005;
 require Exporter;
 use strict;
+use vars qw(@ISA @EXPORT $VERSION);
 use POSIX;
 use FindBin;
-use Errno qw(EINTR);
+#use Errno qw(EINTR EIO :POSIX);
 
 @ISA = qw(Exporter);
-@EXPORT = qw(sys_readline);
+@EXPORT = qw(sys_readline sys_writeline);
 
 $RawIO::REVISION = '$Id$';
-$RawIO::VERSION='1.0';
+$VERSION = $RawIO::VERSION='1.0';
 
 sub sys_readline{
-	my($fh) = @_;
+	my(%args) = @_;
+	my($fh,$tmout) = (\*STDIN,0);
+	my($cb) = sub{return undef};
 	my $char;
 	my $read;
-	my $fname = "";
+	my $line = "";
+	$tmout = $args{'TIMEOUT'} if(defined $args{'TIMEOUT'});
+	$fh = $args{'FILEHANDLE'} if(defined $args{'FILEHANDLE'});
+	$cb = $args{'CALLBACK'} if(defined $args{'CALLBACK'});
 
 	while(1){
-		$read = sysread($fh,$char,1);
+		eval{
+			local $SIG{ALRM} = sub{die "alarm\n"};
+			alarm $tmout;
+			$read = sysread($fh,$char,1);
+			alarm 0;
+		};
+		return &$cb(undef) if($@ && ($@ eq "alarm\n"));
 		if(!defined($read)){
 			next if($! == EINTR);
-			die "sysread: $!";
+			return &$cb(undef);
 		}
-		next if($read < 1);
-		return $fname if($char eq "\n");
-		$fname .= $char;
+		return &$cb($read) if($read < 1);
+		if($char eq "\n"){
+#warn "RECV: $line\n";
+			return $line;
+		}
+		$line .= $char;
 	}
 }
 
-sub sys_writen{
-	my($fh,$buf) = @_;
-	my($len,$offset,$written);
+sub sys_writeline{
+	my(%args) = @_;
+	my($fh,$line,$md5,$tmout) = (\*STDOUT,'',undef,0);
+	my($cb) = sub{return undef};
+	$line = $args{'LINE'} if(defined $args{'LINE'});
+	$tmout = $args{'TIMEOUT'} if(defined $args{'TIMEOUT'});
+	$fh = $args{'FILEHANDLE'} if(defined $args{'FILEHANDLE'});
+	$cb = $args{'CALLBACK'} if(defined $args{'CALLBACK'});
+	$md5 = $args{'MD5'} if(defined $args{'MD5'});
 
-	$len = length($buf);
-	$offset = 0;
+	$md5->add($line) if((defined $md5) && !($line =~ /^$/));
+
+	$line .= "\n";
+	my $len = length($line);
+	my $offset = 0;
 
 	while($len){
-		my $written = syswrite $fh, $buf, $len, $offset;
+		my $written;
+		eval{
+			local $SIG{ALRM} = sub{die "alarm\n"};
+			alarm $tmout;
+			$written = syswrite $fh,$line,$len,$offset;
+			alarm 0;
+		};
+		return &$cb(undef) if($@ && ($@ eq "alarm\n"));
 		if(!defined($written)){
 			next if($! == EINTR);
-			die "syswrite: $!";
+			return &$cb(undef);
 		}
 		$len -= $written;
 		$offset += $written;
 	}
 
-	1;
+#warn "TXMT: $line";
+	return 1;
 }
-
 1;

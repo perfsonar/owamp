@@ -261,36 +261,13 @@ sub OpenServer{
 }
 
 sub fail_server{
-	return if(!defined $SendServer);
+	return undef if(!defined $SendServer);
 	
 	$SendServer->close;
 	undef $SendServer;
 
 	return undef;
 }
-
-sub sendline{
-	my($line,$md5) = @_;
-
-	$md5->add($line) if((defined $md5) && !($line =~ /^$/));
-
-warn "TXFR:$line";
-	$line .= "\n";
-	my $len = length($line);
-	my $offset = 0;
-
-	while($len){
-		my $written = syswrite $SendServer,$line,$len,$offset;
-		next if $! =~ /^Interrupted/;
-		return fail_server if(!defined $written);
-		$len -= $written;
-		$offset += $written;
-	}
-warn "TXFR:Success";
-
-	return 1;
-}
-
 
 sub txfr{
 	my($fh,$md5,%req) = @_;
@@ -301,33 +278,64 @@ sub txfr{
 
 	my($line) = "OWP 1.0";
 	$md5->reset;
-	return undef if(!sendline($line,$md5));
+	return undef if(!sys_writeline(FILEHANDLE=>$SendServer,
+					LINE=>$line,
+					MD5=>$md5,
+					TIMEOUT=>$timeout,
+					CALLBACK=>\&fail_server));
 	foreach (keys %req){
-		return undef if(!sendline("$_\t$req{$_}",$md5));
+		return undef if(!sys_writeline(FILEHANDLE=>$SendServer,
+					LINE=>"$_\t$req{$_}",
+					MD5=>$md5,
+					TIMEOUT=>$timeout,
+					CALLBACK=>\&fail_server));
 	}
-	return undef if(!sendline(""));
+	return undef if(!sys_writeline(FILEHANDLE=>$SendServer,
+					TIMEOUT=>$timeout,
+					CALLBACK=>\&fail_server));
 	$md5->add($secret);
-	return undef if(!sendline($md5->hexdigest));
-	return undef if(!sendline(""));
+	return undef if(!sys_writeline(FILEHANDLE=>$SendServer,
+					TIMEOUT=>$timeout,
+					CALLBACK=>\&fail_server,
+					LINE=>$md5->hexdigest));
+	return undef if(!sys_writeline(FILEHANDLE=>$SendServer,
+					TIMEOUT=>$timeout,
+					CALLBACK=>\&fail_server));
 	my($len) = $req{'FILESIZE'};
 	RLOOP:
 	while($len){
+		# local read errors are fatal
 		my ($written,$buf,$rlen,$offset);
-		$rlen = sysread $fh,$buf,$len;
+		undef $rlen;
+		eval{
+			local $SIG{ALRM} = sub{die "alarm\n"};
+			alarm $timeout;
+			$rlen = sysread $fh,$buf,$len;
+			alarm 0;
+		};
 		if(!defined($rlen)){
-			next RLOOP if $! =~ /^Interrupted/;
+			die "Timeout reading $req{'FILENAME'}: $!"
+				if($@ && ($@ eq "alarm\n"));
+			next RLOOP if ($! == EINTR);
 			die "System read error: $!\n";
 		}
 		$len -= $rlen;
 		$offset=0;
 		WLOOP:
 		while($rlen){
-			$written = syswrite $SendServer, $buf, $rlen, $offset;
+			# socket write errors cause eventual retry.
+			undef $written;
+			eval{
+				local $SIG{ALRM} = sub{die "alarm\n"};
+				alarm $timeout;
+				$written = syswrite $SendServer,$buf,$rlen,
+									$offset;
+				alarm 0;
+			};
 			if(!defined($written)){
-				next WLOOP if $! =~ /^Interrupted/;
-				close($SendServer);
-				undef $SendServer;
-				return undef;
+				return fail_server if($@ && ($@ eq "alarm\n"));
+				next WLOOP if($! == EINTR);
+				return fail_server;
 			}
 			$rlen -= $written;
 			$offset += $written;
@@ -336,38 +344,36 @@ sub txfr{
 
 	$md5->reset;
 	my($pname,$pval);
-	while(sys_readline($SendServer)){
-		last if(/^$/); # end of message
-		$md5->add($_);
-		next if(/^\s*#/); # comments
-		next if(/^\s*$/); # blank lines
+	while(1){
+		$_ = sys_readline(FILEHANDLE=>$SendServer,TIMEOUT=>$timeout);
+		if(defined $_){
+			last if(/^$/); # end of message
+			$md5->add($_);
+			next if(/^\s*#/); # comments
+			next if(/^\s*$/); # blank lines
 
-		if(($pname,$pval) = /^(\w+)\s+(.*)/o){
-			$pname =~ tr/a-z/A-Z/;
-			$resp{$pname} = $pval;
-			next;
+			if(($pname,$pval) = /^(\w+)\s+(.*)/o){
+				$pname =~ tr/a-z/A-Z/;
+				$resp{$pname} = $pval;
+				next;
+			}
 		}
 		# Invalid message!
-		warn ("Invalid message from server!");
-		close($SendServer);
-		undef $SendServer;
-		return undef;
+		warn ("Socket closed or Invalid message from server!");
+		return fail_server;
 	}
 	$md5->add($secret);
-	if($md5->hexdigest ne sys_readline($SendServer)){
+	if($md5->hexdigest ne
+		sys_readline(FILEHANDLE=>$SendServer,TIMEOUT=>$timeout)){
 		warn ("Invalid MD5 for server response!");
-		close($SendServer);
-		undef $SendServer;
-		return undef;
+		return fail_server;
 	}
-	if("" ne sys_readline($SendServer)){
+	if("" ne sys_readline(FILEHANDLE=>$SendServer,TIMEOUT=>$timeout)){
 		warn ("Invalid End Message from Server!");
-		close($SendServer);
-		undef $SendServer;
-		return undef;
+		return fail_server;
 	}
 
-	return %resp;
+	return \%resp;
 }
 
 sub send_file{
@@ -424,6 +430,20 @@ sub send_data{
 					sort grep {/$suffix$/} readdir(DIR);
 		closedir DIR;
 	}
+	#
+	# Sort the list by "start time" of the sessions instead of
+	# by directory so data is sent to central server in a more
+	# digestable way.
+	#
+	if(@flist){
+		sub bystart{
+			my ($astart) = ($a =~ m#/(\d+)_\d+$suffix$#);
+			my ($bstart) = ($b =~ m#/(\d+)_\d+$suffix$#);
+
+			return $astart <=> $bstart;
+		}
+		@flist = sort bystart @flist;
+	}
 
 	my $pid = fork;
 
@@ -435,6 +455,7 @@ sub send_data{
 
 	# child continues.
 	$SIG{INT} = $SIG{TERM} = $SIG{HUP} = $SIG{CHLD} = 'DEFAULT';
+	$SIG{PIPE} = 'IGNORE';
 	open STDIN, ">&=$rfd" || die "Can't fdopen read end of pipe";
 
 	my($rin,$rout,$ein,$eout,$tmout,$nfound);
@@ -455,7 +476,7 @@ SEND_FILES:
 		}
 
 		if($nfound = select($rout=$rin,undef,$eout=$ein,$tmout)){
-			my $newfile = sys_readline(*STDIN);
+			my $newfile = sys_readline();
 			push @flist, $newfile;
 			next SEND_FILES;
 		}

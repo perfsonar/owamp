@@ -51,9 +51,8 @@ my $update_sep = $conf->must_get_val(ATTR => 'SEPARATOR');
 chdir $conf->{'DATADIR'} or die "could not chdir $conf->{'DATADIR'} $!";
 
 # Open the database and read in its contents. Currently only one key.
-tie my %state, 'GDBM_File', "$var_path/$log_file", &GDBM_WRCREAT, 0640;
+tie my %state, 'GDBM_File', "$var_path/$log_file", &GDBM_WRCREAT, 0660;
 
-# my $start = time;
 my @live_int = ();
 if (defined $state{'live_times'}) {
 

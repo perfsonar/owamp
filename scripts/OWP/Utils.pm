@@ -54,6 +54,19 @@ sub time2owptime {
     return $bigtime;
 }
 
+#
+# Add a number of seconds to an owamp-style number.
+#
+sub owptimeadd{
+	my $bigtime = new Math::BigInt shift;
 
+	while($_ = shift){
+		my $add = new Math::BigInt $_;
+		$bigtime += ($add * $scale);
+	}
+
+	$bigtime =~ s/^\+//;
+	return $bigtime;
+}
 
 1;
