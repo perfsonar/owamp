@@ -194,12 +194,11 @@ typedef OWPBoolean (*OWPCheckAddrPolicy)(
 /*
  * This function will be called from OWPControlOpen and OWPServerAccept
  * to determine if the control connection should be accepted.
- * It is called after connecting, and after determining that encryption
- * is working properly.
+ * It is called after connecting, and after determining the kid.
  */
 typedef OWPBoolean (*OWPCheckControlPolicyFunc)(
 	void		*app_data,
-	OWPSessionMode	*mode_req,	/* in/out	*/
+	OWPSessionMode	mode_req,
 	const char	*kid,
 	struct sockaddr	*local_sa_addr,
 	struct sockaddr	*remote_sa_addr,

@@ -27,6 +27,12 @@
 #include <sys/param.h>
 
 #include <I2util/table.h>
+#include <owamp/owamp.h>
+
+#undef	AUTOCONF_SYSCONFDIR
+#define	MSTRCAT(A,B)		#A ## #B
+#define	MSTRCATEXPAND(A,B)	MSTRCAT(A,B)
+#define	OWP_CONFDIR		MSTRCATEXPAND(OWP_PREFIX,AUTOCONFIG_SYSCONFDIR)
 
 #define MAX_LINE 1024
 
@@ -62,5 +68,20 @@ typedef struct {
 extern char *ipaddr2class(u_int32_t ip, I2table ip2class_hash);
 extern void print_ip2class_binding(const struct I2binding *p, FILE* fp);
 extern void print_class2limits_binding(const struct I2binding *p, FILE* fp);
+
+/*
+ * Tolya: Shouldn't a prototype go here for this?
+ *  - if not just remove it - but I needed the prototype to try and use it,
+ *  and it didn't make sense to put it in the .c file - it is used from
+ *  more than one place.
+ */
+extern policy_data
+*PolicyInit(
+	OWPContext	ctx,
+	char		*ip2class_file,
+	char		*class2limits_file,
+	char		*passwd_file,
+	OWPErrSeverity	*err_ret
+);
 
 #endif	/* _owamp_contrib_h_ */

@@ -1,6 +1,6 @@
 /*! \file owampd.c */
 
-#include <owamp.h>
+#include <owamp/owamp.h>
 #include <access.h>
 
 #define LISTENQ 5
@@ -13,14 +13,6 @@
 int ip2class_flag = 0;
 int class2limits_flag = 0;
 int passwd_flag = 0;
-
-extern policy_data * PolicyInit(
-	   OWPContext ctx, 
-	   char *ip2class_file,
-	   char *class2limits_file,
-	   char *passwd_file,
-	   OWPErrSeverity *err_ret
-	   );
 
 const char *DefaultIPtoClassFile = DEFAULT_IP_TO_CLASS_FILE;
 char *IPtoClassFile = NULL;
@@ -243,7 +235,7 @@ main(int argc, char *argv[])
 		NULL
 	};
 	
-	fprintf(stderr, "DEBUG: OWP_CONF_DIR = %s\n",OWP_CONF_DIR);
+	fprintf(stderr, "DEBUG: OWP_CONFDIR = %s\n",OWP_CONFDIR);
 	exit(0);
 	
 	/* Parse command line options. */

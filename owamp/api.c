@@ -358,6 +358,69 @@ _OWPClientBind(
 }
 
 static int
+connect_tmout(
+	int		fd,
+	struct sa_addr	*ai_addr,
+	size_t		ai_addr_len,
+	struct timeval	*tm_out
+)
+{
+	int		flags;
+	int		rc;
+	fd_set		rset,wset;
+	int		len;
+	/*
+	 * Some versions of select modify the timeval values - so create
+	 * a local copy before calling select.
+	 */
+	struct timeval	ltm = *tm_out;
+
+	flags = fcntl(fd, F_GETFL,0);
+	fcntl(fd,f_SETFL,flags|O|NONBLOCK);
+
+	rc = connect(fd,ai_addr,ai_addr_len);
+
+	if(rc==0)
+		goto DONE;
+
+	if(errno != EINPROGRESS){
+		return -1;
+	}
+	
+AGAIN:
+	FD_ZERO(&rset);
+	FD_SET(fd,&rset);
+	wset = rset;
+
+	rc = select(fd+1,&rset,&wset,NULL,&ltm);
+	if(rc == 0){
+		errno = ETIMEDOUT;
+		return -1;
+	}
+	if(rc < 0){
+		if(errno == EINTR)
+			goto AGAIN;
+		return -1;
+	}
+
+	if(FD_ISSET(fd,&rset) || FD_ISSET(fd,&wset)){
+		len = sizeof(rc);
+		if(getsockopt(fd,SOL_SOCKET,SO_ERROR,(void*)&rc,&len) < 0){
+			return -1;
+		}
+		if(rc != 0){
+			errno = rc;
+			return -1;
+		}
+	}else
+		return -1;
+
+DONE:
+	fcntl(fd,F_SETFL,flags);
+	return fd;
+}
+
+static int
 _OWPClientConnect(
 	OWPControl	cntrl,
 	OWPAddr		local_addr,
@@ -373,12 +436,18 @@ _OWPClientConnect(
 		goto error;
 	}
 
+	/*
+	 * Easy case - application provided socket directly.
+	 */
 	if(server_addr->fd > -1){
 		cntrl->remote_addr = server_addr;
 		cntrl->sockfd = server_addr->fd;
-		goto error;
+		return 0;
 	}
 
+	/*
+	 * Do we have an "address" for the connection yet?
+	 */
 	if(!server_addr->ai){
 		/*
 		 * Call getaddrinfo to find useful addresses
@@ -403,9 +472,15 @@ _OWPClientConnect(
 		server_addr->ai = airet;
 	}
 
+	/*
+	 * Now that we have addresses - see if it is valid by attempting
+	 * to create a socket of that type, and binding(if wanted).
+	 * Also check policy for allowed connection before calling
+	 * connect.
+	 * (Binding will call the policy function internally.)
+	 */
 	for(ai=server_addr->ai;ai;ai->ai_next){
 		OWPErrSeverity	addr_ok=OWPErrOK;
-
 		fd = socket(ai->ai_family,ai->ai_socktype,ai->ai_protocol);
 		if(fd < 0)
 			continue;
@@ -442,9 +517,9 @@ _OWPClientConnect(
 		}
 
 		/*
-		 * TODO:Add timeout (non-block connect, then select...)
+		 * Call connect - we ignore error values from here for now...
 		 */
-		if(connect(fd,ai->ai_addr,ai->ai_addrlen) == 0){
+		if(connect_tmout(fd,ai->ai_addr,ai->ai_addrlen,&cntrl->cfg.tm_out) == 0){
 			server_addr->fd = fd;
 			server_addr->saddr = *ai->ai_addr;
 			server_addr->saddr_set = True;
@@ -625,26 +700,25 @@ OWPControlOpen(
 		mode_avail &= ~(OWP_MODE_ENCRYPTED|OWP_MODE_AUTHENTICATED);
 
 	/*
-	 * Now determine if client side is willing to actually talk control
-	 * given the kid/addr combinations.
+	 * Pick "highest" level mode still available to this server.
 	 */
-	if(!_OWPCallCheckControlPolicy(ctx,&mode_avail,cntrl->kid,
-			&local_addr->saddr,&server_addr->saddr,err_ret)){
-		OWPError(ctx,OWPErrFATAL,OWPErrPOLICY,"Failed policy check");
-		goto error;
-	}
-
-	/*
-	 * Pick "highest" level mode still available after policy check.
-	 */
-	if(mode_avail & OWP_MODE_ENCRYPTED){
+	if((mode_avail & OWP_MODE_ENCRYPTED) &&
+			_OWPCallCheckControlPolicy(ctx,OWP_MODE_ENCRYPTED,
+						cntrl->kid,&local_addr->saddr,
+						&server_addr->saddr,err_ret)){
 		cntrl->mode = OWP_MODE_ENCRYPTED;
-	}else if(mode_avail & OWP_MODE_AUTHENTICATED){
+	}else if((mode_avail & OWP_MODE_AUTHENTICATED) &&
+			_OWPCallCheckControlPolicy(ctx,OWP_MODE_AUTHENTICATED,
+						cntrl->kid,&local_addr->saddr,
+						&server_addr->saddr,err_ret)){
 		cntrl->mode = OWP_MODE_AUTHENTICATED;
-	}else if(mode_avail & OWP_MODE_OPEN){
+	}else if((mode_avail & OWP_MODE_OPEN) &&
+			_OWPCallCheckControlPolicy(ctx,OWP_MODE_OPEN,
+						NULL,&local_addr->saddr,
+						&server_addr->saddr,err_ret)){
 		cntrl->mode = OWP_MODE_OPEN;
 	}else{
-		OWPError(ctx,OWPErrFATAL,OWPErrPOLICY,"No Common Modes");
+		OWPError(ctx,*err_ret,OWPErrPOLICY,"No Common Modes");
 		goto error;
 	}
 

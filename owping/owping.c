@@ -32,7 +32,7 @@
 /*
  * The owping context
  */
-static	OWPingTRec	OWPingCtx;
+static	ow_ping_trec	ping_ctx;
 
 static int
 OWPingErrFunc(
@@ -63,7 +63,7 @@ OWPingErrFunc(
 static	OWPInitializeConfigRec	OWPCfg = {
 	/* tm_out.tv_sec		*/	0,
 	/* tm_out.tv_usec		*/	0,
-	/* app_data			*/	(void*)&OWPingCtx,
+	/* app_data			*/	(void*)&ping_ctx,
 	/* err_func			*/	OWPingErrFunc,
 	/* get_aes_key			*/	NULL,
 	/* check_addr_func		*/	NULL,
@@ -117,48 +117,48 @@ static	I2OptDescRec	set_options[] = {
 */
 static  I2Option  get_options[] = {
         {
-	"verbose", I2CvtToBoolean, &OWPingCtx.opt.verbose,
-	sizeof(OWPingCtx.opt.verbose)
+	"verbose", I2CvtToBoolean, &ping_ctx.opt.verbose,
+	sizeof(ping_ctx.opt.verbose)
 	},
         {
-	"help", I2CvtToBoolean, &OWPingCtx.opt.help,
-	sizeof(OWPingCtx.opt.help)
+	"help", I2CvtToBoolean, &ping_ctx.opt.help,
+	sizeof(ping_ctx.opt.help)
 	},
         {
-	"authmode", I2CvtToString, &OWPingCtx.opt.authmode,
-	sizeof(OWPingCtx.opt.authmode)
+	"authmode", I2CvtToString, &ping_ctx.opt.authmode,
+	sizeof(ping_ctx.opt.authmode)
 	},
         {
-	"identity", I2CvtToString, &OWPingCtx.opt.identity,
-	sizeof(OWPingCtx.opt.identity)
+	"identity", I2CvtToString, &ping_ctx.opt.identity,
+	sizeof(ping_ctx.opt.identity)
 	},
         {
-	"tmout", I2CvtToInt, &OWPingCtx.opt.tmout,
-	sizeof(OWPingCtx.opt.tmout)
+	"tmout", I2CvtToInt, &ping_ctx.opt.tmout,
+	sizeof(ping_ctx.opt.tmout)
 	},
         {
-	"sender", I2CvtToString, &OWPingCtx.opt.sender,
-	sizeof(OWPingCtx.opt.sender)
+	"sender", I2CvtToString, &ping_ctx.opt.sender,
+	sizeof(ping_ctx.opt.sender)
 	},
         {
-	"receiver", I2CvtToString, &OWPingCtx.opt.receiver,
-	sizeof(OWPingCtx.opt.receiver)
+	"receiver", I2CvtToString, &ping_ctx.opt.receiver,
+	sizeof(ping_ctx.opt.receiver)
 	},
         {
-	"padding", I2CvtToUInt, &OWPingCtx.opt.padding,
-	sizeof(OWPingCtx.opt.padding)
+	"padding", I2CvtToUInt, &ping_ctx.opt.padding,
+	sizeof(ping_ctx.opt.padding)
 	},
         {
-	"lambda", I2CvtToUInt, &OWPingCtx.opt.lambda,
-	sizeof(OWPingCtx.opt.lambda)
+	"lambda", I2CvtToUInt, &ping_ctx.opt.lambda,
+	sizeof(ping_ctx.opt.lambda)
 	},
         {
-	"numPackets", I2CvtToUInt, &OWPingCtx.opt.numPackets,
-	sizeof(OWPingCtx.opt.numPackets)
+	"numPackets", I2CvtToUInt, &ping_ctx.opt.numPackets,
+	sizeof(ping_ctx.opt.numPackets)
 	},
         {
-	"lossThreshold", I2CvtToUInt, &OWPingCtx.opt.lossThreshold,
-	sizeof(OWPingCtx.opt.lossThreshold)
+	"lossThreshold", I2CvtToUInt, &ping_ctx.opt.lossThreshold,
+	sizeof(ping_ctx.opt.lossThreshold)
 	},
 	{NULL}
 };
@@ -184,7 +184,7 @@ FailSession(
 	 */
 
 	/* TODO: determine "reason" for denial and report */
-	(void)OWPControlClose(OWPingCtx.cntrl);
+	(void)OWPControlClose(ping_ctx.cntrl);
 	exit(1);
 }
 
@@ -216,7 +216,7 @@ main(
 		fprintf(stderr, "%s : Couldn't init error module\n", progname);
 		exit(1);
 	}
-	OWPingCtx.eh = eh;
+	ping_ctx.eh = eh;
 
 	od = I2OpenOptionTbl(eh);
 
@@ -239,7 +239,7 @@ main(
 	/*
 	 * Print help.
 	 */
-	if(OWPingCtx.opt.help) {
+	if(ping_ctx.opt.help) {
 		usage(od, progname, NULL);
 		exit(0);
 	}
@@ -247,19 +247,19 @@ main(
 	/*
 	 * Verify/decode auth options.
 	 */
-	if(OWPingCtx.opt.authmode){
-		char	*s = OWPingCtx.opt.authmode;
-		OWPingCtx.auth_mode = 0;
+	if(ping_ctx.opt.authmode){
+		char	*s = ping_ctx.opt.authmode;
+		ping_ctx.auth_mode = 0;
 		while(*s != '\0'){
 			switch (toupper(*s)){
 				case 'O':
-				OWPingCtx.auth_mode |= OWP_MODE_OPEN;
+				ping_ctx.auth_mode |= OWP_MODE_OPEN;
 				break;
 				case 'A':
-				OWPingCtx.auth_mode |= OWP_MODE_AUTHENTICATED;
+				ping_ctx.auth_mode |= OWP_MODE_AUTHENTICATED;
 				break;
 				case 'E':
-				OWPingCtx.auth_mode |= OWP_MODE_ENCRYPTED;
+				ping_ctx.auth_mode |= OWP_MODE_ENCRYPTED;
 				break;
 				default:
 				I2ErrLogP(eh,EINVAL,"Invalid -authmode %c",*s);
@@ -273,7 +273,7 @@ main(
 		 * Default to all modes.
 		 * If identity not set - library will ignore A/E.
 		 */
-		OWPingCtx.auth_mode = OWP_MODE_OPEN|OWP_MODE_AUTHENTICATED|
+		ping_ctx.auth_mode = OWP_MODE_OPEN|OWP_MODE_AUTHENTICATED|
 							OWP_MODE_ENCRYPTED;
 	}
 
@@ -283,18 +283,18 @@ main(
 	 * If no "server" specified, assume same address as send/recv
 	 * address.
 	 */
-	if(!OWPingCtx.opt.senderServ && OWPingCtx.opt.sender)
-		OWPingCtx.opt.senderServ = strdup(OWPingCtx.opt.sender);
-	if(!OWPingCtx.opt.receiverServ && OWPingCtx.opt.receiver)
-		OWPingCtx.opt.receiverServ = strdup(OWPingCtx.opt.receiver);
+	if(!ping_ctx.opt.senderServ && ping_ctx.opt.sender)
+		ping_ctx.opt.senderServ = strdup(ping_ctx.opt.sender);
+	if(!ping_ctx.opt.receiverServ && ping_ctx.opt.receiver)
+		ping_ctx.opt.receiverServ = strdup(ping_ctx.opt.receiver);
 
-	OWPCfg.tm_out.tv_sec = OWPingCtx.opt.tmout;
+	OWPCfg.tm_out.tv_sec = ping_ctx.opt.tmout;
 
 	/*
 	 * Determine "locality" of server addresses.
 	 */
-	OWPingCtx.sender_local = is_local_node(OWPingCtx.opt.senderServ,0);
-	OWPingCtx.receiver_local = is_local_node(OWPingCtx.opt.receiverServ,0);
+	ping_ctx.sender_local = is_local_node(ping_ctx.opt.senderServ,0);
+	ping_ctx.receiver_local = is_local_node(ping_ctx.opt.receiverServ,0);
 
 	/*
 	 * If both send/recv server addrs are not local, then they MUST be the
@@ -305,8 +305,8 @@ main(
 	 * address, but we ignore that complexity here.)
 	 *
 	 */
-	if(!OWPingCtx.sender_local && !OWPingCtx.receiver_local &&
-		strcmp(OWPingCtx.opt.senderServ,OWPingCtx.opt.receiverServ)){
+	if(!ping_ctx.sender_local && !ping_ctx.receiver_local &&
+		strcmp(ping_ctx.opt.senderServ,ping_ctx.opt.receiverServ)){
 		I2ErrLog(eh,"Unable to broker 3rd party transactions...");
 		exit(1);
 	}
@@ -316,36 +316,42 @@ main(
 	 * contact a local owampd to be sender.
 	 * (probably not real useful... but non-fatal defaults are good.)
 	 */
-	if(OWPingCtx.receiver_local){
-		OWPingCtx.local_addr = OWPingCtx.opt.receiverServ;
-		OWPingCtx.remote_addr = OWPingCtx.opt.senderServ;
-		OWPingCtx.sender_local = False;
+	if(ping_ctx.receiver_local){
+		ping_ctx.local_addr = ping_ctx.opt.receiverServ;
+		ping_ctx.remote_addr = ping_ctx.opt.senderServ;
+		ping_ctx.sender_local = False;
 	}else{
-		OWPingCtx.local_addr = OWPingCtx.opt.senderServ;
-		OWPingCtx.remote_addr = OWPingCtx.opt.receiverServ;
+		ping_ctx.local_addr = ping_ctx.opt.senderServ;
+		ping_ctx.remote_addr = ping_ctx.opt.receiverServ;
 	}
 
 	/*
-	 * Setup test_spec and verify options.
+	 * TODO test_spec and verify options.
 	 */
+	test_spec.test_type = OWPTestPoisson;
+	test_spec.start_time = 
+	test_spec.npackets =
+	test_spec.typeP =
+	test_spec.packet_size_padding =
+	test_spec.InvLambda =
 
 	/*
 	 * Initialize library with configuration functions.
 	 */
-	if( !(OWPingCtx.lib_ctx = OWPContextInitialize(&OWPCfg))){
+	if( !(ping_ctx.lib_ctx = OWPContextInitialize(&OWPCfg))){
 		I2ErrLog(eh, "Unable to initialize OWP library.");
 		exit(1);
 	}
-	ctx = OWPingCtx.lib_ctx;
+	ctx = ping_ctx.lib_ctx;
 
 	/*
 	 * Open connection to owampd.
 	 */
-	if( !(OWPingCtx.cntrl = OWPControlOpen(ctx,
-			OWPAddrByNode(ctx,OWPingCtx.local_addr),
-			OWPAddrByNode(ctx,OWPingCtx.remote_addr),
-			OWPingCtx.auth_mode,
-			OWPingCtx.opt.identity,
+	if( !(ping_ctx.cntrl = OWPControlOpen(ctx,
+			OWPAddrByNode(ctx,ping_ctx.local_addr),
+			OWPAddrByNode(ctx,ping_ctx.remote_addr),
+			ping_ctx.auth_mode,
+			ping_ctx.opt.identity,
 			&err_ret))){
 		I2ErrLog(eh, "Unable to open control connection.");
 		exit(1);
@@ -354,18 +360,18 @@ main(
 	/*
 	 * Now ready to make test requests...
 	 */
-	if( !OWPRequestTestSession(OWPingCtx.cntrl,
-			OWPAddrByNode(ctx,OWPingCtx.opt.sender),
-			!OWPingCtx.sender_local,
-			OWPAddrByNode(ctx,OWPingCtx.opt.receiver),
-			!OWPingCtx.receiver_local,
+	if( !OWPRequestTestSession(ping_ctx.cntrl,
+			OWPAddrByNode(ctx,ping_ctx.opt.sender),
+			!ping_ctx.sender_local,
+			OWPAddrByNode(ctx,ping_ctx.opt.receiver),
+			!ping_ctx.receiver_local,
 			(OWPTestSpec*)&test_spec,
 			sid_ret,
 			&err_ret))
-		FailSession(OWPingCtx.cntrl);
+		FailSession(ping_ctx.cntrl);
 
-	if( (OWPStartTestSessions(OWPingCtx.cntrl) != OWPErrOK))
-		FailSession(OWPingCtx.cntrl);
+	if( (OWPStartTestSessions(ping_ctx.cntrl) != OWPErrOK))
+		FailSession(ping_ctx.cntrl);
 	/*
 	 * TODO install sig handler for keyboard interupt - to send stop
 	 * sessions.

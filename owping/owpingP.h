@@ -68,6 +68,6 @@ typedef	struct {
 	OWPContext		lib_ctx;
 	OWPControl		cntrl;
 
-} OWPingTRec, *OWPingT;
+} ow_ping_trec, *ow_ping_t;
 
 #endif

@@ -31,7 +31,7 @@ AC_INIT(owamp, 1.0, owamp-bugs@internet2.edu)
 AC_CONFIG_AUX_DIR(config)
 AM_INIT_AUTOMAKE(owamp, 1.0)
 AC_CONFIG_SRCDIR(owamp/context.c)
-AM_CONFIG_HEADER(owamp/config.h)
+AM_CONFIG_HEADER(owamp/config.h owpcontrib/access.h)
 
 TOP_BUILD_DIRS=""
 
@@ -84,11 +84,17 @@ if test "$with_I2util" != "no"; then
 	fi
 fi
 
-OWAMP_dir='${top_srcdir}'
-OWPINCS="-I$OWAMP_dir"
-OWPLDFLAGS="-L$OWAMP_dir/owamp"
+OWPINCS='-I${top_srcdir}'
+
+OWP_dir='${top_srcdir}/owamp'
+OWPLDFLAGS="-L$OWP_dir"
 OWPLIBS="$OWPLDFLAGS -lowamp"
-OWPLIBDEPS="$OWAMP_dir/owamp/libowamp.a"
+OWPLIBDEPS="$OWP_dir/libowamp.a"
+
+OWPCONTRIB_dir='${top_srcdir}/owpcontrib'
+OWPCONTRIBLDFLAGS="-LOWPCONTRIB_dir"
+OWPCONTRIBLIBS="$OWPCONTRIBLDFLAGS -lowamp_contrib"
+OWPCONTRIBLIBDEPS="$OWPCONTRIB_dir/libowamp_contrib.a"
 
 AC_SUBST(I2UTILINCS)
 AC_SUBST(I2UTILLIBS)
@@ -96,6 +102,8 @@ AC_SUBST(I2UTILLIBDEPS)
 AC_SUBST(OWPINCS)
 AC_SUBST(OWPLIBS)
 AC_SUBST(OWPLIBDEPS)
+AC_SUBST(OWPCONTRIBLIBS)
+AC_SUBST(OWPCONTRIBLIBDEPS)
 
 AC_SUBST(TOP_BUILD_DIRS)
 
@@ -104,8 +112,10 @@ AC_PROG_CC
 AC_PROG_RANLIB
 
 # possible solution to config location
-OWP_CONFDIR_CFLAGS="-DOWP_CONF_DIR=\\\"$sysconfdir\\\""
-AC_SUBST(OWP_CONFDIR_CFLAGS)
+OWP_PREFIX='${prefix}'
+OWP_PREFIX_CFLAGS="-DOWP_PREFIX=$OWP_PREFIX"
+AC_DEFINE(AUTOCONF_SYSCONFDIR,/etc,"name of sysconfdir under prefix")
+AC_SUBST(OWP_PREFIX_CFLAGS)
 
 # Checks for libraries.
 
@@ -124,6 +134,6 @@ AC_CHECK_FUNCS([memset socket getaddrinfo])
 # AC_CONFIG_FILES([Makefile owamp/Makefile])
 
 AC_SUBST(ac_aux_dir)
-AC_OUTPUT([Makefile owamp/Makefile contrib/Makefile owampd/Makefile \
+AC_OUTPUT([Makefile owamp/Makefile owpcontrib/Makefile owampd/Makefile \
 	 owping/Makefile],
 	[test -z "$CONFIG_HEADERS" || echo timestamp > owamp/stamp-h.in])

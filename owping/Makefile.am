@@ -18,9 +18,9 @@
 #
 #	Description:	owping build description.
 
-INCLUDES	= $(OWPINCS) $(I2UTILINCS)
+INCLUDES	= $(OWPCONTRIBINCS) $(OWPINCS) $(I2UTILINCS)
 
 bin_PROGRAMS	= owping
 owping_SOURCES	= owping.c owpingP.h localnode.c localnode.h
-owping_LDADD	= $(OWPLIBS) $(I2UTILLIBS)
-owping_DEPENDENCIES = $(OWPLIBDEPS) $(I2UTILLIBDEPS)
+owping_LDADD	= $(OWPCONTRIBLIBS) $(OWPLIBS) $(I2UTILLIBS)
+owping_DEPENDENCIES = $(OWPCONTRIBLIBDEPS) $(OWPLIBDEPS) $(I2UTILLIBDEPS)
