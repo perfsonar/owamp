@@ -2,6 +2,10 @@
 #include <I2util/table.h>
 #include "access.h"
 
+#if 0
+#include "tree.h"
+#endif
+
 /*
 ** Print the value (address + offset) of a given netmask.
 */
@@ -61,22 +65,13 @@ owp_print_kid2data_binding(const struct I2binding *p, FILE* fp)
 		ptr->passwd, ptr->class);
 }
 
-#if 0
 void
-print_limits(OWAMPLimits * limits, FILE* fp)
+owp_print_class2node_binding(const struct I2binding *p, FILE* fp)
 {
-	fprintf(fp, "bw = %lu, space = %lu, num_sessions = %lu\n",
-	       OWAMPGetBandwidth(limits),
-	       OWAMPGetSpace(limits),
-	       OWAMPGetNumSessions(limits)
-	       );
-}
+	owp_tree_node_ptr node = (owp_tree_node_ptr)p->value->dptr;
+	char *parent = (node->parent)? node->parent->data : "NO PARENT";
 
-void
-print_class2limits_binding(const struct I2binding *p, FILE* fp)
-{
-	fprintf(fp, "the limits for class %s are: ", (char *)(p->key->dptr));
-	print_limits((OWAMPLimits *)(p->value->dptr), fp);
+	fprintf(fp, "Class %s has data = %s, parent = %s\n", 
+		p->key->dptr, node->data, parent);
 }
-#endif
 
