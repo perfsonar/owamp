@@ -386,7 +386,10 @@ _OWPClientConnect(
 
 	if(server_addr->fd > -1){
 		cntrl->remote_addr = server_addr;
+
+		/* XXX - Tolya
 		return _OWPClientSetSock(cntrl,err_ret);
+		*/
 	}
 
 	if(!server_addr->ai){
@@ -440,7 +443,10 @@ _OWPClientConnect(
 			server_addr->fd = fd;
 			server_addr->saddr = *ai->ai_addr;
 			cntrl->remote_addr = server_addr;
-			return _OWPClientSetSock(cntrl,local_addr,err_ret);
+
+			/* XXX - Tolya
+			   return _OWPClientSetSock(cntrl,local_addr,err_ret);
+			*/
 		}
 
 next:
@@ -486,11 +492,12 @@ OWPControlOpen(
 		return NULL;
 	}
 
-
+	/* XXX - Tolya
 	if(_OWPClientReadServerGreeting(cntrl,&mode_avail,err_ret) != 0){
 		_OWPControlFree(cntrl);
 		return NULL;
 	}
+	*/
 
 	/*
 	 * Select mode wanted...
@@ -543,10 +550,13 @@ OWPControlOpen(
 	/*
 	 * This function validates the kid/key with the other party.
 	 */
+
+	/* XXX - Tolya
 	if(_OWPClientRequestModeReadResponse(cntrl,&mode_avail,err_ret) != 0){
 		_OWPControlFree(cntrl);
 		return NULL;
 	}
+	*/
 
 	/*
 	 * Now determine if client side is willing to actually talk control
@@ -561,4 +571,14 @@ OWPControlOpen(
 	/*
 	 * TODO: Not done...
 	 */
+}
+
+_OWPControlFree(OWPControl cntrl)
+{
+	return;
+}
+
+OWPControlFree(OWPControl cntrl)
+{
+	return;
 }
