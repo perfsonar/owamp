@@ -108,8 +108,6 @@ OWPTime_destroy(T x)
 	free(x);
 }
 
-/* #define BASE (unsigned long long)0x100000000 */
-
 static
 int owp_overflow_happened(unsigned short a, unsigned short b, unsigned short c)
 {
@@ -179,4 +177,56 @@ OWPTime_mul(T x, T y, T z)
 	/* Need to shift by NUM_DIGITS/2 digits now */
 	for (i = 0; i < NUM_DIGITS; i++)
 		z->digits[i] = tmp[i+(NUM_DIGITS/2)];
+}
+
+/*
+** Discussion: abcd.efgh = A.B, where LHS is in base 2^16,
+** 0 <= A <= 2^32 - 1, 0 <= B <= 2^24 - 1, then
+** A = c*(2^16) + d, and (multiplying fractional parts by 2^24)
+** B = e*(2^8) + f/(2^8) [commit to always rounding down - shifting]
+*/
+void
+OWPTime2Formatted(T from, OWPFormattedTime to)
+{
+	to->t[0] = (unsigned long)(from->digits[5]) << 16 + from->digits[4];
+	to->t[1] = (unsigned long)(from->digits[3]) << 8 
+		+ (unsigned long)(from->digits[2])>> 8;
+}
+
+void
+OWPFormatted2Time(OWPFormattedTime from, T to)
+{
+	to->digits[7] = to->digits[6] = 0;
+	to->digits[5] = (unsigned short)(from->t[0]/BASE);
+	to->digits[4] = (unsigned short)(from->t[0]%BASE);
+
+	/* the fractional part has been left-shifted by 8 bits already */
+	to->digits[3] = (unsigned short)(from->t[1]/BASE);
+	to->digits[2] = (unsigned short)(from->t[1]%BASE);
+	to->digits[1] = to->digits[0] = 0;
+}
+
+void OWPTime2timeval(T from, struct timeval *to)
+{
+	/* first convert the fractional part */
+	unsigned short a = from->digits[3];
+	unsigned short b = from->digits[2];
+	T tmp1 = OWPTime_new(0, 0, 0, 0, a, b, 0, 0, 1);
+	T tmp2 = OWPTime_from_ulong(1000000);
+	T res = OWPTime_new(0, 0, 0, 0, 0, 0, 0, 0, 0);
+
+	OWPTime_mul(tmp1, tmp2, res);
+	to->tv_usec = res->digits[4];
+
+	/* now the integer part */
+	to->tv_sec = (unsigned long)(from->digits[5]) << 16 + from->digits[4];
+
+	OWPTime_destroy(tmp1);
+	OWPTime_destroy(tmp2);
+	OWPTime_destroy(res);
+}
+
+void OWPtimeval2Time(struct timeval *from, T to)
+{
+
 }
