@@ -1913,6 +1913,8 @@ _OWPEndpointStatus(
 	pid_t			p;
 	int			childstatus;
 
+	*err_ret = OWPErrOK;
+
 	if(ep->acceptval < 0){
 AGAIN:
 		p = waitpid(ep->child,&childstatus,ep->wopts);
@@ -1925,13 +1927,22 @@ AGAIN:
 				ep->child);
 			ep->acceptval = OWP_CNTRL_FAILURE;
 			*err_ret = OWPErrWARNING;
-			return False;
 		}
-		else if(p > 0)
-		       ep->acceptval = (OWPAcceptType)WEXITSTATUS(childstatus);
+		else if(p > 0){
+			if(WIFEXITED(childstatus)){
+			       ep->acceptval =
+				       (OWPAcceptType)WEXITSTATUS(childstatus);
+			}
+			else{
+				ep->acceptval = OWP_CNTRL_FAILURE;
+				*err_ret = OWPErrWARNING;
+			}
+		}
+		/*
+		 * if (p == 0) Process still running just fine. Fall through.
+		 */
 	}
 
-	*err_ret = OWPErrOK;
 	*aval = ep->acceptval;
 	return True;
 }
