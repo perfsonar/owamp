@@ -25,28 +25,67 @@
  *                      [64].[64] format.
  */
 
+/*
+This part of the document describes in greater detail the way
+exponential random quantities used in the protocol are generated.
+The following is algorithm 3.4.1.S in volume 2 of "The Art of
+Computer Programming" (1998) by D.Knuth, the way its use is
+prescribed by this RFC. It produces exponential (mean mu)
+random deviates.
+
+Algorithm S: the constants
+
+Q[k] = (ln2)/(1!) + (ln2)^2/(2!) + ... + (ln2)^k/(k!),    1 <= k <= 18
+
+are precomputed. NOTE: all scalar quantities and arithmetical
+operations are in fixed-precision 128-bit arithmetic (64 bits before
+and after the decimal point). All 64-bit uniform random strings are
+obtained by applying AES in counter mode to a 128-bit unsigned integer
+(inialized to be zero) written in network byte order, then picking the
+lower or upper half of the encrypted 128-bit block, depending as the
+counter is even or odd, respectively.
+
+S1. [Get U and shift.] Generate a 64-bit uniform random binary fraction
+
+              U = (.b0 b1 b2 ... b63)    [note the decimal point]
+
+    Locate the first zero bit b_j, and shift off the leading (j+1) bits,
+    setting U <- (.b_{j+1} ... b63)
+
+    NOTE: in the rare case that the zero has not been found it is prescribed
+    that the algorithm return (mu*64*ln2).
+
+S2. [Immediate acceptance?] If U < ln2, set X <- mu*(j*ln2 + U) and terminate
+    the algorithm. (Note that Q[1] = ln2.)
+
+S3. [Minimize.] Find the least k >= 2 sich that U < Q[k]. Generate
+    k new uniform random binary fractions U1,...,Uk and set
+    V <- min(U1,...,Uk).
+
+S4. [Deliver the answer.] Set X <- mu*(j + V)*ln2.
+*/
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
 #include "arithm128.h"
 
-struct num_128 raw2num(const unsigned char *raw);
-struct num_128 unif_rand();      /* Generate a Unif(0, 1) random quantity. */
+struct num128 raw2num(const unsigned char *raw);
+struct num128 unif_rand();      /* Generate a Unif(0, 1) random quantity. */
 
 /* We often need to scale by 10^6 so let's fix a struct for that. */
-static struct num_128 million = {{0, 0, 0, 0, 16960, 15, 0, 0}}; 
+static struct num128 million = {{0, 0, 0, 0, 16960, 15, 0, 0}}; 
 
 /* Initialize the RNG counter. */
 static rand_context next;
 
-#define K 19 /* As in Knuth: the first k such that Q[k] > 1 - 1/(2^64). */
+#define K 19 /* So (K - 1) is the first k such that Q[k] > 1 - 1/(2^64). */
 
 /* Insure that all longs are 32-bit and shorts are 16-bit. */
 #define MASK8(x)  ((x) & 0xFF)
 #define MASK16(x) ((x) & 0xFFFF)
 #define MASK32(x) ((x) & 0xFFFFFFFF)
 
-static struct num_128 Q[K] = {
+static struct num128 Q[K] = {
 	{{     0,      0,      0,      0, 0, 0, 0, 0}},  /* Placeholder. */
 	{{0x79AC, 0xD1CF, 0x17F7, 0xB172, 0, 0, 0, 0}},
 	{{0x96FD, 0xD75A, 0x93F6, 0xEEF1, 0, 0, 0, 0}},
@@ -71,13 +110,13 @@ static struct num_128 Q[K] = {
 #define LN2 &Q[1] /* this element represents ln2 */
 
 /* 
-** Convert an unsigned 32-bit integer into a num_128 struct..
+** Convert an unsigned 32-bit integer into a num128 struct..
 */
-static struct num_128
+static struct num128
 ulong2num(unsigned long a)
 {
 	int i;
-	struct num_128 ret;
+	struct num128 ret;
 	
 	for (i = 0; i < NUM_DIGITS; i++)
 		ret.digits[i] = 0;
@@ -89,14 +128,14 @@ ulong2num(unsigned long a)
 }
 
 /*
-** Arithmetic functions on num_128 structs.
+** Arithmetic functions on num128 structs.
 */
 
 /*
 ** Addition. The result is saved in the variable z.
 */
 static void 
-num_add(num_128 x, num_128 y, num_128 z)
+num128_add(num128 x, num128 y, num128 z)
 {
 	int i;
 	unsigned long carry = 0; 	 /* Can only be 0 or 1. */
@@ -115,7 +154,7 @@ num_add(num_128 x, num_128 y, num_128 z)
 ** Multiplication. The result is saved in the variable z.
 */
 void
-num_mul(num_128 x, num_128 y, num_128 z)
+num128_mul(num128 x, num128 y, num128 z)
 {
 	int i, j;
 	unsigned long carry; /* Always < 2^32. */
@@ -148,7 +187,7 @@ num_mul(num_128 x, num_128 y, num_128 z)
 ** number depending as x is <, =, or > than y, respectively.
 */
 static int
-num_cmp(num_128 x, num_128 y)
+num_cmp(num128 x, num128 y)
 {
 	int i = 3;
 	
@@ -173,7 +212,7 @@ num_cmp(num_128 x, num_128 y)
 ** B can never overflow.
 */
 void
-num2formatted(num_128 from, OWPFormattedTime to)
+num2formatted(num128 from, OWPFormattedTime to)
 {
 	to->t[0] = ((unsigned long)(from->digits[5]) << 16) + from->digits[4];
 	to->t[1] = ((unsigned long)(from->digits[3]) << 8)
@@ -189,7 +228,7 @@ num2formatted(num_128 from, OWPFormattedTime to)
 ** with remainder by 2^16.
 */
 void
-formatted2num(OWPFormattedTime from, num_128 to)
+formatted2num(OWPFormattedTime from, num128 to)
 {
 	to->digits[7] = to->digits[6] = 0;
 	to->digits[5] = (unsigned short)(MASK32(from->t[0]) >> 16);
@@ -212,17 +251,17 @@ formatted2num(OWPFormattedTime from, num_128 to)
 ** Integer part: A = c*(2^16) + d. 
 */
 void
-num2timeval(num_128 from, struct timeval *to)
+num2timeval(num128 from, struct timeval *to)
 {
-	struct num_128 res;
+	struct num128 res;
 
 	/* first convert the fractional part */
-	struct num_128 tmp = {{0, 0, 0, 0, 0, 0, 0, 0}};
+	struct num128 tmp = {{0, 0, 0, 0, 0, 0, 0, 0}};
 	tmp.digits[2] = from->digits[2];
 	tmp.digits[3] = from->digits[3];
 
 	/* See discussion: it may take two digits of res to express tv_usec. */
-	num_mul(&tmp, &million, &res);
+	num128_mul(&tmp, &million, &res);
 	to->tv_usec = ((unsigned long)(res.digits[5]) << 16) +
 		(unsigned long)(res.digits[4]); 
 
@@ -245,23 +284,22 @@ num2timeval(num_128 from, struct timeval *to)
 ** 0 <= a,b,c,d <= 2^16 - 1, is the expansion of C in base 2^16.
 ** Similarly, (10^6) = e*(2^16) + f, where e = 15 and f = 16960.
 ** An integer-arithmetic division of "abcd0000" by "ef" is performed,
-** and the 7-digit result, when interpreted as a num_128 struct
+** and the 7-digit result, when interpreted as a num128 struct
 ** is the sought answer. The task is, moreover, simplified by
 ** being implemented as *single*-digit division in the base 2^32.
 */ 
 void
-timeval2num(struct timeval *from, num_128 to)
+timeval2num(struct timeval *from, num128 to)
 {
 	unsigned long carry = 0;
 	int i;
-	struct num_128 C, tmp; 
+	struct num128 C, tmp; 
 
-	struct num_128 sixtyfour = ulong2num(64);
-	struct num_128 sec = ulong2num(from->tv_sec);
-	struct num_128 usec = ulong2num(from->tv_usec);
+	struct num128 sec = ulong2num(from->tv_sec);
+	struct num128 usec = ulong2num(from->tv_usec);
 
-	num_mul(&sec, &million, &tmp);
-	num_add(&tmp, &usec, &C);
+	num128_mul(&sec, &million, &tmp);
+	num128_add(&tmp, &usec, &C);
 
 	/* First divide by 2^6 using shifts. */
 	C.digits[7] = 0; 
@@ -282,7 +320,7 @@ timeval2num(struct timeval *from, num_128 to)
 ** integer, and returns that integer.
 */
 unsigned long 
-num2ulong(num_128 x)
+num2ulong(num128 x)
 {
 	return (x->digits[5] << 16) + x->digits[4];
 }
@@ -291,11 +329,11 @@ num2ulong(num_128 x)
 ** This function converts a 64-bit binary string (network byte order)
 ** into num struct (fractional part only). The integer part iz zero.
 */
-struct num_128
+struct num128
 raw2num(const unsigned char *raw)
 {
 	int i;
-	struct num_128 x = {{0, 0, 0, 0, 0, 0, 0, 0}};
+	struct num128 x = {{0, 0, 0, 0, 0, 0, 0, 0}};
 
 	for (i = 0; i < 4; i++)
 		x.digits[3-i] = (((unsigned short)(*(raw + 2*i))) << 8) 
@@ -317,7 +355,7 @@ rand_context_init(BYTE *sid)
 	
 	bytes2Key(&next.key, sid);
 	memset(next.out, 0, 16);
-	for (i = 0; i < 4; i++)
+	for (i = 0; i < 16; i++)
 		next.counter[i] = 0UL;
 }
 
@@ -326,12 +364,12 @@ rand_context_init(BYTE *sid)
 ** (encoded using 2 unsigned long integers). This is algorithm 3.4.1.S from
 ** Knuth's v.2 of "Art of Computer Programming" (1998), p.133.
 */
-struct num_128 
+struct num128 
 exp_rand()
 {
 	unsigned long i, k;
 	unsigned long j = 0;
-	struct num_128 U, V, J, two, tmp, ret; 
+	struct num128 U, V, J, two, tmp, ret; 
 	unsigned short mask = 0x8000; /* test if first bit == zero */
 
 	two = ulong2num(2UL);
@@ -339,23 +377,24 @@ exp_rand()
 	/* Get U and shift */
 	U = unif_rand();
 	
-	while (U.digits[3] & mask && j < 65){ /* shift until find first '0' */
-		num_mul(&U, &two, &V);
+	while (U.digits[3] & mask && j < 64){ /* shift until find first '0' */
+		num128_mul(&U, &two, &V);
 		U = V;
 		j++;
 	}
 
 	/* remove the '0' itself */
-	num_mul(&U, &two, &V);
+	num128_mul(&U, &two, &V);
 	U = V;
-	for (i = 4; i < 8; i++) U.digits[i] = 0; /*Keep only fractional part.*/
+	for (i = 4; i < 8; i++) 
+		U.digits[i] = 0; /* Keep only the fractional part. */
 
 	J = ulong2num(j);
 
 	/* Immediate acceptance? */
 	if (num_cmp(&U, LN2) < 0){ 	   /* return  (j*ln2 + U) */ 
-		num_mul(&J, LN2, &tmp);   
-		num_add(&tmp, &U, &ret);
+		num128_mul(&J, LN2, &tmp);   
+		num128_add(&tmp, &U, &ret);
 		return ret;
 	}
 
@@ -373,8 +412,8 @@ exp_rand()
 	}
 
 	/* Return (j+V)*ln2 */
-	num_add(&J, &V, &tmp);
-	num_mul(&tmp, LN2, &ret);
+	num128_add(&J, &V, &tmp);
+	num128_mul(&tmp, LN2, &ret);
 	return ret;
 }
 
@@ -382,30 +421,24 @@ exp_rand()
 ** Generate a 64-bit uniform random string and save it in the lower
 ** part of the struct.
 */
-struct num_128
+static struct num128
 unif_rand()
 {
 	static int reuse = 1;
-	BYTE input[16];
-	int j, i;
+	int j;
 
 	reuse = 1 - reuse;
 	if (reuse)
 		return raw2num(next.out + 8);
 
-	/* Prepare the block for encryption. */
-	for (j = 0; j < 4; j++)	/* More significant digits come first. */
-		for (i = 0; i < 4; i++)
-			input[4*j+i] = MASK8((next.counter[3-j]>>(24-8*i)));
-		
-	rijndaelEncrypt(next.key.rk, next.key.Nr, input, next.out);
+	rijndaelEncrypt(next.key.rk, next.key.Nr, next.counter, next.out);
 	
-	/* Increment next.counter as an 128-bit single quantity for
-	   AES counter mode. */
-	for (j = 0; j < 4; j++)
-		if ((next.counter[j] = MASK32(next.counter[j] + 1)))
+	/* Increment next.counter as an 128-bit single quantity in network
+	   byte order for AES counter mode. */
+	for (j = 15; j >= 0; j--)
+		if (++next.counter[j])
 			break;
-
+	
 	return raw2num(next.out);
 }
 
@@ -414,10 +447,10 @@ unif_rand()
 */
 
 /*
-** Print out a num_128 struct. More significant digits are printed first.
+** Print out a num128 struct. More significant digits are printed first.
 */
 void
-num_print(num_128 x)
+num_print(num128 x)
 {
 	int i;
 	assert(x);
@@ -426,81 +459,3 @@ num_print(num_128 x)
 		fprintf(stdout, "%hx ", x->digits[i]);
 	fprintf(stdout, "\n");
 }
-
-/*
-** DEBUG only. Print out binary expansion of an unsigned short.
-*/
-void
-print_bin(unsigned short n)
-{
-	int i;
-	unsigned short tmp = n;
-	unsigned short div = (unsigned short)1 << 15;
-	
-	for (i = 1; i <= 15; i++){
-		if ((tmp/div) == 0){
-			fprintf(stderr, "0");
-		} else {
-			fprintf(stderr, "1");
-			tmp -= div;
-		}
-		div >>= 1;
-	}
-	fprintf(stderr, "%hu ", tmp);
-}
-
-/*
-** Print out the binary expansion of a num_128 struct.
-*/
-void
-num_binprint(num_128 x)
-{
-	int i;
-	assert(x);
-	
-	for (i = (NUM_DIGITS/2) - 1; i >= 0; i--)
-		print_bin(MASK16(x->digits[i]));
-	fprintf(stdout, "\n");
-}
-
-#ifdef LONGLONG
-/*
-** This function treats a num struct as representing an unsigned long long
-** integer, and returns that integer. 
-**
-** NOTE: used for debugging only - not included in the final distribution.
-*/
-unsigned long long 
-num2ulonglong(num_128 x)
-{
-	unsigned long long ret = ((unsigned long long)(x->digits[7]) << 48)
-	        + ((unsigned long long)(x->digits[6]) << 32)
-		+ ((unsigned long long)(x->digits[5]) << 16)
-		+ x->digits[4]; 
-
-	return ret;
-}
-
-/*
-** This function converts an unsigned long long integer into a num struct.
-**
-** NOTE: used for debugging only - not included in the final distribution.
-*/
-struct num_128
-ulonglong2num(unsigned long long a)
-{
-	int i;
-	struct num_128 ret;
-	
-	for (i = 0; i < NUM_DIGITS; i++)
-		ret.digits[i] = 0;
-
-	ret.digits[7] = (unsigned short)(a >> 48);
-	ret.digits[6] = (unsigned short)((a & 0xffff00000000ULL) >> 32);
-	ret.digits[5] = (unsigned short)((a & 0xffff0000ULL) >> 16);
-	ret.digits[4] = (unsigned short)(a & 0xffffULL);
-
-	return ret;
-}
-#endif
-
