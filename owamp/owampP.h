@@ -101,8 +101,8 @@ struct OWPControlRec{
 	OWPKey			key;
 	u_int32_t		challenge[4];
 	u_int32_t		session_key[4];
-	u_int32_t		readIV[4];
-	u_int32_t		writeIV[4];
+	char                    readIV[16];
+	char                    writeIV[16];
 
 	struct OWPControlRec	*next;
 };
