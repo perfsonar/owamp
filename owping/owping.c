@@ -76,7 +76,7 @@ print_output_args()
 "              [Output Args]\n\n"
 "   -h             print this message and exit\n"
 "   -Q             run the test and exit without reporting statistics\n"
-"   -R             print RAW data: \"SEQNO STIME SS SERR RTIME RS RERR\\n\"\n"
+"   -R             print RAW data: \"SEQNO STIME SS SERR RTIME RS RERR TTL\\n\"\n"
 "   -v             print out individual delays\n"
 "   -a alpha       report an additional percentile level for the delays\n"
 		);
@@ -554,7 +554,7 @@ owp_do_summary(fetch_state *state)
  * SERR		send err estimate	float (%g)
  * RERR		recv err estimate	float (%g)
  */
-#define RAWFMT "%lu %020llu %u %g %020llu %u %g\n"
+#define RAWFMT "%lu %020llu %u %g %020llu %u %g %u\n"
 static int
 printraw(
 	OWPDataRec	*rec,
@@ -567,7 +567,8 @@ printraw(
 			rec->send.owptime,rec->send.sync,
 				OWPGetTimeStampError(&rec->send),
 			rec->recv.owptime,rec->recv.sync,
-				OWPGetTimeStampError(&rec->recv));
+				OWPGetTimeStampError(&rec->recv),
+			rec->ttl);
 	return 0;
 }
 
