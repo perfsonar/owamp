@@ -70,7 +70,8 @@ foreach (keys %optnames){
 # Add -f flag for re-exec - don't need to re-daemonize.
 push @SAVEARGV, '-f' if(!defined($setopts{'f'}));
 
-$defaults{"NODE"} =~ tr/a-z/A-Z/;
+$defaults{"NODE"} =~ tr/a-z/A-Z/
+	if(defined($defaults{"NODE"));
 
 my $conf = new OWP::Conf(%defaults);
 
