@@ -83,7 +83,7 @@ owamp_numberize(const char *addr)
 
         /* invalid address or error in inet_pton() */
         if(retval == 0 || retval == -1)
-                return -1; 
+                return (unsigned long)(-1); 
 
         return ntohl(sin_addr); 
 }
@@ -176,7 +176,7 @@ owamp_parse_mask(const char *text, u_int32_t *addr, u_int8_t *off)
 		if(!mask_str)
 			return -1;
 		
-		if((*addr = owamp_numberize(addr_str)) == NULL)
+		if((*addr = owamp_numberize(addr_str)) == (unsigned long)(-1))
 			return -1;
 	
 		*off = atoi(mask_str);
@@ -185,7 +185,7 @@ owamp_parse_mask(const char *text, u_int32_t *addr, u_int8_t *off)
 
 	} else {
 		/* regular IP address */
-		if((*addr = owamp_numberize(addr_str)) == NULL)
+		if((*addr = owamp_numberize(addr_str)) == (unsigned long)(-1))
 			return -1;
 		*off = 0;
 	};
