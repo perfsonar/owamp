@@ -26,10 +26,13 @@
 #ifndef	_OWP_CONNDATA_H
 #define	_OWP_CONNDATA_H
 
+#include <owpcontrib/access.h>
+
 typedef struct OWPPerConnDataRec{
 	int	pipefd;		/* pipe to parent	*/
 
 	char	*session_data_path;
-} OWPPerConnDataRec, OWPPerConnData;
+	policy_data *policy;   /* global policy hash */
+} OWPPerConnDataRec, *OWPPerConnData;
 
 #endif	/*	_OWP_CONNDATA_H	*/
