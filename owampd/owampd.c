@@ -677,21 +677,21 @@ main(int argc, char *argv[])
 	 */
 
 	rc = snprintf(ip2class,sizeof(ip2class),"%s%s%s",opts.confdir,
-						OWD_DIRSEP,opts.ip2class);
+					OWP_PATH_SEPARATOR,opts.ip2class);
 	if(rc > (int)sizeof(ip2class)){
 		I2ErrLog(errhand, "Invalid path to ip2class file.");
 		exit(1);
 	}
 
 	rc = snprintf(class2limits,sizeof(class2limits),"%s%s%s",opts.confdir,
-						OWD_DIRSEP,opts.class2limits);
+					OWP_PATH_SEPARATOR,opts.class2limits);
 	if(rc > (int)sizeof(class2limits)){
 		I2ErrLog(errhand, "Invalid path to class2limits file.");
 		exit(1);
 	}
 
 	rc = snprintf(passwd,sizeof(passwd),"%s%s%s",opts.confdir,
-						OWD_DIRSEP,opts.passwd);
+					OWP_PATH_SEPARATOR,opts.passwd);
 	if(rc > (int)sizeof(passwd)){
 		I2ErrLog(errhand, "Invalid path to passwd file.");
 		exit(1);

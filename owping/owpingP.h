@@ -32,6 +32,11 @@ typedef	struct {
 		I2Boolean	verbose;
 		I2Boolean	help;
 
+		char		*confdir;
+		char		*ip2class;
+		char		*class2limits;
+		char		*passwd;
+
 		char		*authmode;
 		char		*identity;
 

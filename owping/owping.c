@@ -100,9 +100,9 @@ static	OWPInitializeConfigRec	OWPCfg = {{
 	/* tm_out.tv_usec		*/	0},
 	/* app_data			*/	(void*)&ping_ctx,
 	/* err_func			*/	OWPingErrFunc,
-	/* get_aes_key			*/	NULL,
-	/* check_control_func		*/	NULL,
-	/* check_test_func		*/	NULL,
+	/* get_aes_key			*/	owp_get_aes_key,
+	/* check_control_func		*/	owp_check_control,
+	/* check_test_func		*/	owp_check_test,
 	/* endpoint_init_func		*/	NULL,
 	/* endpoint_init_hook_func	*/	NULL,
 	/* endpoint_start_func		*/	NULL,
@@ -122,6 +122,14 @@ static	I2OptDescRec	set_options[] = {
 	 */
 	{"verbose",0,NULL,"blah, blah, blah..."},
 	{"help",0,NULL,"Print this message and exit"},
+
+	/*
+	 * policy config file options.
+	 */
+	{"confdir",1,OWP_CONFDIR,"Configuration directory"},
+	{"ip2class",1,"ip2class.conf","ip2class config filename"},
+	{"class2limits",1,"class2limits.conf","class2limits config filename"},
+	{"passwd",1,"passwd.conf","passwd config filename"},
 
 	/*
 	 * Control connection specific stuff.
@@ -163,6 +171,22 @@ static  I2Option  get_options[] = {
         {
 	"help", I2CvtToBoolean, &ping_ctx.opt.help,
 	sizeof(ping_ctx.opt.help)
+	},
+	{
+	"confdir", I2CvtToString, &ping_ctx.opt.confdir,
+	sizeof(ping_ctx.opt.confdir)
+	},
+	{
+	"ip2class", I2CvtToString, &ping_ctx.opt.ip2class,
+	sizeof(ping_ctx.opt.ip2class)
+	},
+	{
+	"class2limits", I2CvtToString, &ping_ctx.opt.class2limits,
+	sizeof(ping_ctx.opt.class2limits)
+	},
+	{
+	"passwd", I2CvtToString, &ping_ctx.opt.passwd,
+	sizeof(ping_ctx.opt.passwd)
 	},
         {
 	"authmode", I2CvtToString, &ping_ctx.opt.authmode,
@@ -354,6 +378,11 @@ main(
 	OWPErrSeverity		err_ret=OWPErrOK;
 	I2LogImmediateAttr	ia;
 	int			od;
+	policy_data		*policy;
+	char			ip2class[MAXPATHLEN],
+				class2limits[MAXPATHLEN],
+				passwd[MAXPATHLEN];
+	int			rc;
 	OWPContext		ctx;
 	OWPTestSpecPoisson	test_spec;
 	OWPSID			sid_ret;
@@ -401,6 +430,38 @@ main(
 		usage(od, progname, NULL);
 		exit(0);
 	}
+
+	/*
+	 * Setup paths.
+	 */
+
+	rc = snprintf(ip2class,sizeof(ip2class),"%s%s%s",ping_ctx.opt.confdir,
+			OWP_PATH_SEPARATOR,ping_ctx.opt.ip2class);
+	if(rc > (int)sizeof(ip2class)){
+		I2ErrLog(eh, "Invalid path to ip2class file.");
+		exit(1);
+	}
+
+	rc = snprintf(class2limits,sizeof(class2limits),"%s%s%s",
+			ping_ctx.opt.confdir,OWP_PATH_SEPARATOR,
+			ping_ctx.opt.class2limits);
+	if(rc > (int)sizeof(class2limits)){
+		I2ErrLog(eh, "Invalid path to class2limits file.");
+		exit(1);
+	}
+
+	rc = snprintf(passwd,sizeof(passwd),"%s%s%s",ping_ctx.opt.confdir,
+			OWP_PATH_SEPARATOR,ping_ctx.opt.passwd);
+	if(rc > (int)sizeof(passwd)){
+		I2ErrLog(eh, "Invalid path to passwd file.");
+		exit(1);
+	}
+
+	policy = PolicyInit(eh, ip2class, class2limits, passwd, &err_ret);
+	if (err_ret == OWPErrFATAL){
+		I2ErrLog(eh, "PolicyInit failed. Exiting...");
+		exit(1);
+	};
 
 	/*
 	 * This is in reality dependent upon the actual protocol used
@@ -553,9 +614,7 @@ main(
 	 */
 	conndata.pipefd = -1;
 	conndata.datadir = ping_ctx.opt.datadir;
-/*
 	conndata.policy = policy;
-*/
 	conndata.lossThreshold = ping_ctx.opt.lossThreshold;
 	conndata.node = NULL;
 

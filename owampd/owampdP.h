@@ -22,10 +22,6 @@
 #define	_owampdp_h_
 
 /*
- * Portability constants. (Should put these in the build system eventually.)
- */
-#define	OWD_DIRSEP	"/"
-/*
  * Default Constants
  */
 #define	OWD_MAXCONN	"100"

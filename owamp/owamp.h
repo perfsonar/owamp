@@ -50,6 +50,12 @@
 #define OWP_DATADIR "/data"
 #endif
 
+#ifndef OWP_PATH_SEPARATOR
+#define	OWP_PATH_SEPARATOR	"/"
+#endif
+#ifndef	OWP_PATH_SEPARATOR_LEN
+#define	OWP_PATH_SEPARATOR_LEN	1
+#endif
 
 #include <sys/types.h>
 #include <sys/time.h>
@@ -524,9 +530,7 @@ OWPStartTestSessions(
  * 	<0	ErrorCondition (can cast to OWPErrSeverity)
  * 	0	StopSessions received (OWPErrOK)
  * 	1	wake_time reached
- * 	2	CollectSession received from other side, and this side has
- * 		a receiver endpoint.
- *	3	system event (signal)
+ *	2	system event (signal)
  *
  * Client and Server
  */

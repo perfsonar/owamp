@@ -49,6 +49,7 @@ typedef struct _DefEndpointRec{
 	int			sockfd;
 	FILE			*datafile;
 	char			*filepath;
+	char			*linkpath;
 	char			*fbuff;
 
 	struct timespec		start;
@@ -90,6 +91,10 @@ EndpointClear(
 	if(ep->filepath){
 		free(ep->filepath);
 		ep->filepath = NULL;
+	}
+	if(ep->linkpath){
+		free(ep->linkpath);
+		ep->linkpath = NULL;
 	}
 	if(ep->datafile){
 		fclose(ep->datafile);
@@ -150,10 +155,6 @@ hexencode(
 	*buff = '\0';
 }
 
-#ifndef	PATH_SEPARATOR
-#define	PATH_SEPARATOR	"/"
-#endif
-
 static char *
 make_data_dir(
 	OWPContext		ctx,
@@ -163,23 +164,27 @@ make_data_dir(
 	)
 {
 	char		*path;
+	int		len;
 
 	if(node){
-		/* 1 is for this node's path seperator */
 		path = make_data_dir(ctx,datadir,node->parent,
-						strlen(node->data)+1+add_chars);
+			strlen(node->data)+OWP_PATH_SEPARATOR_LEN+add_chars);
 		if(!path)
 			return NULL;
-		strcat(path,PATH_SEPARATOR);
+		strcat(path,OWP_PATH_SEPARATOR);
 		strcat(path,node->data);
 	}
 	else{
-		if((strlen(datadir)+add_chars) > FILENAME_MAX){
+		/*
+		 * 5 "nodes"
+		 */
+		len = strlen(datadir)+OWP_PATH_SEPARATOR_LEN+5+add_chars;
+		if(len > FILENAME_MAX){
 			OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
 						"Datapath length too long.");
 			return NULL;
 		}
-		path = malloc(strlen(datadir)+add_chars+1);
+		path = malloc(len+1);
 		if(!path){
 			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
 				"malloc problem:(%s)",strerror(errno));
@@ -187,6 +192,8 @@ make_data_dir(
 		}
 		strcpy(path,datadir);
 
+		strcat(path,OWP_PATH_SEPARATOR);
+		strcat(path,"nodes");
 	}
 
 	if((mkdir(path,0755) != 0) && (errno != EEXIST)){
@@ -204,23 +211,22 @@ static FILE *
 opendatafile(
 	OWPContext		ctx,
 	char			*datadir,
-	OWPSID			sid,
+	char			*sid_name,
 	owp_tree_node_ptr	node,
 	char			**file_path
 )
 {
 	FILE	*dp;
-	char	sid_name[(sizeof(OWPSID)*2)+1];
 	char	*path;
 
 	/*
-	 * 35 is length of path_seperator + length of sid_name + ".i"
+	 * 3 is ".i" + '\0'.
 	 */
-	if(!(path = make_data_dir(ctx,datadir,node,33)))
+	if(!(path = make_data_dir(ctx,datadir,node,
+				OWP_PATH_SEPARATOR_LEN+sizeof(OWPSID)*2+3)))
 		return NULL;
 
-	hexencode(sid_name,sid,sizeof(OWPSID));
-	strcat(path,PATH_SEPARATOR);
+	strcat(path,OWP_PATH_SEPARATOR);
 	strcat(path,sid_name);
 	strcat(path,".i");	/* in-progress	*/
 
@@ -352,6 +358,7 @@ OWPDefEndpointInit(
 		u_int8_t	*aptr;
 		u_int32_t	tval[2];
 		size_t		size;
+		char		sid_name[(sizeof(OWPSID)*2)+1];
 
 		/*
 		 * Generate a "unique" SID from
@@ -394,14 +401,58 @@ OWPDefEndpointInit(
 		I2RandomBytes(&sid[12],4);
 
 		/*
-		 * Open file for saving data.
+		 * Ensure datadir exists.
 		 */
-		ep->datafile = opendatafile(ctx,cdata->datadir,sid,
+		if((mkdir(cdata->datadir,0755) != 0) && (errno != EEXIST)){
+			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+				"Unable to mkdir(%s):%s",cdata->datadir,
+				strerror(errno));
+			goto error;
+		}
+
+		/*
+		 * Open file for saving data.
+		 * 8 = "sessions", 2 = ".i", 1 = '\0'
+		 */
+		ep->linkpath = malloc(strlen(cdata->datadir) +
+			OWP_PATH_SEPARATOR_LEN*2 +
+			sizeof(OWPSID)*2 + 8 + 2 + 1);
+		if(!ep->linkpath){
+			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"malloc():%s",
+					strerror(errno));
+			goto error;
+		}
+		strcpy(ep->linkpath,cdata->datadir);
+		strcat(ep->linkpath,OWP_PATH_SEPARATOR);
+		strcat(ep->linkpath,"sessions");
+
+		if((mkdir(ep->linkpath,0755) != 0) && (errno != EEXIST)){
+			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+				"Unable to mkdir(%s):%s",ep->linkpath,
+				strerror(errno));
+			goto error;
+		}
+
+		/*
+		 * Now complete the filename for the linkpath.
+		 */
+		strcat(ep->linkpath,OWP_PATH_SEPARATOR);
+		hexencode(sid_name,sid,sizeof(OWPSID));
+		strcat(ep->linkpath,sid_name);
+		strcat(ep->linkpath,".i");
+
+		ep->datafile = opendatafile(ctx,cdata->datadir,sid_name,
 				cdata->node,&ep->filepath);
 		if(!ep->datafile){
 			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
 				"Unable to open seesion file:%s",
 				strerror(errno));
+			goto error;
+		}
+
+		if(symlink(ep->filepath,ep->linkpath) != 0){
+			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+					"symlink():%s",strerror(errno));
 			goto error;
 		}
 
@@ -414,12 +465,10 @@ OWPDefEndpointInit(
 		size = 1000000.0/ep->test_spec.poisson.InvLambda*20;
 		size = MIN(size,8192);
 		if(size < 128)
+			size = 20;	/* buffer a single record */
+		ep->fbuff = malloc(size);
+		if(!ep->fbuff)
 			size = 0;
-		else{
-			ep->fbuff = malloc(size);
-			if(!ep->fbuff)
-				size = 0;
-		}
 		
 		if(size)
 			setvbuf(ep->datafile,ep->fbuff,_IOFBF,size);
@@ -433,6 +482,7 @@ OWPDefEndpointInit(
 				"fwrite(1,u_int32_t):%s",strerror(errno));
 			goto error;
 		}
+		fflush(ep->datafile);
 
 		/*
 		 * receiver - need to set the recv buffer size large
@@ -491,6 +541,14 @@ OWPDefEndpointInit(
 	return OWPErrOK;
 
 error:
+	if(ep->filepath && (unlink(ep->filepath) != 0) && (errno != ENOENT)){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"unlink():%s",
+						strerror(errno));
+	}
+	if(ep->linkpath && (unlink(ep->linkpath) != 0) && (errno != ENOENT)){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"unlink():%s",
+						strerror(errno));
+	}
 	EndpointFree(ep);
 	return OWPErrFATAL;
 }
@@ -799,7 +857,10 @@ run_receiver(
 	u_int32_t	esterror,lasterror=0;
 	int		sync;
 	size_t		lenpath;
-	char		*newpath;
+	char		newpath[PATH_MAX];
+	char		newlink[PATH_MAX];
+
+	newpath[0] = newlink[0] = '\0';
 
 	/*
 	 * Initialize pointers to various positions in the packet buffer,
@@ -867,6 +928,12 @@ run_receiver(
 		if(timespeccmp(&currtime,&expecttime,<)){
 			OWPTimeStamp	owptstamp;
 
+			/* write sequence number */
+			if(fwrite(seq,sizeof(u_int32_t),1,ep->datafile) != 1){
+				OWPError(NULL,OWPErrFATAL,OWPErrUNKNOWN,
+						"fwrite():%s",strerror(errno));
+				goto error;
+			}
 			/* write "sent" tstamp */
 			if(fwrite(tstamp,sizeof(u_int32_t),2,ep->datafile)
 									!= 2){
@@ -909,20 +976,44 @@ run_receiver(
 
 	/*
 	 * Move file from "SID.i" in-progress test to "SID".
-	 *
-	 * Don't worry about free'ing memory - we are exiting.
 	 */
 	fclose(ep->datafile);
 	ep->datafile = NULL;
+
+	/*
+	 * First create new link for SID in "nodes" hierarchy.
+	 */
 	lenpath = strlen(ep->filepath);
-	newpath = malloc(lenpath+1);
 	strcpy(newpath,ep->filepath);
 	newpath[lenpath-2] = '\0';	/* remove the ".i" from the end. */
-	if(rename(ep->filepath,newpath) != 0){
+	if(link(ep->filepath,newpath) != 0){
 		OWPError(NULL,OWPErrFATAL,OWPErrUNKNOWN,
-					"rename():%s",strerror(errno));
+					"link():%s",strerror(errno));
 		goto error;
 	}
+
+	/*
+	 * Now add symlink in "sessions" for new SID file.
+	 */
+	lenpath = strlen(ep->linkpath);
+	strcpy(newlink,ep->linkpath);
+	newlink[lenpath-2] = '\0';	/* remove the ".i" from the end. */
+	if(symlink(newpath,newlink) != 0){
+		OWPError(NULL,OWPErrFATAL,OWPErrUNKNOWN,
+				"symlink():%s",strerror(errno));
+		goto error;
+	}
+
+	/*
+	 * Now remove old ".i" files - this is done in this order to ensure
+	 * no race conditions.
+	 */
+	if((unlink(ep->linkpath) != 0) || (unlink(ep->filepath) != 0)){
+		OWPError(NULL,OWPErrFATAL,OWPErrUNKNOWN,
+				"unlink():%s",strerror(errno));
+		goto error;
+	}
+
 	exit(0);
 
 error:
@@ -931,6 +1022,12 @@ error:
 	 */
 	if(ep->datafile)
 		fclose(ep->datafile);
+	if(newlink[0] != '\0')
+		unlink(newlink);
+	if(newpath[0] != '\0')
+		unlink(newpath);
+	if(ep->linkpath)
+		unlink(ep->linkpath);
 	if(ep->filepath)
 		unlink(ep->filepath);
 	exit(1);
