@@ -122,6 +122,10 @@ extern OWPBoolean owp_get_aes_key(void *app_data, const char *kid, \
 extern OWPBoolean owp_check_control(void *app_data, OWPSessionMode mode, \
 	const char *kid, struct sockaddr *local_sa_addr, \
 	struct sockaddr	*remote_sa_addr, OWPErrSeverity	*err_ret);
+extern OWPBoolean owp_check_test(void *app_data, OWPSessionMode	mode,
+	const char *kid, OWPBoolean local_sender, 
+	struct sockaddr *local_sa_addr, struct sockaddr	*remote_sa_addr,
+	OWPTestSpec	*test_spec, OWPErrSeverity *err_ret);
 extern unsigned long OWAMPGetBandwidth(owp_lim* lim);
 extern unsigned long OWAMPGetSpace(owp_lim* lim);
 extern unsigned long OWAMPGetNumSessions(owp_lim* lim);
