@@ -21,6 +21,8 @@
 #ifndef	_powstreamp_h_
 #define	_powstreamp_h_
 
+#include <I2util/table.h>
+
 /*
  * Bound of the RTT in seconds. This application needs an estimate of how
  * long it takes to request a test session. It uses this estimate to make
@@ -42,6 +44,7 @@
 #define	POWLOCK	".powlock"
 #define	POWTMPFILEFMT	"pow.XXXXXX"
 #define INCOMPLETE_EXT	".i"
+#define SUMMARY_EXT	".sum"
 
 /*
  * Application "context" structure
@@ -72,6 +75,7 @@ typedef	struct {
 		I2Boolean	printfiles;	/* -p */
 		int		facility;	/* -e */
 		I2Boolean	verbose;	/* -r stderr too */
+		double		bucketWidth;	/* -b (seconds) */
 
 	} opt;
 
@@ -105,18 +109,27 @@ typedef struct pow_cntrl_rec{
 
 typedef struct pow_seen_rec{
 	OWPNum64	sendtime;	/* presumed send time. */
-	OWPBoolean	seen;
+	u_int32_t	seen;
 } pow_seen_rec, *pow_seen;
 
 struct pow_parse_rec{
 	OWPContext		ctx;
 	u_int32_t		i;
-	FILE			*fp;
+	FILE			*fp;	/* sub-session data file	*/
 	u_int32_t		first;
 	u_int32_t		last;
 	off_t			begin;
 	off_t			next;
 	pow_seen		seen;
 	OWPSessionHeader	hdr;
+	FILE			*sfp;	/* summary file			*/
+	I2Table			buckets;
+	u_int32_t		*bucketvals;
+	u_int32_t		nbuckets;
+	I2Boolean		bucketerror;
+	double			maxerr;
+	u_int32_t		sync;
+	u_int32_t		dups;
+	u_int32_t		lost;
 };
 #endif

@@ -36,6 +36,7 @@
 #include <signal.h>
 #include <assert.h>
 #include <syslog.h>
+#include <math.h>
 
 #include <owamp/owamp.h>
 
@@ -99,6 +100,7 @@ print_output_args()
 		"   -d dir         directory to save session file in\n"
 		"   -I Interval    duration for OWP test sessions(seconds)\n"
 		"   -p             print completed filenames to stdout\n"
+		"   -b bucketWidth create summary files with buckets(seconds)\n"
 		"   -h             print this message and exit\n"
 		"   -e             syslog facility to log to\n"
 		);
@@ -446,10 +448,53 @@ WriteSubSession(
 		return 0;
 
 	rec->seq_no -= parse->first;
-	parse->seen[rec->seq_no].seen = True;
+	parse->seen[rec->seq_no].seen++;
 
 	if(OWPWriteDataRecord(parse->ctx,parse->fp,rec) != 0){
 		return -1;
+	}
+
+	if(parse->buckets && !OWPIsLostRecord(rec)){
+		I2Datum	key,val;
+		double	d;
+		int	b;
+
+		/*
+		 * If either side is unsynchronized, record that.
+		 */
+		if(!rec->send.sync || !rec->recv.sync){
+			parse->sync = 0;
+		}
+		/*
+		 * Comute error from send/recv.
+		 */
+		d = OWPGetTimeStampError(&rec->send) +
+					OWPGetTimeStampError(&rec->recv);
+		parse->maxerr = MAX(parse->maxerr,d);
+
+		/*
+		 * Compute bucket value.
+		 */
+		d = OWPDelay(&rec->send,&rec->recv)/appctx.opt.bucketWidth;
+		b = (d<0)?floor(d):ceil(d);
+
+		key.dsize = b;
+		key.dptr = &key.dsize;
+		if(I2HashFetch(parse->buckets,key,&val)){
+			(*(u_int32_t*)val.dptr)++;
+		}
+		else{
+			val.dsize = sizeof(u_int32_t);
+			val.dptr = &parse->bucketvals[parse->nbuckets];
+			parse->bucketvals[parse->nbuckets++] = 1;
+
+			if(I2HashStore(parse->buckets,key,val) != 0){
+				I2ErrLog(eh,
+				"I2HashStore(): Unable to store bucket!");
+				return -1;
+			}
+
+		}
 	}
 
 	return 0;
@@ -468,8 +513,11 @@ WriteSubSessionLost(
 	n = parse->last - parse->first + 1;
 
 	for(i=0;i<n;i++){
-		if(parse->seen[i].seen)
+		if(parse->seen[i].seen){
+			parse->dups += (parse->seen[i].seen - 1);
 			continue;
+		}
+		parse->lost++;
 
 		rec.seq_no = i;
 		rec.send.owptime = parse->seen[i].sendtime;
@@ -482,6 +530,41 @@ WriteSubSessionLost(
 	return 0;
 }
 
+static u_int32_t
+inthash(
+	I2Datum	key
+	)
+{
+	return (u_int32_t)key.dsize;
+}
+
+static int
+intcmp(
+	const I2Datum	x,
+	const I2Datum	y
+	)
+{
+	return(x.dsize != y.dsize);
+}
+
+static I2Boolean
+PrintBuckets(
+	I2Datum	key,
+	I2Datum	value,
+	void	*data
+	)
+{
+	struct pow_parse_rec	*parse = (struct pow_parse_rec*)data;
+
+	fprintf(parse->sfp,"\t%d\t%u\n",(int)key.dsize,*(u_int32_t*)value.dptr);
+	if(I2HashDelete(parse->buckets,key) != 0){
+		I2ErrLog(eh,"I2HashDelete(): Unable to remove bucket!");
+		parse->bucketerror = True;
+		return False;
+	}
+
+	return True;
+}
 
 int
 main(
@@ -503,7 +586,7 @@ main(
 	char                    optstring[128];
 	static char		*conn_opts = "A:S:k:u:";
 	static char		*test_opts = "c:i:s:L:";
-	static char		*out_opts = "d:I:pe:r";
+	static char		*out_opts = "d:I:pe:rb:";
 	static char		*gen_opts = "hw";
 
 	int			which=0;	/* which cntrl connect used */
@@ -648,6 +731,15 @@ main(
 		case 'p':
 			appctx.opt.printfiles = True;
 			break;
+		case 'b':
+			/* TODO: Add -b option to powmaster */
+			appctx.opt.bucketWidth = strtod(optarg, &endptr);
+			if (*endptr != '\0') {
+				usage(progname, 
+			"Invalid value. Positive floating number expected");
+				exit(1);
+			}
+			break;
 		case 'e':
 		case 'r':
 			/* handled in prior getopt call... */
@@ -688,7 +780,7 @@ main(
 	 * Also set file_offset and ext_offset to the lengths needed.
 	 */
 	fname_len = 2*OWP_TSTAMPCHARS + strlen(OWP_NAME_SEP) +
-		MAX(strlen(OWP_FILE_EXT),strlen(INCOMPLETE_EXT));
+		strlen(OWP_FILE_EXT) + strlen(SUMMARY_EXT);
 	assert((fname_len+1)<PATH_MAX);
 	if(appctx.opt.savedir){
 		if((strlen(appctx.opt.savedir) + strlen(OWP_PATH_SEPARATOR)+
@@ -738,10 +830,36 @@ main(
 	file_offset = strlen(dirpath);
 	ext_offset = file_offset + OWP_TSTAMPCHARS;
 
+	memset(&parse,0,sizeof(struct pow_parse_rec));
 	if(!(parse.seen = malloc(sizeof(pow_seen_rec)*appctx.opt.numPackets))){
-		I2ErrLog(eh,"malloc():%M");
+		I2ErrLog(eh,"malloc(): %M");
 		exit(1);
 	}
+	if(appctx.opt.bucketWidth != 0.0){
+
+		/*
+		 * NOTE:
+		 * Will use the dsize of the key datum to actually hold
+		 * the bucket index, therefore I need to install the cmp
+		 * and hash functions. The "actual" datatype is 'unsigned'
+		 * so be careful to cast appropriately.
+		 */
+		if(!(parse.buckets = I2HashInit(eh,0,intcmp,inthash))){
+			I2ErrLog(eh,"I2HashInit(): %M");
+			exit(1);
+		}
+		/*
+		 * Can't use more buckets than we have packets, so this is
+		 * definitely enough memory.
+		 */
+		if(!(parse.bucketvals = malloc(sizeof(u_int32_t) *
+						appctx.opt.numPackets))){
+			I2ErrLog(eh,"malloc(): %M");
+			exit(1);
+		}
+		parse.nbuckets = 0;
+	}
+
 
 	/*
 	 * Determine how many pseudo sessions need to be combined to create
@@ -921,6 +1039,11 @@ NextConnection:
 			parse.last = (appctx.opt.numPackets*(sub+1))-1;
 			parse.i = 0;
 			parse.next = 0;
+			parse.sync = 1;
+			parse.maxerr = 0.0;
+			parse.dups = parse.lost = 0;
+			parse.nbuckets = 0;
+			assert(I2HashNumEntries(parse.buckets)==0);
 
 			/*
 			 * lastnum contains offset for previous sub.
@@ -944,7 +1067,7 @@ NextConnection:
 								p->sctx));
 				parse.seen[nrecs].sendtime =
 					OWPNum64Add(sessionStartnum,lastnum);
-				parse.seen[nrecs].seen = False;
+				parse.seen[nrecs].seen = 0;
 			}
 			/*
 			 * set localstop to absolute time of final packet.
@@ -1115,7 +1238,56 @@ AGAIN:
 				I2ErrLog(eh,"link(): %M");
 			}
 
+			if(parse.buckets){
+				char	sfname[PATH_MAX];
+
+				/*
+				 * -b indicates we want to save "summary"
+				 * stats.
+				 */
+				strcpy(sfname,newpath);
+				strcat(sfname,SUMMARY_EXT);
+				while(!(parse.sfp = fopen(sfname,"w")) &&
+								errno==EINTR);
+				/* (Ignore errors...) */
+				if(parse.sfp){
+					/*
+					 * TODO: compute session stats!
+					 */
+
+					/* PRINT version 1 STATS */
+					fprintf(parse.sfp,"SUMMARY\t1.0\n");
+					fprintf(parse.sfp,"SENT\t%u\n",
+							appctx.opt.numPackets);
+					fprintf(parse.sfp,"MAXERR\t%g\n",
+								parse.maxerr);
+					fprintf(parse.sfp,"SYNC\t%u\n",
+								parse.sync);
+					fprintf(parse.sfp,"DUPS\t%u\n",
+								parse.dups);
+					fprintf(parse.sfp,"LOST\t%u\n",
+								parse.lost);
+					fprintf(parse.sfp,"BUCKETWIDTH\t%g\n",
+							appctx.opt.bucketWidth);
+
+					/*
+					 * TODO: PRINT out the BUCKETS
+					 */
+					fprintf(parse.sfp,"<BUCKETS>\n");
+					I2HashIterate(parse.buckets,
+							PrintBuckets,
+							&parse);
+					fprintf(parse.sfp,"</BUCKETS>\n");
+
+					fclose(parse.sfp);
+					parse.sfp = NULL;
+
+					assert(!parse.bucketerror);
+				}
+			}
+
 			if(appctx.opt.printfiles){
+				/* Now print the filename to stdout */
 				fprintf(stdout,"%s\n",newpath);
 				fflush(stdout);
 			}
