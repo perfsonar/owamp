@@ -60,13 +60,13 @@ _OWPSendServerGreeting(
 int
 _OWPReadClientGreeting(
 		       OWPControl cntrl, 
-		       void* app_data
+		       OWPErrSeverity *err_ret
 		       )
 {
 	u_int32_t mode_offered = cntrl->mode;
 	u_int32_t mode_requested; 
+	OWPByte *key = NULL;
 	char buf[MAX_MSG];
-	OWPErrSeverity err_ret;
 	char token[32];
 
 	if (readn(cntrl->sockfd, buf, 60) != 60){
@@ -91,19 +91,14 @@ _OWPReadClientGreeting(
 
 		memcpy(cntrl->kid, buf + 4, 8); /* Save 8 bytes of kid */
 
-		/* XXX - need to change to fetch keyInstance.
-		if(!_OWPCallGetAESKey(cntrl->ctx,buf + 4,cntrl->key,err_ret)){
-			if(*err_ret != OWPErrOK)
-				goto error;
-		}
-		else
-			key = key_value;
-		*/
+		if(!_OWPCallGetAESKey(cntrl->ctx, buf + 4, binKey, err_ret)){
+			if(*err_ret != OWPErrOK){
+				*err_ret = OWPErrFATAL;
+				return -1;
+			}
 
-		(*cntrl->ctx->cfg.get_aes_key_func)(app_data, buf + 4, 
-					       binKey, &err_ret);
-		
-		random_bytes(cntrl->writeIV, 16);
+		} else
+			key = binKey;
 
 		OWPDecryptToken(binKey, buf + 12, token);
 
@@ -113,6 +108,8 @@ _OWPReadClientGreeting(
 			close(cntrl->sockfd);
 			return -1;
 		}
+
+		random_bytes(cntrl->writeIV, 16);
 
 		/* Save 16 bytes of session key and 16 bytes of client IV*/
 		memcpy(cntrl->session_key, token + 16, 16);
@@ -145,4 +142,41 @@ _OWPServerOK(OWPControl cntrl, u_int8_t code)
 		memcpy(buf + 16, cntrl->writeIV, 16);
 	}
 	_OWPSendBlocks(cntrl, buf, 2);
+}
+
+#define OWP_CTRL_REQUEST_SESSION 1
+#define OWP_CTRL_START_SESSION 2
+#define OWP_CTRL_STOP_SESSION 3
+#define OWP_CTRL_RETRIEVE_SESSION 4
+
+/*
+** This function is called one the Control connection has been
+** accepted. It reads and processes a single Control message.
+*/
+
+OWPBoolean
+OWPServerControlMain(OWPControl cntrl, OWPErrSeverity *err_ret)
+{
+	u_int8_t type;
+	char msg[MAX_MSG];
+
+	/* Read one block so we can peek at the message type */
+	if (_OWPReceiveBlocks(cntrl, msg, 1) < 0)
+		return -1;
+
+	type = *(u_int8_t *)msg;
+
+	switch (type) {
+	case OWP_CTRL_REQUEST_SESSION:
+		break;
+	case OWP_CTRL_START_SESSION:
+		break;
+	case OWP_CTRL_STOP_SESSION:
+		break;
+	case OWP_CTRL_RETRIEVE_SESSION:
+		break;
+
+	}
+	
+	return True;
 }

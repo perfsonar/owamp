@@ -743,7 +743,7 @@ OWPControlAccept(
 	  XXX - TODO: error-checking.
 	*/
 	_OWPSendServerGreeting(cntrl, err_ret);
-	_OWPReadClientGreeting(cntrl, app_data);
+	_OWPReadClientGreeting(cntrl, err_ret);
 
 	return cntrl;
 }
