@@ -58,9 +58,10 @@ sub merge {
 	$buckets[$_] = 0;
     }
 
-    my ($worst_prec, $final_min) = (64, 99999);
+    my ($worst_prec, $final_min) = (64, 99999.0);
     my ($total_sent, $total_lost, $total_dup) = (0, 0, 0);
 
+    my ($magic, $version, $hdr_len);
     foreach my $file (@files) {
     	next if(!-r $file);
 	open(FH, "<$file") or die "Could not open $file: $!";
@@ -69,13 +70,13 @@ sub merge {
 
 	$pre = MAGIC_SIZE + VERSION_SIZE + HDRSIZE_SIZE;
 	die "Cannot read header: $!" if (read(FH, $buf, $pre) != $pre);
-	my ($magic, $version, $hdr_len) = unpack "a8xCC", $buf;
+	($magic, $version, $hdr_len) = unpack "a8xCC", $buf;
 	my $remain_bytes = $hdr_len - $pre;
 
 	die "Currently only work with version 1: $file" unless ($version == 1);
 	die "Cannot read header"
 		if (read(FH, $buf, $remain_bytes) != $remain_bytes);
-	($prec, $sent, $lost, $dup, $min) = unpack "CLLLl", $buf;
+	($prec, $sent, $lost, $dup, $min) = unpack "CLLLd", $buf;
 
 	if ($prec < $worst_prec) {
 	    $worst_prec = $prec;
@@ -88,8 +89,6 @@ sub merge {
 	$total_sent += $sent;
 	$total_lost += $lost;
 	$total_dup += $dup;
-
-#	$min /= THOUSAND; # convert from usec to ms
 
 	# Compute the number of non-empty buckets (== records in the file).
 	my @stat = stat FH;
@@ -112,8 +111,11 @@ sub merge {
 	close FH;
     }
 
-    my ($version, $hdrlen) = (1, 28);
-    my $header = pack "a8xCCCLLLl", MAGIC, $version, $hdrlen, $worst_prec,
+    # Trick to compute header length and place it within the header itself.
+    my $header = pack "a8xCCCLLLd", MAGIC, $version, $hdr_len, $worst_prec,
+	    $total_sent, $total_lost, $total_dup, $final_min;
+    $hdr_len = length($header);
+    $header = pack "a8xCCCLLLd", MAGIC, $version, $hdr_len, $worst_prec,
 	    $total_sent, $total_lost, $total_dup, $final_min;
 
     print OUT $header;

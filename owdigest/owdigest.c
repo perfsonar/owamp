@@ -203,7 +203,6 @@ main(int argc, char *argv[])
 	state s;
 	u_int8_t prec = PREC_THRESHOLD;
 	u_int32_t *counts;
-	int32_t min_microsec;
 	double delay, min;
 	u_int8_t worst_prec_bits = 64;
 	
@@ -212,7 +211,7 @@ main(int argc, char *argv[])
 	I2LogImmediateAttr	ia;
 	u_int8_t out_hdrlen = sizeof(magic) + sizeof(version) 
 		+ sizeof(prec) + sizeof(out_hdrlen) + sizeof(sent) 
-		+ sizeof(lost) + sizeof(dup) + sizeof(min_microsec);
+		+ sizeof(lost) + sizeof(dup) + sizeof(min);
 
 	OWPInitializeConfigRec	owpcfg = {{0,0},NULL,NULL,NULL,NULL,0,NULL};
 	OWPContext		ctx;
@@ -316,7 +315,7 @@ main(int argc, char *argv[])
 
 	sent = lost = dup = debsent = 0;
 	last_seqno = 0xFFFFFFFF;
-	min = 9999999;
+	min = 9999999.0;
 
 	/* Do a single pass through the sorted records. */
 	for (i = 0; i < num_rec; i++) {
@@ -369,11 +368,10 @@ main(int argc, char *argv[])
 #ifdef DIGEST_DEBUG
 	fprintf(stderr, "sent=%u, debsent=%u\n", sent, debsent);
 #endif
-	min_microsec = (int32_t)(min * MILLION);
 
 	/* 
 	   Header contains: magic number, version, header length,
-	   precision, sent, lost, dup and min delay (in microseconds). 
+	   precision, sent, lost, dup and min delay (in seconds). 
 	   NOTE: precision is given as the worse of send/recv - rather 
 	   than the sum. Otherwise every merge would lead to worsening 
 	   precision. Meaning of the first 3 fields is fixed for all 
@@ -386,7 +384,7 @@ main(int argc, char *argv[])
 	    || (fwrite(&sent, sizeof(sent), 1, out) < 1)
 	    || (fwrite(&lost, sizeof(lost), 1, out) < 1)
 	    || (fwrite(&dup, sizeof(dup), 1, out) < 1)
-	    || (fwrite(&min_microsec, sizeof(min_microsec), 1, out) < 1)) {
+	    || (fwrite(&min, sizeof(min), 1, out) < 1)) {
 		I2ErrLog(eh, "FATAL: fwrite() failed: %M");
 		exit(1);     
 	}

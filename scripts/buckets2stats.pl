@@ -542,8 +542,11 @@ sub get_buck_ref {
     die "Currently only work with version 1: $fname" unless ($version == 1);
     die "Cannot read header"
 	    if (read($fh, $buf, $remain_bytes) != $remain_bytes);
-    ($prec, $sent, $lost, $dup, $min) = unpack "CLLLl", $buf;
-    $min /= THOUSAND; # convert from usec to ms
+    ($prec, $sent, $lost, $dup, $min) = unpack "CLLLd", $buf;
+
+    $min *= THOUSAND; # convert from sec to ms
+    $min = sprintf "%.3f", $min;
+
     if (VERBOSE) {
 	printlist("magic = $magic", "version = $version",
 		  "hdr_len = $hdr_len", "prec = $prec", "sent = $sent",
