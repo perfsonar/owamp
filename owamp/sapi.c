@@ -1119,18 +1119,18 @@ OWPProcessRetrieveSession(
 	if ((fd = open(path, O_RDONLY)) < 0) {
 		if (errno == EINTR )
 			goto try_incomplete_file;
-	}
 
-	/* If not found - look for the completed one. */
-	path[strlen(path) - strlen(OWP_INCOMPLETE_EXT)] = '\0';
-
- try_complete_file:
-	if ((fd = open(path, O_RDONLY )) < 0) {
-		if (errno == EINTR )
-			goto try_complete_file;
-		OWPError(cntrl->ctx, OWPErrFATAL, errno, 
+		/* If not found - look for the completed one. */
+		path[strlen(path) - strlen(OWP_INCOMPLETE_EXT)] = '\0';
+		
+	try_complete_file:
+		if ((fd = open(path, O_RDONLY )) < 0) {
+			if (errno == EINTR )
+				goto try_complete_file;
+			OWPError(cntrl->ctx, OWPErrFATAL, errno, 
               "WARNING: OWPProcessRetrieveSession: open(%s) failed: %M", path);
-		goto fail;
+			goto fail;
+		}
 	}
 
 	if (fstat(fd, &stat_buf) < 0) {
