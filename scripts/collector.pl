@@ -677,11 +677,16 @@ sub write_response{
 }
 
 sub child_catch{
-	my $signame = shift;
+	my $signame = $_;
 
 	$die = 1;
 
-	die "SIG$signame caught...\n";
+	if(!$insig){
+		$insig = 1;
+		die "SIG$signame caught...\n";
+		$insig = 0;
+	}
+	return;
 }
 
 sub handle_req{
@@ -701,6 +706,7 @@ sub handle_req{
 		die "Unable to create md5 context";
 
 	$die = 0;
+	$insig = 0;
 	$SIG{CHLD} = 'DEFAULT';
 	$SIG{HUP} = $SIG{TERM} = $SIG{INT} = \&child_catch;
 
