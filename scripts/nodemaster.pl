@@ -16,8 +16,10 @@
 use strict;
 use constant DEBUG => 1;
 use constant JAN_1970 => 0x83aa7e80; # offset in seconds
+use constant TMP_SECRET => 'abcdefgh12345678';
 use Math::BigInt;
 use IO::Socket;
+use Digest::MD5;
 
 ### Start of configuration section. Change these values as appropriate.
 
@@ -52,19 +54,55 @@ my $data_suffix = '\.owp';                  # suffix for data files (Perl)
 my $local_md5_field = 3;
 my $remote_md5_field = 0;
 
-my $interval = 3;                       # number of seconds between updates
+my $owampd_confdir = '/home/karp/projects/owamp/etc';
+
+# Thes files are relative to $owampd_confdir:
 my $owampd_pid_file = 'owampd.pid';     # file containing owampd pid
+my $passwd_file = 'owampd.passwd';       # file containing the secret
+my $owampd_info_file = 'owampd.info';    # file containing starttime
 
 ### End of configuration section.
 
 my $dirname = $ARGV[0] || '.';                    # top local directory
 chdir $dirname or die "could not chdir: $!";
 
+my $passwd_path = "$owampd_confdir/$passwd_file";
+# Read a secret key to hash messages with.
+open(PASSWD, "<$passwd_path")
+	or die "Could not open $passwd_path: $!";
+my $secret = <PASSWD>;
+unless ($secret) {
+  if (DEBUG) {
+    warn "no secret found in $passwd_path - using a fake one";
+    $secret = TMP_SECRET;
+  } else {
+    die "no secret found in $passwd_path";
+  }
+}
+chomp $secret;
+close PASSWD;
+
+# Read owampd start time.
+my $info_path = "$owampd_confdir/$owampd_info_file";
+open INFO, "<$info_path"
+	or die "Could not open $info_path: $!";
+my $start_time = <INFO>;
+die "Could not find start time in $info_path"
+	unless $start_time;
+chomp $start_time;
+close INFO;
+
+# Read owampd pid.
+my $pid_path = "$owampd_confdir/$owampd_pid_file";
+open PID_FILE, "<$pid_path" or die
+  "could not open $pid_path: $!";
+my $pid = <PID_FILE>;
+close PID_FILE;
+die "Could not find pid in $pid_path" unless $pid;
+chomp $pid;
+
 my $offset_1970 = new Math::BigInt JAN_1970;
 my $scale = new Math::BigInt 2**32;
-
-# my $socket = IO::Socket::INET->new("$remote_host:$port")
-#	or die "Could not connect to $remote_host:$port : $!";
 
 socket(my $socket, PF_INET, SOCK_DGRAM, getprotobyname('udp'))
 	or die "socket: $!";
@@ -72,41 +110,29 @@ my $remote_addr = sockaddr_in($port, inet_aton($remote_host));
 connect $socket, $remote_addr 
 	or die "Could not connect to $remote_host:$port : $!";
 
-# Set the timer to go off in 1 second, and every $interval seconds
-# thereafter.  Call &sig_handler when it goes off.
-$SIG{'ALRM'} = 'sig_handler';
-my $value = pack('LLLL', $interval, 0, 1, 0);
-syscall(&SYS_setitimer, 0, $value, 0);
-
-my $got_alarm = 0;
-
 while (1) {
-  if ($got_alarm) {
-    $got_alarm = 0;
-    my $curtime = new Math::BigInt time;
-    $curtime = ($curtime + $offset_1970) * $scale;
-    my $str = "$curtime";
-    $str =~ s/^\+//;
-    unless (open(PID_FILE, $owampd_pid_file)) {
-      warn "could not open $owampd_pid_file: $!";
-      next;
-    }
-    my $pid = <PID_FILE>;
-    close PID_FILE;
-    chomp $pid;
-    if (kill 0, $pid != 1) {
-      warn "could not signal pid $pid: $!";
-      next;
-    }
-
-    # Just for testing: randomly send start/cur_time messages..
-    my $type = (rand() < 0.5)? 'start' : 'cur_time';
-    warn "DEBUG: process pid $pid alive, sending $str\n";
-    send $socket, "$type=$str\n", 0;
+  my $cur = new Math::BigInt time;
+  $cur = ($cur + $offset_1970) * $scale;
+  my $cur_time = "$cur";
+  $cur_time =~ s/^\+//;
+  
+  if (kill 0, $pid != 1) {
+    warn "could not signal pid $pid: $!";
+    next;
   }
+  warn "DEBUG: process $pid alive" if DEBUG;
 
-  next if DEBUG;  # XXX - Eventually remove.
-
+  # Hash the message with the secret key and send it
+  my $msg = "$start_time.$cur_time";
+  my $plain = "$msg.$secret";
+  my $hashed = Digest::MD5::md5_hex($plain);
+  warn "sending $msg.$hashed\n" if DEBUG;
+  send $socket, "$msg.$hashed", 0;
+  
+  if (DEBUG) { # XXX - Eventually remove.
+    sleep 5;
+    next;
+  }
 # Look for new data.
   opendir(DIR, '.') || die "can't opendir $dirname: $!";
   my @subdirs = grep {$_ !~ /^\./ && -d $_} readdir(DIR);
@@ -126,7 +152,7 @@ sub push_dir {
   system($cmd);
 
   opendir DIR, $subdir or die "Could not open $subdir: $!";
-  my @files = grep {$_ !~ /^\./ && $_ =~ /^.*$data_suffix$/} readdir(DIR);
+  my @files = grep {$_ =~ /^.*$data_suffix$/} readdir(DIR);
   closedir(DIR);
 
   unless (@files) {
@@ -192,6 +218,6 @@ sub push_ok {
   }
 }
 
-sub sig_handler {
-  $got_alarm = 1;
-}
+# sub sig_handler {
+#   $got_alarm = 1;
+# }

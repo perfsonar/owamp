@@ -11,17 +11,36 @@ use strict;
 use Socket;
 use Sys::Hostname;
 use Fcntl;
+use Digest::MD5;
 
 use constant DEBUG => 1;
+use constant TMP_SECRET => 'abcdefgh12345678';
 
 ### Configuration section.
 my $server_port = 2345;
+
+# $top_dir contains the hierarchy of receiver directories
 my $top_dir = '/home/karp/owp/owamp/scripts';
+
+# path to the 'owdigest' executable.
 my $digest_path = '/home/karp/owp/owamp/owdigest/owdigest';
+
+# this is the file containing the secret to hash timestamps with.
+my $passwd_file = '/home/karp/owp/owamp/etc/owampd.passwd';
 
 ### End of configuration section.
 
 chdir $top_dir or die "Could not chdir to $top_dir: $!";
+
+open(PASSWD, "<$passwd_file") or die "Could not open $passwd_file: $!";
+my $secret = <PASSWD>;
+unless ($secret) {
+  warn "Could not read secret from $passwd_file";
+  $secret = TMP_SECRET;
+  die "Cannot function without a secret!" unless DEBUG;
+}
+chomp $secret;
+close PASSWD;
 
 socket(my $server, PF_INET, SOCK_DGRAM, getprotobyname('udp'));
 my $iaddr = gethostbyname(hostname());
@@ -29,13 +48,8 @@ my $proto = getprotobyname('udp');
 my $paddr = sockaddr_in($server_port, $iaddr);
 
 # Initialize data structures for keeping track of updates.
-my %starts;        # this hash maps host to its start times
-my %lower;         # this hash maps host to its list of last current
-                   # reports before a new start
-
-my %last_cur;      # this has maps each host to its last current report
-
-my $last_cur = 0;
+my %live_times;   # this hash keeps track of intervals [start_time, cur_time]
+                  # ordered by start_time in the increasing order
 
 socket($server, PF_INET, SOCK_DGRAM, $proto)   || die "socket: $!";
 bind($server, $paddr)                          || die "bind: $!";
@@ -45,34 +59,49 @@ bind($server, $paddr)                          || die "bind: $!";
 # coming in through ssh nothing can be done with until it's
 # validated - which is only done via timestamps. 
 
+my $buf;
 while (1) {
-  if (my $srcaddr = recv($server, my $msg, 128, 0)) {
-  
-    my ($port, $addr) = sockaddr_in($srcaddr);  # Child
+  if (my $srcaddr = recv($server, $buf, 128, 0)) {
+    next unless $buf;
+    my ($port, $addr) = sockaddr_in($srcaddr);
     my $src = inet_ntoa($addr);
-    
-    next unless $msg;
-    chomp $msg;
-    my ($type, $time) = split /=/, $msg;
-    unless (exists $last_cur{$src}){
-      $last_cur{$src} = 0;
+    my ($start_time, $cur_time, $hashed) = split /\./, $buf;
+    my $plain = "$start_time.$cur_time.$secret";
+    unless (Digest::MD5::md5_hex("$start_time.$cur_time.$secret") eq $hashed) {
+      warn "DEBUG: hash mismatch\n";
+      warn "\$plain = $plain\n";
+      next;
     }
-  
-    if ($type eq 'start') {
-      unless (exists $starts{$src}) {
-	$starts{$src} = [];
-	$lower{$src} = [];
+
+    # Update the list of live intervals, or initialize it if there's none.
+    if (exists $live_times{$src}) {
+      my $last_index = $#{$live_times{$src}};
+      if ($start_time > $live_times{$src}[$last_index][0]) {
+	print "DEBUG: received new start time: $start_time\n" if DEBUG;
+	push @{$live_times{$src}}, [$start_time, $cur_time];
       }
-      
-      # Do something to prevent the case where $last_cur is bigger than $time
-      push @{$starts{$src}}, $time;
-      push @{$lower{$src}}, $last_cur;
-      
-    } elsif ($type eq 'cur_time') {
-      $last_cur{$src} = ($time > $last_cur{$src})? $time : $last_cur{$src};
+
+      for (my $i = $last_index; $i >= 0; $i--) {
+	if (DEBUG) {
+	  warn "DEBUG: start time = $start_time\n";
+	  warn "DEBUG: time[$i][0] = @{[ $live_times{$src}[$i][0] ]}\n";
+	  warn "DEBUG: time[$i][1] = @{[ $live_times{$src}[$i][1] ]}\n";
+	}
+	if ($start_time == $live_times{$src}[$i][0]) {
+	  print "DEBUG: matched $start_time\n" if DEBUG;
+	  if ($cur_time > $live_times{$src}[$i][1]) { # grow the interval
+	    if (DEBUG) {
+	      warn "DEBUG: growing the upper boundary...\n";
+	      print "\t", "$live_times{$src}[$i][1] ---> $cur_time\n";
+	    }
+	    $live_times{$src}[$i][1] = $cur_time;
+	  }
+	}
+      }
+    } else {
+      @{$live_times{$src}} = ();
+      push @{$live_times{$src}}, [$start_time, $cur_time];
     }
-    
-    warn "DEBUG: type=$type time=$time from $src\n" if DEBUG;
 
     # When get a new update for a host - process all files for which
     # it a sender. Then can return back into the loop - since there's
@@ -81,7 +110,7 @@ while (1) {
     for my $dir (@dirlist) {
       chdir "$top_dir/$dir/$src" or die "Could not chdir $dir/$src: $!";
       my $out =  qx/ls/;
-      warn "DEBUG: printing contents of $dir/$src:\n$out\n" if DEBUG;
+      warn "\nDEBUG: printing contents of $dir/$src:\n$out\n" if DEBUG;
       my @files = split /\s/, $out;
       for (@files) {
 	my $name = $_;
@@ -90,11 +119,13 @@ while (1) {
 	print "start=$start    end=$end\n";
 
 	# XXX - do validation here...
+	warn "running $digest_path $_";
 	system("$digest_path $_ $_.digest > /dev/null");
+	warn "archiving $_";
 	archive($_);
       }
     }
-    warn "DEBUG: no more dirs - going back into the recv loop\n" if DEBUG;
+    warn "DEBUG: no more dirs - going back into the recv loop\n\n" if DEBUG;
     sleep 5;
   }
 }
