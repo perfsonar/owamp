@@ -62,10 +62,32 @@ typedef struct owamp_limits {
 	owp_lim_t values[6];   
 } owp_lim;
 
+/*
+** Inidices to refer to particular limits/attributes.
+*/
+#define OWP_LIM_BANDWIDTH 0      /* bandwidth - octets/sec */
+#define OWP_LIM_SPACE     1 	 /* disk space - octets    */
+#define OWP_LIM_EXPIRY    2      /* expiry offset - sec    */
+#define OWP_LIM_DOC       3      /* delete-on-close flag   */
+#define OWP_LIM_DOF       4      /* delete-on-fetch flag   */
+#define OWP_LIM_OPEN_OK   5      /* open_mode-ok flag      */
+
+
+typedef struct owp_tree_node *owp_tree_node_ptr;
+
+typedef struct owp_tree_node {
+	char* data;
+	owp_tree_node_ptr next_sibling;
+	owp_tree_node_ptr first_child;
+	owp_tree_node_ptr parent;
+	owp_lim           limits;
+} owp_tree_node;
+
 typedef struct {
 	I2table ip2class;
 	I2table class2limits;
 	I2table passwd;
+	owp_tree_node_ptr root; /* Root class of the tree hierarchy. */
 } policy_data;
 
 typedef struct owp_access_id {
@@ -88,21 +110,10 @@ typedef struct owp_kid_data {
 	char class[OWP_MAX_CLASS_LEN + 1];
 } owp_kid_data;
 
-
-typedef struct owp_tree_node *owp_tree_node_ptr;
-
-typedef struct owp_tree_node {
-	char* data;
-	owp_tree_node_ptr next_sibling;
-	owp_tree_node_ptr first_child;
-	owp_tree_node_ptr parent;
-	owp_lim           limits;
-} owp_tree_node;
-
 extern owp_tree_node_ptr owp_class2node(char *class, I2table hash);
-
 extern char *ipaddr2class(u_int32_t ip, I2table ip2class_hash);
 extern char *owp_kid2passwd(const char *kid, int len, policy_data* policy);
+extern char *owp_kid2class(const char *kid, int len, policy_data* policy);
 extern char *owp_sockaddr2class(struct sockaddr *addr, policy_data* policy);
 extern void owp_print_ip2class_binding(const struct I2binding *p, FILE* fp);
 void owp_print_kid2data_binding(const struct I2binding *p, FILE* fp);
