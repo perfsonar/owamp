@@ -28,7 +28,6 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <sys/time.h>
-#include <setjmp.h>
 
 #ifndef	False
 #define	False	(0)
@@ -48,6 +47,12 @@
 #define	OWP_MODE_OPEN			(01)
 #define	OWP_MODE_AUTHENTICATED		(02)
 #define	OWP_MODE_ENCRYPTED		(04)
+
+#define CTRL_ACCEPT 0
+#define CTRL_REJECT 1
+
+/* Maximum message length in Control Protocol */
+#define MAX_MSG 60 /* XXX - currently 56 but KID to be extended by 4 bytes */
 
 /*
  * The 590 should eventually be replaced by a IANA blessed service name.
@@ -509,9 +514,8 @@ OWPSendStopSessions(
 extern OWPControl
 OWPControlAccept(
 		 OWPContext     ctx,       /* control context               */
+		 int            connfd,    /* connected socket              */
 		 void           *app_data, /* policy                        */
-		 socklen_t      len,       /* length of the sockaddr struct */
-		 int            listenfd,  /* listening socket              */
 		 OWPErrSeverity *err_ret   /* err - return                  */
 		 );
 
