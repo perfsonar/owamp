@@ -739,6 +739,10 @@ parse_ports(
 
 	switch(*endptr){
 		case '\0':
+			/* only allow a single value if it is 0 */
+			if(portrec.low){
+				goto failed;
+			}
 			portrec.high = portrec.low;
 			goto done;
 			break;
@@ -759,8 +763,7 @@ parse_ports(
 	portrec.high = (u_int16_t)tint;
 
 	if(portrec.high < portrec.low){
-		portrec.high = portrec.low;
-		portrec.low = (u_int16_t)tint;
+		goto failed;
 	}
 
 done:

@@ -26,29 +26,7 @@
 owampd \- One-way latency server.
 .SH SYNOPSIS
 .B owampd
-[
-.BI \-a " authmode"
-] [
-.BI \-c " confdir"
-] [
-.BI \-d " datadir"
-] [
-.BI \-e " facility"
-] [
-.BI \-G " group"
-] [
-.B \-h
-] [
-.BI \-R " vardir"
-] [
-.BI \-S " nodename:port"
-] [
-.BI \-U " user"
-] [
-.B \-v
-] [
-.B \-Z
-]
+[\fIoptions\fR]
 .SH DESCRIPTION
 .B owampd
 is a server program specifically designed to run one side of one-way
@@ -123,6 +101,21 @@ only used if \fBowampd\fR is started as root.
 .TP
 .B \-h
 Print a help message.
+.TP
+.BI \-P " 0 | lowport-highport"
+Specify the specific port range to use on the local host for
+.I OWAMP-Test
+packets. This can be specified in two ways. First, as 0 which would indicate
+.B owampd
+should allow the system to pick the port (ephemeral). Second, as a range:
+.I lowport
+must be a smaller value than
+.I highport
+and both numbers must be valid port values. (16 bit unsigned integer values)
+.RS
+.IP Default:
+0
+.RE
 .TP
 .BI \-R " vardir"
 Specify the directory to hold the owampd.pid file.

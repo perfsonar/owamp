@@ -160,6 +160,21 @@ ensures the port number is distinct from the address specification.
 \fIport\fR is 4823.
 .RE
 .TP
+.BI testports " 0 | lowport-highport"
+Specify the specific port range to use on the local host for
+.I OWAMP-Test
+packets. This can be specified in two ways. First, as 0 which would indicate
+.B owampd
+should allow the system to pick the port (ephemeral). Second, as a range.
+.I lowport
+must be a smaller value than
+.I highport
+and both numbers must be valid port values. (16 bit unsigned integer values)
+.RS
+.IP Default:
+0
+.RE
+.TP
 .BI user " user"
 Specifies the uid the \fBowampd\fR process should run as. \fIuser\fR
 can be specified using a valid user name on the system or by using -uid.

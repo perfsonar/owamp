@@ -140,6 +140,22 @@ the \fItimeout\fR option should be specified.
 2 seconds longer than the round-trip estimate. (seconds)
 .RE
 .TP
+.BI \-P " 0 | lowport-highport"
+.br
+Specify the specific port range to use on the local host for
+.I OWAMP-Test
+packets. This can be specified in two ways. First, as 0 which would indicate
+.B owping
+should allow the system to pick the port (ephemeral). Second, as a range.
+.I lowport
+must be a smaller value than
+.I highport
+and both numbers must be valid port values. (16 bit unsigned integer values)
+.RS
+.IP Default:
+0
+.RE
+.TP
 \fB\-s\fR \fIsize\fR
 .br
 Size of the padding to add to each minimally-sized test packet. The minimal
