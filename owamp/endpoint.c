@@ -27,7 +27,6 @@
 #include <assert.h>
 #include <sys/timex.h>
 
-#include <owamp/unixtime.h>
 #include <owamp/access.h>
 #include "owampP.h"
 #include "endpoint.h"

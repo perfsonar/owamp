@@ -428,14 +428,14 @@ OWPControlAccept(
 		goto error;
 	}
 	if( (rc = _OWPWriteServerGreeting(cntrl,mode_offered,
-						challenge)) < 0){
+						challenge)) < OWPErrOK){
 		*err_ret = (OWPErrSeverity)rc;
 		goto error;
 	}
 
 	if( (rc=_OWPReadClientGreeting(cntrl,&cntrl->mode,rawtoken,
 								cntrl->readIV))
-									< 0){
+									< OWPErrOK){
 		*err_ret = (OWPErrSeverity)rc;
 		goto error;
 	}
@@ -454,7 +454,7 @@ OWPControlAccept(
 				cntrl->local_addr->node,cntrl->local_addr->port,
 				cntrl->remote_addr->node,
 				cntrl->remote_addr->port,cntrl->mode);
-		if( (rc = _OWPWriteServerOK(cntrl, OWP_CNTRL_REJECT)) < 0)
+		if( (rc = _OWPWriteServerOK(cntrl, OWP_CNTRL_REJECT)) < OWPErrOK)
 			*err_ret = (OWPErrSeverity)rc;
 		goto error;
 	}
@@ -647,7 +647,7 @@ OWPProcessTestRequest(
 	memset(recvaddr,0,sizeof(struct sockaddr_storage));
 
 	if( (rc = _OWPReadTestRequest(cntrl,sendaddr,recvaddr,&addrlen,
-			&ipvn,&conf_sender,&conf_receiver,sid,&tspec)) < 0){
+			&ipvn,&conf_sender,&conf_receiver,sid,&tspec)) < OWPErrOK){
 		err_ret = (OWPErrSeverity)rc;
 		goto error;
 	}
@@ -763,7 +763,7 @@ OWPProcessTestRequest(
 	}
 
 	if( (rc = _OWPWriteTestAccept(cntrl,OWP_CNTRL_ACCEPT,
-						port,tsession->sid)) < 0){
+						port,tsession->sid)) < OWPErrOK){
 		err_ret = (OWPErrSeverity)rc;
 		goto error;
 	}
@@ -808,10 +808,10 @@ OWPProcessStartSessions(
 	OWPTestSession	tsession;
 	OWPErrSeverity	err,err2=OWPErrOK;
 
-	if( (rc = _OWPReadStartSessions(cntrl)) < 0)
+	if( (rc = _OWPReadStartSessions(cntrl)) < OWPErrOK)
 		return _OWPFailControlSession(cntrl,rc);
 
-	if( (rc = _OWPWriteControlAck(cntrl,OWP_CNTRL_ACCEPT)) < 0)
+	if( (rc = _OWPWriteControlAck(cntrl,OWP_CNTRL_ACCEPT)) < OWPErrOK)
 		return _OWPFailControlSession(cntrl,rc);
 
 	for(tsession = cntrl->tests;tsession;tsession = tsession->next){
@@ -848,7 +848,7 @@ OWPProcessStopSessions(
 	OWPAcceptType	acceptval;
 	OWPErrSeverity	err,err2=OWPErrOK;
 
-	if( (rc = _OWPReadStopSessions(cntrl,&acceptval)) < 0)
+	if( (rc = _OWPReadStopSessions(cntrl,&acceptval)) < OWPErrOK)
 		return _OWPFailControlSession(cntrl,rc);
 
 	for(tsession = cntrl->tests;tsession;tsession = tsession->next){
@@ -869,7 +869,7 @@ OWPProcessStopSessions(
 	else
 		acceptval = OWP_CNTRL_ACCEPT;
 
-	if( (rc = _OWPWriteStopSessions(cntrl,acceptval)) < 0)
+	if( (rc = _OWPWriteStopSessions(cntrl,acceptval)) < OWPErrOK)
 		return _OWPFailControlSession(cntrl,rc);
 
 
@@ -1125,7 +1125,7 @@ OWPProcessRetrieveSession(
 	char*           datadir;
 	OWPErrSeverity  err;
 
-	if( (rc = _OWPReadRetrieveSession(cntrl,&begin,&end,sid)) < 0)
+	if( (rc = _OWPReadRetrieveSession(cntrl,&begin,&end,sid)) < OWPErrOK)
 		return _OWPFailControlSession(cntrl,rc);
 
 	/*
@@ -1173,7 +1173,7 @@ OWPProcessRetrieveSession(
 	}
 
 	if ((begin == 0) && (end == 0xFFFFFFFF)) /* complete session  */ {
-		if( (rc = _OWPWriteControlAck(cntrl, OWP_CNTRL_ACCEPT)) < 0)
+		if( (rc = _OWPWriteControlAck(cntrl, OWP_CNTRL_ACCEPT)) < OWPErrOK)
 			return _OWPFailControlSession(cntrl,rc);
 		return OWPSendFullDataFile(cntrl, fd, stat_buf.st_blksize,
 					   stat_buf.st_size);
@@ -1212,7 +1212,7 @@ OWPProcessRetrieveSession(
 		   Can't wait any longer - send ACCEPT, can't predict
 		   any errors down the road.
 		*/
-		if( (rc = _OWPWriteControlAck(cntrl, OWP_CNTRL_ACCEPT)) < 0) {
+		if( (rc = _OWPWriteControlAck(cntrl, OWP_CNTRL_ACCEPT)) < OWPErrOK) {
 			return _OWPFailControlSession(cntrl,rc);
 		}
 		
@@ -1235,7 +1235,7 @@ OWPProcessRetrieveSession(
 
  fail:
 	if( (rc = _OWPWriteControlAck(cntrl,
-				      OWP_CNTRL_FAILURE)) < 0)
+				      OWP_CNTRL_FAILURE)) < OWPErrOK)
 		return _OWPFailControlSession(cntrl,rc);
 	return OWPErrOK;
 
@@ -1243,9 +1243,7 @@ OWPProcessRetrieveSession(
 
 /*
  * TODO: Add timeout so ProcessRequests can break out if no request
- * comes in some configurable fixed time. (Necessary to have the server
- * process exit when test sessions are done, if the client doesn't send
- * the StopSessions.)
+ * comes in some configurable fixed time.
  */
 OWPErrSeverity
 OWPProcessRequests(
@@ -1253,7 +1251,7 @@ OWPProcessRequests(
 		)
 {
 	OWPErrSeverity	rc;
-	int		msgtype;
+	u_int8_t	msgtype;
 
 	while((msgtype = OWPReadRequestType(cntrl)) > 0){
 		fprintf(stderr, "DEBUG: msg_type = %d\n", msgtype);

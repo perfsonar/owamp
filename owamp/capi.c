@@ -321,7 +321,7 @@ OWPControlOpen(
 	if(_OWPClientConnect(cntrl,local_addr,server_addr,err_ret) != 0)
 		goto error;
 
-	if( (rc=_OWPReadServerGreeting(cntrl,&mode_avail,challenge)) < 0){
+	if( (rc=_OWPReadServerGreeting(cntrl,&mode_avail,challenge)) < OWPErrOK){
 		*err_ret = (OWPErrSeverity)rc;
 		goto error;
 	}
@@ -413,8 +413,8 @@ OWPControlOpen(
 	/*
 	 * Write the client greeting, and see if the Server agree's to it.
 	 */
-	if( ((rc=_OWPWriteClientGreeting(cntrl,token)) < 0) ||
-			((rc=_OWPReadServerOK(cntrl,&acceptval)) < 0)){
+	if( ((rc=_OWPWriteClientGreeting(cntrl,token)) < OWPErrOK) ||
+			((rc=_OWPReadServerOK(cntrl,&acceptval)) < OWPErrOK)){
 		*err_ret = (OWPErrSeverity)rc;
 		goto error;
 	}
@@ -578,7 +578,7 @@ _OWPClientRequestTestReadResponse(
 
 	if((rc = _OWPWriteTestRequest(cntrl,sender->saddr,receiver->saddr,
 					server_conf_sender,server_conf_receiver,
-					sid,test_spec)) < 0){
+					sid,test_spec)) < OWPErrOK){
 		*err_ret = (OWPErrSeverity)rc;
 		return -1;
 	}
@@ -624,7 +624,7 @@ _OWPClientRequestTestReadResponse(
 	if(server_conf_receiver)
 		sid_ret = sid;
 
-	if((rc = _OWPReadTestAccept(cntrl,&acceptval,port_ret,sid_ret)) < 0){
+	if((rc = _OWPReadTestAccept(cntrl,&acceptval,port_ret,sid_ret)) < OWPErrOK){
 		*err_ret = (OWPErrSeverity)rc;
 		return -1;
 	}
@@ -870,7 +870,7 @@ error:
 }
 
 OWPErrSeverity
-OWPStartTestSessions(
+OWPStartSessions(
 	OWPControl	cntrl
 )
 {
@@ -881,11 +881,11 @@ OWPStartTestSessions(
 
 	if(!cntrl){
 		OWPError(NULL,OWPErrFATAL,OWPErrINVALID,
-		"OWPStartTestSessions called with invalid cntrl record");
+		"OWPStartSessions called with invalid cntrl record");
 		return OWPErrFATAL;
 	}
 
-	if((rc = _OWPWriteStartSessions(cntrl)) < 0)
+	if((rc = _OWPWriteStartSessions(cntrl)) < OWPErrOK)
 		return _OWPFailControlSession(cntrl,rc);
 
 	/*
@@ -901,7 +901,7 @@ OWPStartTestSessions(
 			err2 = MIN(err,err2);
 		}
 
-	if(((rc = _OWPReadControlAck(cntrl,&acceptval)) < 0) ||
+	if(((rc = _OWPReadControlAck(cntrl,&acceptval)) < OWPErrOK) ||
 					(acceptval != OWP_CNTRL_ACCEPT))
 		return _OWPFailControlSession(cntrl,rc);
 
@@ -918,36 +918,100 @@ error:
 
 }
 
-OWPErrSeverity
-OWPStopTestSessions(
+int
+OWPStopSessionsWait(
 	OWPControl	cntrl,
-	OWPAcceptType	acceptval
-		)
+	OWPTimeStamp	*wake,
+	OWPAcceptType	*acceptval,
+	OWPErrSeverity	*err_ret
+	)
 {
-	OWPErrSeverity	err,err2=OWPErrOK;
+	struct timeval	currtime;
+	struct timeval	reltime;
+	struct timeval	*waittime = NULL;
+	fd_set		readfds;
+	int		rc;
+	u_int8_t	msgtype;
+	OWPTestSession	tsession;
+	OWPErrSeverity	err2=OWPErrOK;
 
-	if(!cntrl){
+	if(!cntrl || cntrl->sockfd < 0){
+		*err_ret = OWPErrFATAL;
+		return -1;
+	}
+
+	if(wake){
+		if(gettimeofday(&currtime,NULL) != 0){
+			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+					"gettimeofday():%M");
+			return -1;
+		}
+		OWPCvtTimestamp2Timeval(&reltime,wake);
+		if(tvalcmp(&currtime,&reltime,<))
+			tvalsub(&reltime,&currtime);
+		else
+			tvalclear(&reltime);
+
+		waittime = &reltime;
+	}
+
+
+	FD_ZERO(&readfds);
+	FD_SET(cntrl->sockfd,&readfds);
+	rc = select(cntrl->sockfd+1,&readfds,NULL,&readfds,waittime);
+
+	if(rc < 0){
+		if(errno == EINTR)
+			return 2;
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,"select():%M");
+		*err_ret = OWPErrFATAL;
+		return -1;
+	}
+	if(rc == 0)
+		return 1;
+
+	if(!FD_ISSET(cntrl->sockfd,&readfds)){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+					"select():cntrl fd not ready?:%M");
+		*err_ret = OWPErrFATAL;
+		return -1;
+	}
+
+	msgtype = OWPReadRequestType(cntrl);
+	if(msgtype != 3){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-		"OWPStopTestSessions called with invalid cntrl record");
-		return OWPErrFATAL;
+				"Invalid protocol message received...");
+		*err_ret = OWPErrFATAL;
+		cntrl->state = _OWPStateInvalid;
+		return -1;
 	}
 
-	while(cntrl->tests){
-		err = _OWPTestSessionFree(cntrl->tests,acceptval);
-		err2 = MIN(err,err2);
+	*err_ret = _OWPReadStopSessions(cntrl,acceptval);
+	if(*err_ret < OWPErrOK){
+		cntrl->state = _OWPStateInvalid;
+		return -1;
 	}
 
-	/*
-	 * If acceptval would have been "success", but stopping of local
-	 * endpoints failed, report failure instead and return error.
-	 * (The endpoint_stop_func should have reported the error.)
-	 */
-	if(!acceptval && (err2 < OWPErrWARNING))
-		acceptval = OWP_CNTRL_FAILURE;
+	for(tsession = cntrl->tests;tsession;tsession = tsession->next){
+		if(tsession->recv_end_data){
+			_OWPCallEndpointStop(tsession,tsession->recv_end_data,
+					*acceptval,&err2);
+			*err_ret = MIN(*err_ret,err2);
+		}
+		if(tsession->send_end_data){
+			_OWPCallEndpointStop(tsession,tsession->send_end_data,
+					*acceptval,&err2);
+			*err_ret = MIN(*err_ret,err2);
+		}
+	}
 
-	err = (OWPErrSeverity)_OWPWriteStopSessions(cntrl,acceptval);
+	if(*err_ret < OWPErrWARNING)
+		*acceptval = OWP_CNTRL_FAILURE;
 
-	return MIN(err,err2);
+	err2 = _OWPWriteStopSessions(cntrl,*acceptval);
+
+	*err_ret = MIN(*err_ret, err2);
+	return 0;
 }
 
 /*

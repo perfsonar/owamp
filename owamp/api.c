@@ -642,16 +642,17 @@ _OWPTestSessionFree(
 }
 
 OWPErrSeverity
-OWPInitiateStopTestSessions(
+OWPStopSessions(
 	OWPControl	cntrl,
 	OWPAcceptType	*acceptval	/* in/out	*/
 		)
 {
 	OWPErrSeverity	err,err2=OWPErrOK;
+	u_int8_t	msgtype;
 
 	if(!cntrl){
 		OWPError(NULL,OWPErrFATAL,OWPErrINVALID,
-		"OWPStopTestSessions called with invalid cntrl record");
+		"OWPStopSessions called with invalid cntrl record");
 		return OWPErrFATAL;
 	}
 
@@ -670,6 +671,13 @@ OWPInitiateStopTestSessions(
 
 	err = (OWPErrSeverity)_OWPWriteStopSessions(cntrl,*acceptval);
 	err2 = MIN(err,err2);
+
+	msgtype = OWPReadRequestType(cntrl);
+	if(msgtype != 3){	/* 3 is StopSessions message */
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+				"Invalid protocol message received...");
+		return _OWPFailControlSession(cntrl,OWPErrFATAL);
+	}
 
 	err = _OWPReadStopSessions(cntrl,acceptval);
 

@@ -62,7 +62,7 @@
  *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *
  */
-int
+OWPErrSeverity
 _OWPWriteServerGreeting(
 	OWPControl	cntrl,
 	u_int32_t	avail_modes,
@@ -96,7 +96,7 @@ _OWPWriteServerGreeting(
 	return OWPErrOK;
 }
 
-int
+OWPErrSeverity
 _OWPReadServerGreeting(
 	OWPControl	cntrl,
 	u_int32_t	*mode,		/* modes available - returned	*/
@@ -158,7 +158,7 @@ _OWPReadServerGreeting(
  *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *
  */
-int
+OWPErrSeverity
 _OWPWriteClientGreeting(
 	OWPControl	cntrl,
 	u_int8_t	*token	/* [32]	*/
@@ -188,7 +188,7 @@ _OWPWriteClientGreeting(
 	return OWPErrOK;
 }
 
-int
+OWPErrSeverity
 _OWPReadClientGreeting(
 	OWPControl	cntrl,
 	u_int32_t	*mode,
@@ -261,7 +261,7 @@ GetAcceptType(
  *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *
  */
-int
+OWPErrSeverity
 _OWPWriteServerOK(
 	OWPControl	cntrl,
 	OWPAcceptType	code
@@ -285,7 +285,7 @@ _OWPWriteServerOK(
 
 	return OWPErrOK;
 }
-int
+OWPErrSeverity
 _OWPReadServerOK(
 	OWPControl	cntrl,
 	OWPAcceptType	*acceptval	/* ret	*/
@@ -323,6 +323,8 @@ _OWPReadServerOK(
  * This function is called on the server side to read the first block
  * of client requests. The remaining read request messages MUST be called
  * next!.
+ * It is also called by the client side from OWPStopSessionsWait and
+ * OWPStopSessions
  */
 u_int8_t
 OWPReadRequestType(
@@ -426,7 +428,7 @@ OWPReadRequestType(
  *	92|                                                               |
  *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  */
-int
+OWPErrSeverity
 _OWPWriteTestRequest(
 	OWPControl	cntrl,
 	struct sockaddr	*sender,
@@ -555,7 +557,7 @@ _OWPWriteTestRequest(
 	return OWPErrOK;
 }
 
-int
+OWPErrSeverity
 _OWPReadTestRequest(
 	OWPControl	cntrl,
 	struct sockaddr	*sender,
@@ -756,7 +758,7 @@ _OWPReadTestRequest(
  *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *
  */
-int
+OWPErrSeverity
 _OWPWriteTestAccept(
 	OWPControl	cntrl,
 	OWPAcceptType	acceptval,
@@ -788,7 +790,7 @@ _OWPWriteTestAccept(
 	return OWPErrOK;
 }
 
-int
+OWPErrSeverity
 _OWPReadTestAccept(
 	OWPControl	cntrl,
 	OWPAcceptType	*acceptval,
@@ -861,7 +863,7 @@ _OWPReadTestAccept(
  *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *
  */
-int
+OWPErrSeverity
 _OWPWriteStartSessions(
 	OWPControl	cntrl
 	)
@@ -889,7 +891,7 @@ _OWPWriteStartSessions(
 	return OWPErrOK;
 }
 
-int
+OWPErrSeverity
 _OWPReadStartSessions(
 	OWPControl	cntrl
 )
@@ -957,7 +959,7 @@ _OWPReadStartSessions(
  *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *
  */
-int
+OWPErrSeverity
 _OWPWriteStopSessions(
 	OWPControl	cntrl,
 	OWPAcceptType	acceptval
@@ -984,7 +986,7 @@ _OWPWriteStopSessions(
 	return OWPErrOK;
 }
 
-int
+OWPErrSeverity
 _OWPReadStopSessions(
 	OWPControl	cntrl,
 	OWPAcceptType	*acceptval
@@ -1063,7 +1065,7 @@ _OWPReadStopSessions(
  *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *
  */
-int
+OWPErrSeverity
 _OWPWriteRetrieveSession(
 	OWPControl	cntrl,
 	u_int32_t	begin,
@@ -1096,7 +1098,7 @@ _OWPWriteRetrieveSession(
 	return OWPErrOK;
 }
 
-int
+OWPErrSeverity
 _OWPReadRetrieveSession(
 	OWPControl	cntrl,
 	u_int32_t	*begin,
@@ -1170,7 +1172,7 @@ _OWPReadRetrieveSession(
  *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *
  */
-int
+OWPErrSeverity
 _OWPWriteControlAck(
 	OWPControl	cntrl,
 	OWPAcceptType	acceptval
@@ -1197,7 +1199,7 @@ _OWPWriteControlAck(
 	return OWPErrOK;
 }
 
-int
+OWPErrSeverity
 _OWPReadControlAck(
 	OWPControl	cntrl,
 	OWPAcceptType	*acceptval
@@ -1248,7 +1250,7 @@ _OWPReadControlAck(
 ** During Fetch session, read the first 16 bytes of data transmission.
 ** Save the promised number of records into *num_rec.
 */
-int
+OWPErrSeverity
 _OWPReadDataHeader(OWPControl cntrl, u_int32_t *num_rec)
 {
 	u_int8_t *buf = (u_int8_t*)cntrl->msg;

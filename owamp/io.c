@@ -81,27 +81,6 @@ OWPWriten(int fd, const void *vptr, size_t n)
 }
 /* end OWPWriten */
 
-
-#define	tvalclear(a)	(a)->tv_sec = (a)->tv_usec = 0
-#define tvaladd(a,b)					\
-	do{						\
-		(a)->tv_sec += (b)->tv_sec;		\
-		(a)->tv_usec += (b)->tv_usec;		\
-		if((a)->tv_usec >= 1000000){		\
-			(a)->tv_sec++;			\
-			(a)->tv_usec -= 1000000;	\
-		}					\
-	} while (0)
-#define tvalsub(a,b)					\
-	do{						\
-		(a)->tv_sec -= (b)->tv_sec;		\
-		(a)->tv_usec -= (b)->tv_usec;		\
-		if((a)->tv_usec < 0){			\
-			(a)->tv_sec--;			\
-			(a)->tv_usec += 1000000;	\
-		}					\
-	} while (0)
-
 int
 _OWPConnect(
 	int		fd,

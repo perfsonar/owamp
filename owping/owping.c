@@ -30,7 +30,6 @@
 #include <I2util/util.h>
 #include <owamp/owamp.h>
 #include <owamp/conndata.h>
-#include <owamp/unixtime.h>
 #include <owamp/access.h>
 
 #include "./owpingP.h"
@@ -646,7 +645,7 @@ main(
 			&err_ret))
 		FailSession(ping_ctx.cntrl);
 	
-	if(OWPStartTestSessions(ping_ctx.cntrl) != OWPErrOK)
+	if(OWPStartSessions(ping_ctx.cntrl) != OWPErrOK)
 		FailSession(ping_ctx.cntrl);
 	/*
 	 * TODO install sig handler for keyboard interupt - to send stop

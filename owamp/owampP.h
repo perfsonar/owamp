@@ -304,27 +304,27 @@ OWPDecryptToken(
  * protocol.c
  */
 
-extern int
+extern OWPErrSeverity
 _OWPWriteServerGreeting(
 	OWPControl	cntrl,
 	u_int32_t	avail_modes,
 	u_int8_t	*challenge	/* [16] */
 	);
 
-extern int
+extern OWPErrSeverity
 _OWPReadServerGreeting(
 	OWPControl	cntrl,
 	u_int32_t	*mode,		/* modes available - returned	*/
 	u_int8_t	*challenge	/* [16] : challenge - returned	*/
 );
 
-extern int
+extern OWPErrSeverity
 _OWPWriteClientGreeting(
 	OWPControl	cntrl,
 	u_int8_t	*token	/* [32]	*/
 	);
 
-extern int
+extern OWPErrSeverity
 _OWPReadClientGreeting(
 	OWPControl	cntrl,
 	u_int32_t	*mode,
@@ -332,13 +332,13 @@ _OWPReadClientGreeting(
 	u_int8_t	*clientIV	/* [16] - return	*/
 	);
 
-extern int
+extern OWPErrSeverity
 _OWPWriteServerOK(
 	OWPControl	cntrl,
 	OWPAcceptType	code
 	);
 
-extern int
+extern OWPErrSeverity
 _OWPReadServerOK(
 	OWPControl	cntrl,
 	OWPAcceptType	*acceptval	/* ret	*/
@@ -349,7 +349,7 @@ OWPReadRequestType(
 	OWPControl	cntrl
 	);
 
-extern int
+extern OWPErrSeverity
 _OWPWriteTestRequest(
 	OWPControl	cntrl,
 	struct sockaddr	*sender,
@@ -360,7 +360,7 @@ _OWPWriteTestRequest(
 	OWPTestSpec	*test_spec
 );
 
-extern int
+extern OWPErrSeverity
 _OWPReadTestRequest(
 	OWPControl	cntrl,
 	struct sockaddr	*sender,
@@ -373,7 +373,7 @@ _OWPReadTestRequest(
 	OWPTestSpec	*test_spec
 );
 
-extern int
+extern OWPErrSeverity
 _OWPWriteTestAccept(
 	OWPControl	cntrl,
 	OWPAcceptType	acceptval,
@@ -381,7 +381,7 @@ _OWPWriteTestAccept(
 	OWPSID		sid
 	);
 
-extern int
+extern OWPErrSeverity
 _OWPReadTestAccept(
 	OWPControl	cntrl,
 	OWPAcceptType	*acceptval,
@@ -389,29 +389,29 @@ _OWPReadTestAccept(
 	OWPSID		sid
 	);
 
-extern int
+extern OWPErrSeverity
 _OWPWriteStartSessions(
 	OWPControl	cntrl
 	);
 
-extern int
+extern OWPErrSeverity
 _OWPReadStartSessions(
 	OWPControl	cntrl
 );
 
-extern int
+extern OWPErrSeverity
 _OWPWriteStopSessions(
 	OWPControl	cntrl,
 	OWPAcceptType	acceptval
 	);
 
-extern int
+extern OWPErrSeverity
 _OWPReadStopSessions(
 	OWPControl	cntrl,
 	OWPAcceptType	*acceptval
 );
 
-extern int
+extern OWPErrSeverity
 _OWPWriteRetrieveSession(
 	OWPControl	cntrl,
 	u_int32_t	begin,
@@ -419,7 +419,7 @@ _OWPWriteRetrieveSession(
 	OWPSID		sid
 	);
 
-extern int
+extern OWPErrSeverity
 _OWPReadRetrieveSession(
 	OWPControl	cntrl,
 	u_int32_t	*begin,
@@ -427,19 +427,19 @@ _OWPReadRetrieveSession(
 	OWPSID		sid
 );
 
-extern int
+extern OWPErrSeverity
 _OWPWriteControlAck(
 	OWPControl	cntrl,
 	OWPAcceptType	acceptval
 	);
 
-extern int
+extern OWPErrSeverity
 _OWPReadControlAck(
 	OWPControl	cntrl,
 	OWPAcceptType	*acceptval
 );
 
-extern int
+extern OWPErrSeverity
 _OWPReadDataHeader(OWPControl cntrl, u_int32_t *num_rec);
 
 /*
@@ -539,6 +539,39 @@ OWPDecodeTimeStamp(
 	OWPTimeStamp	*tstamp,
 	u_int32_t	buf[2]
 	);
+
+#ifndef	tvalclear
+#define	tvalclear(a)	(a)->tv_sec = (a)->tv_usec = 0
+#endif
+#ifndef	tvaladd
+#define tvaladd(a,b)					\
+	do{						\
+		(a)->tv_sec += (b)->tv_sec;		\
+		(a)->tv_usec += (b)->tv_usec;		\
+		if((a)->tv_usec >= 1000000){		\
+			(a)->tv_sec++;			\
+			(a)->tv_usec -= 1000000;	\
+		}					\
+	} while (0)
+#endif
+#ifndef	tvalsub
+#define tvalsub(a,b)					\
+	do{						\
+		(a)->tv_sec -= (b)->tv_sec;		\
+		(a)->tv_usec -= (b)->tv_usec;		\
+		if((a)->tv_usec < 0){			\
+			(a)->tv_sec--;			\
+			(a)->tv_usec += 1000000;	\
+		}					\
+	} while (0)
+#endif
+
+#ifndef	tvalcmp
+#define	tvalcmp(tvp,uvp,cmp)					\
+	(((tvp)->tv_sec == (uvp)->tv_sec) ?			\
+	 	((tvp)->tv_usec cmp (uvp)->tv_usec) :		\
+		((tvp)->tv_sec cmp (uvp)->tv_sec))
+#endif
 
 extern void owp_print_sockaddr(struct sockaddr *sock);
 extern void owp_print_owpaddr(FILE *fp, OWPAddr addr);

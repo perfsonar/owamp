@@ -121,7 +121,7 @@ OWPDecodeTimeStamp(
  * 	bits as needed by the actual implementation.
  */
 OWPTimeStamp *
-OWPCvtTVtoTS(
+OWPCvtTimeval2Timestamp(
 	OWPTimeStamp	*tstamp,
 	struct timeval	*tval
 )
@@ -135,6 +135,33 @@ OWPCvtTVtoTS(
 	tstamp->sync = 0;
 
 	return(tstamp);
+}
+
+struct timeval *
+OWPCvtTimestamp2Timeval(
+	struct timeval	*tval,
+	OWPTimeStamp	*tstamp
+	)
+{
+	u_int32_t	frac;
+	u_int32_t	shift;
+
+	if(!tval || !tstamp)
+		return NULL;
+
+	frac = tstamp->frac_sec & 0xFFFFF;
+	if(tstamp->prec < 33)
+		frac = 0;
+	else{
+		/* shift for num sig digits in frac */
+		shift = 24 - (MIN(56,tstamp->prec) - 32);
+		frac = ((frac>>shift)<<shift);
+	}
+
+	tval->tv_sec = tstamp->sec - OWPJAN_1970;
+	tval->tv_usec =((double)frac * 1000000.0) / (double)(1<<24);
+
+	return tval;
 }
 
 

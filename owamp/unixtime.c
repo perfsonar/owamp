@@ -23,7 +23,6 @@
  */
 
 #include <owamp/owamp.h>
-#include <owamp/unixtime.h>
 
 /*
  * Function:	OWPGetTimeOfDay
@@ -59,5 +58,5 @@ OWPGetTimeOfDay(
 	if(gettimeofday(&tval,NULL) != 0)
 		return NULL;
 
-	return OWPCvtTVtoTS(tstamp,&tval);
+	return OWPCvtTimeval2Timestamp(tstamp,&tval);
 }

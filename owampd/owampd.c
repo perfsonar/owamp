@@ -554,6 +554,9 @@ ACCEPT:
 		if(OWPProcessRequests(cntrl) != OWPErrOK)
 			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
 				"Control session terminated abnormally...");
+
+		OWPControlClose(cntrl);
+
 		exit(0);
 	}
 	

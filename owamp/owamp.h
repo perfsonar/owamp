@@ -521,37 +521,54 @@ OWPRequestTestSession(
  * Client and Server
  */
 extern OWPErrSeverity
-OWPStartTestSessions(
+OWPStartSessions(
 	OWPControl	control_handle
 );
 
 /*
  * Wait for test sessions to complete. This function will return the
  * following integer values:
- * 	<0	ErrorCondition (can cast to OWPErrSeverity)
- * 	0	StopSessions received (OWPErrOK)
+ * 	<0	ErrorCondition
+ * 	0	StopSessions received and sent
  * 	1	wake_time reached
  *	2	system event (signal)
+ *
+ * To effect a poll - specify a waketime in the past. 1 will be returned
+ * if there is nothing to read.
+ * To block indefinately, specify a NULL wake_time.
  *
  * Client and Server
  */
 extern int
-OWPWaitTestSessionStop(
+OWPStopSessionsWait(
 	OWPControl	control_handle,
-	OWPTimeStamp	wake_time,		/* abs time */
+	OWPTimeStamp	*wake_time,		/* abs time */
+	OWPAcceptType	*acceptval,		/* rtn */
 	OWPErrSeverity	*err_ret
 );
+
+/*
+ * Send the StopSession message, and wait for the response.
+ *
+ * Client and Server.
+ */
+extern OWPErrSeverity
+OWPStopSessions(
+	OWPControl	control_handle,
+	OWPAcceptType	*acceptval	/* read/write */
+);
+
 
 /*
  * Return the file descriptor being used for the control connection. An
  * application can use this to call select or otherwise poll to determine
  * if anything is ready to be read but they should not read or write to
  * the descriptor.
- * This can be used in conjunction with the OWPWaitTestSessionStop
+ * This can be used in conjunction with the OWPStopSessionsWait
  * function so that the application can recieve user input, and only call
- * the OWPWaitTestSessionStop function when there is something to read
- * from the connection. (A timestamp in the past would be used in this case
- * so that OWPWaitTestSessionStop does not block.)
+ * the OWPStopSessionsWait function when there is something to read
+ * from the connection. (A nul timestamp would be used in this case
+ * so that OWPStopSessionsWait does not block.)
  *
  * If the control_handle is no longer connected - the function will return
  * a negative value.
@@ -561,17 +578,6 @@ OWPWaitTestSessionStop(
 extern int
 OWPGetControlFD(
 	OWPControl	control_handle
-);
-
-/*
- * Send the StopSession message, and wait for the response.
- *
- * Client and Server.
- */
-extern void
-OWPSendStopSessions(
-	OWPControl	control_handle,
-	OWPErrSeverity	*err_ret
 );
 
 extern
@@ -734,10 +740,17 @@ OWPHexEncode(
 #define	OWPJAN_1970	(unsigned long)0x83aa7e80	/* diffs in epoch*/
 
 extern OWPTimeStamp *
-OWPCvtTVtoTS(
+OWPCvtTimeval2Timestamp(
 	OWPTimeStamp	*tstamp,
 	struct timeval	*tval
 );
+
+extern struct timeval *
+OWPCvtTimestamp2Timeval(
+	struct timeval	*tval,
+	OWPTimeStamp	*tstamp
+	);
+
 
 extern OWPTimeStamp *
 OWPGetTimeOfDay(
