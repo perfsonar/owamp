@@ -193,6 +193,7 @@ print_rec(OWPDataRecPtr rec, int full)
 	fprintf(stdout, "seq_no=%-10u *LOST*\n", rec->seq_no);
 }
 
+#define MILLION 1000000 /* microseconds per seconds */
 
 int
 main(int argc, char *argv[]) 
@@ -201,15 +202,15 @@ main(int argc, char *argv[])
 	u_int32_t hdr_len, num_rec, i, last_seqno, dup, sent, lost;
 	state s;
 	u_int8_t prec = PREC_THRESHOLD;
-	u_int32_t *counts;
-	double delay;
+	u_int32_t *counts, min_microsec;
+	double delay, min;
 	
 	char     *progname;
 	int num_buckets, ch, verbose = 0;
 	I2LogImmediateAttr	ia;
 	u_int8_t out_hdrlen = sizeof(magic) + sizeof(version) 
 		+ sizeof(prec) + sizeof(out_hdrlen) + sizeof(sent) 
-		+ sizeof(lost) + sizeof(dup);
+		+ sizeof(lost) + sizeof(dup) + sizeof(min_microsec);
 
 	OWPInitializeConfigRec	owpcfg = {{0,0},NULL,NULL,NULL,NULL,0,NULL};
 	OWPContext		ctx;
@@ -313,6 +314,7 @@ main(int argc, char *argv[])
 
 	sent = lost = dup = 0;
 	last_seqno = 0xFFFFFFFF;
+	min = 9999999;
 
 	/* Do a single pass through the sorted records. */
 	for (i = 0; i < num_rec; i++) {
@@ -335,7 +337,9 @@ main(int argc, char *argv[])
 			continue;
 		}
 
-		delay = owp_delay(&s.records[i].send, &s.records[i].recv); 
+		delay = owp_delay(&s.records[i].send, &s.records[i].recv);
+		if (delay < min)
+			min = delay;
 		bucket = owp_bucket(delay);
 		assert((0 <= bucket) && (bucket <= OWP_MAX_BUCKET));
 		counts[bucket]++;
@@ -344,12 +348,15 @@ main(int argc, char *argv[])
 			print_rec(&s.records[i], 0);
 	}
 
+	min_microsec = (u_int32_t)(min * MILLION);
+
 	/* 
 	   Header contains: magic number, version, header length,
-	   precision, sent, lost and dup. NOTE: precision is
-	   given as the worse of send/recv - rather than the sum.
-	   Otherwise every merge would lead to worsening precision.
-	   Meaning of the first 3 fields are fixed for all header versions.
+	   precision, sent, lost, dup and min delay (in microseconds). 
+	   NOTE: precision is given as the worse of send/recv - rather 
+	   than the sum. Otherwise every merge would lead to worsening 
+	   precision. Meaning of the first 3 fields is fixed for all 
+	   header versions.
 	*/
 	if ((fwrite(magic, 1, sizeof(magic), out) < 1) 
 	    || (fwrite(&version, sizeof(version), 1, out) < 1)
@@ -357,7 +364,8 @@ main(int argc, char *argv[])
 	    || (fwrite(&prec, sizeof(prec), 1, out) < 1)
 	    || (fwrite(&sent, sizeof(sent), 1, out) < 1)
 	    || (fwrite(&lost, sizeof(lost), 1, out) < 1)
-	    || (fwrite(&dup, sizeof(dup), 1, out) < 1)) {
+	    || (fwrite(&dup, sizeof(dup), 1, out) < 1)
+	    || (fwrite(&min_microsec, sizeof(min_microsec), 1, out) < 1)) {
 		I2ErrLog(eh, "FATAL: fwrite() failed: %M");
 		exit(1);     
 	}
