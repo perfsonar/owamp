@@ -90,6 +90,7 @@ undef $slog;	# Don't keep tie'd ref's around unless you need them...
 #
 my($mtype,$node,$myaddr,$oaddr);
 my $debug = $conf->get_val(ATTR=>'DEBUG');
+my $verbose = $conf->get_val(ATTR=>'VERBOSE');
 my $foreground = $conf->get_val(ATTR=>'FOREGROUND');
 my $devnull = $conf->must_get_val(ATTR=>"devnull");
 my $suffix = $conf->must_get_val(ATTR=>"SessionSuffix");
@@ -124,8 +125,14 @@ $owampdinfofile .= $conf->must_get_val(NODE=>$me,ATTR=>'OWAMPDINFOFILE');
 #
 # receiving uptime reports on...
 #
-my $uptimeport = $conf->must_get_val(NODE=>$me,ATTR=>'UPTIMESENDTOPORT');
+my $myuptimeport = $conf->must_get_val(NODE=>$me,ATTR=>'UPTIMESENDTOPORT');
 my $udpmsglen = $conf->must_get_val(ATTR=>'UpTimeMaxMesgLen') + 0;
+
+#
+# send uptime reports to "central" on...
+#
+my $centupaddr = $conf->must_get_val(ATTR=>'UPTIMESENDTOADDR');
+my $centupport = $conf->must_get_val(ATTR=>'UPTIMESENDTOPORT');
 
 #
 # local data/path information
@@ -167,12 +174,18 @@ foreach $mtype (@mtypes){
 }
 die "No valid paths in mesh?" if(!defined(@dirlist));
 die "No valid nodes in mesh?" if(!defined(@addrlist));
+{
+	# Add Central host to the list.
+	my @tarr = ($centupaddr,$centupport);
+	push @addrlist, \@tarr;
+}
+
 mkpath([map {join '/',$datadir,$_} @dirlist],0,0775);
 
 chdir $datadir || die "Unable to chdir to $datadir";
 
 my($UptimeSocket) = IO::Socket::INET->new(
-				LocalPort	=>	$uptimeport,
+				LocalPort	=>	$myuptimeport,
 				Type		=>	SOCK_DGRAM,
 				Proto		=>	'udp',
 				ReuseAddr	=>	1,
@@ -779,6 +792,7 @@ sub live_update{
 		while(!$bzzt){
 			sigsuspend($nomask);
 		}
+warn "Bzzt!\n" if defined($debug);
 		$bzzt = 0;
 		# If we don't know the pid/starttime or if the pid is invalid
 		if(!$owampdpid || !$starttime || !kill(0,$owampdpid)){
@@ -827,8 +841,8 @@ sub live_update{
 
 		my($toaddr);
 		foreach $toaddr (keys %contacts){
-			print "SEND_UPTIME:$contacts{$toaddr}\n"
-				if defined($debug);
+			warn "SEND_UPTIME:$contacts{$toaddr}\n"
+				if defined($verbose);
 			$SendSocket->send($msg,0,$toaddr);
 		}
 	}
