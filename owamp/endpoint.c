@@ -920,7 +920,7 @@ run_sender(
     /*
      * initialize tspec version of "timeout"
      */
-    OWPNum64ToTimespec(&timeout,tsession->test_spec.loss_timeout);
+    OWPNum64ToTimespec(&timeout,ep->tsession->test_spec.loss_timeout);
 
     /*
      * Ensure schedule generation is starting at first packet in
@@ -985,9 +985,9 @@ AGAIN:
              * If current time is more than "timeout" past next
              * send time, then skip actually sending.
              */
-            lasttime = timeout;
-            timespecadd(&lasttime,&nexttime);
-            if(timespeccmp(&currtime,&lasttime,>)){
+            latetime = timeout;
+            timespecadd(&latetime,&nexttime);
+            if(timespeccmp(&currtime,&latetime,>)){
                 /*
                  * TODO: reduce num_sent?
                  */
@@ -1867,6 +1867,7 @@ OWPBoolean
 _OWPEndpointInitHook(
         OWPControl	cntrl,
         OWPTestSession	tsession,
+	OWPAcceptType	*aval,
         OWPErrSeverity	*err_ret
         )
 {
