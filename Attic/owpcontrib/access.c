@@ -1,54 +1,11 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/types.h>
-#include <limits.h>
-#include <math.h>
-#include <fcntl.h>
-#include <ndbm.h>
-#include <sys/stat.h>
-#include <assert.h>
-#include <netdb.h>
-#include <errno.h>
-#include <sys/wait.h>
-
-/* for inet_pton */
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-
-/* for ntohl */
-#include <sys/param.h>
-
-#define MAX_LINE 1024
-
-#ifndef MAXPATHLEN
-#define MAXPATHLEN 1024
-#endif
-
-/*
-** Need this to define the initial policy check function.
-*/
-#ifndef OWAMP_H
-typedef int		OWPBoolean;
-typedef enum {
-	OWPErrFATAL=-4,
-	OWPErrWARNING=-3,
-	OWPErrINFO=-2,
-	OWPErrDEBUG=-1,
-	OWPErrOK=0
-} OWPErrSeverity;
-typedef void (*OWPCheckAddrPolicy)(
-				   void *app_data,
-				   struct sockaddr *local,
-				   struct sockaddr *remote,
-				   OWPErrSeverity *err_ret
-				   );
-#endif
+/* #include "../libowamp/owamp.h" */
+#include "access.h"
 
 #define DEBUG   0
 #define LISTENQ 5
 #define SERV_PORT_STR "5555"
+
+#define MAX_MSG 60 /* XXX - currently 56 but KID to be extended by 4 bytes */
 #define KID_LEN 16
 #define PASSWD_LEN 16
 #define PASSWD_LEN_HEX (PASSWD_LEN * 2)
@@ -57,17 +14,17 @@ typedef void (*OWPCheckAddrPolicy)(
 #define AUTH_CLASS "authenticated"
 #define BANNED_CLASS "banned"
 
-/*
-** This structure is used to keep track of usage resources.
-*/
+#define SCRATCH 1
 
-typedef struct owamp_limits {
-	u_int32_t bandwidth;   /* bytes/sec                          */
-	u_int32_t space;       /* bytes                              */
-	u_int8_t num_sessions; /* number of concurrent test sessions */
-} OWAMPLimits;
+#if SCRATCH
+FILE *scratch;
+#endif
 
-typedef DBM* hash_ptr;
+struct subnet {
+	u_int32_t address;
+	u_int8_t offset;
+};
+
 hash_ptr ip2class_hash, class2limits_hash, passwd_hash;
 
 const char *DefaultConfigFile = DEFAULT_CONFIG_FILE;
@@ -78,6 +35,7 @@ const char *DefaultClassToLimitsFile = DEFAULT_CLASS_TO_LIMITS_FILE;
 char *ClassToLimitsFile = NULL;
 const char *DefaultPasswdFile = DEFAULT_PASSWD_FILE;
 char *PasswdFile = NULL;
+u_int32_t DefaultMode = OWP_MODE_OPEN;
 
 /* Global variable - the total number of allowed Control connections. */
 #define DEFAULT_NUM_CONN 100
@@ -162,24 +120,26 @@ owamp_denumberize(unsigned long addr)
 }
 
 
+/*
+** Compress subnet data into a subnet struct, and then datum,
+** to be used as a database key.
+*/
+
 datum *
-subnet2datum(u_int32_t addr, u_int8_t off)
+subnet2datum(u_int32_t address, u_int8_t offset)
 {
-	char *bytes;
 	datum *ret;
-	int num_bytes = sizeof(u_int32_t) + sizeof(u_int8_t);
 
-	if ( (ret = (void *)malloc(sizeof(datum))) == NULL)
-		return NULL;
-	if ( (ret->dptr = (void *)malloc(num_bytes)) == NULL)
-		return NULL;
+	if ( (ret = (void *)malloc(sizeof(datum))) == NULL) 
+		return NULL;    
+	if ( (ret->dptr = (void *)malloc(sizeof(struct subnet))) == NULL)     
+		return NULL; 
 
-	ret->dsize = num_bytes;
-	*(u_int32_t*)(ret->dptr) = addr;
-	*(u_int8_t*)((ret->dptr) + 4) = off;	
+	((struct subnet *)(ret->dptr))->address = address;
+	((struct subnet *)(ret->dptr))->offset = offset;
+	ret->dsize = sizeof(struct subnet);
 	return ret;
 }
-
 /*
 ** Determines whether the given nework/offset combination
 ** is valid. Returns 1 if yes, and 0 otherwise.
@@ -446,7 +406,6 @@ read_passwd_file(const char *passwd_file, hash_ptr hash)
 	fclose(fp);
 }
 
-
 char *
 ipaddr2class(u_int32_t ip)
 {
@@ -469,69 +428,6 @@ ipaddr2class(u_int32_t ip)
 		return val_dat.dptr;
 
 	return DEFAULT_OPEN_CLASS;
-}
-
-void
-test_ip2class()
-{
-	char line[MAX_LINE];
-	u_int32_t ip;
-	while (1){
-		printf("\nEnter a dotted IP address, or 'x' to exit:\n");
-		fgets(line, sizeof(line), stdin);
-		if (line[0] == 'x')
-			break;
-		line[strlen(line)-1] = '\0';
-		
-		if ( (ip = owamp_numberize(line)) == -1){
-			fprintf(stderr,"could not numberize IP = %s\n", line);
-			continue;
-		}
-		printf("the class for ip = %lu is %s\n", ip, ipaddr2class(ip));
-	}
-}
-
-/*
-** This function prints out the hash, given by the argument <hash>.
-** It is used mostly for debugging.
-*/
-
-void
-owamp_print_ip2class(hash_ptr hash)
-{
-	datum key, val;
-
-	for(key=hash_firstkey(hash);key.dptr != NULL;key = hash_nextkey(hash)){
-		val = hash_fetch(hash, key);
-		if (!val.dptr)
-			continue;
-		fprintf(stderr, "the value of key %s/%u is = %s\n",
-	     owamp_denumberize(get_ip_addr(&key)), get_offset(&key), val.dptr);
-	}
-}
-
-void
-print_limits(OWAMPLimits * limits)
-{
-	printf("bw = %lu, space = %lu, num_sessions = %u\n",
-	       OWAMPGetBandwidth(limits),
-	       OWAMPGetSpace(limits),
-	       OWAMPGetNumSessions(limits)
-	       );
-}
-
-void
-owamp_print_class2limits(hash_ptr hash)
-{
-	datum key, val;
-
-	for(key=hash_firstkey(hash);key.dptr != NULL;key = hash_nextkey(hash)){
-		val = hash_fetch(hash, key);
-		if (!val.dptr)
-			continue;
-		printf("the limits for class %s are: ", key.dptr);
-		print_limits((OWAMPLimits *)val.dptr);
-	}
 }
 
 /* 
@@ -592,11 +488,10 @@ owamp_read_class2limits(const char *class2limits, hash_ptr hash)
 				OWAMPSetNumSessions(&limits, numval);
 			printf("DEBUG: key = %s value =  %lu\n", key, numval);
 			} 
-		printf("\n");
+		printf("\n");                     /* DEBUG */
 
 		/* Now save the limits structure in the hash. */
-		key_dat.dptr = (char *)class;
-		key_dat.dsize = strlen(class) + 1;
+		key_dat = *(str2datum(class));
 		val_dat.dptr = (char *)&limits;
 		val_dat.dsize = sizeof(OWAMPLimits);
 		hash_store(hash, key_dat, val_dat, DBM_REPLACE);
@@ -629,52 +524,6 @@ owamp_first_check(void *app_data,
 	default:
 		return 0;
 		break;
-	}
-}
-
-void
-test_policy_check()
-{
-	int s, connfd;
-	struct sockaddr_in sockaddr, cliaddr;
-	OWPErrSeverity out;
-
-	if ( (s = socket(AF_INET, SOCK_STREAM, 0)) < 0){
-		perror("socket");
-		exit(1);
-	}
-
-	bzero(&sockaddr, sizeof(sockaddr)); 
-	sockaddr.sin_family = AF_INET;
-	sockaddr.sin_port = htons(5555);
-	sockaddr.sin_addr.s_addr = htonl(INADDR_ANY);
-
-	if (bind(s, (struct sockaddr *)(&sockaddr), sizeof(sockaddr)) < 0){
-		perror("bind");
-		exit(1);
-	}
-
-	if (listen(s, 5) < 0){
-		perror("listen");
-		exit(1);
-	}
-
-	while (1){
-		int len = sizeof(cliaddr);
-		connfd = accept(s, (struct sockaddr *)(&cliaddr), &len);
-		switch(owamp_first_check(NULL,NULL,
-				     (struct sockaddr *)&cliaddr, &out)){
-		case 0:
-			fprintf(stderr, "DEBUG: access prohibited\n");
-			break;
-		case 1:
-			fprintf(stderr, "DEBUG: access allowed\n");
-			break;
-		default:
-			fprintf(stderr, "DEBUG: policy is confused\n");
-			break;
-		};
-		close(connfd); 
 	}
 }
 
@@ -722,52 +571,109 @@ tcp_listen(const char *host, const char *serv, socklen_t *addrlenp)
 }
 /* end tcp_listen */
 
-/* XXX - must implement implement */
+/* XXX - currently default. Make configurable later. */
 u_int32_t
 get_mode()
 {
-	return 4;
+	return OWP_MODE_OPEN;
 }
 
 void
 random_byte(char *ptr)
 {
-	u_int8_t r = random() / (RAND_MAX / 1<<8);
-	*(u_int8_t *)ptr = r;
+	*(u_int8_t *)ptr = random() / (RAND_MAX / 1<<8);
+}
+
+int
+send_data(int sock, char *buf, size_t len, OWPBoolean encrypt)
+{
+	if (!encrypt){
+		if (writen(sock, buf, len) < 0)
+			return -1;
+	}
+	return 0;
+}
+
+
+void
+decrypt(char *in_block, size_t len, char* out_block, char* IV)
+{
+	;
 }
 
 void
-do_control_client(pid_t connfd)
+doit(int connfd)
 {
-	char greeting[32];
+	char buf[MAX_MSG];
 	char *cur;
 	u_int32_t mode;
-	int i;
+	int i, encrypt;
+	u_int32_t mode_requested;
+	u_int8_t challenge[16], token[16], session_key[16];
+	char kid[8]; /* XXX - assuming Stas will extend KID to 8 bytes */
 
-	/* first send server greeting */
-	bzero(greeting, 32);
+	/* first generate server greeting */
+	bzero(buf, sizeof(buf));
 	mode = htonl(get_mode());
-	*(int32_t *)(greeting + 12) = mode;
+	*(int32_t *)(buf + 12) = mode; /* first 12 bytes unused */
 
 	/* generate random data for the last 16 bytes.
-	** We'll do it 16 times, one byte at a time
+	** We'll do it 16 times, one byte at a time, saving the result.
 	*/
-	cur = greeting + 16;
-	for (i = 0; i < 16; i++){
-		random_byte(cur);
-		cur++;
+	for (i = 0; i < 16; i++)
+		random_byte(challenge + i);
+	bcopy(challenge, buf + 16, 16); /* the last 16 bytes */
+
+	/* Send server greeting. */
+	encrypt = 0;
+	if (send_data(connfd, buf, 32, encrypt) < 0){
+		fprintf(stderr, "Warning: send_data failed.\n");
+		close(connfd);
+		exit(1);
 	}
 
-	
+	/* Read client greeting. */
+	if (readn(connfd, buf, 60) != 60){
+		fprintf(stderr, "Warning: client greeting too short.\n");
+		exit(1);
+	}
 
-	;
+	mode_requested = htonl(*(u_int32_t *)buf);
+	
+	if (mode_requested & OWP_MODE_AUTHENTICATED){
+
+		/* Save 8 bytes of kid */
+		bcopy(buf + 4, kid, 8);
+
+		/* Decrypt the token and compare the 16 bytes of challenge */
+		decrypt(buf + 12, 32, token, NULL);
+		if (bcmp(challenge, token, 16)){
+			fprintf(stderr, "Authentication failed.\n");
+			close(connfd);
+			exit(1);
+		}
+
+		/* Save 16 bytes of session key */
+		bcopy(token + 16, session_key, 16);
+	}
+	
 }
+
+/* 
+** This function is called when the server doesn't even want
+** to speak Control protocol with a particular host.
+*/
 
 void
 do_ban(int fd)
 {
 	Close(fd);
 }
+
+/*
+** Handler function for SIG_CHLD. It updates the number
+** of available Control connections.
+*/
 
 void
 sig_chld(int signo)
@@ -798,6 +704,13 @@ main(int argc, char *argv[])
 	char *host = NULL; 
 	pid_t pid;
 	OWPErrSeverity out;
+
+#if SCRATCH
+	if ( (scratch = fopen("scratch.txt", "w")) == NULL){
+		perror("fopen scratch.txt for writing.\n");
+		exit(1);
+	}
+#endif
 
 	/* Parse command line options. */
 	while ((c = getopt(argc, argv, "f:a:p:n:h")) != -1) {
@@ -913,7 +826,7 @@ main(int argc, char *argv[])
 			sys_quit("fork");
 
 		if (pid == 0) { /* child */
-			do_control_client(connfd);
+			doit(connfd);
 			exit(0);
 		}
 
@@ -924,6 +837,10 @@ main(int argc, char *argv[])
 	hash_close(ip2class_hash);
 	hash_close(class2limits_hash);
 	hash_close(passwd_hash);
+
+#if SCRATCH
+	fclose(scratch);
+#endif
 
 	exit(0);
 }
