@@ -28,14 +28,23 @@ my $index_page = join '/', $conf->{'CENTRALWWWDIR'}, 'index.html';
 my $recv;
 
 open INDEXFH, ">$index_page" or die "Could not open $index_page";
+select INDEXFH;
 
-print INDEXFH start_html('Abilene OWAMP actives meshes.'),
+print  start_html('Abilene OWAMP actives meshes.'),
 	h1('Abilene OWAMP active meshes.');
+
+print '<p>';
+print <<"STOP";
+Each mesh (IPv4, IPv6) is described by a separate table. For each
+link within a mesh we print median delay (ms) [...more stuff?].
+Senders are listed going down the column, and receivers along the row.
+STOP
+print '</p>';
 
 foreach my $mtype (@mtypes){
     my $first_row = [$mtype, @nodes];
     my $table_str =
-    q/print INDEXFH table({-border=>1},
+    q/print  table({-border=>1},
 		caption(''),
 		Tr({-align=>'CENTER',-valign=>'TOP'},
 		   [
@@ -57,14 +66,16 @@ foreach my $mtype (@mtypes){
     eval $table_str;
 }
 
-print INDEXFH end_html;
+print end_html;
 close INDEXFH;
 
 sub fetch_sender_data {
     my ($sender, $recv, $mtype) = @_;
 
-    my ($datadir, $rel_wwwdir, $summary_file, $png_file, $wwwdir) =
+    my ($datadir, $summary_file, $wwwdir) =
 	    $conf->get_names_info($mtype, $recv, $sender, 30, 2);
+
+    my $rel_wwwdir = $conf->get_rel_path($mtype, $recv, $sender);
 
     unless (-f $summary_file) {
 	warn "summary file $summary_file not found - skipping";

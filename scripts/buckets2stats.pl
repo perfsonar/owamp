@@ -21,7 +21,7 @@ use strict;
 # front page table.
 
 use strict;
-use constant DEBUG => 0;
+use constant DEBUG => 1;
 use constant VERBOSE => 1;
 use FindBin;
 use lib ("$FindBin::Bin");
@@ -69,6 +69,7 @@ my $digest_suffix = $conf->get_val(ATTR=>'DigestSuffix');
 open(GNUPLOT, "| gnuplot") or die "cannot execute gnuplot";
 autoflush GNUPLOT 1;
 
+
 my $age = $conf->must_get_val(DIGESTRES=>$res, ATTR=>'PLOTPERIOD');
 my $res_name = $conf->must_get_val(DIGESTRES=>$res, ATTR=>'COMMONRESNAME');
 my $period_name = $conf->must_get_val(DIGESTRES=>$res, 
@@ -92,8 +93,9 @@ foreach my $mtype (@mtypes){
 sub plot_resolution {
     my ($conf, $mtype, $recv, $sender, $age, $mode) = @_;
     my $body = "$mtype/$recv/$sender/$res";
-    my ($datadir, $rel_wwwdir, $summary_file, $png_file, $wwwdir) =
+    my ($datadir, $summary_file, $wwwdir) =
 	    $conf->get_names_info($mtype, $recv, $sender, $res, $mode);
+    my $png_file = get_png_prefix($res, $mode);
 
     print "plot_resolution: trying datadir = $datadir\n" if VERBOSE;
 
@@ -131,7 +133,7 @@ sub plot_resolution {
 
 	my @gm = gmtime($sec);
 	my ($second, $minute, $hour, $day, $mon, $year, $wday, $yday) = @gm;
-	warn join "\n", "sec=$second", "min=$minute", "hour=$hour",
+	warn join " ", "DEBUG: sec=$second", "min=$minute", "hour=$hour",
 		"mon=$mon", "year=$year", '' if DEBUG;
 
 	# Read the header.
@@ -179,9 +181,29 @@ sub plot_resolution {
 	}
 	close FH;
 
+# Suppose the file "data" contains records like
+
+# 03/21/95 10:00  6.02e23
+
+# This file can be plotted by
+
+# set xdata time
+#       set timefmt "%m/%d/%y"
+#       set xrange ["03/21/95":"03/22/95"]
+#       set format x "%m/%d"
+#       set timefmt "%m/%d/%y %H:%M"
+#       plot "data" using 1:3
+
+# which will produce xtic labels that look like "03/21".
+
+# http://amath.colorado.edu/computing/software/man/gnuplot.html
+
+
+	my $lost_perc = sprintf "%.3f", ($lost/$sent)*100;
 	# Compute stats for a new data point.
-	my @stats = (get_percentile(0.5, $sent, \@buckets), $min,
-		     get_percentile(0.9, $sent, \@buckets));
+	my @stats = map {sprintf "%.3f", $_} 
+		(get_percentile(0.5, $sent, \@buckets), $min,
+		 get_percentile(0.9, $sent, \@buckets), $lost_perc);
 
 	print join "\n", "Stats for the file $datafile are:",
 		@stats, '' if DEBUG;
@@ -201,7 +223,6 @@ sub plot_resolution {
 	warn "renaming to newname $summary_file" if DEBUG;
 	rename $tmp_name, "$summary_file"
 		or die "Could not rename $tmp_name to $summary_file: $!";
-
     }
 
     close GNUDAT;
@@ -210,24 +231,39 @@ sub plot_resolution {
 	return;
     }
 
-    my $full_png = "$wwwdir/$png_file";
-    my $title = "Delays: Min, Median, and 90th Percentile " .
+    my $delays_png = "$wwwdir/$png_file-delays.png";
+    my $delays_title = "Delays: Min, Median, and 90th Percentile " .
 	    "for the last $period_name sampled at $res_name frequency";
+    my $loss_png = "$wwwdir/$png_file-loss.png";
+    my $loss_title = "Loss percentage " .
+	    "for the last $period_name sampled at $res_name frequency";
+    my $fmt = $conf->must_get_val(DIGESTRES=>$res, ATTR=>'PLOT_FMT');
+    my @tmp = split //, $fmt;
+    my $fmt_xlabel = join '/', map {code2unit($_)} @tmp;
+
+    $fmt = join '/', map {"%$_"} split //, $fmt;
+
+#    print "DEBUG: set format x \"$fmt\""; die;
+
     print GNUPLOT <<"STOP";
 set terminal png small color
 set xdata time
-set format x "%M:%S"
+set format x \"$fmt\"
 set timefmt "%m/%d/%H/%M/%S"
 set nokey
 set grid
-set xlabel "Time"
+set xlabel "Time ($fmt_xlabel)"
 set ylabel "Delay (ms)"
-set title \"$title\"
-set output "$full_png"
+set title \"$delays_title\"
+set output "$delays_png"
 plot "$gnu_dat" using 1:2:3:4 with errorbars ps 1
+set ylabel "Loss (%)"
+set title \"$loss_title\"
+set output "$loss_png"
+plot "$gnu_dat" using 1:5 ps 1
 STOP
 
-    warn "plotted file: $full_png" if VERBOSE;
+    warn "plotted files: $delays_png $loss_png" if VERBOSE;
 }
 
 # convert bucket index to the actual time value
@@ -291,3 +327,13 @@ sub is_younger_than {
 sub printlist {
     print join " ", @_, "\n\n";
 }
+
+sub code2unit {
+    my $t = $_[0];
+    $t eq 'H' && return 'hour';
+    $t eq 'M' && return 'minute';
+    $t eq 'S' && return 'second';
+    $t eq 'd' && return 'day';
+    $t eq 'm' && return 'month';
+};
+

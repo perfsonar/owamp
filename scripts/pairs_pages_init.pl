@@ -26,14 +26,16 @@ my @nodes = $conf->get_val(ATTR=>'MESHNODES');
 my @resolutions = $conf->get_val(ATTR=>'DIGESTRESLIST');
 
 my $fake_res = 30;
+my $mode = 1;
+
 
 foreach my $mtype (@mtypes) {
     foreach my $recv (@nodes) {
 	foreach my $sender (@nodes) {
 	    my ($rel_dir, $wwwdir, $rel_wwwdir);
-	    (undef, $rel_dir, undef, undef, $wwwdir) =
+	    (undef, undef, $wwwdir) =
 		    $conf->get_names_info($mtype, $recv, $sender,
-					  $fake_res, 1);
+					  $fake_res, $mode);
 
 	    if (-f $wwwdir) {
 		warn "$wwwdir exists and is a file - skipping";
@@ -48,23 +50,27 @@ foreach my $mtype (@mtypes) {
 		    or die "Could not open $html_file: $!";
 	    select FH;
 	    print start_html("$mtype mesh. Link $sender --> $recv");
+#	    print '<META HTTP-EQUIV="refresh"; content="10;">';
 	    print h1("$mtype mesh. Link $sender --> $recv");
 	    my $href1 = a({-href => '#delays'}, 'Delay statistics');
 	    my $href2 = a({-href => '#loss'}, 'Loss statistics');
 	    print ol(li($href1), li($href2));
 
-	    foreach my $res (@resolutions) {
-		my $res_name = $conf->must_get_val(DIGESTRES=>$res,
-						   ATTR=>'COMMONRESNAME');
-		my $period_name = $conf->must_get_val(DIGESTRES=>$res,
-				      ATTR=>'PLOT_PERIOD_NAME');
+	    foreach my $type ('delays', 'loss') {
+		print h2(a({-name=>"$type"}, upcase($type) . " statistics."));
+		foreach my $res (@resolutions) {
+		    my $res_name = $conf->must_get_val(DIGESTRES=>$res,
+						       ATTR=>'COMMONRESNAME');
+		    my $period_name = $conf->must_get_val(DIGESTRES=>$res,
+						     ATTR=>'PLOT_PERIOD_NAME');
 
+		    my $png_name = get_png_prefix($res, $mode);
 		    my $title = "Sample period: $period_name. Frequency: " .
-				    "$res_name";
+			    "$res_name";
 		    print h4({-align=>'CENTER'}, $title);
 		    print p({align => "CENTER"},
-			    img {src => "$res.png"});
-		    warn "DEBUG: src=$rel_dir/$res.png" if DEBUG;
+			    img {src => "$png_name-$type.png"});
+		}
 	    }
 
 	    print end_html;
@@ -73,3 +79,9 @@ foreach my $mtype (@mtypes) {
     }
 }
 
+# convert a word to uppercase.
+sub upcase {
+    my $ret = $_[0];
+    $ret =~ s/^(.*)$/\u$1/;
+    return $ret;
+}
