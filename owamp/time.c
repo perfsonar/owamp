@@ -33,8 +33,6 @@
  *
  *
  */
-#include <sys/types.h>
-#include <sys/param.h>
 #include <owamp/owamp.h>
 
 /*
@@ -52,11 +50,12 @@
  */
 void
 OWPEncodeTimeStamp(
-	OWPByte		buf[8],
+	u_int32_t	buf_aligned[2],
 	OWPTimeStamp	*tstamp
 	)
 {
 	u_int32_t	t32;
+	u_int8_t	*buf = (u_int8_t *)buf_aligned;
 
 	/*
 	 * seconds is straight forward.
@@ -85,15 +84,16 @@ OWPEncodeTimeStamp(
 void
 OWPDecodeTimeStamp(
 	OWPTimeStamp	*tstamp,
-	OWPByte		buf[8]
+	u_int32_t	buf_aligned[2]
 	)
 {
 	u_int32_t	t32 = 0;
+	u_int8_t	*buf = (u_int8_t*)buf_aligned;
 
 	/*
 	 * seconds is straight forward.
 	 */
-	tstamp->sec = ntohl((u_int32_t)buf[0]);
+	tstamp->sec = ntohl(*(u_int32_t*)&buf[0]);
 
 	/*
 	 * network order is big endien - so copy 24 bit fraction to low

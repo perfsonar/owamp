@@ -26,6 +26,8 @@
 #include <netinet/in.h>
 #include <string.h>
 
+#include <I2util/util.h>
+
 #include "./owampP.h"
 
 static OWPBoolean
@@ -356,14 +358,14 @@ OWPControlOpen(
 	OWPErrSeverity	*err_ret	/* err - return		*/
 )
 {
-	int		fd;
+	int		rc;
 	OWPControl	cntrl;
 	u_int32_t	mode_avail;
-	OWPByte         key_value[16];
-	OWPByte		challenge[16];
-	OWPByte		token[32];
-	OWPByte         *key=NULL;
-	struct sockaddr	*local=NULL, *remote;
+	u_int8_t	key_value[16];
+	u_int8_t	challenge[16];
+	u_int8_t	token[32];
+	u_int8_t	*key=NULL;
+	OWPAcceptType	acceptval;
 
 	*err_ret = OWPErrOK;
 
@@ -381,9 +383,10 @@ OWPControlOpen(
 	if(_OWPClientConnect(cntrl,local_addr,server_addr,err_ret) != 0)
 		goto error;
 
-	if(_OWPClientReadServerGreeting(cntrl,&mode_avail,challenge,err_ret)
-			!= 0)
+	if( (rc=_OWPReadServerGreeting(cntrl,&mode_avail,challenge)) < 0){
+		*err_ret = (OWPErrSeverity)rc;
 		goto error;
+	}
 
 	/*
 	 * Select mode wanted...
@@ -420,28 +423,34 @@ OWPControlOpen(
 				server_addr->saddr,err_ret)){
 		cntrl->mode = OWP_MODE_ENCRYPTED;
 	}
-	else if((mode_avail & OWP_MODE_AUTHENTICATED) &&
+	else if((*err_ret == OWPErrOK) &&
+			(mode_avail & OWP_MODE_AUTHENTICATED) &&
 			_OWPCallCheckControlPolicy(ctx,OWP_MODE_AUTHENTICATED,
 				cntrl->kid,(local_addr)?local_addr->saddr:NULL,
 				server_addr->saddr,err_ret)){
 		cntrl->mode = OWP_MODE_AUTHENTICATED;
 	}
-	else if((mode_avail & OWP_MODE_OPEN) &&
+	else if((*err_ret == OWPErrOK) &&
+			(mode_avail & OWP_MODE_OPEN) &&
 			_OWPCallCheckControlPolicy(ctx,OWP_MODE_OPEN,
 				NULL,(local_addr)?local_addr->saddr:NULL,
 				server_addr->saddr,err_ret)){
 		cntrl->mode = OWP_MODE_OPEN;
 	}
-	else{
-		OWPError(ctx,*err_ret,OWPErrPOLICY,"No Common Modes");
+	else if(*err_ret != OWPErrOK){
 		goto error;
+	}
+	else{
+		OWPError(ctx,OWPErrINFO,OWPErrPOLICY,
+				"OWPControlOpen:No Common Modes");
+		goto denied;
 	}
 
 	/*
 	 * Initialize all the encryption values as necessary.
 	 */
 	if(cntrl->mode & _OWP_DO_CIPHER){
-		char	buf[32];
+		unsigned char	buf[32];
 
 		memcpy(buf,challenge,16);
 		I2RandomBytes(cntrl->session_key,16);
@@ -459,19 +468,26 @@ OWPControlOpen(
 	I2RandomBytes(cntrl->writeIV,32);
 
 	/*
-	 * This function requests the cntrl->mode communication from the
-	 * server, and validates the kid/key with the server. If the
-	 * server accepts this, it will return 0 - otherwise it will
-	 * return with an error.
+	 * Write the client greeting, and see if the Server agree's to it.
 	 */
-	if(_OWPClientRequestModeReadResponse(cntrl,token,err_ret) != 0)
+	if( ((rc=_OWPWriteClientGreeting(cntrl,token)) < 0) ||
+			((rc=_OWPReadServerOK(cntrl,&acceptval)) < 0)){
+		*err_ret = (OWPErrSeverity)rc;
 		goto error;
+	}
+
+	if(acceptval != _OWP_CNTRL_ACCEPT){
+		OWPError(cntrl->ctx,OWPErrINFO,OWPErrPOLICY,
+							"Server denied access");
+		goto denied;
+	}
 
 	cntrl->state = _OWPStateRequest;
 	return cntrl;
 
 error:
 	*err_ret = OWPErrFATAL;
+denied:
 	if(cntrl->local_addr != local_addr)
 		OWPAddrFree(local_addr);
 	if(cntrl->remote_addr != server_addr)
@@ -489,7 +505,7 @@ SetEndpointAddrInfo(
 {
 	int		so_type;
 	socklen_t	so_typesize = sizeof(so_type);
-	OWPByte		sbuff[SOCK_MAXADDRLEN];
+	u_int8_t	sbuff[SOCK_MAXADDRLEN];
 	socklen_t	so_size = sizeof(sbuff);
 	struct sockaddr	*saddr=NULL;
 	struct addrinfo	*ai=NULL;
@@ -510,7 +526,7 @@ SetEndpointAddrInfo(
 		/*
 		 * Get an saddr to describe the fd...
 		 */
-		if(getsockname(addr->fd,(void*)&sbuff,&so_size) != 0){
+		if(getsockname(addr->fd,(void*)sbuff,&so_size) != 0){
 			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,
 				errno,"getsockname():%s",
 				strerror(errno));
@@ -600,6 +616,85 @@ error:
 	return FALSE;
 }
 
+static int
+_OWPClientRequestTestReadResponse(
+	OWPControl	cntrl,
+	OWPAddr		sender,
+	OWPBoolean	server_conf_sender,
+	OWPAddr		receiver,
+	OWPBoolean	server_conf_receiver,
+	OWPTestSpec	*test_spec,
+	OWPSID		sid,		/* ret iff conf_receiver else set */
+	OWPErrSeverity	*err_ret
+	)
+{
+	int		rc;
+	OWPAcceptType	acceptval;
+	struct sockaddr	*set_addr=NULL;
+	u_int16_t	*port_ret=NULL;
+	u_int8_t	*sid_ret=NULL;
+
+	if((rc = _OWPWriteTestRequest(cntrl,sender->saddr,receiver->saddr,
+					server_conf_sender,server_conf_receiver,
+					sid,test_spec)) < 0){
+		*err_ret = (OWPErrSeverity)rc;
+		return -1;
+	}
+
+	/*
+	 * Figure out if the server will be returning Port field.
+	 * If so - set set_addr to the sockaddr that needs to be set.
+	 */
+	if(server_conf_sender && !server_conf_receiver)
+		set_addr = sender->saddr;
+	else if(!server_conf_sender && server_conf_receiver)
+		set_addr = receiver->saddr;
+
+	/*
+	 * If it was determined that the server will be returning port,
+	 * figure out the correct offset into set_addr for they type
+	 * of sockaddr, and set port_ret to that address.
+	 * (Don't you just love the joy's of supporting multiple AF's?)
+	 */
+	if(set_addr){
+		switch(set_addr->sa_family){
+			struct sockaddr_in	*saddr4;
+#ifdef	AF_INET6
+			struct sockaddr_in6	*saddr6;
+			case AF_INET6:
+				saddr6 = (struct sockaddr_in6*)set_addr;
+				port_ret = &saddr6->sin6_port;
+				break;
+#endif
+			case AF_INET:
+				saddr4 = (struct sockaddr_in*)set_addr;
+				port_ret = &saddr4->sin_port;
+				break;
+			default:
+				OWPErrorLine(cntrl->ctx,OWPLine,
+						OWPErrFATAL,OWPErrINVALID,
+						"Invalid address family");
+				return -1;
+		}
+	}
+
+	if(server_conf_receiver)
+		sid_ret = sid;
+
+	if((rc = _OWPReadTestAccept(cntrl,&acceptval,port_ret,sid_ret)) < 0){
+		*err_ret = (OWPErrSeverity)rc;
+		return -1;
+	}
+
+	if(acceptval == _OWP_CNTRL_ACCEPT)
+		return 0;
+
+	/*
+	 * TODO: report addresses for test here.
+	 */
+	OWPError(cntrl->ctx,OWPErrINFO,OWPErrPOLICY,"Server denied test:");
+	return -1;
+}
 
 OWPBoolean
 OWPRequestTestSession(
@@ -822,10 +917,15 @@ error:
 	return False;
 }
 
+/*
+ * TODO: write this.
+ */
 OWPErrSeverity
 OWPStartTestSessions(
 	OWPControl	cntrl
 )
 {
+	OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+			"OWPStartTestSessions:Unimplemented...");
 	return OWPErrFATAL;
 }

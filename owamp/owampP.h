@@ -43,23 +43,79 @@
 #endif
 #endif	/* HAVE_CONFIG_H */
 
+#ifndef	HAVE___ATTRIBUTE__
+#define __attribute__(x)
+#endif
+
+#include <stdlib.h>
+#include <stdio.h>
+#include <errno.h>
+#include <string.h>
+#include <unistd.h>
+#include <netdb.h>
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/socket.h>
+#include <sys/param.h>
+#include <netinet/in.h>
 
+#ifndef	MAXHOSTNAMELEN
+#define	MAXHOSTNAMELEN	64
+#endif
+
+#include <I2util/util.h>
 #include <owamp/owamp.h>
+
 #include "rijndael-api-fst.h"
 
-#define	_OWP_ERR_MAXSTRING	1024
 #define	_OWP_DO_CIPHER		(OWP_MODE_AUTHENTICATED|OWP_MODE_ENCRYPTED)
 
 /* 
 ** Lengths (in 16-byte blocks) of various Control messages. 
 */
-#define OWP_TEST_REQUEST_BLK_LEN     6
-#define OWP_TEST_START_BLK_LEN       2
-#define OWP_TEST_STOP_BLK_LEN        2
-#define OWP_TEST_RETRIEVE_BLK_LEN    3
+#define _OWP_RIJNDAEL_BLOCK_SIZE	16
+#define _OWP_TEST_REQUEST_BLK_LEN	6
+#define _OWP_START_SESSIONS_BLK_LEN	2
+#define _OWP_STOP_SESSIONS_BLK_LEN	2
+#define _OWP_RETRIEVE_SESSION_BLK_LEN	3
+#define _OWP_CONTROL_ACK_BLK_LEN	2
+#define _OWP_MAX_MSG_BLK_LEN		_OWP_TEST_REQUEST_BLK_LEN
+#define _OWP_MAX_MSG	(_OWP_MAX_MSG_BLK_LEN*_OWP_RIJNDAEL_BLOCK_SIZE)
+
+/*
+ * Control state constants.
+ */
+/* initial & invalid */
+#define	_OWPStateInitial	(0x00)
+#define	_OWPStateInvalid	(0x00)
+/* during negotiation */
+#define	_OWPStateSetup		(0x01)
+/* after negotiation ready for requests */
+#define	_OWPStateRequest	(0x02)
+/* test sessions are active  */
+#define	_OWPStateTest		(0x04)
+/*
+ * The following states are for partially read messages on the server.
+ */
+#define _OWPStateReadingTestRequest	(0x08)
+#define _OWPStateReadingStartSessions	(0x0F)
+#define _OWPStateReadingStopSessions	(0x010)
+#define _OWPStateReadingRetrieveSession	(0x020)
+
+#define _OWPStateTestAccept	(0x040)
+#define _OWPStateControlAck	(0x080)
+
+#define	_OWPStateIsInitial(c)	(!(c)->state)
+#define	_OWPStateIsSetup(c)	(!(_OWPStateSetup ^ (c)->state))
+#define	_OWPStateIsRequest(c)	((_OWPStateRequest & (c)->state))
+#define	_OWPStateIsTest(c)	((_OWPStateTest & (c)->state))
+
+#define _OWPStateIs(teststate,c)	((teststate & (c)->state))
+
+/*
+ * other useful constants.
+ */
+#define _OWP_ERR_MAXSTRING	(1024)
 
 /*
  * Data structures
@@ -92,23 +148,6 @@ struct OWPAddrRec{
 	int		fd;
 };
 
-/*
- * Control state constants.
- */
-/* initial */
-#define	_OWPStateInitial	(0x00)
-/* during negotiation */
-#define	_OWPStateSetup		(0x01)
-/* after negotiation ready for requests */
-#define	_OWPStateRequest	(0x02)
-/* test sessions are active  */
-#define	_OWPStateTest		(0x04)
-
-#define	_OWPStateIsInitial(c)	(!(c)->state)
-#define	_OWPStateIsSetup(c)	(!(_OWPStateSetup ^ (c)->state))
-#define	_OWPStateIsRequest(c)	(!(_OWPStateRequest ^ (c)->state))
-#define	_OWPStateIsTest(c)	(!(_OWPStateTest ^ (c)->state))
-
 typedef struct OWPTestSessionRec OWPTestSessionRec, *OWPTestSession;
 struct OWPControlRec{
 	/*
@@ -122,7 +161,17 @@ struct OWPControlRec{
 	OWPBoolean		server;	/* this record represents server */
 	int			state;	/* current state of connection */
 	OWPSessionMode		mode;
-	char                    msg[MAX_MSG]; /* area for peer's messages */
+
+	/*
+	 * This field is initialized to zero and used for comparisons
+	 * to ensure AES is working.
+	 */
+	u_int8_t		zero[16];
+
+				/* area for peer's messages		*/
+				/* make u_int32_t to get wanted alignment */
+				/* Usually cast to u_int8_t when used... */
+	u_int32_t		msg[_OWP_MAX_MSG/sizeof(u_int32_t)];
 
 	/*
 	 * Address specification and "network" information.
@@ -139,9 +188,9 @@ struct OWPControlRec{
 	char			kid_buffer[9];
 	keyInstance             encrypt_key;
 	keyInstance             decrypt_key;
-	OWPByte			session_key[16];
-	OWPByte			readIV[16];
-	OWPByte			writeIV[16];
+	u_int8_t		session_key[16];
+	u_int8_t		readIV[16];
+	u_int8_t		writeIV[16];
 
 	struct OWPControlRec	*next;
 	OWPTestSession		tests;
@@ -222,77 +271,207 @@ _OWPConnect(
 extern int
 _OWPSendBlocks(
 	OWPControl	cntrl,
-	char		*buf,
+	u_int8_t	*buf,
 	int		num_blocks
 	      );
 
 extern int
 _OWPReceiveBlocks(
 	OWPControl	cntrl,
-	char		*buf,
+	u_int8_t	*buf,
 	int		num_blocks
 		);
 
 extern int
 _OWPEncryptBlocks(
 	OWPControl	cntrl,
-	char		*in_buf,
+	u_int8_t	*in_buf,
 	int		num_blocks,
-	char		*out_buf
+	u_int8_t	*out_buf
 		);
 
 extern int
 _OWPDecryptBlocks(
 	OWPControl	cntrl,
-	char		*in_buf,
+	u_int8_t	*in_buf,
 	int		num_blocks,
-	char		*out_buf
+	u_int8_t	*out_buf
 		);
 
-extern int
+extern void
 _OWPMakeKey(
 	OWPControl	cntrl,
-	OWPByte		*binKey
+	u_int8_t	*binKey
 	);
 
 extern int
 OWPEncryptToken(
-	char	*binKey,
-	char	*token_in,
-	char	*token_out
+	u_int8_t	*binKey,
+	u_int8_t	*token_in,
+	u_int8_t	*token_out
 	);
 
 extern int
 OWPDecryptToken(
-	char	*binKey,
-	char	*token_in,
-	char	*token_out
+	u_int8_t	*binKey,
+	u_int8_t	*token_in,
+	u_int8_t	*token_out
 	);
 
 /*
- * cprotocol.c
+ * protocol.c
  */
-extern int
-_OWPClientReadServerGreeting(
-	OWPControl	cntrl,
-	u_int32_t	*mode_avail_ret,
-	OWPByte		*challenge_ret,
-	OWPErrSeverity	*err_ret
-		);
+/*
+ * Valid values for "accept" - this will be added to for the purpose of
+ * enumerating the reasons for rejection.
+ *
+ * TODO:Get the additional "accept" values added to the spec.
+ */
+typedef enum{
+	_OWP_CNTRL_INVALID=-1,
+	_OWP_CNTRL_ACCEPT=0x0,
+	_OWP_CNTRL_REJECT=0x1,
+	_OWP_CNTRL_SERVER_FAILURE=0x2
+} OWPAcceptType;
 
 extern int
-_OWPClientRequestModeReadResponse(
+_OWPWriteServerGreeting(
 	OWPControl	cntrl,
-	OWPByte		*token,
-	OWPErrSeverity	*err_ret
+	u_int32_t	avail_modes,
+	u_int8_t	*challenge	/* [16] */
+	);
+
+extern int
+_OWPReadServerGreeting(
+	OWPControl	cntrl,
+	u_int32_t	*mode,		/* modes available - returned	*/
+	u_int8_t	*challenge	/* [16] : challenge - returned	*/
+);
+
+extern int
+_OWPWriteClientGreeting(
+	OWPControl	cntrl,
+	u_int8_t	*token	/* [32]	*/
+	);
+
+extern int
+_OWPReadClientGreeting(
+	OWPControl	cntrl,
+	u_int32_t	*mode,
+	u_int8_t	*token,		/* [32] - return	*/
+	u_int8_t	*clientIV	/* [16] - return	*/
+	);
+
+extern int
+_OWPWriteServerOK(
+	OWPControl	cntrl,
+	OWPAcceptType	code
+	);
+
+extern int
+_OWPReadServerOK(
+	OWPControl	cntrl,
+	OWPAcceptType	*acceptval	/* ret	*/
+	);
+
+extern u_int8_t
+OWPReadRequestType(
+	OWPControl	cntrl
+	);
+
+extern int
+_OWPWriteTestRequest(
+	OWPControl	cntrl,
+	struct sockaddr	*sender,
+	struct sockaddr	*receiver,
+	OWPBoolean	server_conf_sender,
+	OWPBoolean	server_conf_receiver,
+	OWPSID		sid,
+	OWPTestSpec	*test_spec
+);
+
+extern int
+_OWPReadTestRequest(
+	OWPControl	cntrl,
+	struct sockaddr	*sender,
+	struct sockaddr	*receiver,
+	socklen_t	*socklen,
+	u_int8_t	*ipvn,
+	OWPBoolean	*server_conf_sender,
+	OWPBoolean	*server_conf_receiver,
+	OWPSID		sid,
+	OWPTestSpec	*test_spec
+);
+
+extern int
+_OWPWriteTestAccept(
+	OWPControl	cntrl,
+	OWPAcceptType	acceptval,
+	u_int16_t	port,
+	OWPSID		sid
+	);
+
+extern int
+_OWPReadTestAccept(
+	OWPControl	cntrl,
+	OWPAcceptType	*acceptval,
+	u_int16_t	*port,
+	OWPSID		sid
+	);
+
+extern int
+_OWPWriteStartSessions(
+	OWPControl	cntrl
+	);
+
+extern int
+_OWPReadStartSessions(
+	OWPControl	cntrl
+);
+
+extern int
+_OWPWriteStopSessions(
+	OWPControl	cntrl,
+	OWPAcceptType	acceptval
+	);
+
+extern int
+_OWPReadStopSessions(
+	OWPControl	cntrl,
+	OWPAcceptType	*acceptval
+);
+
+extern int
+_OWPWriteRetrieveSession(
+	OWPControl	cntrl,
+	u_int32_t	begin,
+	u_int32_t	end,
+	OWPSID		sid
+	);
+
+extern int
+_OWPReadRetrieveSession(
+	OWPControl	cntrl,
+	u_int32_t	*begin,
+	u_int32_t	*end,
+	OWPSID		sid
+);
+
+extern int
+_OWPWriteControlAck(
+	OWPControl	cntrl,
+	OWPAcceptType	acceptval
+	);
+
+extern int
+_OWPReadControlAck(
+	OWPControl	cntrl,
+	OWPAcceptType	*acceptval
 );
 
 /*
-** sprotocol.c
-*/
-
-extern 
-_OWPServerOK(OWPControl cntrl, u_int8_t code);
+ * TODO:Send session data functions...
+ */
 
 /*
  * context.c
@@ -301,7 +480,7 @@ extern OWPBoolean
 _OWPCallGetAESKey(
 	OWPContext	ctx,		/* library context	*/
 	const char	*kid,		/* identifies key	*/
-	OWPByte		*key_ret,	/* key - return		*/
+	u_int8_t	*key_ret,	/* key - return		*/
 	OWPErrSeverity	*err_ret	/* error - return	*/
 );
 
@@ -362,14 +541,14 @@ OWPGetContext(OWPControl cntrl);
 
 extern void
 OWPEncodeTimeStamp(
-	OWPByte		buf[8],
+	u_int32_t	buf[2],
 	OWPTimeStamp	*tstamp
 	);
 
 extern void
 OWPDecodeTimeStamp(
 	OWPTimeStamp	*tstamp,
-	OWPByte		buf[8]
+	u_int32_t	buf[2]
 	);
 
 #endif	/* OWAMPP_H */

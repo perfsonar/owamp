@@ -24,8 +24,8 @@
 
 static void
 OWPDefErrFunc(
-	OWPErrSeverity	severity,
-	OWPErrType		etype,
+	OWPErrSeverity		severity	__attribute__((unused)),
+	OWPErrType		etype		__attribute__((unused)),
 	char			*buff
 )
 {
@@ -44,7 +44,7 @@ _OWPError(
 	va_list			args
 )
 {
-	char	buff[OWP_ERR_MAXSTRING];
+	char	buff[_OWP_ERR_MAXSTRING];
 
 	vsnprintf(buff,sizeof(buff),fmt,args);
 	if(!ctx || !ctx->cfg.err_func ||
@@ -85,7 +85,7 @@ OWPErrorLine(
 {
 	va_list		args;
 	int		rc;
-	char		buff[OWP_ERR_MAXSTRING];
+	char		buff[_OWP_ERR_MAXSTRING];
 
 	rc = snprintf(buff,sizeof(buff),"%s(%d):",file,line);
 	strncat(buff,fmt,sizeof(buff)-rc);

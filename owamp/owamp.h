@@ -22,12 +22,11 @@
 */
 #ifndef	OWAMP_H
 #define	OWAMP_H
-#include <stdlib.h>
-#include <errno.h>
+
 #include <sys/types.h>
+#include <sys/time.h>
 #include <sys/socket.h>
 #include <netdb.h>
-#include <sys/time.h>
 
 #ifndef	False
 #define	False	(0)
@@ -36,35 +35,15 @@
 #define	True	(!False)
 #endif
 
-#include <sys/param.h>
-
-#ifndef	MAXHOSTNAMELEN
-#define	MAXHOSTNAMELEN	64
-#endif
-
-#include "./arithm128.h"
+#include <owamp/arithm128.h>
 
 #define	OWP_MODE_UNDEFINED		(0)
 #define	OWP_MODE_OPEN			(01)
 #define	OWP_MODE_AUTHENTICATED		(02)
 #define	OWP_MODE_ENCRYPTED		(04)
 
-#define CTRL_ACCEPT 0
-#define CTRL_REJECT 1
-
-/*
-** Types of Control protocol messages.
-*/
-#define OWP_CTRL_REQUEST_SESSION         1
-#define OWP_CTRL_START_SESSION           2
-#define OWP_CTRL_STOP_SESSION            3
-#define OWP_CTRL_RETRIEVE_SESSION        4
-
 /* Default mode offered by the server */
 #define OWP_DEFAULT_OFFERED_MODE 	(OWP_MODE_OPEN|OWP_MODE_AUTHENTICATED|OWP_MODE_ENCRYPTED)
-
-/* Maximum message length in Control Protocol */
-#define MAX_MSG 60 /* XXX - currently 56 but KID to be extended by 4 bytes */
 
 /*
  * The 5555 should eventually be replaced by a IANA blessed service name.
@@ -100,22 +79,18 @@ typedef enum {
 	OWPErrUNKNOWN
 } OWPErrType;
 
-#define	OWP_ERR_MAXSTRING	(1024)
-
-typedef unsigned char	OWPByte;
-
 typedef u_int32_t	OWPBoolean;
-typedef OWPByte		OWPSID[16];
-typedef OWPByte		OWPSequence[4];
-typedef OWPByte		OWPKey[16];
+typedef u_int8_t	OWPSID[16];
+typedef u_int8_t	OWPSequence[4];
+typedef u_int8_t	OWPKey[16];
 typedef u_int32_t	OWPSessionMode;
 
 
 typedef struct OWPTimeStampRec{
-	unsigned long		sec:32;
-	unsigned long		frac_sec:24;
-	unsigned long		sync:1;
-	unsigned long		prec:6;
+	u_int32_t		sec;
+	u_int32_t		frac_sec;
+	u_int8_t		sync;
+	u_int8_t		prec;
 } OWPTimeStamp;
 
 typedef enum {
@@ -138,8 +113,13 @@ typedef struct{
 	u_int32_t	npackets;
 	u_int32_t	typeP;
 	u_int32_t	packet_size_padding;
-	/* make sure this is larger than any other TestSpec struct. */
-	u_int32_t	padding[4];
+} OWPTestSpecAny;
+
+typedef union _OWPTestSpec{
+	OWPTestType		test_type;
+	OWPTestSpecAny		any;
+	OWPTestSpecPoisson	poisson;
+	u_int32_t		padding[10]; /* bigger than any test... */
 } OWPTestSpec;
 
 /*
@@ -169,7 +149,7 @@ typedef int (*OWPErrFunc)(
 typedef OWPBoolean	(*OWPGetAESKeyFunc)(
 	void		*app_data,
 	const char	*kid,
-	OWPByte		*key_ret,
+	u_int8_t	*key_ret,
 	OWPErrSeverity	*err_ret
 );
 
@@ -316,28 +296,6 @@ typedef struct {
 	OWPEndpointStop			endpoint_stop_func;
 	OWPGetTimeStampFunc		get_timestamp_func;
 } OWPInitializeConfigRec, *OWPInitializeConfig;
-
-typedef u_int32_t OWPSequenceNumber; 
-
-/*
-** The structures below describe the non-trivial Control
-** protocol messages.
-*/
-
-typedef struct {
-	OWPAddr		sender;
-	OWPBoolean	conf_sender;
-	OWPAddr		receiver;
-	OWPBoolean	conf_receiver;
-	OWPTestSpec	*test_spec;
-	OWPSID		sid;
-} RequestSessionSpec;
-
-typedef struct {
-	OWPSequenceNumber    BeginSeq;
-	OWPSequenceNumber    EndSeq;
-	OWPSID               sid;
-} RetrieveSessionSpec;
 
 /*
  * API Functions
@@ -574,10 +532,6 @@ OWPServerSockCreate(
  * In Args:	
  * 		connfd,connsaddr, and connsaddrlen are all returned
  * 		from "accept".
- * 		listenaddr should be null unless the listen socket
- * 		was created using the OWPServerSockCreate function,
- * 		then pass in the return'ed OWPAddr from that function.
- * 		(It will optimize the policy check.)
  *
  * Returns:	Valid OWPControl handle on success, NULL if
  *              the request has been rejected, or error has occurred.
@@ -586,11 +540,6 @@ OWPServerSockCreate(
  *              errors encountered by the server during execution.
  * 
  * Side Effect:
- * 	*note: If the listenaddr is passed in - the caller is still
- * 	responsible for free'ing the listenaddr using OWPAddrFree.
- * 	(That is how the listen socket should be closed if OWPCreateServerSock
- * 	is used to create the listening socket.) This is
- * 	in contrast to virtually every other OWPAddr arguement in this API.
  */
 extern OWPControl
 OWPControlAccept(
@@ -598,7 +547,6 @@ OWPControlAccept(
 	int		connfd,		/* conencted socket		*/
 	struct sockaddr	*connsaddr,	/* connected socket addr	*/
 	socklen_t	connsaddrlen,	/* connected socket addr len	*/
-	OWPAddr		listenaddr,	/* listenaddr or NULL		*/
 	u_int32_t	mode_offered,	/* advertised server mode	*/
 	OWPErrSeverity	*err_ret	/* err - return			*/
 		 );

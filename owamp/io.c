@@ -113,7 +113,7 @@ _OWPConnect(
 	int		flags;
 	int		rc;
 	fd_set		rset,wset;
-	int		len;
+	size_t		len;
 	struct timeval	end_time;
 	struct timeval	curr_time;
 	struct timeval	tout;
@@ -182,27 +182,23 @@ DONE:
 }
 
 /*
-** This function sends a given number of (16 byte) blocks to the socket,
-** doing encryption if needed.
-*/
-
-#define BLOCK_LEN    16 /* number of bytes in a block */
-
-/*
 ** The next two functions send or receive a given number of
-** (16-byte) blocks via the Control connection socket,
+** _OWP_RIJNDAEL_BLOCK_SIZE blocks via the Control connection socket,
 ** taking care of encryption/decryption as necessary.
 */
 
-#define RIJNDAEL_BLOCK_SIZE 16
 
 int
-_OWPSendBlocks(OWPControl cntrl, char* buf, int num_blocks)
+_OWPSendBlocks(
+	OWPControl	cntrl,
+	u_int8_t	*buf,
+	int		num_blocks
+	)
 {
-	size_t n;
+	ssize_t n;
 
 	if (! (cntrl->mode & _OWP_DO_CIPHER)){
-		n = _OWPWriten(cntrl->sockfd, buf, num_blocks*RIJNDAEL_BLOCK_SIZE);
+		n = _OWPWriten(cntrl->sockfd, buf, num_blocks*_OWP_RIJNDAEL_BLOCK_SIZE);
 		if (n < 0){
 			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,errno,
 				"_OWPWriten failed");
@@ -210,9 +206,9 @@ _OWPSendBlocks(OWPControl cntrl, char* buf, int num_blocks)
 		} 
 		return 0;
 	} else {
-		char msg[MAX_MSG];
+		u_int8_t	msg[_OWP_MAX_MSG];
 		_OWPEncryptBlocks(cntrl, buf, num_blocks, msg);
-		n = _OWPWriten(cntrl->sockfd, msg, num_blocks*RIJNDAEL_BLOCK_SIZE);
+		n = _OWPWriten(cntrl->sockfd, msg, num_blocks*_OWP_RIJNDAEL_BLOCK_SIZE);
 		if (n < 0){
 			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,errno,
 				     "_OWPWriten failed");
@@ -223,12 +219,12 @@ _OWPSendBlocks(OWPControl cntrl, char* buf, int num_blocks)
 }
 
 int
-_OWPReceiveBlocks(OWPControl cntrl, char* buf, int num_blocks)
+_OWPReceiveBlocks(OWPControl cntrl, u_int8_t *buf, int num_blocks)
 {
 	ssize_t n;
 
 	if (! (cntrl->mode & _OWP_DO_CIPHER)){
-		n = _OWPReadn(cntrl->sockfd, buf, num_blocks*RIJNDAEL_BLOCK_SIZE);
+		n = _OWPReadn(cntrl->sockfd, buf, num_blocks*_OWP_RIJNDAEL_BLOCK_SIZE);
 		if (n < 0){
 			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,errno,
 				     "_OWPReadn failed");
@@ -236,8 +232,8 @@ _OWPReceiveBlocks(OWPControl cntrl, char* buf, int num_blocks)
 		} 
 		return 0;
 	} else {
-		char msg[MAX_MSG];
-		n = _OWPReadn(cntrl->sockfd, msg, num_blocks*RIJNDAEL_BLOCK_SIZE);
+		u_int8_t	msg[_OWP_MAX_MSG];
+		n = _OWPReadn(cntrl->sockfd, msg, num_blocks*_OWP_RIJNDAEL_BLOCK_SIZE);
 		if (n < 0){
 			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,errno,
 				     "_OWPReadn failed");
@@ -255,25 +251,36 @@ _OWPReceiveBlocks(OWPControl cntrl, char* buf, int num_blocks)
 */
 
 int
-_OWPEncryptBlocks(OWPControl cntrl, char *buf, int num_blocks, char *out)
+_OWPEncryptBlocks(
+	OWPControl	cntrl,
+	u_int8_t	*buf,
+	int		num_blocks,
+	u_int8_t	*out
+	)
 {
 	int r;
 	r = blockEncrypt(cntrl->writeIV, 
 			 &cntrl->encrypt_key, buf, num_blocks*16*8, out);
 	if (r != num_blocks*16*8)
 		return -1;
+	return 0;
 }
 
 
 int
-_OWPDecryptBlocks(OWPControl cntrl, char *buf, int num_blocks, char *out)
+_OWPDecryptBlocks(
+	OWPControl	cntrl,
+	u_int8_t	*buf,
+	int		num_blocks,
+	u_int8_t	*out
+	)
 {
 	int r;
 	r = blockDecrypt(cntrl->readIV, 
 			 &cntrl->decrypt_key, buf, num_blocks*16*8, out);
 	if (r != num_blocks*16*8)
 		return -1;
-
+	return 0;
 }
 
 /*
@@ -281,7 +288,11 @@ _OWPDecryptBlocks(OWPControl cntrl, char *buf, int num_blocks, char *out)
 ** using the binary key located in <binKey>.
 */
 
-_OWPMakeKey(OWPControl cntrl, OWPByte *binKey)
+void
+_OWPMakeKey(
+	OWPControl	cntrl,
+	u_int8_t	*binKey
+	)
 {
 	cntrl->encrypt_key.Nr
 		= rijndaelKeySetupEnc(cntrl->encrypt_key.rk, binKey, 128);
@@ -298,11 +309,15 @@ _OWPMakeKey(OWPControl cntrl, OWPByte *binKey)
 #define TOKEN_BITS_LEN (2*16*8)
 
 int
-OWPEncryptToken(char *binKey, char *token_in, char *token_out)
+OWPEncryptToken(
+	unsigned char	*binKey,
+	unsigned char	*token_in,
+	unsigned char	*token_out
+	)
 {
-	int r;
-	char IV[16];
-	keyInstance key;
+	int		r;
+	u_int8_t	IV[16];
+	keyInstance	key;
 
 	memset(IV, 0, 16);
 	
@@ -316,11 +331,15 @@ OWPEncryptToken(char *binKey, char *token_in, char *token_out)
 }
 
 int
-OWPDecryptToken(char *binKey, char *token_in, char *token_out)
+OWPDecryptToken(
+	unsigned char	*binKey,
+	unsigned char	*token_in,
+	unsigned char	*token_out
+	)
 {
-	int r;
-	char IV[16];
-	keyInstance key;
+	int		r;
+	u_int8_t	IV[16];
+	keyInstance	key;
 
 	memset(IV, 0, 16);
 	

@@ -18,11 +18,11 @@
 #
 #	Description:	libowamp build description.
 
-INCLUDES		= $(OWPINCS)
+INCLUDES		= $(OWPINCS) $(I2UTILINCS)
 
 lib_LIBRARIES		= libowamp.a
 libowamp_a_SOURCES	= api.c capi.c sapi.c context.c error.c owampP.h \
-			cprotocol.c sprotocol.c io.c \
+			protocol.c io.c \
 			endpoint.h endpoint.c time.c \
 			arithm128.h arithm128.c \
 			rijndael-alg-fst.c rijndael-alg-fst.h \

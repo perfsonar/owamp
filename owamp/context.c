@@ -33,7 +33,7 @@ OWPBoolean
 _OWPCallGetAESKey(
 	OWPContext	ctx,		/* library context	*/
 	const char	*kid,		/* identifies key	*/
-	OWPByte		*key_ret,	/* key - return		*/
+	u_int8_t	*key_ret,	/* key - return		*/
 	OWPErrSeverity	*err_ret	/* error - return	*/
 )
 {

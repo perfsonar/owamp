@@ -26,18 +26,19 @@
 #include "./owampP.h"
 
 static OWPInitializeConfigRec	def_cfg = {
-	/* tm_out.tv_sec		*/	0,
-	/* tm_out.tv_usec		*/	0,
+	/* tm_out.tv_sec		*/	{0,
+	/* tm_out.tv_usec		*/	0},
 	/* app_data			*/	NULL,
 	/* err_func			*/	NULL,
+	/* get_aes_key			*/	NULL,
+	/* check_addr_func		*/	NULL,
 	/* check_control_func		*/	NULL,
 	/* check_test_func		*/	NULL,
-	/* get_aes_key			*/	NULL,
-	/* get_timestamp_func		*/	NULL,
 	/* endpoint_init_func		*/	NULL,
 	/* endpoint_init_hook_func	*/	NULL,
 	/* endpoint_start_func		*/	NULL,
-	/* endpoint_stop_func		*/	NULL
+	/* endpoint_stop_func		*/	NULL,
+	/* get_timestamp_func		*/	NULL
 };
 
 OWPContext
@@ -111,7 +112,7 @@ OWPAddrFree(
 	OWPErrSeverity	err = OWPErrOK;
 
 	if(!addr)
-		return;
+		return err;
 
 	if(addr->ai){
 		if(!addr->ai_free){
@@ -157,7 +158,7 @@ OWPAddrByNode(
 	char		buff[MAXHOSTNAMELEN];
 	const char	*nptr=node;
 	char		*pptr=NULL;
-	char		*s1,*s2,*s3;
+	char		*s1,*s2;
 
 	if(!node)
 		return NULL;
@@ -177,7 +178,7 @@ OWPAddrByNode(
 	/*
 	 * First try ipv6 syntax since it is more restrictive.
 	 */
-	if(s1 = strchr(buff,'[')){
+	if( (s1 = strchr(buff,'['))){
 		s1++;
 		if(strchr(s1,'[')) goto NOPORT;
 		if(!(s2 = strchr(s1,']'))) goto NOPORT;
@@ -190,7 +191,7 @@ OWPAddrByNode(
 	/*
 	 * Now try ipv4 style.
 	 */
-	else if(s1 = strchr(buff,':')){
+	else if( (s1 = strchr(buff,':'))){
 		*s1++='\0';
 		if(strchr(s1,':')) goto NOPORT;
 		nptr = buff;
@@ -407,6 +408,8 @@ _OWPControlAlloc(
 	cntrl->server = 0;
 	cntrl->state = 0;
 	cntrl->mode = 0;
+
+	memset(cntrl->zero,0,sizeof(cntrl->zero));
 
 	/*
 	 * Init addr fields
