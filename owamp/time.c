@@ -110,10 +110,10 @@ _OWPInitNTP(
 
 struct timespec *
 _OWPGetTimespec(
-	OWPContext	ctx,
+	OWPContext	ctx	__attribute__((unused)),
 	struct timespec	*ts,
 	u_int32_t	*esterr,
-	int		*sync
+	u_int8_t	*sync
 	)
 {
 	struct timeval	tod;

@@ -26,6 +26,7 @@
 #include <netinet/in.h>
 #include <assert.h>
 #include <sys/types.h>
+#include <sys/socket.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
 
@@ -445,7 +446,7 @@ success:
 	 * If we are receiver, sid is valid and we need to open file.
 	 */
 	if(!ep->send){
-		size_t		size;
+		ssize_t		size;
 		struct stat	statbuf;
 		OWPLostPacket	alist;
 
@@ -592,7 +593,7 @@ success:
 		if(setsockopt(ep->sockfd,IPPROTO_IP,IP_RECVTTL,
 					(void*)&sopt,sizeof(sopt)) < 0){
 			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"setsockopt(IP_RECVTTL=1): %M",);
+					"setsockopt(IP_RECVTTL=1): %M");
 			goto error;
 		}
 
@@ -631,7 +632,7 @@ success:
 		if(setsockopt(ep->sockfd,IPPROTO_IP,IP_TTL,
 					(void*)&sopt,sizeof(sopt)) < 0){
 			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"setsockopt(IP_TTL=255): %M",);
+					"setsockopt(IP_TTL=255): %M");
 			goto error;
 		}
 
@@ -1169,7 +1170,7 @@ recvfromttl(
 		size_t		buf_len,
 		struct sockaddr	*peer,
 		socklen_t	*peer_len,
-		u_int8_t	&ttl
+		u_int8_t	*ttl
 	   )
 {
 	struct msghdr	msg;
@@ -1183,7 +1184,7 @@ recvfromttl(
 
 	*ttl = 255;	/* initialize to default value */
 
-	iov[0].iov_base = ptr;
+	iov[0].iov_base = buf;
 	iov[0].iov_len = buf_len;
 
 	memset(&msg,0,sizeof(msg));
@@ -1191,7 +1192,7 @@ recvfromttl(
 	msg.msg_namelen = *peer_len;
 	msg.msg_iov = iov;
 	msg.msg_iovlen = 1;
-	msg.msg_control = cmdmsgdata;
+	msg.msg_control = &cmdmsgdata;
 	msg.msg_controllen = sizeof(cmdmsgdata.control);
 	msg.msg_flags = 0;
 
@@ -1202,7 +1203,7 @@ recvfromttl(
 	*peer_len = msg.msg_namelen;
 
 	if((msg.msg_controllen < sizeof(struct cmsghdr)) ||
-			(msg.msg_flags && MSG_CTRNC)){
+			(msg.msg_flags && MSG_CTRUNC)){
 		return rc;
 	}
 
@@ -1217,8 +1218,8 @@ recvfromttl(
 
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
 	"recvfromttl: Unknown ancillary data, len = %d, level = %d, type = %d",
-				cmptr->cmsg_len, cmptr->cmsg_level,
-				cmptr->cmsg_type);
+				cmdmsgptr->cmsg_len, cmdmsgptr->cmsg_level,
+				cmdmsgptr->cmsg_type);
 		return -rc;
 	}
 
@@ -1237,7 +1238,6 @@ run_receiver(
 	struct timespec		lostspec;
 	struct timespec		expectspec;
 	struct itimerval	wake;
-	u_int32_t		seq_num;
 	u_int32_t		*seq;
 	u_int8_t		*tstamp;
 	u_int8_t		*tstamperr;
@@ -1618,20 +1618,20 @@ again:
 			 }
 		}
 
-		datarec.seq_num = ntohl(*seq);
-		if(datarec.seq_num >= ep->tsession->test_spec.npackets)
+		datarec.seq_no = ntohl(*seq);
+		if(datarec.seq_no >= ep->tsession->test_spec.npackets)
 			goto error;
 		/*
 		 * If it is no-longer in the buffer, than we ignore
 		 * it.
 		 */
-		if(datarec.seq_num < ep->begin->seq)
+		if(datarec.seq_no < ep->begin->seq)
 			goto again;
 
 		/*
 		 * What time did we expect the sender to send the packet?
 		 */
-		if(!(node = get_node(ep,datarec.seq_num))){
+		if(!(node = get_node(ep,datarec.seq_no))){
 			goto error;
 		}
 		(void)OWPTimespecToTimestamp(&expecttime,&node->absolute,
