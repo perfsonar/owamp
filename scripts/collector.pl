@@ -272,27 +272,17 @@ while(1){
 		if($reset == 1){
 			$reset++;
 			warn "Handling SIGHUP... Stop processing...\n";
-			$func = "kill";
-			eval{
-				kill 'TERM', (keys %children);
-			};
 		}
 		elsif($die == 1){
 			$die++;
 			warn "Exiting... Deleting sub-processes...\n";
-			$func = "kill";
-			eval{
-				kill 'TERM', (keys %children);
-			};
 		}
-		else{
-			$func = "sigsuspend";
-			if((keys %children) > 0){
-				eval{
-					sigsuspend($old_mask);
-				};
-			}
-		}
+		$func = "kill";
+		eval{
+			return if(sigprocmask(SIG_SETMASK,$old_mask) != 0);
+			kill 'TERM', (keys %children);
+			sigprocmask(SIG_BLOCK,$block_mask);
+		};
 	}else{
 		$func = "accept";
 		eval{
