@@ -307,10 +307,10 @@ owamp_read_ip2class(OWPContext ctx,
 		OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, 
 				 "Warning: fclose %d. failed", fp);
 
-	/* Assign DEFAULT_OPEN_CLASS for the widest mask. */
+	/* Assign OWP_DEFAULT_OPEN_CLASS for the widest mask. */
 	if ( (key = subnet2datum(0, 0)) == NULL)
 		goto CLOSE;
-	if ( (val = str2datum(DEFAULT_OPEN_CLASS)) == NULL)
+	if ( (val = str2datum(OWP_DEFAULT_OPEN_CLASS)) == NULL)
 		goto CLOSE;
 	if (I2hash_store(ip2class_hash, key, val) != 0)
 		OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, 
@@ -411,7 +411,7 @@ ipaddr2class(u_int32_t ip, I2table ip2class_hash)
 	if (val_dat->dptr)
 		return val_dat->dptr;
 
-	return DEFAULT_OPEN_CLASS;
+	return OWP_DEFAULT_OPEN_CLASS;
 }
 
 /*! 
