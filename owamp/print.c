@@ -11,7 +11,7 @@ print_ip2class_binding(const struct I2binding *p, FILE* fp)
 {
 	fprintf(fp, "DEBUG: the value of key %s/%u is = %s\n",
 	       owamp_denumberize(owp_get_ip(p->key)), 
-	       owp_get_offset(p->key), p->value->dptr);
+	       owp_get_offset(p->key), (char *)(p->value->dptr));
 }
 
 void
@@ -26,7 +26,7 @@ print_id2class_binding(const struct I2binding *p, FILE* fp)
 void
 print_limits(OWAMPLimits * limits, FILE* fp)
 {
-	fprintf(fp, "bw = %lu, space = %lu, num_sessions = %u\n",
+	fprintf(fp, "bw = %lu, space = %lu, num_sessions = %lu\n",
 	       OWAMPGetBandwidth(limits),
 	       OWAMPGetSpace(limits),
 	       OWAMPGetNumSessions(limits)
@@ -36,7 +36,7 @@ print_limits(OWAMPLimits * limits, FILE* fp)
 void
 print_class2limits_binding(const struct I2binding *p, FILE* fp)
 {
-	fprintf(fp, "the limits for class %s are: ", p->key->dptr);
+	fprintf(fp, "the limits for class %s are: ", (char *)(p->key->dptr));
 	print_limits((OWAMPLimits *)(p->value->dptr), fp);
 }
 

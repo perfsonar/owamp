@@ -79,11 +79,13 @@ typedef struct owp_access_id {
 
 extern char *ipaddr2class(u_int32_t ip, I2table ip2class_hash);
 extern void print_ip2class_binding(const struct I2binding *p, FILE* fp);
+extern void print_id2class_binding(const struct I2binding *p, FILE* fp);
 extern void print_class2limits_binding(const struct I2binding *p, FILE* fp);
+extern char *owamp_denumberize(unsigned long addr);
 
-extern u_int32_t OWAMPGetBandwidth(OWAMPLimits * lim);
-extern u_int32_t OWAMPGetSpace(OWAMPLimits * lim);
-extern u_int32_t OWAMPGetNumSessions(OWAMPLimits * lim);
+extern unsigned long OWAMPGetBandwidth(OWAMPLimits * lim);
+extern unsigned long OWAMPGetSpace(OWAMPLimits * lim);
+extern unsigned long OWAMPGetNumSessions(OWAMPLimits * lim);
 extern u_int32_t owp_get_ip(const I2datum * dat);
 extern u_int8_t  owp_get_offset(const I2datum * dat);
 

@@ -36,17 +36,17 @@ struct subnet {
 	u_int8_t offset;
 };
 
-u_int32_t
+unsigned long
 OWAMPGetBandwidth(OWAMPLimits * lim){
 	return lim->bandwidth;
 }
 
-u_int32_t
+unsigned long
 OWAMPGetSpace(OWAMPLimits * lim){
 	return lim->space;
 }
 
-u_int32_t
+unsigned long
 OWAMPGetNumSessions(OWAMPLimits * lim){
 	return lim->test_sessions;
 }
