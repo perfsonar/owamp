@@ -158,7 +158,8 @@ foreach my $mtype (@mtypes){
 
 		    next unless $sec;
 		    $sec -= OWP::Utils::JAN_1970;
-		    my ($mon, $day, $hour, $minute, $second) = mdHMS($sec);
+		    my ($year, $mon, $day, $hour, $minute, $second)
+			    = mdHMS($sec);
 
 		    my $datafile = "$datadir/$ofile";
 		    my $dat_fh = new FileHandle "<$datafile";
@@ -249,7 +250,7 @@ sub plot_resolution {
 	next unless $sec;
 	$sec -= OWP::Utils::JAN_1970;
 
-	my ($mon, $day, $hour, $minute, $second) = mdHMS($sec);
+	my ($year, $mon, $day, $hour, $minute, $second) = mdHMS($sec);
 
 	my $datafile = "$datadir/$ofile";
 	my $dat_fh = new FileHandle "<$datafile";
@@ -272,7 +273,8 @@ sub plot_resolution {
 
 	warn join "\n", "Stats for the file $datafile are:",
 		@stats, '' if DEBUG;
-	print GNUDAT join " ", "$mon/$day/$hour/$minute/$second", @stats, "\n";
+	print GNUDAT join " ", "$year/$mon/$day/$hour/$minute/$second",
+		@stats, "\n";
 	$got_data = 1;
     }
 
@@ -304,7 +306,7 @@ sub plot_resolution {
 set terminal png small color
 set xdata time
 set format x \"$fmt\"
-set timefmt "%m/%d/%H/%M/%S"
+set timefmt "%Y/%m/%d/%H/%M/%S"
 $xrange
 set nokey
 set grid
@@ -398,15 +400,16 @@ sub code2unit {
     $t eq 'S' && return 'second';
     $t eq 'd' && return 'day';
     $t eq 'm' && return 'month';
+    $t eq 'y' && return 'year'
 };
 
 sub mdHMS {
     my ($second, $minute, $hour, $day, $mon, $year, $wday, $yday)
 	    = gmtime($_[0]);
     $mon++;
-    my $str = gmtime($_[0]);
+    $year += 1900;
 
-    return ($mon, $day, $hour, $minute, $second);
+    return ($year, $mon, $day, $hour, $minute, $second);
 }
 
 sub get_buck_ref {
