@@ -283,21 +283,20 @@ owp_record_out(fetch_state_ptr state, OWPDataRecPtr rec)
 
 	delay = owp_delay(&rec->send, &rec->recv);
 	if (ping_ctx.opt.full) {
-		if (!OWPIsLostRecord(rec))
-			fprintf(state->fp, 
-	 "#%-10u send=%8X:%-8X %u%c     recv=%8X:%-8X %u%c\n",
-				rec->seq_no, rec->send.sec, 
-				rec->send.frac_sec, 
-				rec->send.prec, (rec->send.sync)? 'S' : 'U', 
-				rec->recv.sec, rec->recv.frac_sec, 
-				rec->recv.prec, (rec->recv.sync)? 'S' : 'U');
-		else
-			fprintf(state->fp, 
-				"#%-10u send=%8X:%-8X %u%c     *LOST*\n",
-				rec->seq_no, rec->send.sec, 
-				rec->send.frac_sec, 
-				rec->send.prec, 
-				(rec->send.sync)? 'S' : 'U');
+		char		sendbuf[OWP_TSTAMPCHARS+1];
+		char		recvbuf[OWP_TSTAMPCHARS+1];
+
+		snprintf(sendbuf,sizeof(sendbuf),OWP_TSTAMPFMT,
+						OWPTimeStamp2num64(&rec->send));
+		snprintf(recvbuf,sizeof(recvbuf),OWP_TSTAMPFMT,
+						OWPTimeStamp2num64(&rec->recv));
+		fprintf(state->fp, 
+				"#%-10u send=%s %u%c     recv=%s %u%c\n",
+				rec->seq_no,
+				sendbuf, rec->send.prec,
+				(rec->send.sync)? 'S' : 'U', 
+				recvbuf, rec->recv.prec,
+				(rec->recv.sync)? 'S' : 'U');
 		return;
 	}
 

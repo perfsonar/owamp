@@ -64,10 +64,10 @@ OWPEncodeTimeStamp(
 
 	/*
 	 * frac_sec: to get byte ordering correct - need to convert to big
-	 * endien, then copy 3 low order bytes.
+	 * endien, then copy 3 high order bytes.
 	 */
 	t32 = htonl((u_int32_t)tstamp->frac_sec);
-	memcpy(&buf[4],((u_int8_t*)&t32)+1,3);
+	memcpy(&buf[4],((u_int8_t*)&t32),3);
 
 	/*
 	 * Now, fill in the last byte with the prec/sync values.
@@ -96,12 +96,12 @@ OWPDecodeTimeStamp(
 	tstamp->sec = ntohl(tstamp->sec);
 
 	/*
-	 * network order is big endian - so copy 24 bit fraction to low
+	 * network order is big endian - so copy 24 bit fraction to high
 	 * order 3 bytes of t32 in big endian ordering, then use the
 	 * ntohl macro to covert it to the correct byte ordering for
 	 * the host.
 	 */
-	memcpy(((u_int8_t*)&t32)+1,&buf[4],3);
+	memcpy(((u_int8_t*)&t32),&buf[4],3);
 	tstamp->frac_sec = ntohl(t32);
 
 	tstamp->sync = (buf[7] & 0x80)?1:0;
@@ -130,7 +130,8 @@ OWPCvtTimeval2Timestamp(
 		return NULL;
 
 	tstamp->sec = tval->tv_sec + OWPJAN_1970;
-	tstamp->frac_sec = ((double)tval->tv_usec/1000000.0) * (1<<24);
+	tstamp->frac_sec = ((u_int64_t)tval->tv_usec << 32)/1000000 &
+								0xFFFFFFFF;
 	tstamp->prec = 19+32; /* usec is 20 bits of prec - 1(rounding errors)*/
 	tstamp->sync = 0;
 
@@ -159,7 +160,7 @@ OWPCvtTimestamp2Timeval(
 	}
 
 	tval->tv_sec = tstamp->sec - OWPJAN_1970;
-	tval->tv_usec =((double)frac * 1000000.0) / (double)(1<<24);
+	tval->tv_usec =((u_int64_t)tstamp->frac_sec * 1000000) >> 32;
 
 	return tval;
 }
@@ -198,7 +199,8 @@ OWPCvtTimespec2Timestamp(
 		return NULL;
 
 	tstamp->sec = tval->tv_sec + OWPJAN_1970;
-	tstamp->frac_sec = ((double)tval->tv_nsec/1000000000.0) * (1<<24);
+	tstamp->frac_sec = ((u_int64_t)tval->tv_nsec << 32)/1000000000 &
+								0xFFFFFFFF;
 	if(errest){
 		/*
 		 * If last_errest is set, and the error hasn't changed,
@@ -235,7 +237,7 @@ OWPCvtTimestamp2Timespec(
 	OWPTimeStamp	*tstamp
 	)
 {
-	u_int32_t	frac;
+	u_int64_t	frac;
 	u_int32_t	shift;
 
 	if(!tval || !tstamp)
@@ -251,7 +253,7 @@ OWPCvtTimestamp2Timespec(
 	}
 
 	tval->tv_sec = tstamp->sec - OWPJAN_1970;
-	tval->tv_nsec =((double)frac * 1000000000.0) / (double)(1<<24);
+	tval->tv_nsec =((u_int64_t)tstamp->frac_sec * 1000000000) >> 32;
 
 	return tval;
 }

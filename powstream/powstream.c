@@ -572,6 +572,7 @@ main(
 	     exit(1);
 	}
 
+#if	NOT_IN_GDB
 	flk.l_start = 0;
 	flk.l_len = 0;
 	flk.l_type = F_WRLCK;
@@ -590,6 +591,7 @@ main(
 		I2ErrLog(eh,"Unable to write to lockfile:%M");
 		exit(1);
 	}
+#endif
 
 	file_offset = strlen(dirpath);
 	ext_offset = file_offset + OWP_TSTAMPCHARS;

@@ -1037,27 +1037,24 @@ OWPStartSessions(
 	return err2;
 }
 
-u_int64_t
-tstamp2int64(OWPTimeStamp *tstamp)
-{
-	return (((u_int64_t)(tstamp->sec))<<24) + tstamp->frac_sec;
-}
-
 /*
-** Compute delay in seconds - Quick hint: we are computing
-** (a + b/(2^24)) - (c + d/(2^24)) = 
-** [(a*2^24 + b) - (c*2^24 + d)] / 2^24
+** Compute delay in seconds
 */
 double
 owp_delay(OWPTimeStamp *send_time, OWPTimeStamp *recv_time)
 {
-	static double scale = (double)0x1000000; /* 2^24 */
-	u_int64_t t1, t2;
+	/*
+	 * num64 is encoded as 32.32 (sec.frac) - so divide by 2^32
+	 * to return scaled to "seconds".
+	 * (Do subtraction in u_int64_t space to maintain precision.)
+	 */
+	static double scale = ((u_int64_t)1<<32);
+	OWPnum64 t1, t2;
 
 	assert(send_time);
 	assert(recv_time);
-	t1 = tstamp2int64(send_time);
-	t2 = tstamp2int64(recv_time);
+	t1 = OWPTimeStamp2num64(send_time);
+	t2 = OWPTimeStamp2num64(recv_time);
 
 	/* Return negative quantity if send_time is before recv_time. 
 	   Yes weird, -  but possible with bad clocks. */

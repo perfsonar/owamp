@@ -1369,7 +1369,7 @@ AGAIN:
 				goto AGAIN;
 			OWPError(ep->ctx,OWPErrWARNING,
 				OWPErrUNKNOWN,
-				"EndpointStart:Can't query child #%d:%M",
+				"_OWPEndpointStatus:Can't query child #%d:%M",
 				ep->child);
 			ep->acceptval = OWP_CNTRL_FAILURE;
 			err = OWPErrWARNING;
@@ -1405,9 +1405,17 @@ _OWPEndpointStop(
 	else
 		sig = SIGUSR2;
 
-	if(kill(ep->child,sig) != 0)
+	/*
+	 * If child already exited, kill will come back with ESRCH
+	 */
+	if((kill(ep->child,sig) != 0) && (errno != ESRCH))
 		goto error;
 
+	/*
+	 * Remove the WNOHANG bit. We need to wait until the exit status
+	 * is available.
+	 * (Should we add a timer to break out? No - not that paranoid yet.)
+	 */
 	ep->wopts &= ~WNOHANG;
 	err = _OWPEndpointStatus(NULL,end_data,&teststatus);
 	if(teststatus >= 0)
@@ -1415,7 +1423,7 @@ _OWPEndpointStop(
 
 error:
 	OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-			"EndpointStart:Can't signal child #%d:%M",ep->child);
+			"EndpointStop:Can't signal child #%d:%M",ep->child);
 done:
 	/*
 	 * To comply with throwing out unresolved sessions...

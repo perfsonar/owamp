@@ -88,7 +88,6 @@ typedef struct pow_session_rec{
 } pow_session_rec, *pow_session;
 
 typedef struct pow_cntrl_rec{
-	OWPBoolean	setup;
 	OWPControl	cntrl;
 	OWPSID		sid;
 	OWPTimeStamp	*sessionStart;
