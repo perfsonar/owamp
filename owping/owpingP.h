@@ -31,6 +31,12 @@
 #define	MAX_PASSPROMPT	256
 #define	MAX_PASSPHRASE	256
 
+typedef struct ow_slotrec ow_slot_trec, *ow_slot_t;
+struct ow_slotrec{
+	OWPSlot		slot;
+	ow_slot_t	next;
+};
+
 /*
  * Application "context" structure
  */
@@ -63,7 +69,6 @@ typedef	struct {
 		I2Boolean	childwait;        /* -w */
 #endif
 
-		float		mean_wait;        /* -i  (seconds) */
 		u_int32_t	padding;          /* -s */
 
 	} opt;
@@ -75,6 +80,10 @@ typedef	struct {
 
 	OWPContext		lib_ctx;
 	OWPControl		cntrl;
+
+	float			mean_wait;	/* default slot value */
+	u_int32_t		nslots;
+	OWPSlot			*slots;
 
 } ow_ping_trec, *ow_ping_t;
 

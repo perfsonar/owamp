@@ -941,6 +941,96 @@ DONE:
  */
 #define	MAX_PADDING_SIZE	65000
 
+static OWPBoolean
+parse_slots(
+	char		*sched,
+	OWPSlot		**slots_ret,
+	u_int32_t	*nslots_ret
+	   )
+{
+	u_int32_t	i,nslots;
+	char		*tstr;
+	OWPSlot		*slots = NULL;
+
+	if(!sched) return False;
+
+	/*
+	 * count number of slots specified.
+	 */
+	nslots=1;
+	tstr=sched;
+	while((tstr=strchr(tstr,','))){
+		nslots++;
+		tstr++;
+	}
+
+	/*
+	 * Allocate slot array.
+	 */
+	if(!(slots = calloc(nslots,sizeof(OWPSlot)))){
+		I2ErrLogP(eh,errno,"Can't alloc %d slots for schedule: %M",
+				nslots);
+		return False;
+	}
+
+	/*
+	 * parse string with strtok to grab each slot and fill the record
+	 */
+	i=0;
+	for(i=0,tstr = strtok(sched,',');
+			(i<nslots) && tstr;
+				tstr = strtok(NULL,','),i++){
+		char	*endptr;
+		double	dval;
+
+		dval = strtod(tstr,&endptr);
+		if(endptr == tstr){
+			I2ErrLogP(eh,errno,
+				"Invalid numeric value (%s) for schedule",
+				tstr);
+			goto FAILED;
+		}
+		if(strlen(endptr) > 1){
+			I2ErrLogP(eh,errno,
+				"Invalid slot type (%s) for schedule",
+				endptr);
+			goto FAILED;
+		}
+		switch(tolower(*endptr)){
+			case '\0':
+			case 'e':
+				/* exponential slot */
+				slot[i].slot_type = OWPSlotRandExpType;
+				slot[i].rand_exp.mean = OWPDoubleToNum64(dval);
+				break;
+			case 'f':
+				/* fixed offset slot */
+				slot[i].slot_type = OWPSlotLiteralType;
+				slot[i].literal.offset = OWPDoubleToNum64(dval);
+				break;
+			default:
+				I2ErrLogP(eh,errno,
+					"Invalid slot type (%s) for schedule",
+					endptr);
+				goto FAILED;
+				break;
+		}
+	}
+
+	if(i >= nslots){
+		I2ErrLogP(eh,errno,"Unable to parse schedule specification");
+			goto FAILED;
+	}
+
+	*slots_ret = slots;
+	*nslots_ret = nslots;
+	return True;
+
+FAILED:
+	free(slots);
+	return False;
+}
+
 int
 main(
 	int	argc,
@@ -967,7 +1057,7 @@ main(
 	char                    *endptr = NULL;
 	char                    optstring[128];
 	static char		*conn_opts = "A:S:k:u:";
-	static char		*test_opts = "fF:tT:c:i:s:L:";
+	static char		*test_opts = "fF:tT:c:i:p:s:L:";
 	static char		*out_opts = "a:vVQR";
 	static char		*gen_opts = "h";
 #ifndef	NDEBUG
@@ -1003,6 +1093,8 @@ main(
 		exit(1);
 	}
 
+	memset(&ping_ctx,0,sizeof(ping_ctx));
+
 	/*
 	 * Initialize library with configuration functions.
 	 */
@@ -1022,8 +1114,8 @@ main(
 	ping_ctx.opt.numPackets = 100;
 	ping_ctx.opt.lossThreshold = 0.0;
 	ping_ctx.opt.percentile = 50.0;
-	ping_ctx.opt.mean_wait = (float)0.1;
 	ping_ctx.opt.padding = 0;
+	ping_ctx.mean_wait = (float)0.1;
 
 	/* Create options strings for this program. */
 	if (!strcmp(progname, "owping")) {
@@ -1102,10 +1194,8 @@ main(
 		     }
                      break;
              case 'i':
-		     ping_ctx.opt.mean_wait = (float)strtod(optarg, &endptr);
-		     if (*endptr != '\0') {
-			     usage(progname, 
-			   "Invalid value. Positive floating number expected");
+		     if(!parse_slots(optarg,&ping_ctx.slots,&ping_ctx.nslots)){
+			     usage(progname, "Invalid Schedule.");
 			     exit(1);
 		     }
                      break;
@@ -1203,6 +1293,20 @@ main(
 
 		owp_set_auth(ctx, progname, &ping_ctx); 
 
+		/*
+		 * Determine schedule.
+		 */
+		if(!ping_ctx.slots){
+			tspec.nslots = 1;
+			slot.slot_type = OWPSlotRandExpType;
+			slot.rand_exp.mean = OWPDoubleToNum64(
+							ping_ctx.mean_wait);
+			tspec.slots = &slot;
+		}
+		else{
+			tspec.nslots = ping_ctx.nslots;
+			tspec.slots = ping_ctx.slots;
+		}
 
 #ifndef	NDEBUG
 		/*
@@ -1275,14 +1379,6 @@ main(
 		tspec.packet_size_padding = ping_ctx.opt.padding;
 		tspec.npackets = ping_ctx.opt.numPackets;
 		
-		/*
-		 * TODO: Generalize commandline to allow multiple
-		 * slots. For now, use one rand exp slot.
-		 */
-		tspec.nslots = 1;
-		slot.slot_type = OWPSlotRandExpType;
-		slot.rand_exp.mean = OWPDoubleToNum64(ping_ctx.opt.mean_wait);
-		tspec.slots = &slot;
 
 		/*
 		 * Prepare paths for datafiles. Unlink if not keeping data.

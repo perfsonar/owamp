@@ -91,15 +91,32 @@ performed.
 True, unless the \fI\-t\fR or \fI\-T\fR have been specified explicitly.
 .RE
 .TP
-\fB\-i\fR \fIwait\fR
+\fB\-i\fR \fIsend_schedule\fR
 .br
-Wait \fIwait\fR seconds between sending packets. This wait period is not
-a fixed value. The actual \fIwait\fR time between each packet is
-determined using using a pseudo-Poisson function. The amount of time
-between each packet will average \fIwait\fR seconds.
+.I send_schedule
+indicates the scheduled delay between sent packets. This is done by
+specifing a list of \fIdelays\fR in a comma separated string. Each \fIdelay\fR
+is indicated by a \fIvalue\fR and a \fItype\fR. There are two currently
+available types of \fIdelays\fR that can be specified:
 .RS
+.IP \fBf\fR
+[\fBf\fR]ixed offsets. This is used to indicate that the \fIvalue\fR is
+a real offset from the packet proceeding it.
+.IP \fBe\fR
+[\fBe\fR]xponential. This is used to indicate an exponentially distributed
+pseudo-random quntity with a mean about the \fIvalue\fR given. (This
+is the default if no alpha qualifier is specified.)
+.PP
+When the sending process starts, it looks at the first \fIdelay\fR in the
+list and waits that long to send the first packet. It takes the next
+\fIdelay\fR from the list to send the second packet. This process continues
+until there are no more \fIdelay\fR values specified in the list. At this
+point the sending process loops back to the beginning of the complete
+\fIsend_schedule\fR and this process begins again. This continues until
+the sending process has sent \fIcount\fR packets as specified by the
+\fB\-c\fR option.
 .IP Default:
-0.1 (seconds)
+0.1e (seconds)
 .RE
 .TP
 \fB\-L\fR \fItimeout\fR
@@ -294,6 +311,25 @@ seconds. One session sending packets from the local host to somehost.com,
 the other session receiving packets from somehost.com.) Print summary
 statistics of the results and save the resulting data saved in from.owp and
 to.owp.
+.LP
+\fBowping -i 1e -c 10 somehost.com\fR
+Run two concurrent ~10-second test sessions at an average rate of a packet
+every 1 seconds. One session sending packets from the local host to
+somehost.com, the other session receiving packets from somehost.com.)
+Print summary statistics of the results only.
+.LP
+\fBowping -i 1f -c 10 somehost.com\fR
+Run two concurrent ~10-second test sessions at a rate of a packet
+every 1 seconds. One session sending packets from the local host to
+somehost.com, the other session receiving packets from somehost.com.)
+Print summary statistics of the results only.
+.LP
+\fBowping -i 1.0e,0f -c 20 somehost.com\fR
+Run two concurrent ~10-second test sessions. Send back-to-back packet
+pairs at an average rate of a packet pair every 1 seconds.
+One session sending packets from the local host to
+somehost.com, the other session receiving packets from somehost.com.)
+Print summary statistics of the results only.
 .SH SEE ALSO
 owampd(8), owstats(1), owfetch(1) and the \%http://e2epi.internet2.edu/owamp/
 web site.
