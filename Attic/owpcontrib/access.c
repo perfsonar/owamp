@@ -41,10 +41,6 @@ typedef void (*OWPCheckAddrPolicy)(
 				   );
 #endif
 
-#define CLASS_NAME 1
-#define LIMIT_NAME 2
-#define NEITHER    3
-
 #define DEBUG 0
 
 #define DEFAULT_OPEN_CLASS "open"
@@ -71,8 +67,6 @@ const char *DefaultIPtoClassFile = DEFAULT_IP_TO_CLASS_FILE;
 char *IPtoClassFile = NULL;
 const char *DefaultClassToLimitsFile = DEFAULT_CLASS_TO_LIMITS_FILE;
 char *ClassToLimitsFile = NULL;
-
-static void usage(void);
 
 static void
 usage()
@@ -358,8 +352,6 @@ owamp_read_ip2class(const char *ip2class, hash_ptr hash)
 	u_int8_t off; 
 	
 	datum *key, *val;
-	static const char all[] = "all";
-	char tmp[5];
 
 	if ( (fp = fopen(ip2class, "r")) == NULL){
 		snprintf(err_msg, sizeof(err_msg),"fopen %s for reading", 
@@ -376,7 +368,7 @@ owamp_read_ip2class(const char *ip2class, hash_ptr hash)
 		if (sscanf(line, "%s%s", mask, class) != 2) 
 			continue;
 		if ((tmp = owamp_parse_mask(mask, &addr, &off)) != 0){
-			printf("bad network %s\n", mask);
+			fprintf(stderr, "Warning: bad network %s\n", mask);
 			continue;
 		}
 		
@@ -393,11 +385,10 @@ owamp_read_ip2class(const char *ip2class, hash_ptr hash)
 
 	fclose(fp);
 
-	/* In all cases make sure we have a class "all" for the widest mask. */
-	bzero(tmp, 5);
-	if ((key = owamp_datumify(tmp, 5)) == NULL)
+	/* Assign DEFAULT_OPEN_CLASS for the widest mask. */
+	if ( (key = subnet2datum(0, 0)) == NULL)
 		goto CLOSE;
-	if ((val = owamp_datumify(all, strlen(all)+1)) == NULL)
+	if ((val = owamp_datumify(DEFAULT_OPEN_CLASS, strlen(DEFAULT_OPEN_CLASS)+1)) == NULL)
 		goto CLOSE;
 	if (hash_store(hash, *key, *val, DBM_INSERT) != 0)
 		fprintf(stderr, "\nhash_store failed to insert all key\n\n");
