@@ -1084,6 +1084,15 @@ parse_ports(
 	}
 
 DONE:
+	/*
+	 * If ephemeral is specified, shortcut but not setting.
+	 */
+	if(!ping_ctx.portrec.high && !ping_ctx.portrec.low)
+		return True;
+
+	/*
+	 * Set.
+	 */
 	ping_ctx.opt.portspec = &ping_ctx.portrec;
 	return True;
 
