@@ -348,8 +348,8 @@ sub plot_resolution {
 	}
     }
 
-    # Compute the worst error in usec's
-    my $err = ((2**(32 - $worst_prec)) * 2) * THOUSAND;
+    # Compute the worst error in ms
+    my $err = sprintf "%.3f", ((2**(32 - $worst_prec)) * 2) * THOUSAND;
 
     close GNU_INF_MED;
     close GNU_INF_NINETY;

@@ -113,7 +113,7 @@ sub merge {
     }
 
     my ($version, $hdrlen) = (1, 28);
-    my $header = pack "a8xCCCLLLL", MAGIC, $version, $hdrlen, $worst_prec,
+    my $header = pack "a8xCCCLLLl", MAGIC, $version, $hdrlen, $worst_prec,
 	    $total_sent, $total_lost, $total_dup, $final_min;
 
     print OUT $header;
