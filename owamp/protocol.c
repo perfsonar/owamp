@@ -2192,15 +2192,20 @@ _OWPEncodeDataRecord(
 {
 	u_int32_t	nlbuf;
 
+	memset(buf,0,24);
 	nlbuf = htonl(rec->seq_no);
 	memcpy(&buf[0],&nlbuf,4);
 
 	_OWPEncodeTimeStamp(&buf[4],&rec->send);
+	_OWPEncodeTimeStamp(&buf[14],&rec->recv);
+	if(OWPIsLostRecord(rec)){
+		return True;
+	}
+
 	if(!_OWPEncodeTimeStampErrEstimate(&buf[12],&rec->send)){
 		return False;
 	}
 
-	_OWPEncodeTimeStamp(&buf[14],&rec->recv);
 	if(!_OWPEncodeTimeStampErrEstimate(&buf[22],&rec->recv)){
 		return False;
 	}
