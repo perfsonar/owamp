@@ -112,7 +112,7 @@ _OWPClientRequestModeReadResponse(
 	if(cntrl->kid)
 		memcpy(&buf[4],cntrl->kid,8);
 	else
-		random_bytes(&buf[4],8);
+		I2RandomBytes(&buf[4],8);
 
 	memcpy(&buf[12],token,32);
 	memcpy(&buf[44],cntrl->writeIV,16);

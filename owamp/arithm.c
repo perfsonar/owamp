@@ -1,4 +1,24 @@
 /*
+ *      $Id$
+ */
+/************************************************************************
+*									*
+*			     Copyright (C)  2002			*
+*				Internet2				*
+*			     All Rights Reserved			*
+*									*
+************************************************************************/
+/*
+ *	File:		arithm.c
+ *
+ *	Author:		Anatoly Karp
+ *			Internet2
+ *
+ *	Date:		Sun Jun 02 12:29:20 MDT 2002
+ *
+ *	Description:	
+ */
+/*
 ** Implementation of extended-precision arithmetic.
 */
 

@@ -1,4 +1,24 @@
 /*
+ *      $Id$
+ */
+/************************************************************************
+*									*
+*			     Copyright (C)  2002			*
+*				Internet2				*
+*			     All Rights Reserved			*
+*									*
+************************************************************************/
+/*
+ *	File:		arithm.h
+ *
+ *	Author:		Anatoly Karp
+ *			Internet2
+ *
+ *	Date:		Sun Jun 02 12:28:55 MDT 2002
+ *
+ *	Description:	
+ */
+/*
 ** Header file for an implementation of extended-precision
 ** arithmetic (64 bits before and after the decimal point)
 */

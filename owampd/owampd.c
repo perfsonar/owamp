@@ -267,7 +267,7 @@ ServerMainControl(OWPControl cntrl, OWPErrSeverity* out)
 	case OWP_CTRL_REQUEST_SESSION:
 		/* DEBUG only */
 		fprintf(stderr, 
-			"DEBUG: client issued a session request");
+			"DEBUG: client issued a session request\n");
 		CNTRLNEXT;
 
 		if (OWPParseTestRequest(cntrl, sender, receiver, 

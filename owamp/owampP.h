@@ -161,6 +161,35 @@ struct OWPTestSessionRec{
 };
 
 /*
+ * Private api.c prototypes
+ */
+extern OWPAddr
+_OWPAddrAlloc(
+	OWPContext	ctx
+	);
+
+extern OWPControl
+_OWPControlAlloc(
+	OWPContext	ctx,
+	OWPErrSeverity	*err_ret
+	);
+
+extern OWPTestSession
+_OWPTestSessionAlloc(
+	OWPControl	cntrl,
+	OWPAddr		sender,
+	OWPBoolean	server_conf_sender,
+	OWPAddr		receiver,
+	OWPBoolean	server_conf_receiver,
+	OWPTestSpec	*test_spec
+	);
+
+extern void
+_OWPTestSessionFree(
+	OWPTestSession	tsession
+	);
+
+/*
  * io.c prototypes
  */
 extern ssize_t
@@ -233,15 +262,6 @@ OWPDecryptToken(
 	char	*binKey,
 	char	*token_in,
 	char	*token_out
-	);
-
-/*
- * random.c
- */
-extern void
-random_bytes(
-	char	*ptr,
-	int	count
 	);
 
 /*
