@@ -22,6 +22,9 @@
 **	This file contains the OWAMP access policy functions.
 */
 
+#ifndef OWP_ACCESS_H
+#define OWP_ACCESS_H
+
 #include <owamp/owamp.h>
 #include "access.h"
 #include "rijndael-api-fst.h"
@@ -428,10 +431,9 @@ ipaddr2class(u_int32_t ip, I2table ip2class_hash)
 */
 
 void
-owamp_read_class2limits(const char *class2limits, I2table hash)
+owamp_read_class2limits(OWPContext ctx, const char *class2limits, I2table hash)
 {
 	char line[MAX_LINE];
-	char err_msg[1024];
 	char *key, *value, *class, *key_value, *brkt, *brkb;
 	FILE *fp;
 	u_int32_t numval;
@@ -439,9 +441,8 @@ owamp_read_class2limits(const char *class2limits, I2table hash)
 	I2datum key_dat, val_dat;
 
 	if ( (fp = fopen(class2limits, "r")) == NULL){
-		snprintf(err_msg, sizeof(err_msg),"fopen %s for reading", 
-			class2limits);
-		perror(err_msg);
+		OWPError(ctx, OWPErrFATAL, errno, 
+			 "FATAL: fopen %s for reading", class2limits);
 		exit(1);
 	}
 
@@ -482,3 +483,64 @@ owamp_read_class2limits(const char *class2limits, I2table hash)
 		I2hash_store(hash, str2datum(class), limits2datum(&limits));
 	}
 }
+
+/* 
+** This function initializes policy database and returns the
+** resulting handle (to be passed to any policy checks) on success,
+** or NULL on error.
+** It expects fulls paths to configuration files (to be specified
+** by application).
+*/
+
+policy_data *
+PolicyInit(
+	   OWPContext ctx, 
+	   char *ip2class_file,
+	   char *class2limits_file,
+	   char *passwd_file,
+	   OWPErrSeverity *err_ret
+	   )
+{
+	policy_data *ret;
+	
+	ret = (void *)malloc(sizeof(*ret));
+	if (ret == NULL){
+		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, "malloc");
+		return NULL;
+	}
+
+	/* Initialize the hashes. */
+	ret->ip2class = I2hash_init(ctx, 0, NULL, NULL,print_ip2class_binding);
+	if (ret->ip2class == NULL){
+		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN,
+			 "could not init ip2class hash");
+		*err_ret = OWPErrFATAL;
+		return ret;
+	}
+
+	ret->class2limits = I2hash_init(ctx, 0, NULL, NULL, 
+					print_class2limits_binding);
+	if (ret->class2limits == NULL){
+		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN,
+			 "could not init class2limits hash");
+		*err_ret = OWPErrFATAL;
+		return ret;
+	}
+
+	ret->passwd = I2hash_init(ctx, 0, NULL, NULL, NULL);
+	if (ret->passwd == NULL){
+		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN,
+			 "could not init passwd hash");
+		*err_ret = OWPErrFATAL;
+		return ret;
+	}
+	
+	/* Now read config files and save info in the hashes. */
+	owamp_read_ip2class(ctx, ip2class_file, ret->ip2class); 
+	owamp_read_class2limits(ctx, class2limits_file, ret->class2limits);
+	read_passwd_file(ctx, passwd_file, ret->passwd);
+
+	return ret;
+}
+
+#endif
