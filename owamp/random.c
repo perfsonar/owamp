@@ -3,7 +3,7 @@
 /*
 ** This function generates <count> many random bytes and
 ** places them in the location pointed to by <ptr>. It is
-** a responsability of the caller to have allocated
+** a responsibility of the caller to have allocated
 ** sufficient space.
 */
 void
