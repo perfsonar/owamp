@@ -63,7 +63,10 @@ package OWP::Conf;
 
 $Conf::REVISION = '$Id$';
 $Conf::VERSION='1.0';
+
+# Eventually set using $sysconfig autoconf variable.
 $Conf::CONFPATH='~';			# default dir for config files.
+
 $Conf::GLOBALCONFENV='OWPGLOBALCONF';
 $Conf::DEVCONFENV='OWPCONF';
 $Conf::GLOBALCONFNAME='owmesh.conf';
@@ -72,24 +75,10 @@ $Conf::GLOBALCONFNAME='owmesh.conf';
 # This hash is used to privide default values for "some" parameters.
 #
 my %DEFS = (
-	DEFSECRET		=>	'abcdefgh12345678',
-	SECRETNAME		=>	'DEFSECRET',
-	SECRETNAMES		=>	['DEFSECRET'],
-	MDCMD			=>	'/sbin/md5',	# FreeBSD
-	MDCMDFIELD		=>	3,		# FreeBSD
-	CENTRALHOST		=>	'netflow.internet2.edu',
-	CENTRALHOSTUSER		=>	'owamp',
-	CENTRALUPLOADDIR	=>	'/owamp/upload',
-	UPTIMESENDTOADDR	=>	'netflow.internet2.edu',
-	UPTIMESENDTOPORT	=>	2345,
-	DATADIR			=>	'/data',
-	OWAMPDVARDIR		=>	'/var/run',
 	OWAMPDPIDFILE		=>	'owampd.pid',
 	OWAMPDINFOFILE		=>	'owampd.info',
-	UPTIME_DB               =>      'uptime.dat',
 	OWPBINDIR		=>	"$FindBin::Bin",
 	CONFDIR			=>	"$Conf::CONFPATH/",
-	SEPARATOR               =>      ',',
 );
 
 # Opts that are boolean.
@@ -529,9 +518,9 @@ sub dump{
 sub get_names_info {
     my ($self, $mtype, $recv, $sender, $res, $mode) = @_;
     my $rel_dir = $self->get_rel_path($mtype, $recv, $sender);
-    my $datadirname = join('/', $self->{'CENTRALUPLOADDIR'}, $rel_dir, $res);
+    my $datadirname = join('/', $self->must_get_val(ATTR=>'CENTRALDATADIR'), $rel_dir, $res);
 
-    my $full_www = join('/', $self->{'CENTRALWWWDIR'}, $rel_dir);
+    my $full_www = join('/', $self->must_get_val(ATTR=>'CENTRALWWWDIR'), $rel_dir);
 
     my $summary_file = ($mode == 1)? undef : "$full_www/last_summary";
 
