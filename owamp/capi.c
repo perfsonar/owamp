@@ -873,7 +873,7 @@ foundaddr:
 		if(_OWPClientRequestTestReadResponse(cntrl,
 					sender,server_conf_sender,
 					receiver,server_conf_receiver,
-					test_spec,sid_ret,err_ret) != 0){
+					test_spec,tsession->sid,err_ret) != 0){
 			goto error;
 		}
 
