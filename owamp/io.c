@@ -56,18 +56,99 @@ writen(int fd, const void *vptr, size_t n)
 /* end writen */
 
 /*
-** This function sends a given number of blocks to the socket,
+** This function sends a given number of (16 byte) blocks to the socket,
 ** doing encryption if needed.
 */
 
 #define BLOCK_LEN    16 /* number of bytes in a block */
 
+/*
+** The next two functions send or receive a given number of
+** (16-byte) blocks via the Control connection socket,
+** taking care of encryption/decryption as necessary.
+*/
+
+#define RIJNDAEL_BLOCK_SIZE 16
+
 int
-send_blocks(int sock, char *buf, int num_blocks, OWPBoolean encrypt)
+_OWPSendBlocks(OWPControl cntrl, char* buf, int num_blocks)
 {
-	if (!encrypt){
-		if (writen(sock, buf, num_blocks*BLOCK_LEN) < 0)
+	size_t n;
+
+	if (! (cntrl->mode && OWP_MODE_ENCRYPTED)){
+		n = writen(cntrl->sockfd, buf, num_blocks*RIJNDAEL_BLOCK_SIZE);
+		if (n < 0){
+			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,errno,
+				"writen failed");
 			return -1;
+		} 
+		return 0;
+	} else {
+		char msg[MAX_MSG];
+		_OWPEncryptBlocks(cntrl, buf, num_blocks, msg);
+		n = writen(cntrl->sockfd, msg, num_blocks*RIJNDAEL_BLOCK_SIZE);
+		if (n < 0){
+			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,errno,
+				     "writen failed");
+			return -1;
+		} 
+		return 0;
 	}
-	return 0;
+}
+
+int
+_OWPReceiveBlocks(OWPControl cntrl, char* buf, int num_blocks)
+{
+	size_t n;
+
+	if (! (cntrl->mode && OWP_MODE_ENCRYPTED)){
+		n = readn(cntrl->sockfd, buf, num_blocks*RIJNDAEL_BLOCK_SIZE);
+		if (n < 0){
+			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,errno,
+				     "readn failed");
+			return -1;
+		} 
+		return 0;
+	} else {
+		char msg[MAX_MSG];
+		n = readn(cntrl->sockfd, msg, num_blocks*RIJNDAEL_BLOCK_SIZE);
+		_OWPDecryptBlocks(cntrl, msg, num_blocks, buf);
+		if (n < 0){
+			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,errno,
+				     "readn failed");
+			return -1;
+		} 
+		return 0;
+	}	
+}
+
+/*
+** The following two functions encrypt/decrypt a given number
+** of (16-byte) blocks. They update IV as necessary.
+*/
+
+int
+_OWPEncryptBlocks(OWPControl cntrl, char *buf, int num_blocks, char *out)
+{
+	int r;
+	r = blockEncrypt(cntrl->writeIV, 
+			 &cntrl->encrypt_key, buf, num_blocks*16*8, out);
+	if (r != num_blocks*16*8)
+		return -1;
+
+	/* Currently blockEncrypt does NOT update IV */
+	if (num_blocks > 1)
+		memcpy(cntrl->writeIV, out + ((num_blocks-1)*16), 16);
+}
+
+
+int
+_OWPDecryptBlocks(OWPControl cntrl, char *buf, int num_blocks, char *out)
+{
+	int r;
+	r = blockDecrypt(cntrl->readIV, 
+			 &cntrl->decrypt_key, buf, num_blocks*16*8, out);
+	if (r != num_blocks*16*8)
+		return -1;
+
 }
