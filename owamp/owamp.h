@@ -27,7 +27,7 @@
 #include <sys/socket.h>
 
 #define	OWP_MODE_UNDEFINED		(0)
-#define	OWP_MODE_UNAUTHENTICATED	(01)
+#define	OWP_MODE_OPEN			(01)
 #define	OWP_MODE_AUTHENTICATED		(02)
 #define	OWP_MODE_ENCRYPTED		(04)
 
@@ -100,7 +100,8 @@ typedef struct{
 struct OWPEndpointRec{
 	OWPBoolean	receiver;	/* true if endpoint recv */
 
-	struct sockaddr	sa_addr;
+	struct sockaddr	local_saddr;
+	struct sockaddr	remote_saddr;
 
 	OWPSID		sid;
 };
@@ -124,12 +125,27 @@ typedef int (*OWPErrFunc)(
 );
 
 /*
- * The value that is returned from this function will be passed
- * as app_data to the OWPCheckTestPolicyFunc,
- * EndpointInitFunc, EndpointInitHookFunc,
- * EndpointStartFunc and EndpointStopFunc.
+ * If set, this function will be called from OWPControlOpen before the actual
+ * connection is tried. This will allow the policy to determine if it
+ * is willing to even speak "control" to that IP. (In the reference
+ * implementation this just checks if the remote_addr is in the "forbidden"
+ * class - and denies that. All other addresses are allowed at this point.)
  *
- *
+ * If local_sa_addr is NULL - then it is not being specified.
+ * remote_sa_addr MUST be set.
+ */
+typedef void (*OWPCheckAddrPolicy)(
+	void		*app_data,
+	struct sockaddr	*local_sa_addr,
+	struct sockaddr	*remote_sa_addr,
+	OWPErrSeverity	*err_ret
+);
+
+/*
+ * This function will be called from OWPControlOpen and OWPServerAccept
+ * to determine if the control connection should be accepted.
+ * It is called after connecting, and after determining that encryption
+ * is working properly.
  */
 typedef void (*OWPCheckControlPolicyFunc)(
 	void		*app_data,
@@ -228,6 +244,7 @@ typedef struct {
 	void				*app_data;
 	OWPErrFunc			*err_func;
 	OWPGetKeyFunc			*get_aes_key;
+	OWPCheckAddrPolicy		*check_addr_func;
 	OWPCheckControlPolicyFunc	*check_control_func;
 	OWPCheckTestPolicyFunc		*check_test_func;
 	OWPEndpointInitFunc		*endpoint_init_func;
@@ -334,8 +351,9 @@ OWPAddrFree(
 extern OWPControl
 OWPControlOpen(
 	OWPContext	ctx,
-	OWPAddr		server_addr,
-	int		mode_mask,	/* OR of OWPSessionModes */
+	OWPAddr		local_addr,	/* src addr or NULL	*/
+	OWPAddr		server_addr,	/* server addr or NULL	*/
+	u_int32_t	mode_mask,	/* OR of OWPSessionModes */
 	const OWPKID	*kid,		/* null if unwanted	*/
 	const OWPKey	*key,		/* null if unwanted	*/
 	OWPErrSeverity	*err_ret
