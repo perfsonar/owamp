@@ -111,6 +111,9 @@ my $inf_coef = $conf->get_val(ATTR => 'INF_DELAY_MULT') || 1.5;
 my ($cur_min, $cur_hour) = (gmtime(time()))[1, 2];
 my $time_to_archive = (($cur_min >= 58) || ($cur_min <= 2))? 1: 0;
 
+# Time out value for flock.
+my $timeout = $conf->get_val(ATTR => 'FLOCKTMOUT') || 10;
+
 foreach my $mtype (@mtypes){
     foreach my $recv (@nodes){
 	$rec_addr = $conf->get_val(NODE=>$recv, TYPE=>$mtype, ATTR=>'ADDR');
@@ -154,7 +157,7 @@ foreach my $mtype (@mtypes){
 		    next;
 		}
 
-		next unless flock($fh, LOCK_EX);
+		next unless flock_tmout($fh, LOCK_EX, $timeout);
 		# compute stats here
 		warn "plot_resolution: trying datadir = $datadir" if VERBOSE;
 
@@ -257,7 +260,7 @@ sub plot_resolution {
     my $gnu_dat = "$datadir/$res.dat";
     open(GNUDAT, ">$gnu_dat") or die "Could not open $gnu_dat: $!";
     autoflush GNUDAT 1;
-    unless (flock(GNUDAT, LOCK_EX)) {
+    unless (flock_tmout(GNUDAT, LOCK_EX, $timeout)) {
 	warn "Could not flock $gnu_dat: $!";
 	close GNUDAT;
 	return;
@@ -594,4 +597,24 @@ sub print_pairs {
 
 sub fmt {
     return sprintf "%.2f", $_[0];
+}
+
+# Wrapper around (non-blocking) flock, to allow timeout.
+sub flock_tmout {
+    my ($fh, $what, $timemout) = @_;
+
+    my $ret;
+    eval {
+        local $SIG{ALRM} = sub { die "alarm\n" }; # NB: \n required
+        alarm $timeout;
+	$ret = flock($fh, $what);
+        alarm 0;
+    };
+
+    if ($@) {
+	warn "flock timed out" if ($@ eq "alarm\n");
+	return undef;
+    }
+
+    return $ret;
 }
