@@ -1233,7 +1233,8 @@ AGAIN:
 			/* write relevant records to file */
 			if(OWPParseRecords(ctx,p->fp,nrecs,hdr.version,
 				WriteSubSession,(void*)&parse) != OWPErrOK){
-				I2ErrLog(eh,"WriteSubSession: %M");
+				I2ErrLog(eh,"WriteSubSession: nrecs=%d: %M",
+									nrecs);
 				goto error;
 			}
 
@@ -1316,6 +1317,7 @@ AGAIN:
 				fflush(stdout);
 			}
 error:
+			I2HashClean(parse.buckets);
 			fclose(parse.fp);
 			parse.fp = NULL;
 			/* unlink old name */
@@ -1345,6 +1347,9 @@ error:
 		p->numPackets = 0;
 		while((fclose(p->fp) != 0) && errno==EINTR);
 		p->fp = NULL;
+
+		if(sig_check())
+			goto NextConnection;
 
 		if(sub < numSessions){
 			/*
