@@ -24,6 +24,7 @@
 #define ARITHM128_INCLUDED
 
 #include <sys/time.h>
+#include "rijndael-api-fst.h"
 
 #define NUM_DIGITS 8
 
@@ -53,7 +54,7 @@ struct num_128 num_new(unsigned short a,
 		 unsigned short e, 
 		 unsigned short f, 
 		 unsigned short g, 
-		 unsigned short h
+ 		 unsigned short h
 		 );
 struct num_128 ulong2num(unsigned long a);
 
@@ -66,6 +67,7 @@ void num2formatted(num_128 from, OWPFormattedTime to);
 void formatted2num(OWPFormattedTime from, num_128 to);
 void num2timeval(num_128 from, struct timeval *to);
 void timeval2num(struct timeval *from, num_128 to);
+struct num_128 raw2num(unsigned char *raw);
 
 /* Debugging and auxilliary functions */
 void num_print(num_128 x);
@@ -73,5 +75,7 @@ unsigned long num2ulong(num_128 x);
 unsigned long long num2ulonglong(num_128 x);
 struct num_128 ulonglong2num(unsigned long long a);
 
+/* Generate an exponential deviate using 64-bit binary string as an input. */
+struct num_128 random_exp(keyInstance *key, unsigned long in);
 #undef T 
 #endif
