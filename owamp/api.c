@@ -92,6 +92,8 @@ _OWPAddrAlloc(
 
 	addr->node_set = 0;
 	addr->node[0] = '\0';
+	addr->port_set = 0;
+	addr->port[0] = '\0';
 	addr->ai_free = 0;
 	addr->ai = NULL;
 
