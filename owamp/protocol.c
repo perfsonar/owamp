@@ -1714,7 +1714,6 @@ _OWPWriteStopSessions(
 	OWPAcceptType	acceptval
 	)
 {
-	int		n;
 	u_int8_t	*buf = (u_int8_t*)cntrl->msg;
 
 	if(!(_OWPStateIs(_OWPStateRequest,cntrl) &&

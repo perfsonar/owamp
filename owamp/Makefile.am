@@ -25,7 +25,7 @@ libowamp_a_SOURCES	= api.c capi.c sapi.c context.c error.c owampP.h \
 			protocol.c io.c endpoint.c time.c arithm64.c \
 			rijndael-alg-fst.c rijndael-alg-fst.h \
 			rijndael-api-fst.c rijndael-api-fst.h \
-			unixtime.c schedule.c
+			schedule.c
 
 EXTRA_DIST		= owamp.h
 

@@ -77,7 +77,6 @@ OWPContextCreate(
 	struct sigaction	act;
 	I2LogImmediateAttr	ia;
 	OWPContext		ctx = calloc(1,sizeof(OWPContextRec));
-	char			*tmpdir;
 
 	if(!ctx){
 		OWPError(eh,

@@ -78,6 +78,8 @@ usage(
 		"   -e facility       Syslog \"facility\" to log errors\n"
 		"   -G group          Run as group \"group\" :-gid also valid\n"
 		"   -h                Print this message and exit\n"
+			);
+		fprintf(stderr,
 	        "   -S nodename:port  Srcaddr to bind to\n"
 		"   -U user           Run as user \"user\" :-uid also valid\n"
 		"   -v                verbose output\n"
@@ -1469,7 +1471,7 @@ main(int argc, char *argv[])
 			exit(1);
 		}
 
-		if(!OWPGetTimeOfDay(&currtime)){
+		if(!OWPGetTimeOfDay(ctx,&currtime)){
 			I2ErrLogP(errhand, errno, "OWPGetTimeOfDay: %M");
 			kill(mypid,SIGTERM);
 			exit(1);

@@ -19,6 +19,7 @@
  *	Description:	
  */
 #include <stdlib.h>
+#include <string.h>
 #include <owamp/owamp.h>
 
 struct OWPExpContextRec{

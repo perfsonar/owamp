@@ -72,13 +72,13 @@ print_test_args()
 static void
 print_output_args()
 {
-	fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n",
-"              [Output Args]",
-"   -h             print this message and exit",
-"   -Q             run the test and exit without reporting statistics",
-"   -R             print RAW data: \"SEQNO STIME SS SERR RTIME RS RERR\\n\"",
-"   -v             print out individual delays",
-"   -a alpha       report an additional percentile level for the delays"
+	fprintf(stderr,
+"              [Output Args]\n\n"
+"   -h             print this message and exit\n"
+"   -Q             run the test and exit without reporting statistics\n"
+"   -R             print RAW data: \"SEQNO STIME SS SERR RTIME RS RERR\\n\"\n"
+"   -v             print out individual delays\n"
+"   -a alpha       report an additional percentile level for the delays\n"
 		);
 }
 
@@ -1450,7 +1450,7 @@ main(
 		 *		then one second extra to allow for setup
 		 *		delay.
 		 */
-		if(!OWPGetTimeOfDay(&start_time)){
+		if(!OWPGetTimeOfDay(ctx,&start_time)){
 			I2ErrLogP(eh,errno,"Unable to get current time:%M");
 			exit(1);
 		}

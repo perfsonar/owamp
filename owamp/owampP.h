@@ -226,7 +226,7 @@ struct OWPControlRec{
 	 * Encryption fields
 	 */
 				/* null if not set - else userid_buffer */
-	u_int8_t		*userid;
+	char			*userid;
 	OWPUserID		userid_buffer;
 	keyInstance             encrypt_key;
 	keyInstance             decrypt_key;

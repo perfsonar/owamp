@@ -22,6 +22,8 @@
  *	This file contains the api functions typically called from an
  *	owamp server application.
  */
+#define	_GNU_SOURCE
+#include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
 #include <sys/stat.h>
@@ -621,7 +623,7 @@ OWPControlAccept(
 			OWPError(ctx,OWPErrINFO,OWPErrPOLICY,
        "ControlSession request to (%s:%s) denied from userid(%s):(%s:%s)",
 				cntrl->local_addr->node,cntrl->local_addr->port,
-				(cntrl->userid)?cntrl->userid:(u_int8_t*)"nil",
+				(cntrl->userid)?cntrl->userid:(char*)"nil",
 				cntrl->remote_addr->node,
 				cntrl->remote_addr->port);
 			/*
@@ -648,7 +650,7 @@ OWPControlAccept(
 	OWPError(ctx,OWPErrINFO,OWPErrPOLICY,
 		"ControlSession([%s]:%s) accepted from userid(%s):([%s]:%s)",
 		cntrl->local_addr->node,cntrl->local_addr->port,
-		(cntrl->userid)?cntrl->userid:(u_int8_t*)"nil",
+		(cntrl->userid)?cntrl->userid:(char*)"nil",
 		cntrl->remote_addr->node,
 		cntrl->remote_addr->port);
 	

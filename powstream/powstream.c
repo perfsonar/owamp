@@ -24,8 +24,9 @@
  *	set up perpetual tests and keep them going until this application
  *	is killed.
  */
-#include <stdlib.h>
+#define _GNU_SOURCE
 #include <stdio.h>
+#include <stdlib.h>
 #include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -384,7 +385,7 @@ SetupSession(
 	while(!p->cntrl){
 
 		if(stop){
-			if(!OWPGetTimeOfDay(&currtime)){
+			if(!OWPGetTimeOfDay(ctx,&currtime)){
 				I2ErrLog(eh,"OWPGetTimeOfDay:%M");
 				exit(1);
 			}
@@ -430,7 +431,7 @@ SetupSession(
 	if(sig_check())
 		return 1;
 
-	if(!OWPGetTimeOfDay(&currtime)){
+	if(!OWPGetTimeOfDay(ctx,&currtime)){
 		I2ErrLogP(eh,errno,"OWPGetTimeOfDay:%M");
 		exit(1);
 	}
