@@ -2078,9 +2078,6 @@ parenterr:
         exit(OWP_CNTRL_REJECT);
     }else if(owp_usr1){
         /* start the session */
-        struct timespec currtime;
-        u_int32_t	esterror;
-        int		sync;
 
         /* clear the sig mask so all sigs come through */
         if(sigprocmask(SIG_SETMASK,&sigs,NULL) != 0){
