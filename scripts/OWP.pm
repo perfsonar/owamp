@@ -65,7 +65,9 @@ sub daemonize{
 
 	open STDIN, "$dnull"	or die "Can't read $dnull: $!";
 	open STDOUT, ">>$dnull"	or die "Can't write $dnull: $!";
-	open STDERR, ">>$dnull"	or die "Can't write $dnull: $!";
+	if(!$args{'KEEPSTDERR'}){
+		open STDERR, ">>$dnull"	or die "Can't write $dnull: $!";
+	}
 
 	defined(my $pid = fork)	or die "Can't fork: $!";
 

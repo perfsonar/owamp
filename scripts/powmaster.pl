@@ -184,14 +184,6 @@ my($MD5) = new Digest::MD5 ||
 if(!$debug && !$foreground){
 	daemonize(PIDFILE => 'powmaster.pid') ||
 		die "Unable to daemonize process";
-#	untie *MYLOG;
-#	$slog = tie *MYLOG, 'OWP::Syslog',
-#		facility	=> $conf->must_get_val(ATTR=>'SyslogFacility'),
-#		log_opts	=> 'pid',
-#		setlogsock	=> 'unix';
-	# make die/warn goto syslog, and also to STDERR.
-#	$slog->HandleDieWarn();
-#	undef $slog;	# Don't keep tie'd ref's around unless you need them...
 }
 
 # setup pipe - read side used by send_data, write side used by all
@@ -280,18 +272,20 @@ while(1){
 		undef $peeraddr;
 	}
 	elsif($reset || $die){
-		if($reset == 1){
-			warn "Handling SIGHUP... Stop processing...\n";
-			kill 'TERM', keys %pid2info;
-			$reset++;
-		}
-		if($die == 1){
-			warn "Exiting... Deleting sub-processes...\n";
-			kill 'TERM', keys %pid2info;
-			$die++;
-		}
 		undef $UptimeSocket;
 		undef $peeraddr;
+		if($reset == 1){
+			$reset++;
+			warn "Handling SIGHUP... Stop processing...\n";
+			kill 'TERM', keys %pid2info;
+			next; # SIGCHLD shows up during kill - even if blocked.
+		}
+		if($die == 1){
+			$die++;
+			warn "Exiting... Deleting sub-processes...\n";
+			kill 'TERM', keys %pid2info;
+			next; # SIGCHLD shows up during kill - even if blocked.
+		}
 		$funcname = "sigsuspend";
 		# Wait for children to exit
 		if((keys %pid2info) > 0){

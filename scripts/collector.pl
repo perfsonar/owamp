@@ -241,19 +241,21 @@ while(1){
 	if($sigchld){
 		undef $paddr;
 	}elsif($reset || $die){
+		undef $Server;
+		undef $paddr;
 		if($reset == 1){
 			$reset++;
 			warn "Handling SIGHUP... Stop processing...\n";
 			kill 'TERM', (keys %children);
+			next;
 		}
 		if($die == 1){
 			$die++;
 			warn "Exiting... Deleting sub-processes...\n";
 			kill 'TERM', (keys %children);
+			next;
 		}
 
-		undef $Server;
-		undef $paddr;
 		$func = "sigsuspend";
 		if((keys %children) > 0){
 			eval{
