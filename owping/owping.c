@@ -113,9 +113,9 @@ owp_fetch_to_local(OWPControl cntrl,
 */
 typedef struct rec_link *rec_link_ptr;
 typedef struct rec_link {
-	u_int8_t     record[20];    /* raw timestamp record */
-	rec_link_ptr next;
-	rec_link_ptr previous;
+	OWPCookedDataRec record;
+	rec_link_ptr     next;
+	rec_link_ptr     previous;
 } rec_link;
 
 /*
@@ -155,7 +155,9 @@ list_free(rec_list_ptr list)
 ** success, or -1 on failure.
 */
 int
-rec_insert_next(rec_list_ptr list, rec_link_ptr current, const u_int8_t *data)
+rec_insert_next(rec_list_ptr list, 
+		rec_link_ptr current, 
+		OWPCookedDataRecPtr data)
 {
 	rec_link_ptr new_record;
 
@@ -165,7 +167,7 @@ rec_insert_next(rec_list_ptr list, rec_link_ptr current, const u_int8_t *data)
 		return -1;
 	}
 
-	memcpy(new_record->record, data, 20);
+	memcpy(&new_record->record, data, sizeof(*data));
 
 	if (current == NULL) {
 		if (list->head)
@@ -487,12 +489,12 @@ owp_do_summary(fetch_state_ptr state)
 ** of the second.
 */
 int
-owp_seqno_cmp(u_int8_t *a, u_int8_t *b)
+owp_seqno_cmp(OWPCookedDataRecPtr a, OWPCookedDataRecPtr b)
 {
 	assert(a);
 	assert(b);
 
-	return OWP_CMP(OWPGetSeqno(a), OWPGetSeqno(b));
+	return OWP_CMP(a->seq_no, b->seq_no);
 }
 
 /*
@@ -502,7 +504,7 @@ owp_seqno_cmp(u_int8_t *a, u_int8_t *b)
 ** the head of the list.
 */
 rec_link_ptr
-owp_find_location(rec_list_ptr list, u_int8_t *rec)
+owp_find_location(rec_list_ptr list, OWPCookedDataRecPtr rec)
 {
 	rec_link_ptr ret;
 
@@ -510,7 +512,7 @@ owp_find_location(rec_list_ptr list, u_int8_t *rec)
 	assert(rec);
 
 	for (ret = list->tail; ret; ret = ret->previous)
-		if (owp_seqno_cmp(rec, ret->record) > 0)
+		if (owp_seqno_cmp(rec, &ret->record) > 0)
 			return ret;
 
 	return NULL;
@@ -521,33 +523,32 @@ owp_find_location(rec_list_ptr list, u_int8_t *rec)
 ** as encoded in <state>.
 */
 void
-owp_record_out(u_int8_t *rec, fetch_state_ptr state)
+owp_record_out(OWPCookedDataRecPtr rec, fetch_state_ptr state)
 {
 	OWPTimeStamp send, recv;
-	u_int32_t    seq_no;
 	double delay;
 
 	assert(rec);
 	assert(state);
-
-	OWPParseDataRecord(rec, &send, &recv, &seq_no);
 
 	switch (state->type) {
 	case OWP_MACHINE_READ:
 		assert(state->fp);
 		fprintf(state->fp, 
 "seq_no=%u send=%u.%us sync=%u prec=%u recv=%u.%us sync=%u prec=%u\n",
-			seq_no, send.sec, send.frac_sec, send.sync, send.prec,
-			recv.sec, recv.frac_sec, recv.sync, recv.prec);
+			rec->seq_no, rec->send.sec, rec->send.frac_sec, 
+			rec->send.sync, rec->send.prec,
+			rec->recv.sec, rec->recv.frac_sec, rec->recv.sync, 
+			rec->recv.prec);
 		break;
 	case OWP_PING_STYLE:
 		delay = owp_delay(&send, &recv);
-		fprintf(state->fp, "seq_no=%u delay=%.3f ms\n", seq_no, 
+		fprintf(state->fp, "seq_no=%u delay=%.3f ms\n", rec->seq_no, 
 			delay*THOUSAND);
 		owp_update_stats(state, delay);
 		break;
 	case OWP_PING_QUIET:
-		delay = owp_delay(&send, &recv);
+		delay = owp_delay(&rec->send, &rec->recv);
 		owp_update_stats(state, delay);
 		break;
 	default:
@@ -561,7 +562,9 @@ owp_record_out(u_int8_t *rec, fetch_state_ptr state)
 ** or -1 on failure.
 */
 int
-fill_window(void *calldata, u_int8_t *rec)
+fill_window(void *calldata,  
+	    OWPCookedDataRecPtr rec
+	    )
 {
 	fetch_state_ptr state = (fetch_state_ptr)calldata;
 
@@ -582,10 +585,11 @@ fill_window(void *calldata, u_int8_t *rec)
 ** as encoded in state.
 */
 int
-do_rest(void *calldata, u_int8_t *rec)
+do_rest(void *calldata, 
+	OWPCookedDataRecPtr rec
+	)
 {
 	fetch_state_ptr state = (fetch_state_ptr)calldata;
-	u_int32_t       seq_no;
 
 	assert(state);
 	assert(state->window);
@@ -600,8 +604,7 @@ do_rest(void *calldata, u_int8_t *rec)
 	/* If ordering is important - handle it here. */
 	if (state->order_disrupted)
 		return 0;
-	seq_no = OWPGetSeqno(rec);
-	if ((int64_t)seq_no < state->last_seqno) {
+	if ((int64_t)(rec->seq_no) < state->last_seqno) {
 		state->order_disrupted = 1;
 		return 0; /* No error but all stats processing is off now. */
 	}

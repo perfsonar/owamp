@@ -1056,13 +1056,14 @@ OWPFetchSession(OWPControl cntrl,
 OWPErrSeverity
 OWPFetchLocalRecords(int fd, 
 		     u_int32_t num_rec, 
-		     OWPDoRawDataRecord proc_rec,
+		     OWPDoDataRecord proc_rec,
 		     void *app_data)
 {
 	u_int64_t        nbytes, nchunks, rem_bytes;
 	u_int32_t        i, j;
 	u_int8_t         *cur_rec;
 	u_int8_t	 buf[OWP_BUFSIZ];
+	OWPCookedDataRec rec;
 
 	/* 
 	   Compute the number of OWP_BUFIZE-byte blocks to read. 
@@ -1075,7 +1076,9 @@ OWPFetchLocalRecords(int fd,
 			return OWPErrFATAL;
 		cur_rec = buf;
 		for (j = 0; j < sizeof(buf) / _OWP_TS_REC_SIZE; j++) {
-			if (proc_rec(app_data, cur_rec) < 0)
+			OWPParseDataRecord(cur_rec, &(rec.send), 
+					   &(rec.recv), &(rec.seq_no));
+			if (proc_rec(app_data, &rec) < 0)
 				return OWPErrFATAL;
 			cur_rec += _OWP_TS_REC_SIZE;
 		}
@@ -1086,7 +1089,9 @@ OWPFetchLocalRecords(int fd,
 		return OWPErrFATAL;
 	cur_rec = buf;
 	for (j = 0; j < rem_bytes / _OWP_TS_REC_SIZE; j++) {
-		if (proc_rec(app_data, cur_rec) < 0)
+		OWPParseDataRecord(cur_rec, &(rec.send), 
+				   &(rec.recv), &(rec.seq_no));
+		if (proc_rec(app_data, &rec) < 0)
 			return OWPErrFATAL;
 		cur_rec += _OWP_TS_REC_SIZE;
 	}

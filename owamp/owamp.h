@@ -715,24 +715,31 @@ OWPPacketSizeT OWPTestPacketSize(
 		);
 
 /*
+** Applications use this type to manipulate timestamp data records.
+*/
+typedef struct OWPCookedDataRec {
+	u_int32_t    seq_no;
+	OWPTimeStamp send;
+	OWPTimeStamp recv;
+} OWPCookedDataRec, *OWPCookedDataRecPtr;
+
+/*
 ** This (type of) function is used by Fetch-Client to process (cooked)
 ** data records. 
 */
 typedef int (*OWPDoDataRecord)(
-			       void *calldata,
-			       u_int32_t seq_num,
-			       OWPTimeStamp *send_time,
-			       OWPTimeStamp *recv_time
-			       );
-/*
-** This (type of) function is used by Fetch-Client to process (raw)
-** data records. 
-*/
-typedef int (*OWPDoRawDataRecord)(
-			       void *calldata,
-			       u_int8_t *rec  /* 20-byte record */
+			       void                *calldata,
+			       OWPCookedDataRecPtr rec
 			       );
 
+/*
+** Request records with numbers from <begin> to <end>
+** of a given session <SID>. Process server response (Control-Ack).
+** On success, read the first 16 octets of data transmitted
+** by the server, parse it, then read the promised number of records 
+** and write them to the provided file descriptor <fd>. Return OWPErrOK
+** on success, or OWPErrFATAL on failure.
+*/
 OWPErrSeverity
 OWPFetchSession(OWPControl cntrl,
 		u_int32_t  begin,
@@ -741,26 +748,13 @@ OWPFetchSession(OWPControl cntrl,
 		int        fd);
 
 /*
-** Request records with numbers from <begin> to <end>
-** of a given session <SID>. Process server response (Control-Ack).
-** On success, read the first 16 octets of data transmitted
-** by the server, parse it, then read the promised number of records 
-** and write them to the provided file descriptor <fd>.
-*/
-OWPErrSeverity
-OWPFetchRecords(OWPControl cntrl, 
-		u_int32_t num_rec, 
-		OWPDoRawDataRecord proc_rec,
-		void *app_data);
-
-/*
 ** "Fetching" data from local disk - assume the header has been
 ** processed already. 
 */
 OWPErrSeverity
 OWPFetchLocalRecords(int fd, 
 		     u_int32_t num_rec, 
-		     OWPDoRawDataRecord proc_rec,
+		     OWPDoDataRecord proc_rec,
 		     void *app_data);
 
 /*
