@@ -30,6 +30,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <netdb.h>
+#include <sys/signal.h>
 
 #include <I2util/util.h>
 /*
@@ -51,6 +52,8 @@ static	pow_cntrl_rec		pcntrl[2];
 static	OWPTestSpecPoisson	test_spec;
 static	u_int32_t		sessionTime;
 static	u_int32_t		file_offset,ext_offset;
+static	int			pow_reset = 0;
+static	int			pow_exit = 0;
 
 /*
  * Library initialization structure;
@@ -315,6 +318,59 @@ ResetSession(
 	return;
 }
 
+static void
+CloseSessions(
+		)
+{
+	ResetSession(&pcntrl[0],&pcntrl[1]);
+	ResetSession(&pcntrl[1],&pcntrl[0]);
+	if(pcntrl[0].cntrl)
+		OWPControlClose(pcntrl[0].cntrl);
+	if(pcntrl[1].cntrl)
+		OWPControlClose(pcntrl[1].cntrl);
+	pcntrl[0].cntrl = NULL;
+	pcntrl[1].cntrl = NULL;
+
+	return;
+}
+
+static void
+sig_catch(
+		int		signo
+		)
+{
+	switch(signo){
+		case SIGINT:
+		case SIGTERM:
+			pow_exit++;
+			break;
+		case SIGHUP:
+			pow_reset++;
+			break;
+		default:
+			I2ErrLog(eh,"sig_catch(%d):UNEXPECTED SIGNAL NUMBER",
+									signo);
+			exit(1);
+	}
+
+	return;
+}
+
+static int
+sig_check()
+{
+	if(pow_exit || pow_reset)
+		CloseSessions();
+	if(pow_exit)
+		exit(0);
+	if(pow_reset){
+		pow_reset = 0;
+		return 1;
+	}
+	
+	return 0;
+}
+
 static int
 WriteSubSession(
 		void		*data,
@@ -427,6 +483,7 @@ main(
 	struct pow_parse_rec	parse;
 	OWPnum64		*schedule;
 	struct flock		flk;
+	struct sigaction	act;
 
 	ia.line_info = (I2NAME | I2MSG | I2FILE | I2LINE);
 	ia.fp = stderr;
@@ -704,6 +761,29 @@ main(
 	iotime = MAX(appctx.opt.meanWait,1) + 2;
 
 	/*
+	 * Setup signal handlers.
+	 */
+	pow_reset = 0;
+	pow_exit = 0;
+	act.sa_handler = SIG_IGN;
+	sigemptyset(&act.sa_mask);
+	act.sa_flags = 0;
+	if(		(sigaction(SIGUSR1,&act,NULL) != 0) ||
+			(sigaction(SIGUSR2,&act,NULL) != 0)){
+		I2ErrLog(eh,"sigaction():%M");
+		exit(1);
+	}
+
+	act.sa_handler = sig_catch;
+
+	if(	(sigaction(SIGTERM,&act,NULL) != 0) ||
+		(sigaction(SIGINT,&act,NULL) != 0) ||
+		(sigaction(SIGHUP,&act,NULL) != 0)){
+		I2ErrLog(eh,"sigaction():%M");
+		exit(1);
+	}
+
+	/*
 	 * Main loop - loop over two connections collecting the data
 	 * and placing it in the directory when the sub-session is complete.
 	 *
@@ -742,6 +822,7 @@ main(
 		OWPnum64		sessionStartnum,startnum,lastnum;
 
 NextConnection:
+		sig_check();
 		/*
 		 * p is the "connection" we are dealing with this loop
 		 * iteration. We need a pointer to q to tell it what series
@@ -780,6 +861,9 @@ NextConnection:
 			OWPSessionHeaderRec	hdr;
 			OWPnum64		stopnum;
 
+			if(sig_check())
+				goto NextConnection;
+
 			memset(parse.seen,0,
 				sizeof(*parse.seen)*appctx.opt.numPackets);
 			parse.first = appctx.opt.numPackets*sub;
@@ -816,7 +900,8 @@ NextConnection:
 			 * Now try and setup the next session.
 			 */
 			SetupSession(ctx,&conndata,q,p,&stop);
-
+			if(sig_check())
+				goto NextConnection;
 AGAIN:
 			/*
 			 * Wait until this "subsession" is complete.
@@ -847,6 +932,8 @@ AGAIN:
 				 * signals here. (reopen connections,
 				 * unlink files - whatever.)
 				 */
+				if(sig_check())
+					goto NextConnection;
 				goto AGAIN;
 			}
 			/* Else - time's up! Get to work.	*/
