@@ -654,12 +654,12 @@ AddrByLocalControl(
 	struct sockaddr_storage	saddr_rec;
 	struct sockaddr		*oaddr=NULL;
 	socklen_t		len;
+	u_int16_t		*port=NULL;
 
 	if(cntrl->local_addr && cntrl->local_addr->saddr){
 		oaddr = cntrl->local_addr->saddr;
 		len = cntrl->local_addr->saddrlen;
 	}else{
-		u_int16_t	*port=NULL;
 		memset(&saddr_rec,0,sizeof(saddr_rec));
 		oaddr = (struct sockaddr*)&saddr_rec;
 		len = sizeof(saddr_rec);
@@ -668,32 +668,31 @@ AddrByLocalControl(
 					"getsockname():%M");
 			return NULL;
 		}
-
-		switch(oaddr->sa_family){
-			struct sockaddr_in	*saddr4;
-#ifdef	AF_INET6
-			struct sockaddr_in6	*saddr6;
-
-			case AF_INET6:
-				saddr6 = (struct sockaddr_in6*)oaddr;
-				port = &saddr6->sin6_port;
-				break;
-#endif
-			case AF_INET:
-				saddr4 = (struct sockaddr_in*)oaddr;
-				port = &saddr4->sin_port;
-				break;
-			default:
-				OWPError(cntrl->ctx,
-						OWPErrFATAL,OWPErrINVALID,
-						"Invalid address family");
-				return NULL;
-		}
-		*port = 0;
 	}
 
 	if(!len)
 		return NULL;
+
+	switch(oaddr->sa_family){
+		struct sockaddr_in	*saddr4;
+#ifdef	AF_INET6
+		struct sockaddr_in6	*saddr6;
+
+		case AF_INET6:
+			saddr6 = (struct sockaddr_in6*)oaddr;
+			port = &saddr6->sin6_port;
+			break;
+#endif
+		case AF_INET:
+			saddr4 = (struct sockaddr_in*)oaddr;
+			port = &saddr4->sin_port;
+			break;
+		default:
+			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+						"Invalid address family");
+			return NULL;
+	}
+	*port = 0;
 
 	if( !(addr = _OWPAddrAlloc(cntrl->ctx)))
 		return NULL;
@@ -762,14 +761,22 @@ OWPSessionRequest(
 		goto error;
 	}
 
-	if((!receiver) &&
-		!(receiver = AddrByLocalControl(cntrl))){
-		goto error;
+	if(!receiver){
+		if(server_conf_receiver)
+			receiver = OWPAddrByNode(cntrl->ctx,"localhost");
+		else
+			receiver = AddrByLocalControl(cntrl);
+		if(!receiver)
+			goto error;
 	}
 
-	if((!sender) &&
-		!(sender = AddrByLocalControl(cntrl))){
-		goto error;
+	if(!sender){
+		if(server_conf_sender)
+			sender = OWPAddrByNode(cntrl->ctx,"localhost");
+		else
+			sender = AddrByLocalControl(cntrl);
+		if(!sender)
+			goto error;
 	}
 
 	/*
