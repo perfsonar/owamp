@@ -30,7 +30,7 @@ foreach my $mtype (@mtypes) {
 	foreach my $sender (@nodes) {
 	    foreach my $res (@resolutions) {
 		my ($rel_wwwdir, $link_html, $wwwdir);
-		(undef, $wwwdir, undef, undef, $link_html) =
+		(undef, $wwwdir, undef, undef) =
 			$conf->get_names_info($mtype, $recv, $sender, $res, 1);
 		$wwwdir = $conf->get_www_path($rel_wwwdir);
 
@@ -42,7 +42,7 @@ foreach my $mtype (@mtypes) {
 		    mkpath([$wwwdir], 0, 0755) or
 			    die "Could not create dir $wwwdir: $!";
 		}
-		my $html_file = "$wwwdir/$link_html";
+		my $html_file = "$wwwdir/$index.html";
 		open FH, ">$html_file"
 			or die "Could not open $html_file: $!";
 		print FH start_html("$mtype mesh. Link $sender --> $recv");

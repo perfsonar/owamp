@@ -86,6 +86,7 @@ my %DEFS = (
 	OWAMPDVARPATH		=>	'/var/run',
 	OWAMPDPIDFILE		=>	'owampd.pid',
 	OWAMPDINFOFILE		=>	'owampd.info',
+	UPTIME_DB               =>      'uptime.dat',
 	OWPBINDIR		=>	"$FindBin::Bin",
 	CONFDIR			=>	"$Conf::CONFPATH/",
 );
@@ -518,5 +519,33 @@ sub dump{
 	return $self->dump_hash($self,"");
 }
 
-	
+# Returns a list of crucial directories and filenames for the given resolution.
+# $datadirname is the link's data directory
+# $rel_dir is its (www) relative directory
+# $filename is only useful with mode 2, where it gives a relative
+# name for the summary line
+# $mode indicates whether the summary file is needed.
+sub get_names_info {
+    my ($self, $mtype, $recv, $sender, $res, $mode) = @_;
+    my $rel_dir = "$mtype/$recv/$sender/$res";
+    my $datadirname = join('/', $self->{'CENTRALUPLOADDIR'}, $rel_dir);
+
+    my ($filename, $png_file);
+
+    if ($mode == 1) {
+	$filename = "unneeded"; # ignored
+	$png_file = "data$res.png";
+    } else {
+	$filename = "last$res";
+	$png_file = "$res.png";
+    }
+    return ($datadirname, $rel_dir, $filename, $png_file);
+}
+
+# Make a full www path out of the relative one.
+sub get_www_path {
+    my ($self, $rel_dir) = @_;
+    return join('/', $self->{'CENTRALWWWDIR'}, $rel_dir);
+}
+
 1;
