@@ -143,6 +143,7 @@ foreach $mtype (@mtypes){
 						TYPE=>$mtype,
 						ATTR=>'ADDR')));
 		foreach $send (@nodes){
+			next if($recv eq $send);
 			next if(!($saddr=$conf->get_val(NODE=>$send,
 							TYPE=>$mtype,
 							ATTR=>'ADDR')));
