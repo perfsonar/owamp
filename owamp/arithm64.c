@@ -165,7 +165,6 @@ OWPnum64_mul(OWPnum64 x, OWPnum64 y)
 				w[j + 2] = k;
 				break;
 			}
-			
 		}
 	}
 
@@ -184,6 +183,7 @@ OWPnum64_mul(OWPnum64 x, OWPnum64 y)
 */
 
 #define MILLION 1000000UL
+#define BILLION 1000000000UL
 
 /*
 ** Discussion: A + B/(2^32) = C + D/(10^6), so
@@ -212,6 +212,38 @@ OWPtimeval2num64(struct timeval *from)
 
 	return (res*4294) + (res*15114)/0x3D09; 
 }
+
+
+
+/*
+** Discussion: A + B/(2^32) = C + D/(10^9), so
+** C = A, and
+** D = (B*10^9)/(2^32)
+*/
+void
+OWPnum64totimespec(OWPnum64 from, struct timespec *to)
+{
+	to->tv_sec = from >> 32;
+	to->tv_nsec = (MASK32(from)*BILLION) >> 32;
+}
+
+/*
+** Discussion: given struct timeval {sec, u_sec}, the goal is to compute 
+**   OWPnum64 C = (sec*10^9 + usec)*2^32 / 10^9 
+**              = (sec*10^6 + usec)*2^23 / 5^9 
+**              = (sec*10^6 + usec)*[4 +  576108/(5^9)]
+**
+** - the rest is obvious from the code. 
+** Note: 576108 = 0x8CA6C; 5^9 = 0x1DCD65
+*/ 
+OWPnum64
+OWPtimespec2num64(struct timespec *from)
+{
+	u_int64_t res = ((u_int64_t)(from->tv_sec))*BILLION + from->tv_nsec;
+
+	return (res*4) + (res*0x8CA6C)/0x1DCD65;
+}
+
 
 
 /*
