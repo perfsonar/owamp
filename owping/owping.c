@@ -645,12 +645,17 @@ do_records_all(
 	for (i = 0; i <= OWP_MAX_BUCKET; i++)
 		state->buckets[i] = 0;
 
+	/*
+	 * In v5 - passing in the hdr so that it can be passed to
+	 * Parse will be manditory.
+	 */
 	if(!(num_rec = OWPReadDataHeader(ctx,fp,&hdr_len,NULL))){
 		I2ErrLog(eh, "OWPReadDataHeader:Empty file?");
 		return -1;
 	}
 	
-	if(OWPParseRecords(fp,num_rec,do_single_record,state) < OWPErrWARNING){
+	if(OWPParseRecords(fp,num_rec,NULL,do_single_record,state)
+							< OWPErrWARNING){
 		I2ErrLog(eh,"OWPParseRecords():%M");
 		return -1;
 	}

@@ -282,7 +282,8 @@ main(int argc, char *argv[])
 	}
 	s.cur = 0;
 	
-	if(OWPParseRecords(fp, num_rec, do_single_record, &s) < OWPErrWARNING){
+	if(OWPParseRecords(fp,num_rec,NULL,do_single_record,&s)
+							< OWPErrWARNING){
 		I2ErrLog(eh,"OWPParseRecords():%M");
 		exit(1);
 	}
