@@ -2151,6 +2151,7 @@ OWPDReadQuery(
 	switch(buf[2]){
 		case OWPDMESGREQUEST:
 		case OWPDMESGRELEASE:
+		case OWPDMESGCLAIM:
 			*query = buf[2];
 			break;
 		default:
