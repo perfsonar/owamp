@@ -1043,7 +1043,8 @@ NextConnection:
 			parse.maxerr = 0.0;
 			parse.dups = parse.lost = 0;
 			parse.nbuckets = 0;
-			assert(I2HashNumEntries(parse.buckets)==0);
+			assert(!parse.buckets ||
+					(I2HashNumEntries(parse.buckets)==0));
 
 			/*
 			 * lastnum contains offset for previous sub.
