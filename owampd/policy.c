@@ -1575,8 +1575,18 @@ GetNodeFromAddr(
 
 	case AF_INET6:
 		saddr6 = (struct sockaddr_in6*)remote_sa_addr;
-		memcpy(pid.net.addrval,saddr6->sin6_addr.s6_addr,16);
-		pid.net.addrsize = 16;
+		/*
+		 * If this is a v4 mapped address - match it as a v4 address.
+		 */
+		if(IN6_IS_ADDR_V4MAPPED(&saddr6->sin6_addr)){
+			memcpy(pid.net.addrval,
+					&saddr6->sin6_addr.s6_addr[12],4);
+			pid.net.addrsize = 4;
+		}
+		else{
+			memcpy(pid.net.addrval,saddr6->sin6_addr.s6_addr,16);
+			pid.net.addrsize = 16;
+		}
 		break;
 #endif
 	case AF_INET:
