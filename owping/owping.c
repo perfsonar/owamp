@@ -39,7 +39,6 @@
  * The owping context
  */
 static	ow_ping_trec	ping_ctx;
-
 static I2ErrHandle		eh;
 
 /*
@@ -48,9 +47,7 @@ static I2ErrHandle		eh;
 ** or -1 on failure. NOTE: currently just asks for complete session.
 */
 int
-owp_fetch_to_local(OWPControl cntrl, 
-		   char       *datadir,
-		   OWPSID     sid)
+owp_fetch_to_local(OWPControl cntrl, char *datadir, OWPSID sid)
 {
 	char datafile[PATH_MAX]; /* full path to data file */
 	char *new_name;
@@ -103,135 +100,33 @@ owp_fetch_to_local(OWPControl cntrl,
 	return -1;
 }
 
+
 /* Template for temporary directory to keep fetched data records. */
 #define OWP_TMPDIR_TEMPLATE "/tmp/XXXXXXXXXXXXXXXX"
 
-/*
-** Data structures for a window of records being processed.
-** Implemented as a linked list since in the most common case
-** new nodes will just be added at the end.
-*/
-typedef struct rec_link *rec_link_ptr;
-typedef struct rec_link {
-	OWPCookedDataRec record;
-	rec_link_ptr     next;
-	rec_link_ptr     previous;
-} rec_link;
+
+/* Width of Fetch receiver window. */
+#define OWP_WIN_WIDTH   64
 
 /*
-** The list structure - keep track of tail to make typical insert easier.
-*/
-typedef struct rec_list {
-	rec_link_ptr head;
-	rec_link_ptr tail;
-} rec_list, *rec_list_ptr;
-
-/*
-** Initialize the linked list.
-*/
-void
-list_init(rec_list_ptr list)
-{
-	assert(list);
-	list->head = list->tail = NULL;
-}
-
-/*
-** Free the linked list.
-*/
-void
-list_free(rec_list_ptr list)
-{
-	rec_link_ptr ptr;
-	assert(list);
-
-	for (ptr = list->head; ptr; ptr = ptr->next)
-		free(ptr);
-}
-
-/*
-** Insert a new record in the <list> right after the given <current>.
-** If <current> is NULL, insert at the head of the list. Return 0 on
-** success, or -1 on failure.
-*/
-int
-rec_insert_next(rec_list_ptr list, 
-		rec_link_ptr current, 
-		OWPCookedDataRecPtr data)
-{
-	rec_link_ptr new_record;
-
-	if ((new_record = (rec_link_ptr)malloc(sizeof(*new_record))) == NULL){
-		I2ErrLog(eh, "rec_link_new: malloc(%d) failed", 
-			 sizeof(*new_record));
-		return -1;
-	}
-
-	memcpy(&new_record->record, data, sizeof(*data));
-
-	if (current == NULL) {
-		if (list->head)
-			list->head->previous = new_record;
-		new_record->previous = NULL;
-		new_record->next = list->head;
-		list->head = new_record;
-
-		if (list->tail == NULL)
-			list->tail = new_record;
-
-	} else {
-		if (current->next == NULL) /* inserting at the tail */
-			list->tail = new_record;
-		else
-			current->next->previous = new_record;
-		new_record->previous = current;
-		new_record->next = current->next;
-		current->next = new_record;
-	}
-
-	return 0;
-}
-
-/* Various styles of owping output. */
-#define OWP_MACHINE_READ         0    /* full dump of each record, ASCII     */
-#define OWP_PING_STYLE           1    /* seq_no, one-way delay + final stats */
-#define OWP_PING_QUIET           2    /* quiet, just summary at the end      */
-
-/*
-** State to be maintained by client during Fetch.
+** Generic state to be maintained by client during Fetch.
 */
 typedef struct fetch_state {
-	FILE*        fp;               /* stream to report records         */
-	rec_list_ptr window;           /* window of read records           */
-	int          type;             /* OWP_MACHINE_READ, OWP_PING_STYLE,
-					  OPW_PING_QUIET                   */
-	double       tmin;             /* max delay                        */
-	double       tmax;             /* min delay                        */  
-	double       tsum;             /* sum of delays                    */
-	double       tsumsq;           /* sum of squared delays            */
-	u_int32_t    numpack_received; /* number of received packets       */
-	int64_t      last_seqno;       /* seqno of last output record      */
+	FILE*        fp;               /* stream to report records           */
+	OWPCookedDataRec window[OWP_WIN_WIDTH]; /* window of read records    */
+	int          cur_win_size;
+
+	I2Boolean    full;             /* print full record instead of delay */
+	I2Boolean    quiet;            /* don't print records - just summary */
+
+	double       tmin;             /* max delay                          */
+	double       tmax;             /* min delay                          */
+	double       tsum;             /* sum of delays                      */
+	double       tsumsq;           /* sum of squared delays              */
+	u_int32_t    numpack_received; /* number of received packets         */
+	int64_t      last_seqno;       /* seqno of last output record        */
 	int          order_disrupted;  /* flag */
 } fetch_state, *fetch_state_ptr;
-
-/*
-** Initialize the state.
-*/
-void
-fetch_state_init(fetch_state_ptr state, FILE *fp, rec_list_ptr window,int type)
-{
-	assert(state);
-
-	state->fp = fp;
-	state->window = window;
-	state->type = type;
-
-	state->tmin = 9999.999;
-	state->tmax = state->tsum = state->tsumsq = 0.0;
-	state->numpack_received = 0;
-	state->last_seqno = -1;
-	state->order_disrupted = 0;
-}
 
 #ifdef	NOT
 static int
@@ -309,7 +204,7 @@ static	I2OptDescRec	set_options[] = {
 	 * test setup args
 	 */
 	{"sender", -2, NULL, "IP address/node name of sender [and server]"},
-	{"receiver", -2, NULL, "IP address/node name of receiver [and server]"},
+	{"receiver", -2, NULL,"IP address/node name of receiver [and server]"},
 	{"padding", 1, "0", "min size of padding for test packets (octets)"},
 	{"rate", 1, "1.0", "rate of test packets (packets/sec)"},
 	{"numPackets", 1, "10", "number of test packets"},
@@ -319,8 +214,12 @@ static	I2OptDescRec	set_options[] = {
 	 */
 	{"lossThreshold", 1, "120",
 			"elapsed time when recv declares packet lost (sec)"},
-	{"datadir", 1, OWP_DATADIR,
-				"Data directory to store test session data"},
+	{"datadir", 1, NULL, "Data directory to store test session data"},
+
+	{"outfile", 1, NULL,    "alternative basename to store session data"},
+	{"full", 0, NULL,    "print out full records in human-readable form"},
+	{"keepdata", 0, NULL, "do not delete binary test session data "},
+	{"quiet", 0, NULL, "quiet ouput. only print out the final summary"},
 
 #ifndef	NDEBUG
 	{"childwait",0,NULL,
@@ -400,6 +299,24 @@ static  I2Option  get_options[] = {
 	sizeof(ping_ctx.opt.lossThreshold)
 	},
         {
+	"outfile", I2CvtToString, &ping_ctx.opt.outfile,
+	sizeof(ping_ctx.opt.outfile)
+	},
+
+        {
+	"full", I2CvtToBoolean, &ping_ctx.opt.full,
+	sizeof(ping_ctx.opt.full)
+	},
+        {
+	"quiet", I2CvtToBoolean, &ping_ctx.opt.quiet,
+	sizeof(ping_ctx.opt.quiet)
+	},
+        {
+	"keepdata", I2CvtToBoolean, &ping_ctx.opt.keepdata,
+	sizeof(ping_ctx.opt.keepdata)
+	},
+
+        {
 	"childwait", I2CvtToBoolean, &ping_ctx.opt.childwait,
 	sizeof(ping_ctx.opt.childwait)
 	},
@@ -439,9 +356,7 @@ FailSession(
 ** Update statistics due to the new record having given <delay>.
 */
 void
-owp_update_stats(fetch_state_ptr state,
-		 double delay
-		 )
+owp_update_stats(fetch_state_ptr state, double delay)
 {
 	assert(state);
 	
@@ -478,10 +393,6 @@ owp_do_summary(fetch_state_ptr state)
 
 #define OWP_CMP(a,b) ((a) < (b))? -1 : (((a) == (b))? 0 : 1)
 
-/* 
-   Width of Fetch receiver window - MUST be divisible by 4.
-*/
-#define OWP_WIN_WIDTH   16
 /*
 ** Given two timestamp records, compare their sequence numbers.
 ** The function returns -1. 0 or 1 if the first record's sequence
@@ -498,24 +409,36 @@ owp_seqno_cmp(OWPCookedDataRecPtr a, OWPCookedDataRecPtr b)
 }
 
 /*
-** Given a list of records ordered by seq_no (from lowest to
-** highest) find a location in the list after which the record <rec>
-** should be inserted. Return NULL if <rec> is to be inserted at
-** the head of the list.
+** Find the right spot to insert the new record.
 */
-rec_link_ptr
-owp_find_location(rec_list_ptr list, OWPCookedDataRecPtr rec)
+int
+look_for_spot(fetch_state_ptr state,
+	      OWPCookedDataRecPtr data)
 {
-	rec_link_ptr ret;
+	return state->cur_win_size; /* XXX - fix !!! */
+}
 
-	assert(list);
-	assert(rec);
+/*
+** Insert a new record in the state window so as to keep it sorted
+** by sequence number. Only used to fill window for now.
+*/
+void
+rec_insert_next(fetch_state_ptr state,
+		OWPCookedDataRecPtr data)
+{
+	int index; 
 
-	for (ret = list->tail; ret; ret = ret->previous)
-		if (owp_seqno_cmp(rec, &ret->record) > 0)
-			return ret;
+	assert(state);
+	assert(data);
 
-	return NULL;
+	if (state->cur_win_size == 0) { /* look for the right index */
+		memmove(&state->window[0], data, sizeof(*data));
+		state->cur_win_size++;
+	}
+
+	index = look_for_spot(state, data);
+	memmove(&state->window[index], data, sizeof(*data));
+	state->cur_win_size++;
 }
 
 /*
@@ -523,37 +446,31 @@ owp_find_location(rec_list_ptr list, OWPCookedDataRecPtr rec)
 ** as encoded in <state>.
 */
 void
-owp_record_out(OWPCookedDataRecPtr rec, fetch_state_ptr state)
+owp_record_out(fetch_state_ptr state, OWPCookedDataRecPtr rec)
 {
 	double delay;
 
 	assert(rec);
 	assert(state);
+	delay = owp_delay(&rec->send, &rec->recv);
 
-	switch (state->type) {
-	case OWP_MACHINE_READ:
-		assert(state->fp);
+	if (state->quiet) 
+		goto update;
+	
+	assert(state->fp);
+	if (state->full)
 		fprintf(state->fp, 
 "seq_no=%u send=%u.%us sync=%u prec=%u recv=%u.%us sync=%u prec=%u\n",
 			rec->seq_no, rec->send.sec, rec->send.frac_sec, 
 			rec->send.sync, rec->send.prec,
 			rec->recv.sec, rec->recv.frac_sec, rec->recv.sync, 
 			rec->recv.prec);
-		break;
-	case OWP_PING_STYLE:
-		delay = owp_delay(&rec->send, &rec->recv);
+	else 
 		fprintf(state->fp, "seq_no=%u delay=%.3f ms\n", rec->seq_no, 
 			delay*THOUSAND);
-		owp_update_stats(state, delay);
-		break;
-	case OWP_PING_QUIET:
-		delay = owp_delay(&rec->send, &rec->recv);
-		owp_update_stats(state, delay);
-		break;
-	default:
-		fprintf(stderr, "FATAL: Internal error - bad 'type' value\n");
-		exit(1);
-	}
+	
+ update:
+	owp_update_stats(state, delay);
 }
 
 /*
@@ -561,22 +478,15 @@ owp_record_out(OWPCookedDataRecPtr rec, fetch_state_ptr state)
 ** or -1 on failure.
 */
 int
-fill_window(void *calldata,  
-	    OWPCookedDataRecPtr rec
-	    )
+fill_window(void *calldata, OWPCookedDataRecPtr rec) 
 {
 	fetch_state_ptr state = (fetch_state_ptr)calldata;
-
 	assert(state);
-	assert(state->window);
 
-	owp_record_out(rec, state); /* Output is done in all cases. */
+	owp_record_out(state, rec); /* Output is done in all cases. */
+	rec_insert_next(state, rec);
 
-	if (state->type == OWP_MACHINE_READ)
-		return 0;
-
-	return rec_insert_next(state->window, 
-			       owp_find_location(state->window, rec), rec);
+	return 0;
 }
 
 /*
@@ -584,21 +494,14 @@ fill_window(void *calldata,
 ** as encoded in state.
 */
 int
-do_rest(void *calldata, 
-	OWPCookedDataRecPtr rec
-	)
+do_rest(void *calldata, OWPCookedDataRecPtr rec)
 {
 	fetch_state_ptr state = (fetch_state_ptr)calldata;
 
 	assert(state);
-	assert(state->window);
 	assert(rec);
 
-	owp_record_out(rec, state); /* Output is done in all cases. */
-
-	/* If ordering is not important - done. */
-	if (state->type == OWP_MACHINE_READ)
-		return 0;
+	owp_record_out(state, rec); /* Output is done in all cases. */
 
 	/* If ordering is important - handle it here. */
 	if (state->order_disrupted)
@@ -621,20 +524,13 @@ do_rest(void *calldata,
 **     (original ping style: max/avg/min/stdev) at the end.
 */
 int
-do_records_all(char *datadir, OWPSID sid, int type, FILE *out)
+do_records_all(char *datadir, OWPSID sid, fetch_state_ptr state)
 {
-	rec_list window;
-	fetch_state state;
 	int fd;
 	u_int32_t num_rec, typeP;
 	char datafile[PATH_MAX]; /* full path to data file */
 	char sid_name[(sizeof(OWPSID)*2)+1];
 	struct stat     stat_buf;
-	
-	assert(out);
-	assert((type == OWP_MACHINE_READ)
-	       || (type == OWP_PING_STYLE)
-	       || (type == OWP_PING_QUIET));
 	
 	/* Create the path. */
 	strcpy(datafile, datadir);
@@ -665,35 +561,38 @@ do_records_all(char *datadir, OWPSID sid, int type, FILE *out)
 		return -1;
 	}
 	
-	list_init(&window);
-	fetch_state_init(&state, out, &window, type);
+	/*
+	  Initialize fields of state to keep track of.
+	*/
+	state->cur_win_size = 0;
+	state->tmin = 9999.999;
+	state->tmax = state->tsum = state->tsumsq = 0.0;
+	state->numpack_received = 0;
+	state->last_seqno = -1;
+	state->order_disrupted = 0;
 
 	/* If few records - fill the window and flush immediately */
 	if (num_rec <= OWP_WIN_WIDTH) {
-		OWPFetchLocalRecords(fd, num_rec, fill_window, &state);
+		OWPFetchLocalRecords(fd, num_rec, fill_window, state);
 		
 		/*
 		  XXX - TODO: flush AND free the window and return
 		*/
-		list_free(&window);
 		return 0;
 	}
 	
-	OWPFetchLocalRecords(fd, OWP_WIN_WIDTH, fill_window, &state);
-	OWPFetchLocalRecords(fd, num_rec - OWP_WIN_WIDTH, do_rest, &state);
+	OWPFetchLocalRecords(fd, OWP_WIN_WIDTH, fill_window, state);
+	OWPFetchLocalRecords(fd, num_rec - OWP_WIN_WIDTH, do_rest, state);
 	
 	/*
 	  XXX - TODO: flush AND free the window.
 	*/
 
-	list_free(&window);
-
 	if (close(fd) < 0)
 		I2ErrLog(eh, "WARNING: close(%d) failed", fd);
 
 	/* Stats are requested and failed to keep records sorted - redo */
-	if (((type == OWP_PING_STYLE) || (type == OWP_PING_QUIET))
-		&& state.order_disrupted) {
+	if (state->order_disrupted) {
 		I2ErrLog(eh, "Severe out-of-order condition observed.");
 		I2ErrLog(eh, 
 	     "Producing statistics for this case is currently unimplemented.");
@@ -727,6 +626,7 @@ main(
 	OWPPerConnDataRec	conndata;
 	OWPAcceptType		acceptval;
 	OWPErrSeverity		err;
+	fetch_state             state;
 
 	ia.line_info = (I2NAME | I2MSG);
 	ia.fp = stderr;
@@ -1014,8 +914,12 @@ main(
 		}
 	}
 
-	if (do_records_all(conndata.real_data_dir, 
-			   sid_ret, OWP_PING_STYLE, stdout) < 0){
+	/* Set up relevant fields of state. */
+	state.fp = stdout;                  /* XXX - incorporate options! */
+	state.quiet = ping_ctx.opt.quiet;
+	state.full = ping_ctx.opt.full;
+
+	if (do_records_all(conndata.real_data_dir, sid_ret, &state) < 0){
 		I2ErrLog(eh, "FATAL: do_records_all: failure processing data");
 		exit(1);
 	}

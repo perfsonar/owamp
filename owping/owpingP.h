@@ -53,7 +53,15 @@ typedef	struct {
 		u_int32_t	numPackets;
 
 		char		*datadir;
+		char            *outfile;
+
 		u_int32_t	lossThreshold;
+
+		/* Flags */
+		I2Boolean       full;
+		I2Boolean       keepdata;
+		I2Boolean       quiet;
+
 #ifndef	NDEBUG
 		I2Boolean	childwait;
 #endif
