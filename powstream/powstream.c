@@ -420,6 +420,7 @@ main(
 	appctx.opt.numPackets = 300;
 	appctx.opt.lossThreshold = 120;
 	appctx.opt.meanWait = (float)0.1;
+	appctx.opt.seriesInterval = 1;
 
 	/* Create options strings for this program. */
 	strcpy(optstring, conn_opts);
@@ -709,7 +710,7 @@ main(
 		u_int32_t		sub;
 		OWPTimeStamp		stop;
 		OWPnum64		*schedptr;
-		OWPnum64		sessionStartnum,startnum,stopnum;
+		OWPnum64		sessionStartnum,startnum,lastnum;
 
 NextConnection:
 		/*
@@ -729,7 +730,7 @@ NextConnection:
 
 		/* init vars for loop */
 		parse.begin=0;
-		stopnum=0;
+		lastnum=0;
 		call_stop = True;
 		schedptr = OWPSessionSchedule(p->cntrl,p->sid);
 		assert(schedptr);
@@ -748,6 +749,7 @@ NextConnection:
 			u_int32_t		nrecs;
 			u_int32_t		hlen;
 			OWPSessionHeaderRec	hdr;
+			OWPnum64		stopnum;
 
 			memset(parse.seen,0,
 				sizeof(*parse.seen)*appctx.opt.numPackets);
@@ -757,16 +759,17 @@ NextConnection:
 			parse.next = 0;
 
 			/*
-			 * stopnum contains offset for previous sub.
-			 * So - sessionStart + stopnum is new
+			 * lastnum contains offset for previous sub.
+			 * So - sessionStart + lastnum is new
 			 * startnum.
 			 */
-			startnum = sessionStartnum + stopnum;
+			startnum = sessionStartnum + lastnum;
 
 			/*
 			 * set stopnum to time of final packet.
 			 */
-			stopnum = sessionStartnum+schedule[parse.last];
+			lastnum = schedule[parse.last];
+			stopnum = sessionStartnum+lastnum;
 
 			/*
 			 * set stop to the time we should collect this
