@@ -486,6 +486,11 @@ ACCEPT:
 #endif
 
 	/*
+	 * Close unneeded fd's (these are used by the parent)
+	 */
+	I2HashIterate(fdtable,ClosePipes,NULL);
+
+	/*
 	 * reset error logging
 	 */
 	I2ErrReset(errhand);
