@@ -69,9 +69,23 @@ typedef struct {
 	I2table passwd;
 } policy_data;
 
+typedef struct owp_access_id {
+	u_int32_t addr4;
+	u_int8_t  addr6[16];
+	u_int8_t  offset; /* not meaningful for KID */
+	char      kid[KID_LEN + 1];
+	u_int8_t  type;  /* OWP_IDTYPE_KID, OWP_IDTYPE_IPv4, OWP_IDTYPE_IPv6 */
+} owp_access_id;
+
 extern char *ipaddr2class(u_int32_t ip, I2table ip2class_hash);
 extern void print_ip2class_binding(const struct I2binding *p, FILE* fp);
 extern void print_class2limits_binding(const struct I2binding *p, FILE* fp);
+
+extern u_int32_t OWAMPGetBandwidth(OWAMPLimits * lim);
+extern u_int32_t OWAMPGetSpace(OWAMPLimits * lim);
+extern u_int32_t OWAMPGetNumSessions(OWAMPLimits * lim);
+extern u_int32_t owp_get_ip(const I2datum * dat);
+extern u_int8_t  owp_get_offset(const I2datum * dat);
 
 /*
  * Tolya: Shouldn't a prototype go here for this?
@@ -81,6 +95,15 @@ extern void print_class2limits_binding(const struct I2binding *p, FILE* fp);
  */
 extern policy_data
 *PolicyInit(
+	OWPContext	ctx,
+	char		*ip2class_file,
+	char		*class2limits_file,
+	char		*passwd_file,
+	OWPErrSeverity	*err_ret
+);
+
+extern policy_data
+*PolicyInit2(
 	OWPContext	ctx,
 	char		*ip2class_file,
 	char		*class2limits_file,

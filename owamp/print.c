@@ -10,9 +10,18 @@ void
 print_ip2class_binding(const struct I2binding *p, FILE* fp)
 {
 	fprintf(fp, "DEBUG: the value of key %s/%u is = %s\n",
-	       owamp_denumberize(get_ip_addr(p->key)), 
-	       get_offset(p->key), p->value->dptr);
+	       owamp_denumberize(owp_get_ip(p->key)), 
+	       owp_get_offset(p->key), p->value->dptr);
 }
+
+void
+print_id2class_binding(const struct I2binding *p, FILE* fp)
+{
+	u_int8_t type;
+
+	type = ((owp_access_id *)(p->key->dptr))->type;
+}
+
 
 void
 print_limits(OWAMPLimits * limits, FILE* fp)

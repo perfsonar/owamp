@@ -56,12 +56,12 @@ OWAMPSetBandwidth(OWAMPLimits * lim, u_int32_t bw){
 	lim->bandwidth = bw;
 }
 
-static u_int32_t
+static void
 OWAMPSetSpace(OWAMPLimits * lim, u_int32_t space){
 	lim->space = space;
 }
 
-static u_int32_t
+static void
 OWAMPSetNumSessions(OWAMPLimits * lim, u_int32_t ns){
 	lim->test_sessions = ns;
 }
@@ -162,7 +162,6 @@ owamp_parse_mask(const char *text, u_int32_t *addr, u_int8_t *off)
 	
 	char *addr_str = NULL;
 	char *mask_str = NULL;
-	unsigned long mask, host_bits;
 
 	if((addr_str = strdup(text)) == NULL)
 		return -1;
@@ -202,10 +201,9 @@ owamp_parse_mask(const char *text, u_int32_t *addr, u_int8_t *off)
 */
 
 I2datum*
-str2datum(const char *bytes)
+str2datum(const char *bytes, size_t len)
 {
 	I2datum *dat;
-	size_t len = strlen(bytes)+1;
 
 	if ( (dat = (void *)malloc(sizeof(I2datum))) == NULL)
 		return NULL;
@@ -238,15 +236,15 @@ limits2datum(const OWAMPLimits * lim)
 }
 
 u_int32_t
-get_ip_addr(const I2datum * dat)
+owp_get_ip(const I2datum * dat)
 {
 	return *(u_int32_t*)(dat->dptr);
 }
 
 u_int8_t
-get_offset(const I2datum * dat)
+owp_get_offset(const I2datum * dat)
 {
-	return *(u_int8_t*)((dat->dptr)+4);
+	return *(u_int8_t *)(((u_int8_t*)(dat->dptr)) + 4);
 }
 
 /*!
@@ -266,10 +264,10 @@ owamp_read_ip2class(OWPContext ctx,
 		    I2table ip2class_hash)
 {
 	char line[MAX_LINE], mask[MAX_LINE], class[MAX_LINE];
-	char err_msg[1024];
 	FILE *fp;
 	u_int32_t addr;
 	u_int8_t off; 
+	size_t len;
 	
 	I2datum *key, *val;
 
@@ -296,7 +294,8 @@ owamp_read_ip2class(OWPContext ctx,
 		if ( (key = subnet2datum(addr, off)) == NULL)
 			continue;
 
-		if ( (val = str2datum(class)) == NULL )
+		len = strlen(class) + 1;
+		if ( (val = str2datum(class, len)) == NULL )
 			continue;
 
 		if (I2hash_store(ip2class_hash, key, val) != 0)
@@ -310,7 +309,8 @@ owamp_read_ip2class(OWPContext ctx,
 	/* Assign OWP_DEFAULT_OPEN_CLASS for the widest mask. */
 	if ( (key = subnet2datum(0, 0)) == NULL)
 		goto CLOSE;
-	if ( (val = str2datum(OWP_DEFAULT_OPEN_CLASS)) == NULL)
+	len = strlen(OWP_DEFAULT_OPEN_CLASS) + 1;
+	if ( (val = str2datum(OWP_DEFAULT_OPEN_CLASS, len)) == NULL)
 		goto CLOSE;
 	if (I2hash_store(ip2class_hash, key, val) != 0)
 		OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, 
@@ -339,10 +339,8 @@ read_passwd_file(OWPContext ctx, const char *passwd_file, I2table hash)
 {
 	char line[MAX_LINE];
 	char *kid, *secret;
-	char err_msg[1024];
 	FILE *fp;
-	u_int32_t addr;
-	u_int8_t off; 
+	size_t len;
 	
 	I2datum *key, *val;
 
@@ -375,10 +373,12 @@ read_passwd_file(OWPContext ctx, const char *passwd_file, I2table hash)
 		secret[HEX_SECRET_LEN] = '\0';
 
 		/* Now save the key/class pair in a hash. */
-		if ( (key = str2datum(kid)) == NULL)
+		len = strlen(kid) + 1;
+		if ( (key = str2datum(kid, len)) == NULL)
 			continue;
 
-		if ( (val = str2datum(secret)) == NULL )
+		len = strlen(secret) + 1;
+		if ( (val = str2datum(secret, len)) == NULL )
 			continue;
 
 		if (I2hash_store(hash, key, val) != 0)
@@ -437,10 +437,9 @@ owamp_read_class2limits(OWPContext ctx, const char *class2limits, I2table hash)
 	char line[MAX_LINE];
 	char *key, *value, *class, *key_value, *brkt, *brkb;
 	FILE *fp;
-	u_int32_t numval;
+	long numval;
+	size_t len;
 	
-	I2datum key_dat, val_dat;
-
 	if ( (fp = fopen(class2limits, "r")) == NULL){
 		OWPError(ctx, OWPErrFATAL, errno, 
 			 "FATAL: fopen %s for reading", class2limits);
@@ -450,7 +449,6 @@ owamp_read_class2limits(OWPContext ctx, const char *class2limits, I2table hash)
 	fprintf(stderr, "\n");
 	while ( (fgets(line, sizeof(line), fp)) != NULL) {
 		OWAMPLimits limits;
-		I2datum key_dat, val_dat;
 
 		if (line[0] == '#')
 			continue;
@@ -478,10 +476,11 @@ owamp_read_class2limits(OWPContext ctx, const char *class2limits, I2table hash)
 				OWAMPSetSpace(&limits, numval);
 			else if (strcmp(key, "num_sessions") == 0)
 				OWAMPSetNumSessions(&limits, numval);
-			printf("DEBUG: key = %s value =  %lu\n", key, numval);
+			printf("DEBUG: key = %s value =  %ld\n", key, numval);
 			} 
 		/* Now save the limits structure in the hash. */
-		I2hash_store(hash, str2datum(class), limits2datum(&limits));
+		len = strlen(class) + 1;
+		I2hash_store(hash, str2datum(class, len), limits2datum(&limits));
 	}
 }
 

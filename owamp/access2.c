@@ -27,25 +27,10 @@
 #include <owamp/owamp.h>
 #include "access.h"
 
-typedef struct owamp_access_netmask {
-	u_int32_t *addr4;
-	u_int8_t *addr6;
-	u_int8_t num_offset;
-	unsigned char family;
-} owamp_access_netmask;
-
 #define OWP_IDTYPE_KID     1
 #define OWP_IDTYPE_IPADDR  2
 #define OWP_IDTYPE_IPv4    3
 #define OWP_IDTYPE_IPv6    4
-
-typedef struct owp_access_id {
-	u_int32_t addr4;
-	u_int8_t  addr6[16];
-	u_int8_t  offset; /* not meaningful for KID */
-	char      kid[KID_LEN + 1];
-	u_int8_t  type;  /* OWP_IDTYPE_KID, OWP_IDTYPE_IPv4, OWP_IDTYPE_IPv6 */
-} owp_access_id;
 
 /*
 ** This function fills out a datum structure with the given string.
