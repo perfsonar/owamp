@@ -351,7 +351,7 @@ OWPReadRequestType(
 	 * and it is the only message allowed during active tests.
 	 */
 	if((_OWPStateIs(_OWPStateTest,cntrl) && (msgtype != 3)) ||
-			(_OWPStateIs(_OWPStateTest,cntrl) && (msgtype == 3))){
+			(!_OWPStateIs(_OWPStateTest,cntrl) && (msgtype == 3))){
 		cntrl->state = _OWPStateInvalid;
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
 			"OWPReadRequestType:Invalid request from client.");
@@ -888,6 +888,7 @@ _OWPWriteStartSessions(
 	}
 
 	cntrl->state |= _OWPStateControlAck;
+	cntrl->state |= _OWPStateTest;
 	return OWPErrOK;
 }
 
@@ -933,6 +934,7 @@ _OWPReadStartSessions(
 	 */
 	cntrl->state &= ~_OWPStateStartSessions;
 	cntrl->state |= _OWPStateControlAck;
+	cntrl->state |= _OWPStateTest;
 
 	return OWPErrOK;
 }
@@ -968,7 +970,7 @@ _OWPWriteStopSessions(
 	u_int8_t	*buf = (u_int8_t*)cntrl->msg;
 
 	if(!(_OWPStateIs(_OWPStateRequest,cntrl) &&
-					_OWPStateIs(_OWPStateTest,cntrl))){
+				_OWPStateIs(_OWPStateTest,cntrl))){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
 				"_OWPWriteStopSessions called in wrong state.");
 		return OWPErrFATAL;
@@ -993,6 +995,7 @@ _OWPReadStopSessions(
 )
 {
 	u_int8_t		*buf = (u_int8_t*)cntrl->msg;
+	OWPAcceptType		aval;
 
 	if(!(_OWPStateIs(_OWPStateRequest,cntrl) &&
 					_OWPStateIs(_OWPStateTest,cntrl))){
@@ -1017,8 +1020,11 @@ _OWPReadStopSessions(
 		cntrl->state = _OWPStateInvalid;
 		return OWPErrFATAL;
 	}
-	*acceptval = GetAcceptType(cntrl,buf[0]);
-	if(*acceptval == OWP_CNTRL_INVALID){
+	aval = GetAcceptType(cntrl,buf[1]);
+	if(acceptval)
+		*acceptval = aval;
+
+	if(aval == OWP_CNTRL_INVALID){
 		cntrl->state = _OWPStateInvalid;
 		return OWPErrFATAL;
 	}
@@ -1197,6 +1203,10 @@ _OWPWriteControlAck(
 		return OWPErrFATAL;
 
 	cntrl->state &= ~_OWPStateControlAck;
+
+	if(_OWPStateIs(_OWPStateTest,cntrl) && (acceptval != OWP_CNTRL_ACCEPT))
+		cntrl->state &= ~_OWPStateTest;
+
 	return OWPErrOK;
 }
 
@@ -1216,7 +1226,7 @@ _OWPReadControlAck(
 		return OWPErrFATAL;
 	}
 
-	if(_OWPReceiveBlocks(cntrl,&buf[16],_OWP_CONTROL_ACK_BLK_LEN) != 
+	if(_OWPReceiveBlocks(cntrl,&buf[0],_OWP_CONTROL_ACK_BLK_LEN) != 
 					(_OWP_CONTROL_ACK_BLK_LEN)){
 		cntrl->state = _OWPStateInvalid;
 		return OWPErrFATAL;
@@ -1237,6 +1247,12 @@ _OWPReadControlAck(
 	/* If FetchRequest was rejected get back into StateRequest */
 	if (_OWPStateIsFetch(cntrl) && (*acceptval != OWP_CNTRL_ACCEPT)){
 		cntrl->state &= ~(_OWPStateFetch);
+		cntrl->state |= _OWPStateRequest;
+	}
+
+	/* If StartSessions was rejected get back into StateRequest */
+	if (_OWPStateIsTest(cntrl) && (*acceptval != OWP_CNTRL_ACCEPT)){
+		cntrl->state &= ~_OWPStateTest;
 		cntrl->state |= _OWPStateRequest;
 	}
 

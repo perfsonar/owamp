@@ -39,6 +39,9 @@ typedef struct OWPPerConnDataRec{
 	policy_data		*policy;	/* global policy hash */
 	owp_tree_node_ptr	node;		/* node for the connection
 						   class */
+#ifndef	NDEBUG
+	I2Boolean		childwait;
+#endif
 } OWPPerConnDataRec, *OWPPerConnData;
 
 #endif	/*	_OWP_CONNDATA_H	*/

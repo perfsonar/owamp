@@ -528,6 +528,9 @@ ACCEPT:
 		conndata.policy = policy;
 		conndata.lossThreshold = opts.lossThreshold;
 		conndata.node = NULL;
+#ifndef	NDEBUG
+		conndata.childwait = opts.childwait;
+#endif
 
 		cntrl = OWPControlAccept(ctx,connfd,
 					(struct sockaddr *)&sbuff,sbufflen,

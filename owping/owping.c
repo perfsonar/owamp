@@ -229,6 +229,12 @@ static	I2OptDescRec	set_options[] = {
 			"elapsed time when recv declares packet lost (sec)"},
 	{"datadir", 1, OWP_DATADIR,
 				"Data directory to store test session data"},
+
+#ifndef	NDEBUG
+	{"childwait",0,NULL,
+		"Debugging: busy-wait children after fork to allow attach"},
+#endif
+
 	{NULL,0,NULL,NULL}
 };
 
@@ -300,6 +306,10 @@ static  I2Option  get_options[] = {
         {
 	"lossThreshold", I2CvtToUInt, &ping_ctx.opt.lossThreshold,
 	sizeof(ping_ctx.opt.lossThreshold)
+	},
+        {
+	"childwait", I2CvtToBoolean, &ping_ctx.opt.childwait,
+	sizeof(ping_ctx.opt.childwait)
 	},
 	{NULL,NULL,NULL,0}
 };
@@ -736,6 +746,9 @@ main(
 	conndata.policy = policy;
 	conndata.lossThreshold = ping_ctx.opt.lossThreshold;
 	conndata.node = NULL;
+#ifndef	NDEBUG
+	conndata.childwait = ping_ctx.opt.childwait;
+#endif
 
 	/*
 	 * Open connection to owampd.
@@ -755,7 +768,7 @@ main(
 	/*
 	 * Now ready to make test requests...
 	 */
-	if( !OWPSessionRequest(ping_ctx.cntrl,
+	if(!OWPSessionRequest(ping_ctx.cntrl,
 			OWPAddrByNode(ctx,ping_ctx.opt.sender),
 			!ping_ctx.sender_local,
 			OWPAddrByNode(ctx,ping_ctx.opt.receiver),
@@ -765,7 +778,7 @@ main(
 			&err_ret))
 		FailSession(ping_ctx.cntrl);
 	
-	if(OWPStartSessions(ping_ctx.cntrl) != OWPErrOK)
+	if(OWPStartSessions(ping_ctx.cntrl)< OWPErrINFO)
 		FailSession(ping_ctx.cntrl);
 	/*
 	 * TODO install sig handler for keyboard interupt - to send stop

@@ -54,6 +54,10 @@ typedef	struct {
 
 		char		*datadir;
 		u_int32_t	lossThreshold;
+#ifndef	NDEBUG
+		I2Boolean	childwait;
+#endif
+
 
 	} opt;
 

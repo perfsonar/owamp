@@ -653,6 +653,7 @@ OWPStopSessions(
 {
 	OWPErrSeverity	err,err2=OWPErrOK;
 	u_int8_t	msgtype;
+	OWPAcceptType	aval=OWP_CNTRL_ACCEPT;
 
 	if(!cntrl){
 		OWPError(NULL,OWPErrFATAL,OWPErrINVALID,
@@ -660,8 +661,11 @@ OWPStopSessions(
 		return OWPErrFATAL;
 	}
 
+	if(acceptval)
+		aval = *acceptval;
+
 	while(cntrl->tests){
-		err = _OWPTestSessionFree(cntrl->tests,*acceptval);
+		err = _OWPTestSessionFree(cntrl->tests,aval);
 		err2 = MIN(err,err2);
 	}
 
@@ -670,10 +674,12 @@ OWPStopSessions(
 	 * endpoints failed, send failure acceptval instead and return error.
 	 * (The endpoint_stop_func should have reported the error.)
 	 */
-	if(!*acceptval && (err2 < OWPErrWARNING))
-		*acceptval = OWP_CNTRL_FAILURE;
+	if(!aval && (err2 < OWPErrWARNING))
+		aval = OWP_CNTRL_FAILURE;
 
-	err = (OWPErrSeverity)_OWPWriteStopSessions(cntrl,*acceptval);
+	err = (OWPErrSeverity)_OWPWriteStopSessions(cntrl,aval);
+	if(err < OWPErrWARNING)
+		return _OWPFailControlSession(cntrl,OWPErrFATAL);
 	err2 = MIN(err,err2);
 
 	msgtype = OWPReadRequestType(cntrl);
@@ -683,7 +689,10 @@ OWPStopSessions(
 		return _OWPFailControlSession(cntrl,OWPErrFATAL);
 	}
 
-	err = _OWPReadStopSessions(cntrl,acceptval);
+	err = _OWPReadStopSessions(cntrl,&aval);
+
+	if(acceptval)
+		*acceptval = aval;
 
 	return MIN(err,err2);
 }
@@ -817,6 +826,7 @@ OWPStopSessionsWait(
 	int		rc;
 	u_int8_t	msgtype;
 	OWPErrSeverity	err2=OWPErrOK;
+	OWPAcceptType	aval=OWP_CNTRL_ACCEPT;
 
 	if(!cntrl || cntrl->sockfd < 0){
 		*err_ret = OWPErrFATAL;
@@ -895,15 +905,21 @@ AGAIN:
 		return -1;
 	}
 
+	if(acceptval)
+		aval = *acceptval;
+
 	while(cntrl->tests){
-		err2 = _OWPTestSessionFree(cntrl->tests,*acceptval);
+		err2 = _OWPTestSessionFree(cntrl->tests,aval);
 		*err_ret = MIN(*err_ret,err2);
 	}
 
-	if(*err_ret < OWPErrWARNING)
-		*acceptval = OWP_CNTRL_FAILURE;
+	if(*err_ret < OWPErrWARNING){
+		aval = OWP_CNTRL_FAILURE;
+		if(acceptval)
+			*acceptval = OWP_CNTRL_FAILURE;
+	}
 
-	err2 = _OWPWriteStopSessions(cntrl,*acceptval);
+	err2 = _OWPWriteStopSessions(cntrl,aval);
 
 	*err_ret = MIN(*err_ret, err2);
 	return 0;

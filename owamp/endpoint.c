@@ -43,6 +43,9 @@ typedef struct _DefEndpointRec{
 	OWPSessionMode		mode;
 	keyInstance		*aeskey;
 	u_int32_t		lossThreshold;
+#ifndef	NDEBUG
+	I2Boolean		childwait;
+#endif
 
 	OWPSID			sid;
 	OWPAcceptType		acceptval;
@@ -169,8 +172,8 @@ make_data_dir(
 		}
 		path = malloc(len+1);
 		if(!path){
-			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"malloc problem:(%s)",strerror(errno));
+			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"malloc(%d):%M",
+									len+1);
 			return NULL;
 		}
 		strcpy(path,datadir);
@@ -181,7 +184,7 @@ make_data_dir(
 
 	if((mkdir(path,0755) != 0) && (errno != EEXIST)){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-			"Unable to mkdir(%s):%s",path,strerror(errno));
+			"Unable to mkdir(%s):%M",path);
 		free(path);
 		return NULL;
 	}
@@ -217,7 +220,7 @@ opendatafile(
 	dp = fopen(path,"wb");
 	if(!dp){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-			"Unable to open datafile(%s):%s",path,strerror(errno));
+			"Unable to open datafile(%s):%M",path);
 		free(path);
 	}
 
@@ -268,6 +271,9 @@ OWPDefEndpointInit(
 	ep->lossThreshold = cdata->lossThreshold;
 	ep->ctx = ctx;
 	ep->rand_src = ctx->rand_src;
+#ifndef	NDEBUG
+	ep->childwait = cdata->childwait;
+#endif
 
 	tpsize = OWPTestPacketSize(localaddr->saddr->sa_family,
 				ep->mode,test_spec->any.packet_size_padding);
@@ -281,8 +287,7 @@ OWPDefEndpointInit(
 
 	if(!(ep->relative_offsets = malloc(sizeof(struct timespec) *
 						ep->test_spec.any.npackets))){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"malloc():%s",
-				strerror(errno));
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"malloc():%M");
 		goto error;
 	}
 
@@ -292,8 +297,7 @@ OWPDefEndpointInit(
 	ep->clr_buffer = malloc(16);	/* one block - dynamic for alignment */
 
 	if(!ep->payload || !ep->clr_buffer){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"malloc():%s",
-				strerror(errno));
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"malloc():%M");
 		goto error;
 	}
 
@@ -301,29 +305,27 @@ OWPDefEndpointInit(
 	/*
 	 * Create the socket.
 	 */
-	localaddr->fd = socket(localaddr->saddr->sa_family,localaddr->so_type,
+	ep->sockfd = socket(localaddr->saddr->sa_family,localaddr->so_type,
 						localaddr->so_protocol);
-	if(localaddr->fd<0){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"socket call failed:(%s)",strerror(errno));
+	if(ep->sockfd<0){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"socket():%M");
 		goto error;
 	}
 
 	/*
 	 * bind it to the local address getting an ephemeral port number.
 	 */
-	if(bind(localaddr->fd,localaddr->saddr,localaddr->saddrlen) != 0){
+	if(bind(ep->sockfd,localaddr->saddr,localaddr->saddrlen) != 0){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"bind call failed:(%s)",strerror(errno));
+						"bind call failed:():%M");
 		goto error;
 	}
 
 	/*
 	 * Retrieve the ephemeral port picked by the system.
 	 */
-	if(getsockname(localaddr->fd,(void*)&sbuff,&sbuff_len) != 0){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"getsockname call failed:(%s)",strerror(errno));
+	if(getsockname(ep->sockfd,(void*)&sbuff,&sbuff_len) != 0){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"getsockname():%M");
 		goto error;
 	}
 
@@ -333,8 +335,6 @@ OWPDefEndpointInit(
 	 */
 	assert(localaddr->saddrlen >= sbuff_len);
 	memcpy(localaddr->saddr,&sbuff,sbuff_len);
-
-	ep->sockfd = localaddr->fd;
 
 	/*
 	 * If we are receiver - set the sid and open the file.
@@ -391,9 +391,8 @@ OWPDefEndpointInit(
 		 * Ensure datadir exists.
 		 */
 		if((mkdir(cdata->datadir,0755) != 0) && (errno != EEXIST)){
-			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"Unable to mkdir(%s):%s",cdata->datadir,
-				strerror(errno));
+			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"mkdir(%s):%M",
+							cdata->datadir);
 			goto error;
 		}
 
@@ -407,8 +406,7 @@ OWPDefEndpointInit(
 				      + strlen(OWP_INCOMPLETE_EXT) + 1);
 				      
 		if(!ep->linkpath){
-			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"malloc():%s",
-					strerror(errno));
+			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"malloc():%M");
 			goto error;
 		}
 		strcpy(ep->linkpath,cdata->datadir);
@@ -417,8 +415,7 @@ OWPDefEndpointInit(
 
 		if((mkdir(ep->linkpath,0755) != 0) && (errno != EEXIST)){
 			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"Unable to mkdir(%s):%s",ep->linkpath,
-				strerror(errno));
+				"Unable to mkdir(%s):%M",ep->linkpath);
 			goto error;
 		}
 
@@ -434,14 +431,12 @@ OWPDefEndpointInit(
 				cdata->node,&ep->filepath);
 		if(!ep->datafile){
 			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"Unable to open seesion file:%s",
-				strerror(errno));
+				"Unable to open session file:%M");
 			goto error;
 		}
 
 		if(symlink(ep->filepath,ep->linkpath) != 0){
-			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"symlink():%s",strerror(errno));
+			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"symlink():%M");
 			goto error;
 		}
 
@@ -468,7 +463,7 @@ OWPDefEndpointInit(
 		*(u_int32_t *)&ep->payload[0] = htonl(ep->test_spec.any.typeP);
 		if(fwrite(ep->payload,sizeof(u_int32_t),1,ep->datafile) != 1){
 			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"fwrite(1,u_int32_t):%s",strerror(errno));
+				"fwrite(1,u_int32_t):%M");
 			goto error;
 		}
 		fflush(ep->datafile);
@@ -482,7 +477,7 @@ OWPDefEndpointInit(
 		if(getsockopt(ep->sockfd,SOL_SOCKET,SO_RCVBUF,
 					(void*)&sopt,&opt_size) < 0){
 			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"getsockopt(RCVBUF):%s",strerror(errno));
+				"getsockopt(RCVBUF):%M");
 			goto error;
 		}
 
@@ -491,8 +486,7 @@ OWPDefEndpointInit(
 			if(setsockopt(ep->sockfd,SOL_SOCKET,SO_RCVBUF,
 				 (void*)&sopt,sizeof(sopt)) < 0){
 				OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-						"setsockopt(RCVBUF=%d):%s",
-						sopt,strerror(errno));
+					"setsockopt(RCVBUF=%d):%M",sopt);
 				goto error;
 			}
 		}
@@ -508,7 +502,7 @@ OWPDefEndpointInit(
 		if(getsockopt(ep->sockfd,SOL_SOCKET,SO_SNDBUF,
 					(void*)&sopt,&opt_size) < 0){
 			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"getsockopt(SNDBUF):%s",strerror(errno));
+				"getsockopt(SNDBUF):%M");
 			goto error;
 		}
 
@@ -517,8 +511,8 @@ OWPDefEndpointInit(
 			if(setsockopt(ep->sockfd,SOL_SOCKET,SO_SNDBUF,
 				 (void*)&sopt,sizeof(sopt)) < 0){
 				OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-						"setsockopt(RCVBUF=%d):%s",
-						sopt,strerror(errno));
+						"setsockopt(RCVBUF=%d):%M",
+						sopt);
 				goto error;
 			}
 		}
@@ -531,12 +525,10 @@ OWPDefEndpointInit(
 
 error:
 	if(ep->filepath && (unlink(ep->filepath) != 0) && (errno != ENOENT)){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"unlink():%s",
-						strerror(errno));
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"unlink():%M");
 	}
 	if(ep->linkpath && (unlink(ep->linkpath) != 0) && (errno != ENOENT)){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"unlink():%s",
-						strerror(errno));
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"unlink():%M");
 	}
 	EndpointFree(ep);
 	return OWPErrFATAL;
@@ -817,11 +809,31 @@ AGAIN:
 
 			if( (sent = send(ep->sockfd,ep->payload,
 						ep->len_payload,0)) < 0){
-				if(errno == ENOBUFS)
-					goto AGAIN;
-				OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-						"send(#%d):%s",i,
-						strerror(errno));
+				switch(errno){
+					/* retry errors */
+					case ENOBUFS:
+						goto AGAIN;
+						break;
+					/* fatal errors */
+					case EBADF:
+					case EACCES:
+					case ENOTSOCK:
+					case EFAULT:
+					case EAGAIN:
+						OWPError(ep->ctx,OWPErrFATAL,
+							OWPErrUNKNOWN,
+							"send(%d,#%d):%M",
+							ep->sockfd,i);
+						exit(OWP_CNTRL_FAILURE);
+						break;
+					/* ignore everything else */
+					default:
+						break;
+				}
+
+				/* but do note it as INFO for debugging */
+				OWPError(ep->ctx,OWPErrINFO,OWPErrUNKNOWN,
+						"send(%d,#%d):%M",ep->sockfd,i);
 			}
 
 			i++;
@@ -837,7 +849,7 @@ AGAIN:
 					(errno == EINTR))
 				goto AGAIN;
 			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"nanosleep():%s",strerror(errno));
+					"nanosleep():%M");
 			exit(OWP_CNTRL_FAILURE);
 		}
 
@@ -867,12 +879,9 @@ AGAIN:
 		if(nanosleep(&sleeptime,NULL) == 0)
 			break;
 		if(errno != EINTR){
-			OWPError(ep->ctx,OWPErrWARNING,OWPErrUNKNOWN,
+			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 					"nanosleep():%M");
-			/*
-			 * if nanosleep is broken - this turns into
-			 * a busy wait loop...
-			 */
+			exit(OWP_CNTRL_FAILURE);
 		}
 	}
 
@@ -973,14 +982,14 @@ run_receiver(
 			/* write sequence number */
 			if(fwrite(seq,sizeof(u_int32_t),1,ep->datafile) != 1){
 				OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-						"fwrite():%s",strerror(errno));
+						"fwrite():%M");
 				goto error;
 			}
 			/* write "sent" tstamp */
 			if(fwrite(tstamp,sizeof(u_int32_t),2,ep->datafile)
 									!= 2){
 				OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-						"fwrite():%s",strerror(errno));
+						"fwrite():%M");
 				goto error;
 			}
 
@@ -996,7 +1005,7 @@ run_receiver(
 			if(fwrite(ep->clr_buffer,sizeof(u_int32_t),2,
 						ep->datafile) != 2){
 				OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-						"fwrite():%s",strerror(errno));
+						"fwrite():%M");
 				goto error;
 			}
 
@@ -1033,7 +1042,7 @@ run_receiver(
 						     extension from the end. */
 	if(link(ep->filepath,newpath) != 0){
 		OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"link():%s",strerror(errno));
+					"link():%M");
 		goto error;
 	}
 
@@ -1046,7 +1055,7 @@ run_receiver(
 						    extension from the end. */
 	if(symlink(newpath,newlink) != 0){
 		OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"symlink():%s",strerror(errno));
+				"symlink():%M");
 		goto error;
 	}
 
@@ -1056,7 +1065,7 @@ run_receiver(
 	 */
 	if((unlink(ep->linkpath) != 0) || (unlink(ep->filepath) != 0)){
 		OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"unlink():%s",strerror(errno));
+				"unlink():%M");
 		goto error;
 	}
 
@@ -1111,8 +1120,7 @@ OWPDefEndpointInitHook(
 		memcpy(ep->sid,sid,sizeof(OWPSID));
 
 	if(connect(ep->sockfd,remoteaddr->saddr,remoteaddr->saddrlen) != 0){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"connect failed:%s",
-				strerror(errno));
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"connect():%M");
 		EndpointFree(ep);
 		return OWPErrFATAL;
 	}
@@ -1131,8 +1139,7 @@ OWPDefEndpointInitHook(
 	sigaddset(&sigs,SIGALRM);
 	
 	if(sigprocmask(SIG_BLOCK,&sigs,&osigs) != 0){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"sigprocmask failed:%s",strerror(errno));
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"sigprocmask():%M");
 		EndpointFree(ep);
 		return OWPErrFATAL;
 	}
@@ -1142,8 +1149,7 @@ OWPDefEndpointInitHook(
 	if(ep->child < 0){
 		/* fork error */
 		(void)sigprocmask(SIG_SETMASK,&osigs,NULL);
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fork failed:%s",
-				strerror(errno));
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fork():%M");
 		EndpointFree(ep);
 		return OWPErrFATAL;
 	}
@@ -1200,9 +1206,9 @@ OWPDefEndpointInitHook(
 	 * busy loop for systems where debugger doesn't support
 	 * child follow_fork mode functionality...
 	 */
-#ifdef	WAIT_FOR
+#ifndef	NDEBUG
 	{
-		int	waitfor=1;
+		int	waitfor=ep->childwait;
 
 		while(waitfor);
 	}
@@ -1336,8 +1342,7 @@ OWPDefEndpointStart(
 	if((ep->acceptval < 0) && ep->child && (kill(ep->child,SIGUSR1) == 0))
 		return OWPErrOK;
 	OWPError(OWPGetContext(cdata->cntrl),OWPErrFATAL,OWPErrUNKNOWN,
-			"EndpointStart:Can't signal child #%d:%s",ep->child,
-			strerror(errno));
+			"EndpointStart:Can't signal child #%d:%M",ep->child);
 	return OWPErrFATAL;
 }
 

@@ -903,7 +903,7 @@ OWPStartSessions(
 
 	if(((rc = _OWPReadControlAck(cntrl,&acceptval)) < OWPErrOK) ||
 					(acceptval != OWP_CNTRL_ACCEPT))
-		return _OWPFailControlSession(cntrl,rc);
+		return _OWPFailControlSession(cntrl,OWPErrFATAL);
 
 	for(tsession = cntrl->tests;tsession;tsession = tsession->next)
 		if(tsession->send_end_data){
