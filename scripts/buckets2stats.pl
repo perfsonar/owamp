@@ -47,7 +47,7 @@ use constant HDRSIZE_SIZE => 1;
 
 # Data for percentile computations.
 use constant NUM_LOW => 50000;
-use constant NUM_MID  => 1000;
+use constant NUM_MID  => 10000;
 use constant NUM_HIGH => 49900;
 use constant CUTOFF_A => (-50.0);
 use constant CUTOFF_B => 0.0;
@@ -183,7 +183,7 @@ foreach my $mtype (@mtypes){
 		    $got_data = 1;
 		}
 
-		($worst_median_delay, $worst_loss) = map {sprintf "%.6f", $_}
+		($worst_median_delay, $worst_loss) = map {sprintf "%.2f", $_}
 			($worst_median_delay, $worst_loss);
 
 		my $out = ($got_data)? 
@@ -264,10 +264,10 @@ sub plot_resolution {
 	    next;
 	}
 
-	my $lost_perc = sprintf "%.6f", ($lost/$sent)*100;
+	my $lost_perc = sprintf "%.2f", ($lost/$sent)*100;
 
 	# Compute stats for a new data point.
-	my @stats = map {sprintf "%.6f", $_} 
+	my @stats = map {sprintf "%.2f", $_} 
 		(get_percentile(0.5, $sent, $pairs_ref), $min,
 		 get_percentile(0.9, $sent, $pairs_ref), $lost_perc);
 
@@ -359,8 +359,8 @@ sub get_percentile {
 	my ($index, $count) = @{$pair};
 	$sum += $count;
 
-	# XXX - note - this presumes 0.1ms precision.
-	return sprintf "%.1f", index2pt($index)*THOUSAND
+	# XXX - note - this presumes 0.01ms precision.
+	return sprintf "%.2f", index2pt($index)*THOUSAND
 		if $sum >= $alpha*$sent;
     }
 

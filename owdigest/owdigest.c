@@ -77,7 +77,7 @@ owp_seqno_cmp(OWPDataRecPtr a, OWPDataRecPtr b)
 #define OWP_MAX_BUCKET  (OWP_NUM_LOW + OWP_NUM_MID + OWP_NUM_HIGH - 1)
 
 #define OWP_NUM_LOW         50000
-#define OWP_NUM_MID         1000
+#define OWP_NUM_MID         10000
 #define OWP_NUM_HIGH        49900
 
 #define OWP_CUTOFF_A        (double)(-50.0)
@@ -199,7 +199,7 @@ int
 main(int argc, char *argv[]) 
 {
 	FILE *fp, *out = stdout;
-	u_int32_t hdr_len, num_rec, i, last_seqno, dup, sent, lost;
+	u_int32_t hdr_len, num_rec, i, last_seqno, dup, sent, lost, debsent;
 	state s;
 	u_int8_t prec = PREC_THRESHOLD;
 	u_int32_t *counts, min_microsec;
@@ -312,17 +312,23 @@ main(int argc, char *argv[])
 		exit(1);
 	}
 
-	sent = lost = dup = 0;
+	sent = lost = dup = debsent = 0;
 	last_seqno = 0xFFFFFFFF;
 	min = 9999999;
 
 	/* Do a single pass through the sorted records. */
 	for (i = 0; i < num_rec; i++) {
 		int bucket;
+
+		debsent++;
+
 		if (verbose)
 			printf("prec = %u\n", prec);
-		if (OWPGetPrecBits(&s.records[i]) < prec)
+		if (OWPGetPrecBits(&s.records[i]) < prec){
+			fprintf(stderr, "prec=%u, real_prec=%u\n",
+				prec, OWPGetPrecBits(&s.records[i]));
 			continue;
+		}
 
 		if (s.records[i].seq_no == last_seqno) {
 			dup++;
@@ -347,6 +353,8 @@ main(int argc, char *argv[])
 		if (verbose)
 			print_rec(&s.records[i], 0);
 	}
+
+	fprintf(stderr, "sent=%u, debsent=%u\n", sent, debsent);
 
 	min_microsec = (u_int32_t)(min * MILLION);
 
