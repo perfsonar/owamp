@@ -2,9 +2,11 @@
 #include <string.h>
 #include <sys/types.h>
 #include <limits.h>
-#include <db.h>
 #include <math.h>
 #include <fcntl.h>
+#include <ndbm.h>
+#include <sys/stat.h>
+#include <assert.h>
 
 /* for inet_pton */
 #include <sys/socket.h>
