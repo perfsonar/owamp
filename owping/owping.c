@@ -43,27 +43,12 @@ static	ow_ping_trec	ping_ctx;
 static I2ErrHandle		eh;
 
 /*
-** Save the given record toa given file descriptor.
-*/
-int
-owp_save_to_disk(void *calldata, u_int8_t *rec)
-{
-	int fd;
-
-	assert(calldata);
-
-	fd = *(int *)calldata;
-	return I2Writen(fd, rec, 20);
-}
-
-/*
 ** Retrieve records from remote server and save them in a file
-** on the local disk. No printing is done. Returns 0 on success,
-** or -1 on failure.
+** on the local disk (in directory <datadir>). Returns 0 on success,
+** or -1 on failure. NOTE: currently just asks for complete session.
 */
 int
 owp_fetch_to_local(OWPControl cntrl, 
-		   u_int32_t  num_rec, 
 		   char       *datadir,
 		   OWPSID     sid)
 {
@@ -72,7 +57,7 @@ owp_fetch_to_local(OWPControl cntrl,
 	int  fd;
 	char sid_name[(sizeof(OWPSID)*2)+1];
 
-	/* First creat an "incomplete" path */
+	/* First create an "incomplete" path */
 	strcpy(datafile, datadir);
 	strcat(datafile,OWP_PATH_SEPARATOR);
 	OWPHexEncode(sid_name, sid, sizeof(OWPSID));
@@ -85,12 +70,10 @@ owp_fetch_to_local(OWPControl cntrl,
 		return -1;
 	}
 
-	/*
-	  XXX: TODO - write 4 bytes of Type-P header.
-	*/
-
-	if (OWPFetchRecords(cntrl, num_rec,owp_save_to_disk, &fd) != OWPErrOK){
-		I2ErrLog(eh, "main: OWPFetchRecords failed");
+	/* Ask for complete session - for now. */
+	if (OWPFetchSession(cntrl, 0, (u_int32_t)0xFFFFFFFF, sid, fd) 
+		    == OWPErrFATAL) {
+		I2ErrLog(eh, "main: OWPFetchSession failed");
 		goto fatal;
 	}
 
@@ -627,8 +610,8 @@ do_rest(void *calldata, u_int8_t *rec)
 }
 
 /*
-** Master output function - reads the records sent by the server
-** and prints them to the stdout in a style specified by <type>.
+** Master output function - reads the records from the disk
+** and prints them to <out> in a style specified by <type>.
 ** Its value is interpreted as follows:
 ** 0 - print out send and recv timestamsps for each record in machine-readable
 ** format;
@@ -639,9 +622,7 @@ int
 do_records_all(int fd, u_int32_t num_rec, int type, FILE *out)
 {
 	rec_list window;
-	u_int32_t nchunks;
 	fetch_state state;
-	int i;
 
 	assert(out);
 	assert((type == OWP_MACHINE_READ)
@@ -653,7 +634,7 @@ do_records_all(int fd, u_int32_t num_rec, int type, FILE *out)
 
 	/* If few records - fill the window and flush immediately */
 	if (num_rec <= OWP_WIN_WIDTH) {
-		OWPFetchLocalRecords(fd, num_rec, fill_window, out);
+		OWPFetchLocalRecords(fd, num_rec, fill_window, &state);
 		
 		/*
 		  XXX - TODO: flush AND free the window and return
@@ -923,8 +904,13 @@ main(
 	 */
 	conndata.pipefd = -1;
 	conndata.link_data_dir = NULL;
-	if (ping_ctx.opt.datadir)
-		conndata.real_data_dir = ping_ctx.opt.datadir;
+
+	if (ping_ctx.opt.datadir) {
+		/*
+		  XXX - TODO: create the directory.
+		*/
+		  conndata.real_data_dir = NULL; ping_ctx.opt.datadir;
+	}	
 	else { /* create a unique temp dir */
 		conndata.real_data_dir = strdup(OWP_TMPDIR_TEMPLATE);
 		if (!conndata.real_data_dir) {
@@ -939,6 +925,7 @@ main(
 			exit(1);
 		}
 	}
+
 	conndata.policy = policy;
 	conndata.lossThreshold = ping_ctx.opt.lossThreshold;
 	conndata.node = NULL;
@@ -980,9 +967,11 @@ main(
 	 * TODO install sig handler for keyboard interupt - to send stop
 	 * sessions.
 	 */
-	if(OWPStopSessionsWait(ping_ctx.cntrl,NULL,&acceptval,&err) == 0)
-		exit(0);
+	if(OWPStopSessionsWait(ping_ctx.cntrl,NULL,&acceptval,&err) != 0)
+		exit(1);
 
-	OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"It didn't wait!");
-	exit(1);
+	/*
+	  Fetch here
+	*/
+	exit(0);
 }

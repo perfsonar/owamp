@@ -980,55 +980,39 @@ OWPFetchSession(OWPControl cntrl,
 	if (_OWPReadDataHeader(cntrl, &num_rec, typeP) != OWPErrOK)
 		return OWPErrFATAL;
 	
-	nbytes   = (u_int64_t)num_rec * _OWP_TS_REC_SIZE;
+	/* Write header to data file. */
+	if (I2Writen(fd, typeP, 4) < 0)
+		goto write_err;
 
+	nbytes   = (u_int64_t)num_rec * _OWP_TS_REC_SIZE;
 	for (i = 0; i < nbytes / OWP_APP_BUFSIZ; i++) {
 		if (_OWPReceiveBlocks(cntrl, buf, OWP_NUM_BLOCKS) 
-		    != OWP_NUM_BLOCKS) {
-			OWPError(cntrl->ctx, OWPErrFATAL, OWPErrUNKNOWN,
-				 "FATAL: OWPFetchSession: read failure");
-			return OWPErrFATAL;
-		}
-		
-		if (I2Writen(fd, buf, OWP_APP_BUFSIZ) < 0) {
-			OWPError(cntrl->ctx, OWPErrFATAL, OWPErrUNKNOWN,
-				 "FATAL: OWPFetchSession: write failure");
-			return OWPErrFATAL;
-		}
+		    != OWP_NUM_BLOCKS)
+			goto read_err;
+		if (I2Writen(fd, buf, OWP_APP_BUFSIZ) < 0)
+			goto write_err;
 	}
 	rem_bytes = nbytes % OWP_APP_BUFSIZ;
 
 	/* Now rem_bytes < OWP_APP_BUFSIZ */
 	if (rem_bytes) {
 		more_blocks = rem_bytes / _OWP_RIJNDAEL_BLOCK_SIZE;
-		if (_OWPReceiveBlocks(cntrl, buf, more_blocks) != more_blocks){
-			OWPError(cntrl->ctx, OWPErrFATAL, OWPErrUNKNOWN,
-				 "FATAL: OWPFetchSession: read failure");
-			return OWPErrFATAL;
-		}
-		
-		if (I2Writen(fd, buf, more_blocks*_OWP_RIJNDAEL_BLOCK_SIZE)<0){
-			OWPError(cntrl->ctx, OWPErrFATAL, OWPErrUNKNOWN,
-				 "FATAL: OWPFetchSession: write failure");
-			return OWPErrFATAL;
-		}
+		if (_OWPReceiveBlocks(cntrl, buf, more_blocks) != more_blocks)
+			goto read_err;
+		if (I2Writen(fd, buf, more_blocks*_OWP_RIJNDAEL_BLOCK_SIZE)< 0)
+			goto write_err;
+
 		rem_bytes -= more_blocks*_OWP_RIJNDAEL_BLOCK_SIZE;
 	}
 
 	/* Now rem_bytes < _OWP_RIJNDAEL_BLOCK_SIZE */
 	
 	if (rem_bytes) {
-		if (_OWPReceiveBlocks(cntrl, buf, 1) != 1){
-			OWPError(cntrl->ctx, OWPErrFATAL, OWPErrUNKNOWN,
-				 "FATAL: OWPFetchSession: read failure");
-			return OWPErrFATAL;
-		}
+		if (_OWPReceiveBlocks(cntrl, buf, 1) != 1)
+			goto read_err;
 
-		if (I2Writen(fd, buf, rem_bytes) < 0){
-			OWPError(cntrl->ctx, OWPErrFATAL, OWPErrUNKNOWN,
-				 "FATAL: OWPFetchSession: write failure");
-			return OWPErrFATAL;
-		}
+		if (I2Writen(fd, buf, rem_bytes) < 0)
+			goto write_err;
 
 		/* Check zero padding */
 		for (i = rem_bytes; i < 16; i++)
@@ -1051,6 +1035,16 @@ OWPFetchSession(OWPControl cntrl,
 		}
 
 	return OWPErrOK;
+
+ write_err:
+	OWPError(cntrl->ctx, OWPErrFATAL, OWPErrUNKNOWN,
+				 "FATAL: OWPFetchSession: write failure");
+	return OWPErrFATAL;
+	
+ read_err:
+	OWPError(cntrl->ctx, OWPErrFATAL, OWPErrUNKNOWN,
+		 "FATAL: OWPFetchSession: read failure");
+	return OWPErrFATAL;
 }
 
 #define OWP_BUFSIZ 960 /* must be divisible by 20 */
