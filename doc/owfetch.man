@@ -28,28 +28,28 @@ owfetch \- Client application to fetch buffered \fBOWAMP\fR session data.
 .B owfetch
 [\fIoptions\fR] peerhost [SID savefile]+
 .SH DESCRIPTION
-\fBowfetch\fR is a command line client application that is used to
+\fBowfetch\fR is a command line client application used to
 fetch buffered \fBOWAMP\fR session data.
 .PP
 \fBOWAMP\fR one-way latency measurements send packets from a sending host
-to a receiving host. The recieving host is the only entity that ends up
+to a receiving host. The receiving host is the only entity that ends up
 with the results of the test. When
-the \fBowampd\fR daemon is used to setup a recieving endpoint the daemon
+the \fBowampd\fR daemon is used to setup a receiving endpoint, the daemon
 buffers that data. The owfetch application can be used to \fIfetch\fR the
 buffered data.
 .PP
 \fBowfetch\fR is a simple application that can be used to fetch this
 buffered data if it was not saved as part of the \fBowping\fR execution.
-The data will be saved in a file. \fBowfetch\fR can also print raw or
-summary statistics as well.
+The data will be saved in a file. Additionally, \fBowfetch\fR can print raw or
+summary statistics.
 .PP
 The \fISID\fR (Session Identifier) is a hex number that uniquely identifies
-a single test session. \fIsavefile\fR is the file the data from that test
-session will be saved in. Any number of \fISID\fR \fIsavefile\fR pairs can be
+a single test session. \fIsavefile\fR is the file in which the data from that test
+session will be saved. Any number of \fISID\fR \fIsavefile\fR pairs can be
 specified on the command-line to download more than one session per
 command execution. The
-\fISID\fR is printed out when a test session is requested by \fBowping\fR
-if output is not suppressed with the \fI\-Q\fR option.
+\fISID\fR is printed out when a test session is requested by \fBowping\fR,
+unless output is suppressed with the \fI\-Q\fR option.
 .PP
 \fIsavefile\fR can be specified as /dev/null on UNIX if there is no desire
 to actually save the session data.
@@ -145,7 +145,7 @@ Unset.
 .TP
 \fB\-R\fR
 .br
-Print individual packet records one per line in the raw format:
+Print individual packet records, one per line, in the raw format:
 .RS
 .PP
 \fISEQNO SENDTIME SSYNC SERR RECVTIME RSYNC RERR\fR
@@ -196,7 +196,7 @@ data in that file and save the session data in save.owp.
 .IP
 Contact host somehost.com. Fetch the test session identified by
 the SID abcdef0123456789abcdef0123456789. Print individual delays for each
-packet in human readable format, print the summary statistics, and save the
+packet in human readable format. Print the summary statistics.  Save the
 session data in save.owp.
 .LP
 \fBowfetch -U someuser somehost.com abcdef0123456789abcdef0123456789 save.owp\fR
