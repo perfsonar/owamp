@@ -577,7 +577,7 @@ AddrBySAddrRef(
 		OWPErrorLine(addr->ctx,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
 				"malloc():%s",strerror(errno));
 		(void)OWPAddrFree(addr);
-		(void)OWPAddrFree(ai);
+		(void)free(ai);
 		return NULL;
 	}
 	memcpy(addr->saddr,saddr,saddrlen);

@@ -742,9 +742,10 @@ main(int argc, char *argv[])
 	/*
 	 * setup hash's to keep track of child process state.
 	 */
+
 	/*
-	 * should make this assert a config test...
-	 * that would remove the no-op gcc warning.
+	 * TODO: setup a config test for this - so gcc doesn't complain
+	 * about no-op.
 	 */
 	assert(sizeof(pid_t)<=sizeof(data.dsize));/* ensure intcmp will work */
 	pidtable = I2hash_init(errhand,0,intcmp,inthash,NULL);

@@ -405,13 +405,6 @@ OWPDefEndpointInit(
 			goto error;
 		}
 
-		*(u_int32_t *)&ep->payload[0] = htonl(ep->test_spec.any.typeP);
-		if(fwrite(ep->payload,sizeof(u_int32_t),1,ep->datafile) != 1){
-			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"fwrite(1,u_int32_t):%s",strerror(errno));
-			goto error;
-		}
-
 		/*
 		 * set file buffer such that ~ 1 second of data will fit
 		 * in buffer.
@@ -432,8 +425,14 @@ OWPDefEndpointInit(
 			setvbuf(ep->datafile,ep->fbuff,_IOFBF,size);
 
 		/*
-		 * TODO: Write dataheader to datafile.
+		 * Write typeP as first 4-octets of file.
 		 */
+		*(u_int32_t *)&ep->payload[0] = htonl(ep->test_spec.any.typeP);
+		if(fwrite(ep->payload,sizeof(u_int32_t),1,ep->datafile) != 1){
+			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+				"fwrite(1,u_int32_t):%s",strerror(errno));
+			goto error;
+		}
 
 		/*
 		 * receiver - need to set the recv buffer size large
@@ -1061,7 +1060,8 @@ OWPDefEndpointInitHook(
 		if(i == fileno(stderr))
 			continue;
 #endif
-		if((i==ep->sockfd) || (i==fileno(ep->datafile)))
+		if((i==ep->sockfd) ||
+				((ep->datafile) && (i==fileno(ep->datafile))))
 			continue;
 
 		/*
