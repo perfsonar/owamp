@@ -1,4 +1,4 @@
-.TH owping 1 "$Date$"
+'\"t
 ." The first line of this file must contain the '"[e][r][t][v] line
 ." to tell man to run the appropriate filter "t" for table.
 ."
@@ -21,6 +21,7 @@
 ."
 ."	Description:	
 ."
+.TH owping 1 "$Date$"
 .SH NAME
 owping \- Client application to request one-way latency tests.
 .SH SYNOPSIS
@@ -51,6 +52,14 @@ The results are returned to the client after the test completes. The
 test will not be complete until \fItimeout\fR after the last packet is
 scheduled to be sent.
 .SH OPTIONS
+.TP
+\fB\-h\fR
+.br
+Print a usage message and exit.
+.RS
+.IP Default:
+Unset.
+.RE
 .SS Test Configuration Arguments:
 .TP
 \fB\-f\fR
@@ -102,145 +111,67 @@ a fixed value. The actual \fIwait\fR time between each packet is
 determined using using a pseudo-poisson function. The amount of time
 between each packet will average \fIwait\fR seconds.
 .RS
-.TP Default:
+.IP Default:
 0.1 (seconds)
 .RE
 .TP
 \fB\-s\fR \fIsize\fR
+.br
 Size of the padding to add to each minimally sized test packet. The minimal
 size for a test packet in \fIopen\fR mode is 14 bytes. The minimal size
 for a test packet in \fIauthenticated\fR or \fIencrypted\fR mode is 32 bytes.
 .RS
-.TP Default:
+.IP Default:
 0 (bytes)
 .RE
+.TP
+\fB\-L\fR \fItimeout\fR
+.br
+Amount of time to wait for a packet to be received before declaring it
+lost. As such, it is also the amount of time the test session has to
+stay active after the last packet is sent to be able to count duplicate
+packets. i.e. Add this number to the duration of your session to determine
+how long to expect a test session to take.
 
-.TP
-\fB\-b\fR \fIbandwidth\fR
-Limit UDP send rate to \fIbandwidth\fR (bits/sec).
+Note: The default of 2 seconds longer than a round-trip estimate was simply
+a guess for how long a typical user would be willing to wait after the end
+of the test for the results. For the \fBOWAMP\fR results to be
+statistically relevant and to be able to compare data between two sessions
+the \fItimeout\fR option should be specified.
 .RS
 .IP Default:
-1 Mb.
-.RE
-.TP
-\fB\-i\fR \fIinterval\fR
-Report interval (seconds).
-.RS
-.IP Default:
-unset (no intervals reported).
-.RE
-.TP
-\fB\-l\fR \fIlen\fR
-length of read/write buffers (bytes).
-.RS
-.IP Default:
-8 KB TCP, 1470 bytes UDP.
-.RE
-.TP
-\fB\-P\fR \fInThreads\fR
-Generates an error message. The \fB\-P\fR option of \fBIperf\fR is not
-currently supported by \fBowping\fR.
-.TP
-\fB\-S\fR \fITOS\fR
-Generates an error message. The \fB\-S\fR option of \fBIperf\fR is not
-currently supported by \fBowping\fR.
-.TP
-\fB\-t\fR \fItime\fR
-Duration of test (seconds).
-.RS
-.IP Default:
-10.
-.RE
-.TP
-\fB\-u\fR
-UDP test.
-.RS
-.IP Default:
-TCP test.
-.RE
-.TP
-\fB\-W\fR \fIwindow\fR
-Same as the \fB\-w\fR option, except that the value is advisory. \fBowping\fR
-will attempt to dynamically determine the appropriate TCP window, based upon
-RTT information gathered from the control socket. If \fBowping\fR is unable
-to dynamically determine a window, the value \fIwindow\fR will be used.
-.RS
-.IP Default:
-Unset (system defaults).
-.RE
-.TP
-\fB\-w\fR \fIwindow\fR
-Socket buffer sizes (bytes). For TCP, this sets the TCP window size. For UDP,
-this sets the socket receive buffer size.
-.RS
-.IP Default:
-Unset (system defaults).
-.RE
-.SS Scheduling Arguments:
-.TP
-\fB\-I\fR \fIinterval\fR
-Specifies that \fBowping\fR should attempt to run the \fBIperf\fR test every
-\fIinterval\fR seconds.
-.RS
-.IP Default:
-Unset. If it is unset, \fBowping\fR only runs the test once.
-.RE
-.TP
-\fB\-L\fR \fIlatest\fR
-Specifies the latest time the client is willing to wait for a
-reservation window. When \fBowping\fR requests a test from the \fBowpingd\fR
-server, it specifies the earliest time and the latest time it is willing
-to accept. The \fIlatest\fR option is specified as a number of seconds
-that will be added to the start time.
-.RS
-.IP Default:
-If \fIinterval\fR is set, the default is 50% of \fIinterval\fR. Otherwise,
-the default is twice the test duration \fItime\fR. (See \fB\-t\fR).
-.RE
-.TP
-\fB\-n\fR \fInIntervals\fR
-Number of tests to perform if the \fB\-I\fR option is set.
-.RS
-.IP Default:
-Continuous.
-.RE
-.TP
-\fB\-R\fR \fIalpha\fR
-Randomize the start time of the test within this \fIalpha\fR percent of the
-\fIinterval\fR. Valid values for \fIalpha\fR are from 0\-50. \fBowping\fR
-will attempt to run the test every \fIinterval\fR +/\- \fIalpha\fR percent.
-For example, if the \fIinterval\fR is 300 seconds and \fIalpha\fR is
-set to 10 percent, then \fBowping\fR will attempt to run a test every
-270\-330 seconds. This option is only useful with the \fB\-I\fR option.
-.RS
-.IP Default:
-0 (no randomness).
+2 seconds longer than the round-trip estimate. (seconds)
 .RE
 .SS Connection/Authentication Arguments:
 .TP
 \fB\-A\fR \fIauthmode\fB
+.br
 Specify the authentication modes the client is willing to use for
 communication. \fIauthmode\fR should be set as a character string with
 any or all of the characters "AEO". The modes are:
 .RS
 .IP \fBA\fR
-[\fBA\fR]uthenticated. This mode encrypts the control connection.
+[\fBA\fR]uthenticated. This mode encrypts the control connection and
+digitally signs part of each test packet.
 .IP \fBE\fR
-[\fBE\fR]ncrypted. This mode encrypts the control connection. If the
-test supports encryption, this mode will additionally encrypt the test
-stream. (Encryption of the test stream is not currently supported, so
-this mode is currently identical to authenticated.)
+[\fBE\fR]ncrypted. This mode encrypts the control connection and
+encrypts the all of each test packet. (This mode forces an encryption step
+between the fetching of a timestamp and when the packet is sent. This
+adds more computational delay to the time reported by \fBOWAMP\fR for each
+packet.)
 .IP \fBO\fR
 [\fBO\fR]pen. No encryption of any kind is done.
 .PP
-The client can specify all the modes with which it is willing to communicate. The
-most strict mode that both the server and the client are willing to use
-will be selected.
+The client can specify all the modes with which it is willing to communicate.
+The most strict mode that both the server and the client are willing to use
+will be selected. Authenticated and Encrypted modes require a "shared secret"
+in the form of an AES key.
 .IP Default:
 "AEO".
 .RE
 .TP
-\fB\-B\fR \fIsrcaddr\fR
+\fB\-S\fR \fIsrcaddr\fR
+.br
 Bind the local address of the client socket to \fIsrcaddr\fR. \fIsrcaddr\fR
 can be specified using a DNS name or using standard textual notations for
 the IP addresses.
@@ -250,6 +181,7 @@ Unspecified (wild-card address selection).
 .RE
 .TP
 \fB\-k\fR \fIkeyfile\fR
+.br
 Indicates that \fBowping\fR should use the AES key in \fIkeyfile\fR for
 \fIusername\fB. \fIusername\fR must have a valid key in \fIkeyfile\fR.
 \fIkeyfile\fR should have been generated using the aespasswd(1)
@@ -260,7 +192,8 @@ Unset. (If the \fB\-U\fR option was specified, user will be prompted for a
 \fIpassphrase\fR.)
 .RE
 .TP
-\fB\-U\fR \fIusername\fR
+\fB\-u\fR \fIusername\fR
+.br
 Specify the username that is used to identify the AES key for
 authenticated or encrypted modes. If the \fB\-k\fR option is specified,
 the key is retrieved from the \fIkeyfile\fR, otherwise \fBowping\fR prompts
@@ -272,78 +205,88 @@ Unset.
 .RE
 .SS Output Arguments:
 .TP
-\fB\-d\fR \fIdir\fR
-Specifies directory for results files if the \fB\-p\fR option is set.
-.TP
-\fB\-e\fR \fIfacility\fR
-Syslog \fIfacility\fR to log messages to.
+\fB\-a\fR \fIpercentile\fR
+.br
+Specify an additional \fIpercentile\fR to print out in addition to the 
+minimum and the median when printing summary statistics.
 .RS
 .IP Default:
-LOG_USER.
+Unset.
 .RE
 .TP
-\fB\-h\fR
-Print a help message.
-.TP
-\fB\-p\fR
-Place \fBIperf\fR results in files. Print the filenames to stdout when
-results are complete.
-.TP
-\fB\-q\fR
-Quiet output. Output as little as possible.
-.TP
-\fB\-r\fR
-Send syslog messages to stderr.  This is the default unless the \fB\-q\fR
-option is specified so this option is only useful with the \fB\-q\fR
-option.
-.TP
-\fB\-V\fR
-Print version information and exit.
+\fB\-Q\fR
+.br
+Suppress the printing of summary statistics.
+.RS
+.IP Default:
+Unset.
+.RE
 .TP
 \fB\-v\fR
-Verbose output. Specifying additional \fB\-v\fR's increases the verbosity.
+.br
+Print delays for individual packet records.
+.RS
+.IP Default:
+Unset.
+.RE
 .TP
-\fB\-x\fR
-Output sender (\fBIperf\fR client) results as well as receiver results.
-By default, sender results are not output. If the \fB\-p\fR option is
-specified, the sender results are placed in an additional file.
-.SH LIMITATIONS
-Currently it is only possible to specify either the \fBIperf\fR
-sender or the \fBIperf\fR receiver on the command line. The local
-host is assumed to be the other endpoint of the test.
+\fB\-R\fR
+.br
+Print individual packet records one per line in the raw format:
+.RS
 .PP
-Works with versions 1.7.0 and 2.0.b of \fBIperf\fR.
+\fISEQNO SENDTIME SSYNC SERR RECVTIME RSYNC RERR\fR
+.br
+.TS
+li l .
+SEQNO	Sequence Number.
+SENDTIME	Send timestamp.
+SSYNC	Sending system synchronized (0 or 1).
+SERR	Estimate of SENDTIME error.
+RECVTIME	Receive timestamp.
+RSYNC	Receiving system synchronized (0 or 1).
+RERR	Estimate of RECVTIME error.
+.TE
+.PP
+The timestamps are ASCII representation of 64 bit integers with the
+high-order 32 bits representing the number of seconds since Jan 1, 1900
+and the low-order 32 bits representing fractional seconds.
+.IP Default:
+Unset.
+.RE
 .SH EXAMPLES
 .LP
-\fBowping -c somehost.com\fR
+\fBowping somehost.com\fR
 .IP
-Run a default 10 second TCP \fBIperf\fR test as soon as possible with
-localhost as the sender and somehost.com as the receiver. Return
-the results from the receive side of the test.
+Run two concurrent ~10 second test sessions at a rate of a packet every 0.1
+seconds. One session sending packets from the local host to somehost.com,
+the other session receiving packets from somehost.com.) Print summary
+statistics of the results only.
 .LP
-\fBowping -x -c somehost.com\fR
+\fBowping -f somehost.com\fR
 .IP
-Like the previous test, but also return the results from the sender
-side of the test.
+Run a single ~10 second test session at a rate of one packet every 0.1
+seconds with the packets being sent from somehost.com and received
+at the local host.
 .LP
-\fBowping -t 30 -s somehost.com\fR
+\fBowping -F savefile.owp somehost.com\fR
 .IP
-Run a 30 second TCP \fBIperf\fR test with somehost.com as the sender
-and localhost as the receiver.
+Same as the previous example, with the resulting data saved in
+savefile.owp. The \fBowstats\fR program can be used to decode
+that datafile.
 .LP
-\fBowping -I 3600 -R 10 -t 10 -u -b 10m -s somehost.com\fR
+\fBowping -F from.owp -T to.owp somehost.com\fR
 .IP
-Run a 10 second UDP test about every hour (3600 +/- 360 seconds) with
-the sender rate limited to 10 Mbits per second from somehost.com to
-localhost.
+Same as the first example, with the resulting data saved in from.owp and
+to.owp.
 .LP
-\fBowping -U someuser -s somehost.com\fR
+\fBowping -U someuser somehost.com\fR
 .IP
-Run the default 10 second TCP \fBIperf\fR test. Authenticate using
+Run the default test as in the first example. Authenticate using
 the identity \fIsomeuser\fR. \fBowping\fR will prompt for a \fIpassphrase\fR.
 .SH SEE ALSO
-owampd(8) and the \%http://e2epi.internet2.edu/owamp/
-and \%http://dast.nlanr.net/Projects/Iperf/ web sites.
+owampd(8), owstats(1), owfetch(1) and the \%http://e2epi.internet2.edu/owamp/
+web sites.
 .SH ACKNOWLEDGMENTS
 This material is based in part on work supported by the National Science
 Foundation (NSF) under Grant No. ANI-0314723. Any opinions, findings and
