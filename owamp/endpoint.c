@@ -1210,8 +1210,8 @@ recvfromttl(
 	for(cmdmsgptr = CMSG_FIRSTHDR(&msg);
 			(cmdmsgptr);
 			cmdmsgptr = CMSG_NXTHDR(&msg,cmdmsgptr)){
-		if(cmdmsgptr->cmsg_level == IPPROTO_IP &&
-				cmdmsgptr->cmsg_type == IP_RECVTTL){
+		if(cmdmsgptr->cmsg_level == SOL_IP &&
+				cmdmsgptr->cmsg_type == IP_TTL){
 			memcpy(ttl,CMSG_DATA(cmdmsgptr),sizeof(u_int8_t));
 			continue;
 		}
