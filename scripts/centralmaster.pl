@@ -180,7 +180,7 @@ while (1) {
 		if (contains($start, $end, $live_times{$src}[0][HIGH])
 		    || contains($start, $end, $live_times{$src}[$final][LOW])){
 		    warn "file $fullpath invalid: archiving\n" if DEBUG;
-		    archive($fulpath);
+		    archive($fullpath);
 		    next;
 		}
 
