@@ -1,0 +1,301 @@
+'\"t
+." The first line of this file must contain the '"[e][r][t][v] line
+." to tell man to run the appropriate filter "t" for table.
+."
+."	$Id$
+."
+."######################################################################
+."#									#
+."#			   Copyright (C)  2004				#
+."#	     			Internet2				#
+."#			   All Rights Reserved				#
+."#									#
+."######################################################################
+."
+."	File:		owampd.limits.man
+."
+."	Author:		Jeff Boote
+."			Internet2
+."
+."	Date:		Wed May 12 10:45:09 MDT 2004
+."
+."	Description:	
+."
+.TH owampd.limits 5 "$Date$"
+.SH NAME
+owampd.limits \- One-way latency server policy configuration file
+.SH DESCRIPTION
+The \fBowampd.limits\fR file is used to define the policy configuration
+for the \fBowampd\fR program. It allows the system administrator to
+allocate the resources in a variety of ways.
+.PP
+There are two parts to the policy configuration:
+.TP
+Authentication
+Who is making the request? This can be very specific to an individual
+user or it can be more general in that the connection is coming from
+some particular network.
+.TP
+Authorization
+Now that the connection has been generally identified, what will \fBowampd\fR
+allow it to do?
+.PP
+The authentication is done by assigning a \fIlimitclass\fR to each new
+connection as it comes in. Each \fIlimitclass\fR has a set of limits
+associated with it. The \fIlimitclass\fRes are hierarchical, so a connection
+must pass the limit restrictions of the given \fIlimitclass\fR as well as all
+parent classes.
+.PP
+Within the \fBowampd.limits\fR file, \fIassign\fR lines are used to
+assign a \fIlimitclass\fR to a given connection. \fIlimit\fR lines are
+used to define a \fIlimitclass\fR and set the limits associated with that
+\fIlimitclass\fR. The file is read sequentially, and it is not permitted
+to use a \fIlimitclass\fR before it is defined using a limit line.
+.PP
+The format of this file is:
+.RS
+.IP \(bu
+Comment lines are any line where the first non-whitespace character is '#'.
+These lines are counted to return line numbers in error
+messages but are otherwise ignored by \fBowampd\fR.
+.IP \(bu
+Lines may be continued using the semi-standard '\\' character followed
+immediately by a newline. This is the only valid place for the '\\'
+character. If it is found elsewhere a syntax error is reported.
+.IP \(bu
+Blank lines are treated as comment lines.
+.IP \(bu
+All other lines must conform to the syntax of a \fIlimit\fR line or
+an \fIassign\fR line.
+.RE
+.SH CONFIGURATION OPTIONS
+.TP
+\fIlimit\fR
+This directive is used to define the \fIlimitclass\fR hierarchy. It
+defines the \fIlimitclassname\fR as well as the limits associated with
+that class. A \fIlimitclassname\fR may only be defined once. The
+format of the \fIlimit\fR directive is:
+.PP
+.RS
+limit \fIlimitclassname\fR with
+\fIlimtype\fR=\fIvalue\fR[,\fIlimtype\fR=\fIvalue\fR]*
+.PP
+\fIlimitclassname\fR defines the name of the class with the given
+limits. Whitespace is used as a separator but is otherwise
+ignored. \fIlimitclassname\fR may be used as a directory name component
+within \fBowampd\fR, so take care not to use characters that would be
+invalid. (i.e. '*' or '/' would be particularly bad.)
+.PP
+\fIlimtype\fR and \fIvalue\fR indicate the particular type of limit and
+value to apply to this \fIlimitclass\fR. The available settings for
+\fIlimtype\fR are:
+.TS
+li li li
+_ _ _
+li l l .
+limtype	valid values	default
+allow_open_mode	on/off	on
+bandwidth	integer (bits/sec)	0 (unlimited)
+disk	integer (bytes)	0 (unlimited)
+delete_on_fetch	on/off	off
+parent	already defined \fIlimitclassname\fR	null
+.TE
+.TP
+.I allow_open_mode
+This limit is only useful if the class is assigned
+to a netmask. It is used to limit specific IP/netmask identities
+to only encrypted or authenticated mode transactions or
+to allow open mode.
+.TP
+.I bandwidth
+Maximum amount of bandwidth to allow \fIlimitclass\fR
+to use concurrently in all one-way tests.  0 indicates unlimited
+by policy, but remember this is checked all the way to
+the root of the hierarchy. (If you want an unlimited \fIlimitclass\fR, your
+root must be unlimited, and the whole path down
+to the given \fIlimitclass\fR.)
+.TP
+.I disk
+Maximum amount of disk space to allow a given \fIlimitclass\fR
+to consume. This defines a limit that is used during authorization
+of a given test request. If the estimated file size for a test request
+is larger than the \fIdisk\fR limit, the test request will be denied.
+Additionally, because a given test can actually consume
+more space than this estimate due to duplicate packets, the \fIdiskfudge\fR
+factor is used upon the completion of a test to decide if the file should
+be kept. If the new file causes the disk space used by a \fIlimitclass\fR
+to be larger than the \fIdisk\fR limit
+multiplied by the \fIdiskfudge\fR factor the file will be deleted.
+.TP
+.I delete_on_fetch
+Indicates that buffered data files should be automatically be deleted
+by the \fBowampd\fR server as soon as they are fetched.
+.TP
+.I parent     
+The first \fIlimit\fR line cannot have a parent since
+none have been defined yet. As such, the first
+line defines the root of your class hierarchy.
+All remaining limit lines \fBMUST\fR assign a parent.
+(It is hierarchical, after all.)
+.RE
+.TP
+\fIassign\fR
+The \fIassign\fR directive is used to assign a \fIlimitclass\fR to a
+given connection. Basically, it authenticates the connection.
+The format of the \fIassign\fR directive is:
+.PP
+.RS
+assign \fIauthtype\fR [\fIargs\fR] \fIlimitclassname\fR
+.PP
+\fIauthtype\fR identifies the type of authentication being used. Whitespace
+is used as a separator but is otherwise ignored. \fIlimitclassname\fR must 
+have been previously defined with the \fIlimit\fR directive earlier
+in the file.
+.PP
+The available settings for \fIauthtype\fR are:
+.TP
+.B default
+Used if no other assignment matches. It takes no \fIargs\fR.
+.TP
+.BI net " subnet"
+Assign a specific \fIsubnet\fR to a given \fIlimitclass\fR.
+\fIsubnet\fR must be specified using VLSM notation (IP/nbits).
+The only \fIarg\fR is the \fIsubnet\fR.
+For example:
+.RS
+.TP
+127.0.0.1/32
+would match only the loopback IPv4 address.
+.TP
+::1/128
+would match only the loopback IPv6 address.
+.TP
+192.168.1.0/24
+would match all hosts on the 192.168.1.XXX network.
+.PP
+There must be no set bits in the non-masked portion of the address part
+of the \fIsubnet\fR specification. i.e., 192.168.1.1/24 would be
+an invalid \fIsubnet\fR due to the bit set in the fourth octet.
+.RE
+.TP
+.BI user " user"
+Assign a specific \fIuser\fR to a given \fIlimitclass\fR.
+The \fIuser\fR must be defined in the \fBowampd.keys\fR file.
+.SH AUTHENTICATION PROCESS
+\fBowampd\fR determines if it should allow a connection from
+the client based upon the authentication mode of the request and the source
+IP address of the connection. If the client connection is in authenticated or
+encrypted mode, the daemon does not do any filtering based upon the
+source address of the connection. (See the \fB\-A\fR option to \fBowping\fR
+and the \fIauthmode\fR option in \fBowampd.conf\fR.)
+In these modes \fBowampd\fR simply uses the \fIidentity\fR of the
+connection to determine the \fIlimitclass\fR limits. If the connection
+is made in open mode,  then \fBowampd\fR first uses the source address to
+determine if \fBowampd\fR should allow an open mode connection from
+that subnet at all. (This is
+the purpose of the \fIallow_open_mode limtype\fR described above.)
+If open mode is allowed from this subnet, then the \fIlimitclass\fR
+is determined by the closest subnet match defined by the \fIassign net\fR
+lines in the \fBowampd.limits\fR file.
+.SH EXAMPLES
+An initial \fIlimit\fR line might look like:
+.RS
+.HP
+limit root with \\
+.br
+bandwidth=900m, \\
+.br
+disk=2g, \\
+.br
+allow_open_mode=off
+.RE
+.PP
+This would create a \fIlimitclass\fR named \fBroot\fR. Because no
+\fIparent\fR is
+specified, this must be the first \fIlimitclass\fR defined in the
+file. This \fIlimitclass\fR has very liberal limits (900m limit on
+bandwidth, and 2 GB of disk space). However, open mode authentication
+is not enabled for
+this \fIlimitclass\fR, so the connections that get these limits must
+successfully authenticate using an AES key.
+.PP
+If an administrator also wants to create a \fIlimitclass\fR that is used
+to deny all requests, they might add:
+.RS
+.HP
+limit jail with \\
+.br
+parent=root, \\
+.br
+bandwidth=1, \\
+.br
+disk=1, \\
+.br
+allow_open_mode=off
+.RE
+.PP
+This would create a \fIlimitclass\fR named \fBjail\fR. Because the limits
+for bandwidth and disk are so low, virtually all tests will be denied.
+\fIallow_open_mode\fR is off, so initial connections that are not in
+authenticated or encrypted mode will be dropped immediately.
+(It would not make much sense to assign a \fIuser\fR identity to this
+\fIlimitclass\fR. If you don't want connections from a particular \fIuser\fR
+identity the best thing to do is to remove that \fIuser\fR from
+the \fBowampd.keys\fR file.)
+.PP
+If the administrator wanted to allow a limited amount of open tests, they
+could define a \fIlimitclass\fR like:
+.RS
+.HP
+limit open with \\
+.br
+parent=root, \\
+.br
+bandwidth=10k, \\
+.br
+disk=10m, \\
+.br
+allow_open_mode=on
+.RE
+.PP
+This could be used to allow testing by random connections.
+It limits those tests to 10 kilobits of bandwidth and 10 Mbytes of
+buffer space.
+.PP
+Now, these three \fIlimitclasses\fR might be assigned to specific connections
+in the following ways:
+.RS
+.PP
+# default open
+.br
+assign default \fBopen\fR
+.PP
+# badguys subnet
+.br
+assign net 192.168.1.0/24 \fBjail\fR
+.PP
+# network admins
+.br
+assign user joe \fBroot\fR
+.br
+assign user jim \fBroot\fR
+.br
+assign user bob \fBroot\fR
+.br
+.RE
+.PP
+This set of \fIassign\fR lines specifically denies access from any
+open mode connection from the \fBbadguys\fR subnet. It specifically
+allows access to authenticated or encrypted mode transactions that can
+authenticate as the \fIidentities\fR \fBjoe jim\fR or \fBbob\fR (even from
+the \fBbadguys\fR subnet). All other connections would match the
+\fIassign default\fR rule and get the limits associated with the \fBopen\fR
+\fIlimitclass\fR.
+.SH SEE ALSO
+owping(1), owampd(8), owampd.limits(5), owampd.keys(5), aespasswd(1),
+and the \%http://e2epi.internet2.edu/owamp/ web site.
+.SH ACKNOWLEDGMENTS
+This material is based in part on work supported by the National Science
+Foundation (NSF) under Grant No. ANI-0314723. Any opinions, findings and
+conclusions or recommendations expressed in this material are those of
+the author(s) and do not necessarily reflect the views of the NSF.
