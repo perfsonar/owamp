@@ -33,6 +33,7 @@ die "usage: buckets2stats.pl <dirname> <age_in_hours>"
 
 ### Configuration section.
 my $digest_suffix = $conf->get_val(ATTR=>'DigestSuffix');
+print "dig = $digest_suffix\n";
 
 # This files contains gnuplot data and graphs- no reason to have temporary
 # files since these just get reused all the time.
@@ -210,7 +211,7 @@ sub is_younger_than {
 
     return $sec if TESTING; # XXX - careful!
 
-    my $current = time2time_1970($init);
+    my $current = OWP::Utils::time2time_1970($init);
     return ($current - $start < $age)? $sec : undef;
 }
 
