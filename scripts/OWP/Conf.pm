@@ -449,7 +449,7 @@ sub get_val{
 	my($ref);
 
 	for ($ref = $self->get_ref(%args)){
-		/^$/		and return undef;
+		return undef if(!defined($_));
 		/SCALAR/	and return $$ref;
 		/HASH/		and return %$ref;
 		/ARRAY/		and return @$ref;
@@ -472,7 +472,7 @@ sub must_get_val{
 
 	for ($ref = $self->get_ref(%args)){
 		# undef:break out and report error.
-		/^$/		and last;
+		last if(!defined($_));
 		/SCALAR/	and return $$ref;
 		/HASH/		and return %$ref;
 		/ARRAY/		and return @$ref;

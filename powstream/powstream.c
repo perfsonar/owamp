@@ -98,6 +98,7 @@ print_output_args()
 		"              [Output Args]\n\n"
 		"   -d dir         directory to save session file in\n"
 		"   -I Interval    duration for OWP test sessions(seconds)\n"
+		"   -p             print completed filenames to stdout\n"
 		"   -h             print this message and exit\n"
 		);
 }
@@ -486,7 +487,7 @@ main(
 	char                    optstring[128];
 	static char		*conn_opts = "A:S:k:u:";
 	static char		*test_opts = "c:i:s:L:";
-	static char		*out_opts = "d:I:";
+	static char		*out_opts = "d:I:p";
 	static char		*gen_opts = "hw";
 
 	int			which=0;	/* which cntrl connect used */
@@ -528,93 +529,94 @@ main(
 	strcat(optstring, gen_opts);
 		
 	while ((ch = getopt(argc, argv, optstring)) != -1)
-             switch (ch) {
-		     /* Connection options. */
-             case 'A':
-		     if (!(appctx.opt.authmode = strdup(optarg))) {
-			     I2ErrLog(eh,"malloc:%M");
-			     exit(1);
-		     }
-                     break;
-             case 'S':
-		     if (!(appctx.opt.srcaddr = strdup(optarg))) {
-			     I2ErrLog(eh,"malloc:%M");
-			     exit(1);
-		     }
-                     break;
-             case 'u':
-		     if (!(appctx.opt.identity = strdup(optarg))) {
-			     I2ErrLog(eh,"malloc:%M");
-			     exit(1);
-		     }
-                     break;
-	     case 'k':
-		     if (!(appctx.opt.passwd = strdup(optarg))) {
-			     I2ErrLog(eh,"malloc:%M");
-			     exit(1);
-		     }
-                     break;
-             case 'c':
-		     appctx.opt.numPackets = strtoul(optarg, &endptr, 10);
-		     if (*endptr != '\0') {
-			     usage(progname, 
-				   "Invalid value. Positive integer expected");
-			     exit(1);
-		     }
-                     break;
-             case 'i':
-		     appctx.opt.meanWait = (float)(strtod(optarg, &endptr));
-		     if (*endptr != '\0') {
-			     usage(progname, 
-			   "Invalid value. Positive floating number expected");
-			     exit(1);
-		     }
-                     break;
-             case 's':
-		     appctx.opt.padding = strtoul(optarg, &endptr, 10);
-		     if (*endptr != '\0') {
-			     usage(progname, 
-				   "Invalid value. Positive integer expected");
-			     exit(1);
-		     }
-                     break;
-             case 'L':
-		     appctx.opt.lossThreshold = strtoul(optarg, &endptr, 10);
-		     if (*endptr != '\0') {
-			     usage(progname, 
-				   "Invalid value. Positive integer expected");
-			     exit(1);
-		     }
-                     break;
+		switch (ch) {
+		/* Connection options. */
+		case 'A':
+			if (!(appctx.opt.authmode = strdup(optarg))) {
+				I2ErrLog(eh,"malloc:%M");
+				exit(1);
+			}
+			break;
+		case 'S':
+			if (!(appctx.opt.srcaddr = strdup(optarg))) {
+				I2ErrLog(eh,"malloc:%M");
+				exit(1);
+			}
+			break;
+		case 'u':
+			if (!(appctx.opt.identity = strdup(optarg))) {
+				I2ErrLog(eh,"malloc:%M");
+				exit(1);
+			}
+			break;
+		case 'k':
+			if (!(appctx.opt.passwd = strdup(optarg))) {
+				I2ErrLog(eh,"malloc:%M");
+				exit(1);
+			}
+			break;
+		case 'c':
+			appctx.opt.numPackets = strtoul(optarg, &endptr, 10);
+			if (*endptr != '\0') {
+				usage(progname, 
+				"Invalid value. Positive integer expected");
+				exit(1);
+			}
+			break;
+		case 'i':
+			appctx.opt.meanWait = (float)(strtod(optarg, &endptr));
+			if (*endptr != '\0') {
+				usage(progname, 
+			"Invalid value. Positive floating number expected");
+				exit(1);
+			}
+			break;
+		case 's':
+			appctx.opt.padding = strtoul(optarg, &endptr, 10);
+			if (*endptr != '\0') {
+				usage(progname, 
+				"Invalid value. Positive integer expected");
+				exit(1);
+			}
+			break;
+		case 'L':
+			appctx.opt.lossThreshold = strtoul(optarg, &endptr, 10);
+			if (*endptr != '\0') {
+				usage(progname, 
+				"Invalid value. Positive integer expected");
+				exit(1);
+			}
+			break;
 #ifndef	NDEBUG
-	     case 'w':
-		     appctx.opt.childwait = True;
-                     break;
+		case 'w':
+			appctx.opt.childwait = True;
+			break;
 #endif
-
-	     case 'd':
-		     if (!(appctx.opt.savedir = strdup(optarg))) {
-			     I2ErrLog(eh,"malloc:%M");
-			     exit(1);
-		     }
-                     break;
-             case 'I':
-		     appctx.opt.seriesInterval = strtoul(optarg, &endptr, 10);
-		     if (*endptr != '\0') {
-			     usage(progname, 
-				   "Invalid value. Positive integer expected");
-			     exit(1);
-		     }
-                     break;
-
-		     /* Generic options.*/
-             case 'h':
-             case '?':
-             default:
-                     usage(progname, "");
-		     exit(0);
-		     /* UNREACHED */
-             }
+		case 'd':
+			if (!(appctx.opt.savedir = strdup(optarg))) {
+				I2ErrLog(eh,"malloc:%M");
+				exit(1);
+			}
+			break;
+		case 'I':
+			appctx.opt.seriesInterval =strtoul(optarg, &endptr, 10);
+			if (*endptr != '\0') {
+				usage(progname, 
+				"Invalid value. Positive integer expected");
+				exit(1);
+			}
+			break;
+		case 'p':
+			appctx.opt.printfiles = True;
+			break;
+		/* Generic options.*/
+		case 'h':
+		case '?':
+		default:
+			usage(progname, "");
+			exit(0);
+		/* UNREACHED */
+		}
 	argc -= optind;
 	argv += optind;
 
@@ -1062,6 +1064,11 @@ AGAIN:
 					OWP_NAME_SEP,endname,OWP_FILE_EXT);
 			if(link(fname,newpath) != 0){
 				I2ErrLog(eh,"link():%M");
+			}
+
+			if(appctx.opt.printfiles){
+				fprintf(stdout,"%s\n",newpath);
+				fflush(stdout);
 			}
 error:
 			fclose(parse.fp);
