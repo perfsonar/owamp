@@ -217,11 +217,11 @@ foreach $mtype (@mtypes){
 }
 
 
-my ($reset,$die,$sigchld) = (0,0,0);
+my ($reset,$die,$sigchld,$insig) = (0,0,0,0);
 
 
 sub catch_sig{
-	my $signame = shift;
+	my $signame = $_;
 
 	return if !defined $signame;
 
@@ -235,7 +235,13 @@ sub catch_sig{
 		$die = 1;
 	}
 
-	die "SIG$signame\n" if($^S);
+	if($^S && !$insig){
+		# Because "die" is tied to syslog - die is non-reentrant.
+		# protect it here.
+		$insig = 1;
+		die "SIG$signame\n";
+		$insig = 0;
+	}
 
 	return;
 }

@@ -169,10 +169,10 @@ my $Server = IO::Socket::INET->new(
 			Timeout		=>	$timeout,
 			Listen		=>	SOMAXCONN) or die;
 
-my ($reset,$die,$sigchld) = (0,0,0);
+my ($reset,$die,$sigchld,$insig) = (0,0,0,0);
 
 sub catch{
-	my $signame = shift;
+	my $signame = $_;
 
 	return if !defined $signame;
 
@@ -188,8 +188,14 @@ sub catch{
 	#
 	# If we are in an eval - die from here to make the function return
 	# and not automatically restart: ie accept.
+	# (protect die from reentrance because it is tied to non-reentrant
+	# syslog.)
 	#
-	die "SIG$signame\n" if($^S);
+	if($^S && !$insig){
+		$insig = 1;
+		die "SIG$signame\n";
+		$insig = 0;
+	}
 
 	#
 	# If we are not in an eval - we have already set our global vars
@@ -627,6 +633,7 @@ sub do_req{
 		unlink "$req{'FNAME'}.i";
 	}
 
+	# MUST untie before undef'ing the lock!
 	untie %state;
 	undef $dbfh;
 
@@ -896,6 +903,7 @@ sub update_node{
 			
 		}
 	}
+	# MUST untie before undef'ing the lock!
 	continue{
 		untie %state if(defined %state);
 		undef $fh;
