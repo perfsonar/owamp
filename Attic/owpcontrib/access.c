@@ -28,12 +28,9 @@
 
 #define DEBUG 0
 
-#define DEFAULT_CLASS "open"
-
-struct subnet {
-	u_int32_t network ;
-	u_int8_t offset;
-};
+#define DEFAULT_OPEN_CLASS "open"
+#define AUTH_CLASS "authenticated"
+#define BANNED_CLASS "banned"
 
 /*
 ** This structure is used to keep track of usage resources.
@@ -328,7 +325,7 @@ hash_close(hash_ptr hash)
 ** This function reads the configuration file given by the path ip2class, 
 ** processes it and saves the results in Berkeley DB file, with the
 ** same base name, and extension ".db". The database can be printed by the
-** companion function print_dbm(). This function should typically only
+** companion function print_hash(). This function should typically only
 ** be called once, outside of any application - to initialize the database.
 */
 
@@ -403,7 +400,7 @@ owamp_read_config(const char *ip2class)
 */
 
 void
-owamp_print_dbm(char *base)
+owamp_print_hash(char *base)
 {
 	hash_ptr hash;
 	datum key, val;
@@ -431,7 +428,7 @@ owamp_print_dbm(char *base)
 ** This function reads the configuration file given by the path ip2class, 
 ** processes it and saves the results in Berkeley DB file, with the
 ** same base name, and extension ".db". The database can be printed by the
-** companion function print_dbm().
+** companion function print_hash().
 */
 
 void
@@ -439,10 +436,9 @@ owamp_read_limits(const char *class2limits)
 {
 	char line[MAX_LINE];
 	char err_msg[1024];
-	char *key;
+	char *key, *value, *class, *key_value, *brkt, *brkb;
 	FILE *fp;
-	char *cur_class;
-	char *tok;
+	u_int32_t numval;
 	
 	datum key_dat, val_dat;
 	hash_ptr hash;
@@ -463,25 +459,31 @@ owamp_read_limits(const char *class2limits)
 
 	fprintf(stderr, "\n");
 	while ( (fgets(line, sizeof(line), fp)) != NULL) {
-		int len;
-		tok = strtok(line, " \t\n");
-		if (!tok)
+		if (line[0] == '#')
 			continue;
-		if (tok[0] == '<'){ /* could be classname */
-			len = strlen(tok);
-			if (len <= 2 || tok[len-1] != '>') 
-				continue;
-			tok[len-1] = '\0'; /* now (line+1) points at class */
-			fprintf(stderr, "DEBUG: class name = %s\n", (tok+1));
-			cur_class = strdup(tok+1);
+		line[strlen(line) - 1] = '\0';
+		class = strtok_r(line, " \t", &brkt);
+		if (!class)
 			continue;
-		} else {
-			if (!cur_class)
-				continue;
-			tok = strtok(NULL, " \t\n");
-		}
+
+		printf("DEBUG: class = %s\n", class);
+		for (key_value=strtok_r(NULL, " \t", &brkt);
+		     key_value;
+		     key_value = strtok_r(NULL, " \t", &brkt))
+			{
+				key = strtok_r(key_value, "=", &brkb);
+				if (!key)  
+					continue; /* inner loop */
+				value = strtok_r(NULL, "=", &brkb);
+				if (!value)
+					continue;
+				numval = strtol(value, NULL, 10); /* XXX */
+		    printf("DEBUG: value for key = %s is %lu\n", key, numval);
+			} 
+		printf("********************************\n");
 		
 	}
+
 }
 
 char *
@@ -500,7 +502,7 @@ ipaddr2class(u_int32_t ip)
 			return val_dat.dptr;
 	}
 
-	return DEFAULT_CLASS;
+	return DEFAULT_OPEN_CLASS;
 }
 
 int
@@ -521,8 +523,8 @@ main(int argc, char *argv[])
 
 	/* Uncomment if wish to read config file. Else will use db on disk */
 	owamp_read_config(IPtoClassFile); 
+	owamp_print_hash(IPtoClassFile); 
 
-	owamp_print_dbm(IPtoClassFile); 
 	owamp_read_limits(ClassToLimitsFile);
 
 	if ((ip2class_hash = hash_init(IPtoClassFile)) == NULL){
@@ -531,6 +533,8 @@ main(int argc, char *argv[])
 		perror(err_msg);
 		exit(1);
 	}
+
+#if 0
 	while (1){
 		printf("\nEnter a dotted IP address, or 'x' to exit:\n");
 		fgets(line, sizeof(line), stdin);
@@ -547,5 +551,6 @@ main(int argc, char *argv[])
 		printf("the class for ip = %lu is %s\n", ip, ipaddr2class(ip));
 #endif	
 	}
+#endif
 	exit(0);
 }
