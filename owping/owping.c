@@ -351,9 +351,10 @@ FailSession(
 
 /* Numbers of buckets in each range. */
 #define OWP_NUM_LOW     ((int)(OWP_CUTOFF_LOW / OWP_MESH_LOW))
-#define OWP_NUM_MID     ((int)((OWP_MESH_MID - OWP_MESH_LOW) / OWP_CUTOFF_LOW))
-#define OWP_NUM_HIGH    ((int)((ping_ctx.opt.lossThreshold - OWP_MESH_MID)  \
-			       / OWP_CUTOFF_LOW))
+#define OWP_NUM_MID     ((int)((OWP_CUTOFF_MID - OWP_CUTOFF_LOW)              \
+			       / OWP_MESH_MID))
+#define OWP_NUM_HIGH    ((int)((ping_ctx.opt.lossThreshold - OWP_CUTOFF_MID)  \
+			       / OWP_MESH_HIGH))
 
 /*
 ** Generic state to be maintained by client during Fetch.
@@ -450,10 +451,11 @@ owp_bucket(double delay)
 	if (delay < OWP_CUTOFF_LOW)
 		return (int)(delay/OWP_MESH_LOW);
 	if (delay < OWP_CUTOFF_MID)
-		return OWP_NUM_LOW + (int)(delay-OWP_CUTOFF_LOW)/OWP_MESH_MID; 
+		return OWP_NUM_LOW 
+			+ (int)((delay-OWP_CUTOFF_LOW)/OWP_MESH_MID); 
 	return OWP_MIN(OWP_NUM_LOW + OWP_NUM_MID 
 		       + (int)((delay - OWP_CUTOFF_MID)/OWP_MESH_HIGH),
-		       OWP_NUM_LOW + OWP_NUM_MID + OWP_NUM_HIGH - 1);
+		       OWP_MAX_BUCKET);
 }
 
 void
@@ -656,11 +658,14 @@ do_records_all(char *datadir, OWPSID sid, fetch_state_ptr state)
 
 	num_buckets = OWP_NUM_LOW + OWP_NUM_MID + OWP_NUM_HIGH;
 
-	state->buckets = (u_int32_t *)malloc(num_buckets);
+	state->buckets 
+		= (u_int32_t *)malloc(num_buckets*sizeof(*(state->buckets)));
 	if (!state->buckets) {
 		I2ErrLog(eh, "FATAL: main: malloc(%d) failed: %M",num_buckets);
 		exit(1);
 	}
+	for (i = 0; i <= OWP_MAX_BUCKET; i++)
+		state->buckets[i] = 0;
 
 	OWPFetchLocalRecords(fd, num_rec, do_single_record, state);
 	
