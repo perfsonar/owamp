@@ -161,6 +161,7 @@ AddrSetSAddr(
 	addr->ai_free = True;
 	addr->saddr = saddr;
 	addr->saddrlen = fromaddrlen;
+	addr->so_type = so_type;
 
 	if(getnameinfo(addr->saddr,addr->saddrlen,
 				addr->node,sizeof(addr->node),
@@ -191,21 +192,21 @@ AddrSetSockName(
 	OWPErrSeverity	*err_ret
 	)
 {
-	u_int8_t	sbuff[SOCK_MAXADDRLEN];
-	socklen_t	so_size = sizeof(sbuff);
+	struct sockaddr_storage	sbuff;
+	socklen_t		so_size = sizeof(sbuff);
 
 	if(!addr || (addr->fd < 0)){
 		OWPError(addr->ctx,OWPErrFATAL,OWPErrINVALID,"Invalid address");
 		goto error;
 	}
 
-	if(getsockname(addr->fd,(void*)sbuff,&so_size) != 0){
+	if(getsockname(addr->fd,(void*)&sbuff,&so_size) != 0){
 		OWPErrorLine(addr->ctx,OWPLine,OWPErrFATAL,errno,
 				"getsockname():%s",strerror(errno));
 		goto error;
 	}
 
-	return AddrSetSAddr(addr,(struct sockaddr *)sbuff,so_size,err_ret);
+	return AddrSetSAddr(addr,(struct sockaddr *)&sbuff,so_size,err_ret);
 
 error:
 	*err_ret = OWPErrFATAL;
@@ -238,6 +239,7 @@ OpenSocket(
 
 			addr->saddr = ai->ai_addr;
 			addr->saddrlen = ai->ai_addrlen;
+			addr->so_type = ai->ai_socktype;
 
 			break;
 		}
@@ -584,6 +586,8 @@ AddrBySAddrRef(
 	addr->ai_free = True;
 	addr->saddr = saddr;
 	addr->saddrlen = saddrlen;
+	addr->so_type = SOCK_DGRAM;
+	addr->so_protocol = IPPROTO_IP;
 
 	if(getnameinfo(addr->saddr,addr->saddrlen,
 				addr->node,sizeof(addr->node),
@@ -603,9 +607,11 @@ OWPProcessTestRequest(
 	OWPControl	cntrl
 		)
 {
-	socklen_t	addrlen = SOCK_MAXADDRLEN;
-	struct sockaddr	*sendaddr;
-	struct sockaddr	*recvaddr;
+	struct sockaddr_storage	sendaddr_rec;
+	struct sockaddr_storage	recvaddr_rec;
+	struct sockaddr	*sendaddr = (struct sockaddr*)&sendaddr_rec;
+	struct sockaddr *recvaddr = (struct sockaddr*)&recvaddr_rec;
+	socklen_t	addrlen = sizeof(sendaddr_rec);
 	OWPAddr		SendAddr=NULL;
 	OWPAddr		RecvAddr=NULL;
 	int		af_family;
@@ -621,18 +627,6 @@ OWPProcessTestRequest(
 	u_int16_t	port;
 	int		rc;
 	OWPAcceptType	acceptval = OWP_CNTRL_FAILURE;
-
-	/*
-	 * Use dynamic memory to ensure memory alignment will work for
-	 * all sockaddr types.
-	 */
-	sendaddr = malloc(addrlen);
-	recvaddr = malloc(addrlen);
-	if(!sendaddr || !recvaddr){
-		OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
-				"malloc():%s",strerror(errno));
-		goto error;
-	}
 
 	if( (rc = _OWPReadTestRequest(cntrl,sendaddr,recvaddr,&addrlen,
 			&ipvn,&conf_sender,&conf_receiver,sid,&tspec)) < 0){

@@ -77,6 +77,7 @@ typedef enum {
 typedef enum {
 	OWPErrPOLICY,
 	OWPErrINVALID,
+	OWPErrUNSUPPORTED,
 	OWPErrUNKNOWN
 } OWPErrType;
 
@@ -431,11 +432,11 @@ OWPWriten(
 extern OWPControl
 OWPControlOpen(
 	OWPContext	ctx,
-	OWPAddr		local_addr,	/* src addr or NULL	*/
-	OWPAddr		server_addr,	/* server addr or NULL	*/
-	u_int32_t	mode_mask,	/* OR of OWPSessionMode */
-	const char	*kid,		/* null if unwanted	*/
-	void		*app_data,	/* set app_data		*/
+	OWPAddr		local_addr,	/* src addr or NULL		*/
+	OWPAddr		server_addr,	/* server addr or NULL		*/
+	u_int32_t	mode_mask,	/* OR of OWPSessionMode vals	*/
+	const char	*kid,		/* null if unwanted		*/
+	void		*app_data,	/* set app_data	for connection	*/
 	OWPErrSeverity	*err_ret
 );
 
@@ -616,7 +617,7 @@ OWPGetMode(
 typedef u_int64_t owp_packsize_t;
 /*
 ** Given the protocol family, OWAMP mode and packet padding,
-** compute the size of resulting full IP packet.
+** compute the size of resulting full IP test packet.
 */
 owp_packsize_t owp_ip_packet_size(int af, int mode, u_int32_t padding);
 #endif	/* OWAMP_H */

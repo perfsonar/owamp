@@ -28,7 +28,7 @@
 static OWPInitializeConfigRec	def_cfg = {
 	/* tm_out.tv_sec		*/	{0,
 	/* tm_out.tv_usec		*/	0},
-	/* app_data			*/	NULL,
+	/* err_data			*/	NULL,
 	/* err_func			*/	NULL,
 	/* get_aes_key			*/	NULL,
 	/* check_control_func		*/	NULL,
@@ -579,13 +579,16 @@ OWPInitiateStopTestSessions(
 
 	/*
 	 * If acceptval would have been "success", but stopping of local
-	 * endpoints failed, report failure instead and return error.
+	 * endpoints failed, send failure acceptval instead and return error.
 	 * (The endpoint_stop_func should have reported the error.)
 	 */
 	if(!*acceptval && (err2 < OWPErrWARNING))
 		*acceptval = OWP_CNTRL_FAILURE;
 
 	err = (OWPErrSeverity)_OWPWriteStopSessions(cntrl,*acceptval);
+	err2 = MIN(err,err2);
+
+	err = _OWPReadStopSessions(cntrl,acceptval);
 
 	return MIN(err,err2);
 }

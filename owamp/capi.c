@@ -185,6 +185,8 @@ TryAddr(
 		server_addr->fd = fd;
 		server_addr->saddr = ai->ai_addr;
 		server_addr->saddrlen = ai->ai_addrlen;
+		server_addr->so_type = ai->ai_socktype;
+		server_addr->so_protocol = ai->ai_protocol;
 		cntrl->remote_addr = server_addr;
 		cntrl->local_addr = local_addr;
 		cntrl->sockfd = fd;
@@ -438,14 +440,14 @@ SetEndpointAddrInfo(
 	OWPErrSeverity	*err_ret
 )
 {
-	int		so_type;
-	socklen_t	so_typesize = sizeof(so_type);
-	u_int8_t	sbuff[SOCK_MAXADDRLEN];
-	socklen_t	so_size = sizeof(sbuff);
-	struct sockaddr	*saddr=NULL;
-	struct addrinfo	*ai=NULL;
-	struct addrinfo	hints;
-	char		*port=NULL;
+	int			so_type;
+	socklen_t		so_typesize = sizeof(so_type);
+	struct sockaddr_storage	sbuff;
+	socklen_t		so_size = sizeof(sbuff);
+	struct sockaddr		*saddr=NULL;
+	struct addrinfo		*ai=NULL;
+	struct addrinfo		hints;
+	char			*port=NULL;
 
 	if(!addr){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
@@ -461,7 +463,7 @@ SetEndpointAddrInfo(
 		/*
 		 * Get an saddr to describe the fd...
 		 */
-		if(getsockname(addr->fd,(void*)sbuff,&so_size) != 0){
+		if(getsockname(addr->fd,(void*)&sbuff,&so_size) != 0){
 			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,
 				errno,"getsockname():%s",
 				strerror(errno));
@@ -484,7 +486,7 @@ SetEndpointAddrInfo(
 				errno,"malloc():%s",strerror(errno));
 			goto error;
 		}
-		memcpy((void*)saddr,(void*)sbuff,so_size);
+		memcpy((void*)saddr,(void*)&sbuff,so_size);
 		
 		/*
 		 * create an addrinfo to describe this sockaddr
@@ -717,8 +719,12 @@ OWPRequestTestSession(
 foundaddr:
 	receiver->saddr = rai->ai_addr;
 	receiver->saddrlen = rai->ai_addrlen;
+	receiver->so_type = rai->ai_socktype;
+	receiver->so_protocol = rai->ai_protocol;
 	sender->saddr = sai->ai_addr;
 	sender->saddrlen = sai->ai_addrlen;
+	sender->so_type = sai->ai_socktype;
+	sender->so_protocol = sai->ai_protocol;
 
 	/*
 	 * Create a structure to store the stuff we need to keep for

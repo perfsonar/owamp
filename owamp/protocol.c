@@ -655,13 +655,19 @@ _OWPReadTestRequest(
 			saddr6 = (struct sockaddr_in6*)sender;
 			saddr6->sin6_family = AF_INET6;
 			memcpy(saddr6->sin6_addr.s6_addr,&buf[4],16);
-			saddr6->sin6_port = *(u_int16_t*)&buf[36];
+			if(*server_conf_sender)
+				saddr6->sin6_port = 0;
+			else
+				saddr6->sin6_port = *(u_int16_t*)&buf[36];
 
 			/* receiver address and port  */
 			saddr6 = (struct sockaddr_in6*)receiver;
 			saddr6->sin6_family = AF_INET6;
 			memcpy(saddr6->sin6_addr.s6_addr,&buf[20],16);
-			saddr6->sin6_port = *(u_int16_t*)&buf[38];
+			if(*server_conf_receiver)
+				saddr6->sin6_port = 0;
+			else
+				saddr6->sin6_port = *(u_int16_t*)&buf[38];
 
 			break;
 #endif
@@ -679,13 +685,19 @@ _OWPReadTestRequest(
 			saddr4 = (struct sockaddr_in*)sender;
 			saddr4->sin_family = AF_INET;
 			saddr4->sin_addr.s_addr = *(u_int32_t*)&buf[4];
-			saddr4->sin_port = *(u_int16_t*)&buf[36];
+			if(*server_conf_sender)
+				saddr4->sin_port = 0;
+			else
+				saddr4->sin_port = *(u_int16_t*)&buf[36];
 
 			/* receiver address and port  */
 			saddr4 = (struct sockaddr_in*)receiver;
 			saddr4->sin_family = AF_INET;
 			saddr4->sin_addr.s_addr = *(u_int32_t*)&buf[20];
-			saddr4->sin_port = *(u_int16_t*)&buf[38];
+			if(*server_conf_receiver)
+				saddr4->sin_port = 0;
+			else
+				saddr4->sin_port = *(u_int16_t*)&buf[38];
 
 			break;
 		default:

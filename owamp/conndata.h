@@ -29,11 +29,14 @@
 #include <owpcontrib/access.h>
 
 typedef struct OWPPerConnDataRec{
-	int	          pipefd;		/* pipe to parent	*/
+	OWPContext		ctx;		/* for error reporting	*/
 
-	char	          *session_data_path;
-	policy_data       *policy;              /* global policy hash */
-	owp_tree_node_ptr node;                 /* node for the connection
+	int			pipefd;		/* pipe to parent	*/
+
+	char			*data_path;
+
+	policy_data		*policy;	/* global policy hash */
+	owp_tree_node_ptr	node;		/* node for the connection
 						   class */
 	int               mode;                 /* control connection mode */
 } OWPPerConnDataRec, *OWPPerConnData;

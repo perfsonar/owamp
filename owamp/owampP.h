@@ -154,6 +154,8 @@ struct OWPAddrRec{
 
 	struct sockaddr	*saddr;
 	socklen_t	saddrlen;
+	int		so_type;	/* socktype saddr works with	*/
+	int		so_protocol;	/* protocol saddr works with	*/
 
 	OWPBoolean	fd_user;
 	int		fd;
