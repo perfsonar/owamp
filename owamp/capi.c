@@ -756,9 +756,10 @@ foundaddr:
 			/*
 			 * create the local sender
 			 */
-			if(!_OWPCallEndpointInit(cntrl,&tsession->send_end_data,
-							True,sender,test_spec,
-							tsession->sid,err_ret))
+			if(!_OWPCallEndpointInit(cntrl,
+						 &tsession->send_end_data,
+						 True,sender,test_spec,
+						 tsession->sid,err_ret))
 				goto error;
 		}
 		/*
@@ -825,9 +826,11 @@ foundaddr:
 					"Test not allowed");
 				goto error;
 			}
-			if(!_OWPCallEndpointInit(cntrl,&tsession->send_end_data,
-					True,sender,test_spec,tsession->sid,
-					err_ret))
+			if(!_OWPCallEndpointInit(cntrl,
+						 &tsession->send_end_data,
+						 True,sender,
+						 test_spec,tsession->sid,
+						 err_ret))
 				goto error;
 			if(!_OWPCallEndpointInitHook(cntrl,
 					tsession->send_end_data,receiver,
@@ -976,7 +979,7 @@ OWPFetchSession(OWPControl cntrl,
 	return OWPErrOK;
 }
 
-static u_int64_t
+u_int64_t
 tstamp2int64(OWPTimeStamp *tstamp)
 {
 	return (((u_int64_t)(tstamp->sec))<<24) + tstamp->frac_sec;
@@ -987,36 +990,20 @@ tstamp2int64(OWPTimeStamp *tstamp)
 ** (a + b/(2^24)) - (c + d/(2^24)) = 
 ** [(a*2^24 + b) - (c*2^24 + d)] / 2^24
 */
-static double
+double
 owp_delay(OWPTimeStamp *send_time, OWPTimeStamp *recv_time)
 {
 	static double scale = (double)0x1000000; /* 2^24 */
 	u_int64_t t1, t2;
 
+	assert(send_time);
+	assert(recv_time);
 	t1 = tstamp2int64(send_time);
 	t2 = tstamp2int64(recv_time);
 
 	/* Return negative quantity if send_time is before recv_time. 
 	   Yes weird, -  but possible with bad clocks. */
 	return (t2 > t1)? (double)(t2 - t1)/scale : (double)(t1 - t2)/(-scale);
-}
-	     
-/*
-** Given a pointer to a 20-byte data record, print it out
-** to a given file (if not NULL), or stdout otherwise.
-*/
-static int
-print_record(void *calldata,             /* currently just a file pointer */
-	     u_int32_t seq_num,
-	     OWPTimeStamp *send_time,
-	     OWPTimeStamp *recv_time)
-{
-	FILE* fp = (calldata)? (FILE *)calldata : stdout;
-	double delay = owp_delay(send_time, recv_time) / 1000.0; /* msec */
-
-	fprintf(fp, "seq_num=%u delay=%.3f", seq_num, delay);
-
-	return 0;
 }
 
 #define OWP_TS_REC_SIZE    20  /* size (in byts) of a timestamp record */
@@ -1039,8 +1026,7 @@ OWPFetchRecords(OWPControl cntrl,
 	OWPTimeStamp     send_time, recv_time;
 	u_int8_t*	 buf;
 	int              k, more_records, padding_size, more_blocks = 0;
-	OWPDoDataRecord func = (proc_rec)? proc_rec : print_record;
-		
+
 	/* 
 	   Compute the number of 16-byte blocks to read. 
 	   Will read 5 blocks at a time (= 4 records = 80 octets)
@@ -1060,7 +1046,8 @@ OWPFetchRecords(OWPControl cntrl,
 			cur_rec += 8;
 			OWPDecodeTimeStamp(&recv_time, (u_int32_t *)cur_rec);
 			cur_rec += 8;
-			if (func(app_data, seq_num, &send_time, &recv_time)<0)
+			if (proc_rec(app_data, seq_num, &send_time, 
+				     &recv_time)<0)
 				return OWPErrFATAL;
 		}
 	}
@@ -1089,7 +1076,7 @@ OWPFetchRecords(OWPControl cntrl,
 		cur_rec += 8;
 		OWPDecodeTimeStamp(&recv_time, (u_int32_t *)cur_rec);
 		cur_rec += 8;
-		if (func(app_data, seq_num, &send_time, &recv_time)<0)
+		if (proc_rec(app_data, seq_num, &send_time, &recv_time)<0)
 			return OWPErrFATAL;
 	}
 	
