@@ -363,6 +363,13 @@ main(int argc, char *argv[])
 		if (verbose)
 			printf("prec = %u\n", prec);
 
+		if (prec_bits < prec) {
+			fprintf(stderr, "prec=%u, real_prec=%u\n",
+				prec, prec_bits);
+			continue;
+		}
+
+
 		if (s.records[i].seq_no == last_seqno) {
 			dup++;
 			continue;
