@@ -71,6 +71,7 @@ static	int			pow_reset = 0;
 static	int			pow_exit = 0;
 static	int			pow_error = SIGCONT;
 static	double			inf_delay;
+static	u_int8_t		aesbuff[16];
 
 static void
 print_conn_args()
@@ -129,34 +130,116 @@ usage(const char *progname, const char *msg)
 	return;
 }
 
+static OWPBoolean
+getclientkey(
+	OWPContext	ctx __attribute__((unused)),
+	const OWPUserID	userid	__attribute__((unused)),
+	OWPKey		key_ret,
+	OWPErrSeverity	*err_ret __attribute__((unused))
+	)
+{
+	memcpy(key_ret,aesbuff,sizeof(aesbuff));
+
+	return True;
+}
+
 /*
 ** Initialize authentication and policy data (used by owping and owfetch)
 */
 void
 owp_set_auth(
-	powapp_trec	*pctx, 
+	OWPContext	ctx,
 	char		*progname,
-	OWPContext	ctx __attribute__((unused))
+	powapp_trec	*pctx
 	)
 {
-#if	NOT
-	OWPErrSeverity err_ret;
-
 	if(pctx->opt.identity){
-		/*
-		 * Eventually need to modify the policy init for the
-		 * client to deal with a pass-phrase instead of/ or in
-		 * addition to the passwd file.
-		 */
-		*policy = OWPPolicyInit(ctx, NULL, NULL, pctx->opt.passwd, 
-				       &err_ret);
-		if (err_ret == OWPErrFATAL){
-			I2ErrLog(eh, "PolicyInit failed. Exiting...");
-			exit(1);
-		};
-	}
-#endif
+		u_int8_t	*aes = NULL;
 
+		/*
+		 * If keyfile specified, attempt to get key from there.
+		 */
+		if(pctx->opt.keyfile){
+			/* keyfile */
+			FILE	*fp;
+			int	rc = 0;
+			char	*lbuf=NULL;
+			size_t	lbuf_max=0;
+
+			if(!(fp = fopen(pctx->opt.keyfile,"r"))){
+				I2ErrLog(eh,"Unable to open %s: %M",
+						pctx->opt.keyfile);
+				goto DONE;
+			}
+
+			rc = I2ParseKeyFile(eh,fp,0,&lbuf,&lbuf_max,NULL,
+					pctx->opt.identity,NULL,aesbuff);
+			if(lbuf){
+				free(lbuf);
+			}
+			lbuf = NULL;
+			lbuf_max = 0;
+			fclose(fp);
+
+			if(rc > 0){
+				aes = aesbuff;
+			}
+			else{
+				I2ErrLog(eh,
+			"Unable to find key for id=\"%s\" from keyfile=\"%s\"",
+					pctx->opt.identity,pctx->opt.keyfile);
+			}
+		}else{
+			/*
+			 * Do passphrase:
+			 * 	open tty and get passphrase.
+			 *	(md5 the passphrase to create an aes key.)
+			 */
+			char		*passphrase;
+			char		ppbuf[MAX_PASSPHRASE];
+			char		prompt[MAX_PASSPROMPT];
+			I2MD5_CTX	mdc;
+			size_t		pplen;
+
+			if(snprintf(prompt,MAX_PASSPROMPT,
+					"Enter passphrase for identity '%s': ",
+					pctx->opt.identity) >= MAX_PASSPROMPT){
+				I2ErrLog(eh,"ip_set_auth: Invalid identity");
+				goto DONE;
+			}
+
+			if(!(passphrase = I2ReadPassPhrase(prompt,ppbuf,
+						sizeof(ppbuf),I2RPP_ECHO_OFF))){
+				I2ErrLog(eh,"I2ReadPassPhrase(): %M");
+				goto DONE;
+			}
+			pplen = strlen(passphrase);
+
+			I2MD5Init(&mdc);
+			I2MD5Update(&mdc,(unsigned char *)passphrase,pplen);
+			I2MD5Final(aesbuff,&mdc);
+			aes = aesbuff;
+		}
+DONE:
+		if(aes){
+			/*
+			 * install getaeskey func (key is in aesbuff)
+			 */
+			OWPGetAESKeyFunc	getaeskey = getclientkey;
+
+			if(!OWPContextConfigSet(ctx,OWPGetAESKey,
+						(void*)getaeskey)){
+				I2ErrLog(eh,
+					"Unable to set AESKey for context: %M");
+				aes = NULL;
+				goto DONE;
+			}
+		}
+		else{
+			free(pctx->opt.identity);
+			pctx->opt.identity = NULL;
+		}
+	}
 
 	/*
 	 * Verify/decode auth options.
@@ -700,7 +783,7 @@ main(
 			}
 			break;
 		case 'k':
-			if (!(appctx.opt.passwd = strdup(optarg))) {
+			if (!(appctx.opt.keyfile = strdup(optarg))) {
 				I2ErrLog(eh,"malloc:%M");
 				exit(1);
 			}
@@ -929,11 +1012,6 @@ main(
 	tspec.nslots = 1;
 	tspec.slots = &slot;
 
-	/*
-	 * TODO: Fix this.
-	 * Setup policy stuff - this currently sucks.
-	 */
-	owp_set_auth(&appctx,progname, ctx); 
 
 #if	NOT
 #ifndef	NDEBUG
@@ -950,6 +1028,8 @@ main(
 	}
 	ctx = appctx.lib_ctx;
 	parse.ctx = ctx;
+
+	owp_set_auth(ctx,progname,&appctx); 
 
 	memset(&pcntrl,0,2*sizeof(pow_cntrl_rec));
 	strcpy(pcntrl[0].fname,dirpath);

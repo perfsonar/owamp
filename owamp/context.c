@@ -23,6 +23,36 @@
 
 #include "owampP.h"
 
+
+/*
+ * Function:	notmuch
+ *
+ * Description:	
+ * 		"do nothing" signal handler. Put in place to ensure
+ * 		SIGCHLD events are received.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
+static void
+notmuch(
+		int	signo
+		)
+{
+	switch(signo){
+		case SIGCHLD:
+			break;
+		default:
+			abort();
+			raise(SIGFPE);
+	}
+}
+
 /*
  * Function:	OWPContextCreate
  *
@@ -47,6 +77,7 @@ OWPContextCreate(
 	struct sigaction	act;
 	I2LogImmediateAttr	ia;
 	OWPContext		ctx = calloc(1,sizeof(OWPContextRec));
+	char			*tmpdir;
 
 	if(!ctx){
 		OWPError(eh,
@@ -71,6 +102,13 @@ OWPContextCreate(
 	else{
 		ctx->lib_eh = False;
 		ctx->eh = eh;
+	}
+
+	if(_OWPInitNTP(ctx) != 0){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+				"Unable to initialize clock interface.");
+		OWPContextFree(ctx);
+		return NULL;
 	}
 
 	if( !(ctx->table = I2HashInit(ctx->eh,_OWP_CONTEXT_TABLE_SIZE,
@@ -103,6 +141,31 @@ OWPContextCreate(
 	if(act.sa_handler == SIG_DFL){
 		act.sa_handler = SIG_IGN;
 		if(sigaction(SIGPIPE,&act,NULL) != 0){
+			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+					"sigaction(): %M");
+			OWPContextFree(ctx);
+			return NULL;
+		}
+	}
+
+	/*
+	 * This library uses calls to select that are intended to
+	 * interrupt select in the case of SIGCHLD, so I must
+	 * ensure that the process is getting SIGCHLD events.
+	 */
+	memset(&act,0,sizeof(act));
+	sigemptyset(&act.sa_mask);
+	act.sa_handler = SIG_DFL;
+	/* fetch current handler */
+	if(sigaction(SIGCHLD,NULL,&act) != 0){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"sigaction(): %M");
+		OWPContextFree(ctx);
+		return NULL;
+	}
+	/* If there is no current handler - set a "do nothing" one. */
+	if(act.sa_handler == SIG_DFL){
+		act.sa_handler = notmuch;
+		if(sigaction(SIGCHLD,&act,NULL) != 0){
 			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
 					"sigaction(): %M");
 			OWPContextFree(ctx);

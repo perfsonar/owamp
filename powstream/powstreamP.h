@@ -47,6 +47,12 @@
 #define SUMMARY_EXT	".sum"
 
 /*
+ * Reasonable limits on these so dynamic memory is not needed.
+ */
+#define	MAX_PASSPROMPT	256
+#define	MAX_PASSPHRASE	256
+
+/*
  * Application "context" structure
  */
 typedef	struct {
@@ -59,7 +65,7 @@ typedef	struct {
 		char		*srcaddr;         /* -S */
 		char		*authmode;        /* -A */
 		char		*identity;        /* -u */
-		char		*passwd;          /* -k */
+		char		*keyfile;          /* -k */
 
 #ifndef	NDEBUG
 		I2Boolean	childwait;        /* -w */

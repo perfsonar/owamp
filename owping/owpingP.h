@@ -21,6 +21,16 @@
 #ifndef	_owpingp_h_
 #define	_owpingp_h_
 
+#define	_OWPING_DEF_TMPDIR	"/tmp"
+#define	_OWPING_PATH_SEPARATOR	"/"
+#define	_OWPING_TMPFILEFMT	"owamp.XXXXXX"
+
+/*
+ * Reasonable limits on these so dynamic memory is not needed.
+ */
+#define	MAX_PASSPROMPT	256
+#define	MAX_PASSPHRASE	256
+
 /*
  * Application "context" structure
  */
@@ -41,12 +51,12 @@ typedef	struct {
 
 		char		*authmode;        /* -A */
 		char		*identity;        /* -u */
+		char		*keyfile;	  /* -k */
 		u_int32_t	numPackets;       /* -c */
 
 		double		lossThreshold;    /* -l */
 		float           percentile;       /* -a */
 
-		char		*passwd;          /* -P */
 		char		*srcaddr;         /* -S */
 
 #ifndef	NDEBUG

@@ -190,71 +190,6 @@ reopen_datafile(
 	return fp;
 }
 
-/*
- * Function:	InitNTP
- *
- * Description:	
- * 	Initialize NTP. Make sure it is working and that the endpoint
- * 	can access it.
- *
- * In Args:	
- *
- * Out Args:	
- *
- * Scope:	
- * Returns:	
- * Side Effect:	
- *
- * If STA_NANO is defined, we insist it is set, this way we can be sure that
- * ntp_gettime is returning a timespec and not a timeval.
- *
- * TODO: The correct way to fix this is:
- * 1. If ntptimeval contains a struct timespec - then use nano's period.
- * 2. else if STA_NANO is set, then use nano's.
- * 3. else ???(mills solution requires root - ugh)
- *    will this work?
- *    (do a timing test:
- * 		gettimeofday(A);
- * 		getntptime(B);
- * 		nanosleep(1000);
- * 		getntptime(C);
- * 		gettimeofday(D);
- *
- * 		1. Interprete B and C as usecs
- * 			if(D-A < C-B)
- * 				nano's
- * 			else
- * 				usecs
- */
-static int
-InitNTP(
-	OWPContext	ctx
-	)
-{
-	struct timex	ntp_conf;
-
-	ntp_conf.modes = 0;
-
-	if(ntp_adjtime(&ntp_conf) < 0){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"ntp_adjtime(): %M");
-		return 1;
-	}
-
-	if(ntp_conf.status & STA_UNSYNC){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"NTP: Status UNSYNC!");
-	}
-
-#ifdef	STA_NANO
-	if( !(ntp_conf.status & STA_NANO)){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-		"InitNTP:STA_NANO must be set! - try /usr/sbin/ntptime -N");
-		return 1;
-	}
-#endif
-
-	return 0;
-}
-
 static struct timespec *
 GetTimespec(
 		struct timespec		*ts,
@@ -411,12 +346,6 @@ _OWPEndpointInit(
 	OWPTimeStamp		tstamp;
 
 	*err_ret = OWPErrFATAL;
-
-	if(InitNTP(cntrl->ctx) != 0){
-		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"Unable to initialize clock interface.");
-		return False;
-	}
 
 	if( !(ep=EndpointAlloc(cntrl)))
 		return False;

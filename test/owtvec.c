@@ -76,7 +76,7 @@ main(
 	}
 
 	for(i=0;i<I2Number(seedvals);i++){
-		assert(OWPHexDecode(seedvals[i],seed,16));
+		assert(I2HexDecode(seedvals[i],seed,16));
 		assert((exp = OWPExpContextCreate(ctx,seed)));
 		fprintf(stdout,"SEED = 0x%s\n",seedvals[i]);
 		n = 0;
@@ -110,8 +110,8 @@ main(
 				*(u_int32_t*)&e[0] = htonl((te&0xffffffffUL));
 				*(u_int32_t*)&s[0] = htonl((ts&0xffffffffUL));
 
-				OWPHexEncode(ve,e,8);
-				OWPHexEncode(vs,s,8);
+				I2HexEncode(ve,e,8);
+				I2HexEncode(vs,s,8);
 				ve[16] = vs[16] = '\0';
 
 				fprintf(stdout,

@@ -41,8 +41,72 @@
  */
 #include <string.h>
 #include <assert.h>
+#include <sys/time.h>
+#include <sys/timex.h>
 #include <owamp/owamp.h>
 
+/*
+ * Function:	_OWPInitNTP
+ *
+ * Description:	
+ * 	Initialize NTP.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ *
+ * If STA_NANO is defined, we insist it is set, this way we can be sure that
+ * ntp_gettime is returning a timespec and not a timeval.
+ *
+ * TODO: The correct way to fix this is:
+ * 1. If ntptimeval contains a struct timespec - then use nano's period.
+ * 2. else if STA_NANO is set, then use nano's.
+ * 3. else ???(mills solution requires root - ugh)
+ *    will this work?
+ *    (do a timing test:
+ * 		gettimeofday(A);
+ * 		getntptime(B);
+ * 		nanosleep(1000);
+ * 		getntptime(C);
+ * 		gettimeofday(D);
+ *
+ * 		1. Interprete B and C as usecs
+ * 			if(D-A < C-B)
+ * 				nano's
+ * 			else
+ * 				usecs
+ */
+int
+_OWPInitNTP(
+	OWPContext	ctx
+	)
+{
+	struct timex	ntp_conf;
+
+	ntp_conf.modes = 0;
+
+	if(ntp_adjtime(&ntp_conf) < 0){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"ntp_adjtime(): %M");
+		return 1;
+	}
+
+	if(ntp_conf.status & STA_UNSYNC){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"NTP: Status UNSYNC!");
+	}
+
+#ifdef	STA_NANO
+	if( !(ntp_conf.status & STA_NANO)){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+		"_OWPInitNTP: STA_NANO must be set! - try \"ntptime -N\"");
+		return 1;
+	}
+#endif
+	return 0;
+}
 /*
  * Function:	_OWPEncodeTimeStamp
  *

@@ -27,6 +27,18 @@
 #			at all possible.)
 #
 
+case "$1" in
+	ac257)
+		alias autoconf=autoconf257
+		alias autoheader=autoheader257
+		alias automake=automake17
+		alias aclocal=aclocal17
+		export AUTOCONF=autoconf257
+		;;
+	*)
+		;;
+esac
+
 if test -x I2util/bootstrap; then
 	echo
 	echo "## I2util/bootstrap"

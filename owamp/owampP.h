@@ -760,6 +760,10 @@ _OWPFailControlSession(
  * time.c
  */
 
+extern int
+_OWPInitNTP(
+	OWPContext	ctx
+	);
 /*
  * En/DecodeTimeStamp functions do not assume any alignment requirements
  * for buf. (Most functions in protocol.c assume u_int32_t alignment.)

@@ -457,7 +457,7 @@ OWPError_(
 typedef OWPBoolean	(*OWPGetAESKeyFunc)(
 	OWPContext	ctx,
 	const OWPUserID	userid,
-	u_int8_t	*key_ret,
+	OWPKey		key_ret,
 	OWPErrSeverity	*err_ret
 );
 

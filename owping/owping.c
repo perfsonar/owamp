@@ -42,35 +42,9 @@
  */
 static	ow_ping_trec	ping_ctx;
 static I2ErrHandle	eh;
+static char		tmpdir[PATH_MAX+1];
+static u_int8_t		aesbuff[16];
 
-#define OWP_TMPFILE "/tmp/owamp.XXXXXX"
-
-#ifdef	NOT
-static int
-OWPingErrFunc(
-	void		*app_data,
-	OWPErrSeverity	severity	__attribute__((unused)),
-	OWPErrType	etype,
-	const char	*errmsg
-)
-{
-	ow_ping_t		pctx = (ow_ping_t)app_data;
-
-	/*
-	 * If not debugging - only print messages of warning or worse.
-	 * (unless of course verbose is specified...
-	 */
-#ifdef	NDEBUG
-	if(!pctx->opt.verbose && (severity > OWPErrWARNING))
-		return 0;
-#endif
-
-	I2ErrLogP(pctx->eh,etype,errmsg);
-
-	return 0;
-}
-#endif
-	
 static void
 print_conn_args()
 {
@@ -732,6 +706,38 @@ do_records_all(
 	return 0;
 }
 
+static FILE *
+tfile(
+		OWPContext	eh
+		)
+{
+	char	fname[PATH_MAX+1];
+	int	fd;
+	FILE	*fp;
+
+	strcpy(fname,tmpdir);
+	strcat(fname,_OWPING_PATH_SEPARATOR);
+	strcat(fname,_OWPING_TMPFILEFMT);
+
+	if((fd = mkstemp(fname)) < 0){
+		I2ErrLog(eh,"mkstemp(%s): %M",fname);
+		return NULL;
+	}
+
+	if( !(fp = fdopen(fd,"w+"))){
+		I2ErrLog(eh,"fdopen(%s:(%d)): %M",fname,fd);
+		return NULL;
+	}
+
+	if(unlink(fname) != 0){
+		I2ErrLog(eh,"unlink(%s): %M",fname);
+		while((fclose(fp) != 0) && (errno == EINTR));
+		return NULL;
+	}
+
+	return fp;
+}
+
 /*
 ** Fetch a session with the given <sid> from the remote server.
 ** It is assumed that control connection has been opened already.
@@ -758,31 +764,8 @@ owp_fetch_sid(
 			return NULL;
 		}
 	}
-	else{
-		/*
-		 * Using fd/mkstemp/fdopen to avoid race condition that
-		 * would exist if we used mktemp/fopen.
-		 */
-		int	fd;
-
-		path = strdup(OWP_TMPFILE);
-		if(!path){
-			I2ErrLog(eh,"owp_fetch_sid:strdup(%s):%M",OWP_TMPFILE);
-			exit(1);
-		}
-		if((fd = mkstemp(path)) < 0){
-			I2ErrLog(eh,"owp_fetch_sid:mkstemp(%s):%M",path);
-			exit(1);
-		}
-		if(!(fp = fdopen(fd,"wb+"))){
-			I2ErrLog(eh,"owp_fetch_sid:fdopen():%M");
-			exit(1);
-		}
-		if (unlink(path) < 0) {
-			I2ErrLog(eh,"owp_fetch_sid:unlink(%s):%M",path);
-		}
-		free(path);
-		path = NULL;
+	else if( !(fp = tfile(eh))){
+		return NULL;
 	}
 
 	/*
@@ -807,34 +790,116 @@ owp_fetch_sid(
 	return fp;
 }
 
+static OWPBoolean
+getclientkey(
+	OWPContext	ctx __attribute__((unused)),
+	const OWPUserID	userid	__attribute__((unused)),
+	OWPKey		key_ret,
+	OWPErrSeverity	*err_ret __attribute__((unused))
+	)
+{
+	memcpy(key_ret,aesbuff,sizeof(aesbuff));
+
+	return True;
+}
+
 /*
 ** Initialize authentication and policy data (used by owping and owfetch)
 */
 void
-owp_set_auth(ow_ping_trec *pctx, 
-	     char *progname,
-	     OWPContext ctx)
+owp_set_auth(
+	OWPContext	ctx,
+	char		*progname,
+	ow_ping_trec	*pctx
+	)
 {
-#if	NOT
-	OWPErrSeverity err_ret;
-
-	/*
-	 * TODO: fix policy.
-	 */
 	if(pctx->opt.identity){
+		u_int8_t	*aes = NULL;
+
 		/*
-		 * Eventually need to modify the policy init for the
-		 * client to deal with a pass-phrase instead of/ or in
-		 * addition to the passwd file.
+		 * If keyfile specified, attempt to get key from there.
 		 */
-		*policy = OWPPolicyInit(ctx, NULL, NULL, pctx->opt.passwd, 
-				       &err_ret);
-		if (err_ret == OWPErrFATAL){
-			I2ErrLog(eh, "PolicyInit failed. Exiting...");
-			exit(1);
-		};
+		if(pctx->opt.keyfile){
+			/* keyfile */
+			FILE	*fp;
+			int	rc = 0;
+			char	*lbuf=NULL;
+			size_t	lbuf_max=0;
+
+			if(!(fp = fopen(pctx->opt.keyfile,"r"))){
+				I2ErrLog(eh,"Unable to open %s: %M",
+						pctx->opt.keyfile);
+				goto DONE;
+			}
+
+			rc = I2ParseKeyFile(eh,fp,0,&lbuf,&lbuf_max,NULL,
+					pctx->opt.identity,NULL,aesbuff);
+			if(lbuf){
+				free(lbuf);
+			}
+			lbuf = NULL;
+			lbuf_max = 0;
+			fclose(fp);
+
+			if(rc > 0){
+				aes = aesbuff;
+			}
+			else{
+				I2ErrLog(eh,
+			"Unable to find key for id=\"%s\" from keyfile=\"%s\"",
+					pctx->opt.identity,pctx->opt.keyfile);
+			}
+		}else{
+			/*
+			 * Do passphrase:
+			 * 	open tty and get passphrase.
+			 *	(md5 the passphrase to create an aes key.)
+			 */
+			char		*passphrase;
+			char		ppbuf[MAX_PASSPHRASE];
+			char		prompt[MAX_PASSPROMPT];
+			I2MD5_CTX	mdc;
+			size_t		pplen;
+
+			if(snprintf(prompt,MAX_PASSPROMPT,
+					"Enter passphrase for identity '%s': ",
+					pctx->opt.identity) >= MAX_PASSPROMPT){
+				I2ErrLog(eh,"ip_set_auth: Invalid identity");
+				goto DONE;
+			}
+
+			if(!(passphrase = I2ReadPassPhrase(prompt,ppbuf,
+						sizeof(ppbuf),I2RPP_ECHO_OFF))){
+				I2ErrLog(eh,"I2ReadPassPhrase(): %M");
+				goto DONE;
+			}
+			pplen = strlen(passphrase);
+
+			I2MD5Init(&mdc);
+			I2MD5Update(&mdc,(unsigned char *)passphrase,pplen);
+			I2MD5Final(aesbuff,&mdc);
+			aes = aesbuff;
+		}
+DONE:
+		if(aes){
+			/*
+			 * install getaeskey func (key is in aesbuff)
+			 */
+			OWPGetAESKeyFunc	getaeskey = getclientkey;
+
+			if(!OWPContextConfigSet(ctx,OWPGetAESKey,
+						(void*)getaeskey)){
+				I2ErrLog(eh,
+					"Unable to set AESKey for context: %M");
+				aes = NULL;
+				goto DONE;
+			}
+		}
+		else{
+			free(pctx->opt.identity);
+			pctx->opt.identity = NULL;
+		}
 	}
-#endif
 
 
 	/*
@@ -880,7 +945,8 @@ int
 main(
 	int	argc,
 	char	**argv
-) {
+)
+{
 	char			*progname;
 	OWPErrSeverity		err_ret = OWPErrOK;
 	I2LogImmediateAttr	ia;
@@ -926,6 +992,17 @@ main(
 		exit(1);
 	}
 
+	if( (endptr = getenv("TMPDIR")))
+		strncpy(tmpdir,endptr,PATH_MAX);
+	else
+		strncpy(tmpdir,_OWPING_DEF_TMPDIR,PATH_MAX);
+
+	if(strlen(tmpdir) + strlen(_OWPING_PATH_SEPARATOR) +
+			strlen(_OWPING_TMPFILEFMT) > PATH_MAX){
+		I2ErrLog(eh, "TMPDIR too long");
+		exit(1);
+	}
+
 	/*
 	 * Initialize library with configuration functions.
 	 */
@@ -940,7 +1017,7 @@ main(
             = ping_ctx.opt.from = ping_ctx.opt.to = ping_ctx.opt.quiet
 	    = ping_ctx.opt.raw = False;
 	ping_ctx.opt.save_from_test = ping_ctx.opt.save_to_test 
-		= ping_ctx.opt.identity = ping_ctx.opt.passwd 
+		= ping_ctx.opt.identity = ping_ctx.opt.keyfile 
 		= ping_ctx.opt.srcaddr = ping_ctx.opt.authmode = NULL;
 	ping_ctx.opt.numPackets = 100;
 	ping_ctx.opt.lossThreshold = 0.0;
@@ -991,7 +1068,7 @@ main(
 		     }
                      break;
 	     case 'k':
-		     if (!(ping_ctx.opt.passwd = strdup(optarg))) {
+		     if (!(ping_ctx.opt.keyfile = strdup(optarg))) {
 			     I2ErrLog(eh,"malloc:%M");
 			     exit(1);
 		     }
@@ -1127,7 +1204,7 @@ main(
 		/*
 		 * TODO: fix policy
 		 */
-		owp_set_auth(&ping_ctx, progname, ctx); 
+		owp_set_auth(ctx, progname, &ping_ctx); 
 
 
 		/*
@@ -1229,25 +1306,8 @@ main(
 						ping_ctx.opt.save_from_test);
 					exit(1);
 				}
-			} else {
-				int	fd;
-				char *path = strdup(OWP_TMPFILE);
-				if(!path){
-					I2ErrLog(eh,"strdup():%M");
-					exit(1);
-				}
-				if((fd = mkstemp(path)) < 0){
-					I2ErrLog(eh,"mkstemp(%s):%M",path);
-					exit(1);
-				}
-				if(!(fromfp = fdopen(fd,"wb+"))){
-					I2ErrLog(eh,"fdopen():%M");
-					exit(1);
-				}
-				if(unlink(path) < 0){
-					I2ErrLog(eh,"unlink(%s):%M",path);
-				}
-				free(path);
+			} else if( !(fromfp = tfile(eh))){
+				exit(1);
 			}
 
 			if (!OWPSessionRequest(ping_ctx.cntrl,
@@ -1380,10 +1440,7 @@ main(
 		/*
 		 * TODO: fix policy
 		 */
-		owp_set_auth(&ping_ctx, progname, ctx); 
-#if	NOT
-		conndata.policy = policy;
-#endif
+		owp_set_auth(ctx, progname, &ping_ctx); 
 
 		/*
 		 * Open connection to owampd.
