@@ -33,9 +33,12 @@ use Getopt::Std;
 use POSIX;
 use IPC::Open3;
 use File::Path;
+use FileHandle;
 use OWP;
 use OWP::RawIO;
 use Digest::MD5;
+use Socket;
+use IO::Socket;
 
 my @SAVEARGV = @ARGV;
 my %options = (
@@ -57,15 +60,6 @@ foreach (keys %optnames){
 	$defaults{$optnames{$_}} = $setopts{$_} if(defined($setopts{$_}));
 }
 
-if(!defined($defaults{"NODE"})){
-	my $hostname = (POSIX::uname())[1];
-#	my $hostname = 'nms2-ipls.internet2.edu';
-	my $nodename;
-	die "Unable to determine nodename!"
-		if(!(($nodename) = $hostname =~ /^[^-]*-(\w*)/o));
-	$defaults{"NODE"} = $nodename;
-}
-
 $defaults{"NODE"} =~ tr/a-z/A-Z/;
 
 my $conf = new OWP::Conf(%defaults);
@@ -84,6 +78,15 @@ my $suffix = $conf->must_get_val(ATTR=>"SessionSuffix");
 my $me = $conf->must_get_val(ATTR=>'NODE');
 my @mtypes = $conf->must_get_val(ATTR=>'MESHTYPES');
 my @nodes = $conf->must_get_val(ATTR=>'MESHNODES');
+
+#
+# Central server values
+#
+my $secretname = $conf->must_get_val(NODE=>$me,ATTR=>'SECRETNAME');
+my $secret = $conf->must_get_val(ATTR=>$secretname);
+my $central_host = $conf->must_get_val(ATTR=>'CENTRALHOST');
+my $central_port = $conf->must_get_val(ATTR=>'CENTRALHOSTPORT');
+my $timeout = $conf->must_get_val(NODE=>$me,ATTR=>'SendTimeout');
 
 #
 # local data/path information
@@ -236,11 +239,140 @@ sub catch_sig{
 	die "Handling SIG$signame...\n";
 }
 
-my($Server);
+my($SendServer) = undef;
+
+sub OpenServer{
+	return if(defined $SendServer);
+
+	eval{
+		$SendServer = IO::Socket::INET->new(
+				PeerAddr	=>	$central_host,
+				PeerPort	=>	$central_port,
+				Type		=>	SOCK_STREAM,
+				TimeOut		=>	$timeout,
+				Proto		=>	'tcp');
+	};
+
+	if($@){
+		warn "Unable to contact Home:$central_host: $@";
+	}
+
+	return;
+}
+
+sub fail_server{
+	return if(!defined $SendServer);
+	
+	$SendServer->close;
+	undef $SendServer;
+
+	return undef;
+}
+
+sub sendline{
+	my($line,$md5) = @_;
+
+	$md5->add($line) if((defined $md5) && !($line =~ /^$/));
+
+warn "TXFR:$line";
+	$line .= "\n";
+	my $len = length($line);
+	my $offset = 0;
+
+	while($len){
+		my $written = syswrite $SendServer,$line,$len,$offset;
+		next if $! =~ /^Interrupted/;
+		return fail_server if(!defined $written);
+		$len -= $written;
+		$offset += $written;
+	}
+warn "TXFR:Success";
+
+	return 1;
+}
+
+
+sub txfr{
+	my($fh,$md5,%req) = @_;
+	my(%resp);
+
+	OpenServer;
+	return undef if(!$SendServer);
+
+	my($line) = "OWP 1.0";
+	$md5->reset;
+	return undef if(!sendline($line,$md5));
+	foreach (keys %req){
+		return undef if(!sendline("$_\t$req{$_}",$md5));
+	}
+	return undef if(!sendline(""));
+	$md5->add($secret);
+	return undef if(!sendline($md5->hexdigest));
+	return undef if(!sendline(""));
+	my($len) = $req{'FILESIZE'};
+	RLOOP:
+	while($len){
+		my ($written,$buf,$rlen,$offset);
+		$rlen = sysread $fh,$buf,$len;
+		if(!defined($rlen)){
+			next RLOOP if $! =~ /^Interrupted/;
+			die "System read error: $!\n";
+		}
+		$len -= $rlen;
+		$offset=0;
+		WLOOP:
+		while($rlen){
+			$written = syswrite $SendServer, $buf, $rlen, $offset;
+			if(!defined($written)){
+				next WLOOP if $! =~ /^Interrupted/;
+				close($SendServer);
+				undef $SendServer;
+				return undef;
+			}
+			$rlen -= $written;
+			$offset += $written;
+		}
+	}
+
+	$md5->reset;
+	my($pname,$pval);
+	while(sys_readline($SendServer)){
+		last if(/^$/); # end of message
+		$md5->add($_);
+		next if(/^\s*#/); # comments
+		next if(/^\s*$/); # blank lines
+
+		if(($pname,$pval) = /^(\w+)\s+(.*)/o){
+			$pname =~ tr/a-z/A-Z/;
+			$resp{$pname} = $pval;
+			next;
+		}
+		# Invalid message!
+		warn ("Invalid message from server!");
+		close($SendServer);
+		undef $SendServer;
+		return undef;
+	}
+	$md5->add($secret);
+	if($md5->hexdigest ne sys_readline($SendServer)){
+		warn ("Invalid MD5 for server response!");
+		close($SendServer);
+		undef $SendServer;
+		return undef;
+	}
+	if("" ne sys_readline($SendServer)){
+		warn ("Invalid End Message from Server!");
+		close($SendServer);
+		undef $SendServer;
+		return undef;
+	}
+
+	return %resp;
+}
 
 sub send_file{
-	my($conf,$fname) = @_;
-	my(%req,%response);
+	my($fname) = @_;
+	my(%req,$response);
 	local *SENDFILE;
 
 	print "SEND_DATA:$fname\n" if defined($debug);
@@ -253,17 +385,27 @@ sub send_file{
 
 	# compute the md5 of the file.
 	$md5->addfile(*SENDFILE);
-	$req{'FILEMD5'} = $md5->md5_hex;
+	$req{'FILEMD5'} = $md5->hexdigest();
+
+	$req{'FILESIZE'} = sysseek SENDFILE,0,SEEK_END;
+	return undef
+		if(!$req{'FILESIZE'} || !sysseek SENDFILE,0,SEEK_SET);
+
+	# seek the file to the beginning for transfer
+	sysseek SENDFILE,0,SEEK_SET;
 
 	# reset md5 context so it can be used for the message verification.
 	$md5->reset;
 
 	# Set all the req options.
-	$req{'CMD'} = 'TXFR';
+	$req{'OP'} = 'TXFR';
 	$req{'FNAME'} = $fname;
+	$req{'SECRETNAME'} = $secretname;
 
-	# seek the file to the beginning for transfer
-	seek SENDFILE,0,0;
+	return undef if(!($response = txfr(\*SENDFILE,$md5,%req)));
+
+	return undef if(!exists $response->{'FILEMD5'} ||
+			($response->{'FILEMD5'} ne $req{'FILEMD5'}));
 
 	unlink $fname || warn "unlink: $!";
 
@@ -279,7 +421,7 @@ sub send_data{
 		local *DIR;
 		opendir(DIR,$ldir) || die "can't opendir $_:$!";
 		push @flist, map {join '/',$ldir,$_}
-					grep {/$suffix$/} readdir(DIR);
+					sort grep {/$suffix$/} readdir(DIR);
 		closedir DIR;
 	}
 
@@ -295,7 +437,7 @@ sub send_data{
 	$SIG{INT} = $SIG{TERM} = $SIG{HUP} = $SIG{CHLD} = 'DEFAULT';
 	open STDIN, ">&=$rfd" || die "Can't fdopen read end of pipe";
 
-	my($rin,$rout,$ein,$eout,$timeout,$nfound);
+	my($rin,$rout,$ein,$eout,$tmout,$nfound);
 
 	$rin = '';
 	vec($rin,$rfd,1) = 1;
@@ -306,13 +448,13 @@ SEND_FILES:
 
 		if(defined(@flist) && (@flist > 0)){
 			# only poll with select if we have work to do.
-			$timeout = 0;
+			$tmout = 0;
 		}
 		else{
-			undef $timeout;
+			undef $tmout;
 		}
 
-		if($nfound = select($rout=$rin,undef,$eout=$ein,$timeout)){
+		if($nfound = select($rout=$rin,undef,$eout=$ein,$tmout)){
 			my $newfile = sys_readline(*STDIN);
 			push @flist, $newfile;
 			next SEND_FILES;
@@ -320,7 +462,13 @@ SEND_FILES:
 
 		next if(!defined(@flist) || (@flist < 1));
 		
-		shift @flist if(send_file($conf,$flist[0]));
+		if(send_file($flist[0])){
+			shift @flist;
+		}
+		else{
+			# upload not working.. wait before trying again.
+			sleep $timeout;
+		}
 	}
 }
 
