@@ -18,63 +18,35 @@
  *	Date:		Mon Sep 9 12:22:31  2002
  *
  *	Description:	create a digest of bucket counts from
- *                      the raw data files.
+ *                      the raw data files. A given raw datafile
+ *                      is split into a given number of chunks
+ *                      and a digest is produced for each.
  *
  *      
  */
 
 #include <assert.h>
-#include <string.h>
 #include <stdio.h>
-#include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
-#include <err.h>
+#include <stdlib.h>
 
 #include <I2util/util.h>
 #include <owamp/owamp.h>
 
 static I2ErrHandle	eh;
-
-#define OWP_MAX_BUCKET  (OWP_NUM_LOW + OWP_NUM_MID + OWP_NUM_HIGH - 1)
-
-#define OWP_NUM_LOW         50000
-#define OWP_NUM_MID         1000
-#define OWP_NUM_HIGH        49900
-
-#define OWP_CUTOFF_A        (double)(-50.0)
-#define OWP_CUTOFF_B        (double)0.0
-#define OWP_CUTOFF_C        (double)0.1
-#define OWP_CUTOFF_D        (double)50.0
-
-const double mesh_low = (OWP_CUTOFF_B - OWP_CUTOFF_A)/OWP_NUM_LOW;
-const double mesh_mid = (OWP_CUTOFF_C - OWP_CUTOFF_B)/OWP_NUM_MID;
-const double mesh_high = (OWP_CUTOFF_D - OWP_CUTOFF_C)/OWP_NUM_HIGH;
-
-/* Width of Fetch receiver window. */
-#define OWP_WIN_WIDTH   64
+static char magic[9] = "OwD";
+static u_int8_t version = 1;
 
 #define OWP_MAX_N           100  /* N-reordering statistics parameter */
 #define OWP_LOOP(x)         ((x) >= 0? (x): (x) + OWP_MAX_N)
 
 /*
-** Generic state to be maintained by client during Fetch.
+** Generic state to be maintained by client during Fetch (from disk).
 */
 typedef struct state {
-	OWPDataRec window[OWP_WIN_WIDTH]; /* window of read records          */
-	OWPDataRec last_out;           /* last processed record              */
-	u_int32_t    cur_win_size;     /* number of records in the window    */
-	u_int32_t    num_received;     /* number of good received packets    */
-	u_int32_t    dup_packets;      /* number of duplicate packets        */
-	int          order_disrupted;  /* flag                               */
-	u_int32_t    max_seqno;        /* max sequence number seen           */
-	u_int16_t    *buckets;         /* array of buckets of counts         */
-	u_int32_t    count_out;        /* number of printed packets          */
-
-	/* worst case precision is determined by the lexicographically
-	   smallest pair of precision bits */
-	int          bits_low;
-	int          bits_high;
-	int          sync;           /* flag set if never saw unsync packets */
+	OWPDataRec *records;            /* records to be sorted              */
+	int        cur;                 /* current index to place new record */
 } state, *state_ptr;
 
 #define OWP_CMP(a,b) ((a) < (b))? -1 : (((a) == (b))? 0 : 1)
@@ -92,32 +64,26 @@ owp_seqno_cmp(OWPDataRecPtr a, OWPDataRecPtr b)
 	return OWP_CMP(a->seq_no, b->seq_no);
 }
 
-/*
-** Find the right spot in the window to insert the new record <rec>
-** Return max {i| 0 <= i <= cur_win_size-1 and <rec> is later than the i_th
-** record in the state window}, or -1 if no such index is found.
-*/
-int
-look_for_spot(state_ptr s,
-	      OWPDataRecPtr rec)
-{
-	int i;
-	assert(s->cur_win_size);
-
-	for (i = s->cur_win_size - 1; i >= 0; i--) {
-		if (owp_seqno_cmp(&s->window[i], rec) < 0)
-			return i;
-	}
-	
-	return -1;
-}
-
 double
 owp_bits2prec(int nbits)
 {
 	return (nbits >= 32)? 1.0/(1 << (nbits - 32)) 
 		: (double)(1 << (32 - nbits));
 }
+#define OWP_MAX_BUCKET  (OWP_NUM_LOW + OWP_NUM_MID + OWP_NUM_HIGH - 1)
+
+#define OWP_NUM_LOW         50000
+#define OWP_NUM_MID         1000
+#define OWP_NUM_HIGH        49900
+
+#define OWP_CUTOFF_A        (double)(-50.0)
+#define OWP_CUTOFF_B        (double)0.0
+#define OWP_CUTOFF_C        (double)0.1
+#define OWP_CUTOFF_D        (double)50.0
+
+const double mesh_low = (OWP_CUTOFF_B - OWP_CUTOFF_A)/OWP_NUM_LOW;
+const double mesh_mid = (OWP_CUTOFF_C - OWP_CUTOFF_B)/OWP_NUM_MID;
+const double mesh_high = (OWP_CUTOFF_D - OWP_CUTOFF_C)/OWP_NUM_HIGH;
 
 int
 owp_bucket(double delay)
@@ -126,10 +92,10 @@ owp_bucket(double delay)
 		return 0;
 
 	if (delay < OWP_CUTOFF_B)
-		return OWP_NUM_LOW + (int)(delay/mesh_low);
+		return (int)((delay - OWP_CUTOFF_A)/mesh_low);
 
 	if (delay < OWP_CUTOFF_C)
-		return OWP_NUM_LOW +  (int)(delay/mesh_mid);
+		return OWP_NUM_LOW +  (int)((delay - OWP_CUTOFF_B)/mesh_mid);
 
 	if (delay < OWP_CUTOFF_D)
 		return OWP_NUM_LOW + OWP_NUM_MID 
@@ -138,118 +104,33 @@ owp_bucket(double delay)
 	return OWP_MAX_BUCKET;
 }
 
-void
-owp_update_stats(state_ptr s, OWPDataRecPtr rec) {
-	double delay;  
-	int bucket, low, high;
+int
+tstamp_cmp(const void *a, const void *b)
+{
+	OWPDataRecPtr first = (OWPDataRecPtr)a;
+	OWPDataRecPtr second  = (OWPDataRecPtr)b;
 
-	assert(s); assert(rec);
+	if (first->send.sec < second->send.sec
+	    || (first->send.sec == second->send.sec 
+		&& first->send.frac_sec < second->send.frac_sec))
+		return -1;
 
-	if (s->num_received && !owp_seqno_cmp(rec, &s->last_out)){
-		s->dup_packets++;
-		s->num_received++;
-		return;
-	}
+	if (first->send.sec > second->send.sec
+	    || (first->send.sec == second->send.sec 
+		&& first->send.frac_sec > second->send.frac_sec))
+		return 1;
 
-	if (rec->seq_no > s->max_seqno)
-		s->max_seqno = rec->seq_no;
-	if (OWPIsLostRecord(rec))
-		return;
-	s->num_received++;
-
-	delay =  owp_delay(&rec->send, &rec->recv);
-
-	low = MIN(rec->send.prec, rec->recv.prec);
-	high = MAX(rec->send.prec, rec->recv.prec);
-	if ((low < s->bits_low) 
-	    || ((low == s->bits_low) && (high < s->bits_high))) {
-		s->bits_low = low;
-		s->bits_high = high;
-	}
-
-	if (!rec->send.sync || !rec->send.sync)
-		s->sync = 0;
-
-	bucket = owp_bucket(delay);
-	
-	assert((0 <= bucket) && (bucket <= OWP_MAX_BUCKET));
-	s->buckets[bucket]++;
-
-	memcpy(&s->last_out, rec, sizeof(*rec));
+	return 0;
 }
-
-/* True if the first timestamp is earlier than the second. */
-#define OWP_EARLIER_THAN(a, b)                                \
-( ((a).sec < (b).sec)                                         \
-  || ( ((a).sec == (b).sec)                                   \
-       && ((a).frac_sec < (b).frac_sec)                       \
-     )                                                        \
-) 
-
-#define OWP_OUT_OF_ORDER(new, last_out)                       \
-(                                                             \
-((new)->seq_no < (last_out)->seq_no)                          \
-|| (                                                          \
-      ((new)->seq_no == (last_out)->seq_no)                   \
-      && OWP_EARLIER_THAN(((new)->recv), ((last_out)->recv))  \
-   )                                                          \
-)
 
 int
 do_single_record(void *calldata, OWPDataRecPtr rec) 
 {
-	int i;
 	state_ptr s = (state_ptr)calldata;
+	assert(s); assert(rec);
 
-	assert(s);
-
-	if (OWPIsLostRecord(rec)) {
-		owp_update_stats(s, rec);
-		return 0;       /* May do something better later. */
-	}
-
-	/* If ordering is important - handle it here. */
-	if (s->order_disrupted)
-		return 0;
-	
-	if (s->cur_win_size < OWP_WIN_WIDTH){/* insert - no stats updates*/
-		if (s->cur_win_size) { /* Grow window. */
-			int num_records_to_move;
-			i = look_for_spot(s, rec);
-			num_records_to_move = s->cur_win_size - i - 1;
-
-			/* Cut and paste if needed - then insert. */
-			if (num_records_to_move) 
-				memmove(&s->window[i+2], 
-					&s->window[i+1], 
-					num_records_to_move*sizeof(*rec));
-			memcpy(&s->window[i+1], rec, sizeof(*rec)); 
-		}  else /* Initialize window. */
-			memmove(&s->window[0], rec, sizeof(*rec));
-		s->cur_win_size++;
-	} else { /* rotate - update s*/
-		OWPDataRecPtr out_rec = rec;		
-		if (s->num_received
-		    && OWP_OUT_OF_ORDER(rec, &(s->last_out))) {
-				s->order_disrupted = 1;
-				/* terminate parsing */
-				return 1; 
-		}
-
-		i = look_for_spot(s, rec);
-
-		if (i != -1)
-			out_rec = &s->window[0];
-		owp_update_stats(s, out_rec);
-
-		/* Update the window.*/
-		if (i != -1) {  /* Shift if needed - then insert.*/
-			if (i) 
-				memmove(&s->window[0],
-					&s->window[1], i*sizeof(*rec));
-			memcpy(&s->window[i], rec, sizeof(*rec));
-		} 
-	}
+	memcpy(&s->records[s->cur], rec, sizeof(*rec));
+	s->cur++;
 	
 	return 0;
 }
@@ -257,24 +138,77 @@ do_single_record(void *calldata, OWPDataRecPtr rec)
 void
 usage()
 {
-	fprintf(stderr, "usage: owdigest [-o out_file] datafile [...]\n");
+	fprintf(stderr, "usage: owdigest datafile out_file\n");
 	exit(1);
 }
+
+#define THOUSAND    ((double)1000.0)
+
+/*
+** Print out a record. Used for debugging.
+*/
+void
+print_rec(OWPDataRecPtr rec, int full)
+{
+	double delay = owp_delay(&rec->send, &rec->recv);
+				 
+	if (full) {
+		if (!OWPIsLostRecord(rec))
+			fprintf(stdout, 
+			  "#%-10u send=%8X:%-8X %u%c     recv=%8X:%-8X %u%c\n",
+				rec->seq_no, rec->send.sec, 
+				rec->send.frac_sec, rec->send.prec, 
+				(rec->send.sync)? 'S' : 'U', 
+				rec->recv.sec, rec->recv.frac_sec, 
+				rec->recv.prec, 
+				(rec->recv.sync)? 'S' : 'U');
+		else
+			fprintf(stdout, 
+				"#%-10u send=%8X:%-8X %u%c     *LOST*\n",
+				rec->seq_no, rec->send.sec, 
+				rec->send.frac_sec, rec->send.prec, 
+				(rec->send.sync)? 'S' : 'U');
+		return;
+	}
+	
+	if (!OWPIsLostRecord(rec)) {
+		if (rec->send.sync && rec->recv.sync) {
+			double prec = owp_bits2prec(rec->send.prec) 
+				+ owp_bits2prec(rec->recv.prec);
+			fprintf(stdout, 
+	      "seq_no=%-10u delay=%.3f ms       (sync, precision %.3f ms)\n", 
+				rec->seq_no, delay*THOUSAND, 
+				prec*THOUSAND);
+		} else
+			fprintf(stdout, 
+				"seq_no=%u delay=%.3f ms (unsync)\n",
+				rec->seq_no, delay*THOUSAND);
+		return;
+	}
+	fprintf(stdout, "seq_no=%-10u *LOST*\n", rec->seq_no);
+}
+
 
 int
 main(int argc, char *argv[]) 
 {
 	FILE *fp, *out = stdout;
-	u_int32_t hdr_len, num_rec, i;
+	u_int32_t hdr_len, num_rec, i, last_seqno, dup, sent, lost;
 	state s;
-	char *progname;
-	int num_buckets, nonempty, ch, outflag = 0;
+	u_int8_t prec;
+	u_int16_t *counts;
+	double delay;
+	
+	char     *progname;
+	int num_buckets;
 	I2LogImmediateAttr	ia;
+	u_int8_t out_hdrlen = sizeof(magic) + sizeof(version) 
+		+ sizeof(prec) + sizeof(out_hdrlen) + sizeof(sent) 
+		+ sizeof(lost) + sizeof(dup);
 
 	ia.line_info = (I2NAME | I2MSG);
 	ia.fp = stderr;
 	progname = (progname = strrchr(argv[0], '/')) ? ++progname : *argv;
-
 	/*
 	* Start an error logging session for reporing errors to the
 	* standard error
@@ -285,100 +219,117 @@ main(int argc, char *argv[])
 		exit(1);
 	}
 
-	while ((ch = getopt(argc, argv, "o:")) != -1)
-             switch (ch) {
-             case 'o':
-		     outflag = 1;
-                     break;
-             case '?':
-             default:
-                     usage();
-             }
-
-	if (outflag) 
-		if ((out = fopen(optarg, "w")) == NULL)
-			err(1, "%s", optarg);
-
-	argc -= optind;
-	argv += optind;
-
-	if (!argc)
+	if (argc != 3)
 		usage();
 
-	while (argc > 0) {
-		if(!(fp = fopen(argv[0],"rb"))){
-			I2ErrLog(eh,"fopen(%s):%M",argv[0]);
-			exit(1);
-		}
+	num_buckets = OWP_NUM_LOW + OWP_NUM_MID + OWP_NUM_HIGH;
+	counts = (u_int16_t *)malloc(num_buckets*sizeof(*counts));
 		
-		if (!(num_rec = OWPReadDataHeader(fp,&hdr_len))) {
-			I2ErrLog(eh,"do_records_all() failed.");
-			exit(1);
+	if (!counts) {
+		I2ErrLog(eh, "FATAL: main: malloc failed: %M");
+		exit(1);
+	}
+	for (i = 0; i <= OWP_MAX_BUCKET; i++)
+		counts[i] = 0;
+	
+	prec = 30; /* XXX - make user option */
+
+	if ((fp = fopen(argv[1], "rb")) == NULL){
+		I2ErrLog(eh, "fopen(%s):%M", argv[0]);
+		exit(1);
+	}
+
+	if ((out = fopen(argv[2], "w")) == NULL) {
+		I2ErrLog(eh, "fopen(%s): %N", argv[1]);
+		exit(1);
+	}
+		
+	if (!(num_rec = OWPReadDataHeader(fp,&hdr_len))) {
+		I2ErrLog(eh,"OWPReadDataHeader");
+		exit(1);
+	}
+
+	s.records = (OWPDataRec *)malloc(num_rec * sizeof(OWPDataRec));
+	if (s.records == NULL) {
+		I2ErrLog(eh, "malloc():%M");
+		exit(1);
+	}
+	s.cur = 0;
+	
+	if(OWPParseRecords(fp, num_rec, do_single_record, &s) < OWPErrWARNING){
+		I2ErrLog(eh,"OWPParseRecords():%M");
+		exit(1);
+	}
+
+	/* Computing reordering stats is done here. */
+
+	if (mergesort(s.records, num_rec, sizeof(OWPDataRec), tstamp_cmp) < 0){
+		I2ErrLog(eh,"mergesort():%M");
+		exit(1);
+	}
+
+	sent = lost = dup = 0;
+	last_seqno = 0xFFFFFFFF;
+
+	/* Do a single pass through the sorted records. */
+	for (i = 0; i < num_rec; i++) {
+		int bucket;
+
+		/* XXX - throw out records with bad precision here */
+
+		if (s.records[i].seq_no == last_seqno) {
+			dup++;
+			continue;
 		}
 
-		/* Initialize state here. */
-		s.cur_win_size = 0;
-		s.num_received = s.dup_packets = s.max_seqno = 0;
-		
-		s.order_disrupted = 0;
-		
-		s.count_out = 0;
-		
-		s.bits_low = s.bits_high = 56;
-		s.sync = 1;
-		
-		num_buckets = OWP_NUM_LOW + OWP_NUM_MID + OWP_NUM_HIGH;
-		
-		s.buckets = 
-			(u_int16_t *)malloc(num_buckets*sizeof(*(s.buckets)));
-			
-		if (!s.buckets) {
-			I2ErrLog(eh, 
-			     "FATAL: main: malloc(%d) failed: %M",num_buckets);
-			exit(1);
+		sent++;
+		last_seqno = s.records[i].seq_no;
+
+		if (OWPIsLostRecord(&s.records[i])) {
+			lost++;
+			continue;
 		}
-		for (i = 0; i <= OWP_MAX_BUCKET; i++)
-			s.buckets[i] = 0;
-		
-		if(OWPParseRecords(fp, num_rec, do_single_record, 
-				   &s) < OWPErrWARNING){
-			I2ErrLog(eh,"OWPParseRecords():%M");
-			return -1;
-		}
-		
-		if (s.order_disrupted) {
-			I2ErrLog(eh,"Severe out-of-order condition observed.");
-			I2ErrLog(eh, 
-	     "Producing statistics for this case is currently unimplemented.");
-			return 0;
-		}
-		
-		/* Incorporate remaining records left in the window. */
-		for (i = 0; i < s.cur_win_size; i++)
-			owp_update_stats(&s, &s.window[i]);
-		
-		nonempty = 0;
-		for (i = 0; i <= OWP_MAX_BUCKET; i++) {
-			if (s.buckets[i]) {
-				if ((fwrite(&i, sizeof(i), 1, out) < 1)
-					|| (fwrite(&s.buckets[i],
-						   sizeof(*(s.buckets)),
-						   1, out) < 1)) {
-					I2ErrLog(eh, 
-						 "FATAL: fwrite() failed: %M");
-					exit(1);
-				}
-				fprintf(stderr, 
-					"printed index = %u, count = %u\n", 
-					i, s.buckets[i]);
-				nonempty++;
-			}
-		}
-		free(s.buckets);
-		fclose(fp);
-		argv++;
-		argc--;
+
+		delay = owp_delay(&s.records[i].send, &s.records[i].recv); 
+		bucket = owp_bucket(delay);
+		assert((0 <= bucket) && (bucket <= OWP_MAX_BUCKET));
+		counts[bucket]++;
+
+		print_rec(&s.records[i], 0);
 	}
-	fflush(out);
+	
+	/* 
+	   Header contains: magic number, version, precision,
+	   sent, lost, dup and header length.
+	*/
+	if ((fwrite(magic, 1, sizeof(magic), out) < 1) 
+	    || (fwrite(&version, sizeof(version), 1, out) < 1)
+	    || (fwrite(&prec, sizeof(prec), 1, out) < 1)
+	    || (fwrite(&sent, sizeof(sent), 1, out) < 1)
+	    || (fwrite(&lost, sizeof(lost), 1, out) < 1)
+	    || (fwrite(&dup, sizeof(dup), 1, out) < 1)
+	    || (fwrite(&hdr_len, sizeof(hdr_len), 1, out) < 1)) {
+		I2ErrLog(eh, "FATAL: fwrite() failed: %M");
+		exit(1);     
+	}
+	    
+	for (i = 0; i <= OWP_MAX_BUCKET; i++) {
+		if (counts[i]) {
+			if ((fwrite(&i, sizeof(i), 1, out) < 1)
+			    || (fwrite(&counts[i], sizeof(*counts),
+				       1, out) < 1)) {
+				I2ErrLog(eh, "FATAL: fwrite() failed: %M");
+				exit(1);
+			}
+			fprintf(stderr, "printed index = %u, counts = %u\n", 
+				i, counts[i]);
+		}
+	}
+	fprintf(stderr, "sent = %u, lost = %u, dup = %u\n", sent, lost, dup); 
+
+	free(counts);
+	fclose(fp);
+	fclose(out);
+
 	exit(0);
 }
