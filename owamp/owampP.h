@@ -25,13 +25,13 @@
 /*
  * Data structures
  */
-struct OWAMPConnectionRec{
+struct OWAMPControlConnectionRec{
 	int			server;	/* connection represents server */
 	int			state;	/* current state of connection */
 	OWAMPSessionMode	mode;
 };
 
-struct OWAMPTestEndpointRec{
+struct OWAMPEndpointRec{
 	OWAMPBoolean		endpoint_active;
 	OWAMPBoolean		reciever;
 	pid_t			chld;
