@@ -11,7 +11,7 @@
 
 # Read configuration section to fine-tune scripts behaviour.
 
-# Usage: nodemaster.pl [top_dirname]
+# Usage: nodemaster.pl
 
 use strict;
 use constant JAN_1970 => 0x83aa7e80; # offset in seconds
@@ -24,18 +24,26 @@ use Digest::MD5;
 use constant VERBOSE => 2;
 use constant DEBUG => 1;  # XXX - eventually set to 0 for production
 
+# ASCII address of the local node - to be used as directory
+# on the central host
+my $local_addr = "155.99.46.235";
+
 # locations of md5 executables
-my $local_md5_path = '/sbin/md5'; 
+my $local_md5_path = '/usr/bin/md5sum';
 my $remote_md5_path = '/usr/bin/md5sum';
 
 # arguments to ssh and scp
-my $remote_user = 'karp\@mail.internet2.edu';
-my $remote_host = 'mail.internet2.edu';
-#my $remote_user = 'karp\@sss.advanced.org';
-#my $remote_host = 'sss.advanced.org';
+#my $remote_user = 'karp\@marsalis.internet2.edu';
+#my $remote_host = 'marsalis.internet2.edu';
+my $remote_user = 'karp\@sss.advanced.org';
+my $remote_host = 'sss.advanced.org';
+
+# this local dir contains the subtree of senders to the local host
+my $local_top = '/home/karp/owp_new/owamp/powdir';
 
 # remote dir to place the files. NOTE: make sure it exists!
-my $remote_top = 'owp/owamp/scripts';	
+# my $remote_top = 'owp/owamp/scripts';	
+my $remote_top = 'owp/owamp/datadep';
 
 my $port = 2345;		# port to sent updates to
 my $data_suffix = '\.owp';	# suffix for data files (Perl)
@@ -53,11 +61,11 @@ my $data_suffix = '\.owp';	# suffix for data files (Perl)
 
 # the next two values give the field number (starting from 0)
 # in which the md5 value for the corresponding host to be found:
-my $local_md5_field = 3;
+my $local_md5_field = 0;
 my $remote_md5_field = 0;
 
 # this directory contains owampd configuration files describes below.
-my $owampd_confdir = '/home/karp/projects/owamp/etc';
+my $owampd_confdir = '/home/karp/owp_new/owamp/etc';
 
 # These files are relative to $owampd_confdir::
 my $owampd_pid_file = 'owampd.pid';    # file containing owampd pid
@@ -66,8 +74,7 @@ my $owampd_info_file = 'owampd.info';  # file containing starttime
 
 ### End of configuration section.
 
-my $dirname = $ARGV[0] || '.';	# top local directory
-chdir $dirname or die "could not chdir: $!";
+chdir $local_top or die "could not chdir $local_top: $!";
 
 # Read a secret key to hash messages with.
 my $passwd_path = "$owampd_confdir/$passwd_file";
@@ -111,6 +118,7 @@ connect $socket, $remote_addr
 	or die "Could not connect to $remote_host:$port : $!";
 
 print "transferring to $remote_user:$remote_top\n" if VERBOSE;
+# die "DEBUG set - exiting" if DEBUG;
 
 while (1) {
     my $cur = new Math::BigInt time;
@@ -133,7 +141,7 @@ while (1) {
     send $socket, "$msg.$hashed", 0;
 
     # Look for new data.
-    opendir(DIR, '.') || die "can't opendir $dirname: $!";
+    opendir(DIR, '.') || die "can't opendir $local_top: $!";
     my @subdirs = grep {$_ !~ /^\./ && -d $_} readdir(DIR);
     if (VERBOSE) {
 	chomp(my $cwd = `pwd`);
@@ -141,44 +149,47 @@ while (1) {
     }
     closedir DIR;
     foreach my $subdir (@subdirs) {
-	push_dir($subdir);
+	push_dir("$subdir");
     }
 }
 
 # this sub tries to push all files from the given directory to remote host.
-# the argument is a path relative to $dirname
+# the argument is a path relative to $local_top
 sub push_dir {
-    my $subdir = $_[0];
-    my $rem_path = "$remote_top/$subdir";
-    my $cmd = "ssh $remote_user if test -f $rem_path\\; " 
-	    . "then rm -rf $rem_path\\; fi\\; if test ! -d $rem_path\\; "
-		    . "then mkdir $rem_path\\; fi";
+    my $dirlink = $_[0];
+    my $rem_dir = "$remote_top/$local_addr/$dirlink";
+    warn "push_dir: rem_dir = $rem_dir";
+    my $cmd = "ssh $remote_user if test -f $rem_dir\\; " 
+	    . "then rm -rf $rem_dir\\; fi\\; if test ! -d $rem_dir\\; "
+		    . "then mkdir -p $rem_dir\\; fi";
 
     system($cmd);
 
-    opendir DIR, $subdir or die "Could not open $subdir: $!";
+    opendir DIR, $dirlink or die "Could not open $dirlink: $!";
     my @files = grep {$_ =~ /^.*$data_suffix$/} readdir(DIR);
     closedir(DIR);
 
     unless (@files) {
-	warn "no files found in $subdir" if VERBOSE;
+	warn "no files found in $dirlink" if VERBOSE;
 	die "DEBUG set - exiting" if DEBUG;
 	next;
     }
 
     foreach my $file (@files) {
-	push_try($subdir, $file);
+	my $local_file_path = "$local_top/$dirlink/$file";
+	my $rem_file_path = "$rem_dir/$file";
+	warn "DEBUG: rem_file_path = $rem_file_path" if DEBUG;
+	push_try($local_file_path, $rem_file_path);
     }
 }
 
 # this sub attempts to transfer the file to the remote host 
 # and deletes it on success
 sub push_try {
-    my ($subdir, $file) = @_;	# dirname and filename, respectively
-    warn "push_try: transferring $subdir/$file" if VERBOSE;
-    my $path = "$subdir/$file";
+    my ($local_file, $remote_file) = @_;
+    warn "push_try: transferring $local_file to $remote_file" if VERBOSE;
 
-    my $md5_string = qx/$local_md5_path $path/;
+    my $md5_string = qx/$local_md5_path $local_file/;
     chomp $md5_string;
     unless ($md5_string) {
 	warn "no output from md5";
@@ -186,21 +197,20 @@ sub push_try {
     }
     my @res = split(' ', $md5_string);
     chomp $res[$local_md5_field];
-    unlink $path if push_ok($res[$local_md5_field],$remote_top,$subdir,$file);
+    unlink $local_file if 
+	    push_ok($res[$local_md5_field],$local_file, $remote_file);
 }
 
 # try to scp a given file to the remote host and check its md5 value
 # against the given one (presumably the one computed on localhost)
 sub push_ok {
-    my ($md5_loc, $rem_top, $subdir, $filename) = @_;
-    my $file_path = "$subdir/$filename";
-    my $dirpath = ($rem_top)? "$rem_top/$subdir" : "$subdir";
-    my $rem_cpath = "$dirpath/$filename";
-    my $rem_ipath = $rem_cpath . ".i";
-    my $cmd = join(' ', 'scp', $file_path, "$remote_user:$rem_ipath",
+    my ($md5_loc, $local_path, $remote_path) = @_;
+
+    my $rem_ipath = $remote_path . ".i";
+    my $cmd = join(' ', 'scp', $local_path, "$remote_user:$rem_ipath",
 		   '>/dev/null');
 
-    if (VERBOSE > 1) {
+    if (VERBOSE) {
 	warn "local md5 = $md5_loc";
 	warn "cmd =  $cmd";
     }
@@ -215,9 +225,9 @@ sub push_ok {
     my @res = split /\s/, $out;
 
     if ($md5_loc eq $res[$remote_md5_field]) {
-	warn "successfully transferred: remote path = $rem_cpath\n\n"
+	warn "successfully transferred: remote path = $remote_path\n\n"
 		if VERBOSE;
-	system("ssh $remote_user mv $rem_ipath $rem_cpath");
+	system("ssh $remote_user mv $rem_ipath $remote_path");
 	return 1;
     } else {
 	my $str = "md5 mismatch:\n local: $md5_loc\n remote: " .
