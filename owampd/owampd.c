@@ -710,27 +710,25 @@ main(int argc, char *argv[])
 	/* Record the start timestamp in the info file. */
 	strcpy(info_file, opts.confdir);
 	strcat(info_file, OWP_PATH_SEPARATOR);
-	strcat(info_file, "owampd.info");
+	strcat(info_file, "owampd.infoi");
 	if ((info_fp = fopen(info_file, "w")) == NULL) {
 		I2ErrLog(errhand, "fopen(%s): %M", info_file);
 		exit(1);
 	}
 	cnum = OWPTimeStamp2num64(&currtime);
-	fprintf(info_fp, OWP_TSTAMPFMT, cnum);
-	fprintf(info_fp, "\n");
+	fprintf(info_fp, "START="OWP_TSTAMPFMT"\n", cnum);
+	fprintf(info_fp, "PID=%lld\n", (long long)mypid);
 	while ((rc = fclose(info_fp)) < 0 && errno == EINTR);
 	if(rc < 0){
-                I2ErrLog(errhand,"fclose():%M");
+                I2ErrLog(errhand,"fclose(): %M");
                 exit(1);
         }
-
-	/* Now change to read lock */
-	flk.l_type = F_RDLCK;
-	while((rc = fcntl(pid_fd, F_SETLK, &flk)) < 0 && errno == EINTR);
-        if(rc < 0){
-                I2ErrLog(errhand,"Unable to lock file %s:%M", pid_file);
-                exit(1);
-        }
+	strcpy(pid_file,info_file);
+	info_file[strlen(info_file)-1] = '\0'; // remove trailing "i"
+	if(rename(pid_file,info_file) != 0){
+		I2ErrLog(errhand,"rename(): %M");
+		exit(1);
+	}
 
 	/*
 	 * Setup paths.
