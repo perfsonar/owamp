@@ -15,6 +15,9 @@
 #define DEFAULT_CLASS_TO_LIMITS_FILE 	"class2limits.conf" 
 #define DEFAULT_PASSWD_FILE 		"owamp_secrets.conf"
 
+#define CTRL_ACCEPT 0
+#define CTRL_REJECT 1
+
 const char *DefaultConfigFile = DEFAULT_CONFIG_FILE;
 char *ConfigFile = NULL;
 const char *DefaultIPtoClassFile = DEFAULT_IP_TO_CLASS_FILE;
@@ -157,9 +160,12 @@ get_mode()
 }
 
 void
-random_byte(char *ptr)
+random_bytes(char *ptr, int count)
 {
-	*(u_int8_t *)ptr = random() / (RAND_MAX / 1<<8);
+	int i;
+	long scale = (RAND_MAX / 1<<8);
+	for (i = 0; i < count; i++)
+		*(u_int8_t *)(ptr+i) = random()/scale; 
 }
 
 int
@@ -172,19 +178,37 @@ send_data(int sock, char *buf, size_t len, OWPBoolean encrypt)
 	return 0;
 }
 
+/*
+** Accept or reject the Control Connection request.
+** Code = CTRL_ACCEPT/CTRL_REJECT with the obvious meaning.
+*/
 void
-doit(int connfd)
+OWPServerOK(OWPControl ctrl, int sock, u_int8_t code, char* buf)
+{
+	bzero(buf, 32);
+	*(u_int8_t *)(buf+15) = code;
+	if (code == 0){ /* accept */
+		random_bytes(buf + 16, 16); /* Generate Server-IV */
+		OWPSetWriteIV(ctrl, buf + 16);
+	}
+	send_data(sock, buf, 32, 0);
+}
+
+/*
+** This function actually talks Control Protocol via the socket connfd.
+*/
+void
+doit(OWPControl ctrl, int connfd)
 {
 	char buf[MAX_MSG];
 	char *cur;
 	u_int32_t mode;
 	int i, r, encrypt;
 	u_int32_t mode_requested;
-	u_int8_t challenge[16], token[32], session_key[16], client_iv[32];
+	u_int8_t challenge[16], token[32], read_iv[16], write_iv[16];
 	u_int8_t kid[8]; /* XXX - assuming Stas will extend KID to 8 bytes */
 
 	/* Remove what's not needed. */
-	BYTE cv[128/8];
 	keyInstance keyInst;
 	cipherInstance cipherInst;
 
@@ -195,11 +219,8 @@ doit(int connfd)
 	mode = htonl(get_mode());
 	*(int32_t *)(buf + 12) = mode; /* first 12 bytes unused */
 
-	/* generate random data for the last 16 bytes.
-	** We'll do it 16 times, one byte at a time, saving the result.
-	*/
-	for (i = 0; i < 16; i++)
-		random_byte(challenge + i);
+	/* generate 16 random bytes and save them away. */
+	random_bytes(challenge, 16);
 	bcopy(challenge, buf + 16, 16); /* the last 16 bytes */
 
 	/* Send server greeting. */
@@ -217,17 +238,18 @@ doit(int connfd)
 	}
 
 	mode_requested = htonl(*(u_int32_t *)buf);
-	
+	if (mode_requested & ~mode){ /* can't provide requested mode */
+		OWPServerOK(ctrl, connfd, CTRL_REJECT, buf);
+		close(connfd);
+		exit(0);
+	}
 	if (mode_requested & OWP_MODE_AUTHENTICATED){
 
 		/* Save 8 bytes of kid */
 		bcopy(buf + 4, kid, 8);
 
-		/* Decrypt the token and compare the 16 bytes of challenge */
-		bzero(client_iv, 16);
-
+		/* Fetch the shared secret and initialize the cipher. */
 		key = hash_fetch(passwd_hash, str2datum((const char *)kid));
-
 		r = makeKey(&keyInst, DIR_DECRYPT, 128, key->dptr);
 		if (TRUE != r) {
 			fprintf(stderr,"makeKey error %d\n",r);
@@ -239,19 +261,23 @@ doit(int connfd)
 			exit(-1);
 		}
 
-		/* Decrypt two 16-byte blocks */
+		/* Decrypt two 16-byte blocks - save the result into token.*/
 		blockDecrypt(&cipherInst, &keyInst, buf + 12, 2*(16*8), token);
 
 		/* Decrypted challenge is in the first 16 bytes */
 		if (bcmp(challenge, token, 16)){
-			fprintf(stderr, "Authentication failed.\n");
+			OWPServerOK(ctrl, connfd, CTRL_REJECT, buf);
 			close(connfd);
-			exit(1);
+			exit(0);
 		}
 
 		/* Save 16 bytes of session key and 16 bytes of client IV*/
-		bcopy(token + 16, session_key, 16);
-		bcopy(buf + 44, client_iv, 16);
+		OWPSetSessionKey(ctrl, token + 16);
+		bcopy(buf + 44, read_iv, 16);
+
+		/* Apparently everything is ok. Accept the Control session. */
+		OWPServerOK(ctrl, connfd, CTRL_ACCEPT, buf);
+
 	}
 	
 }
@@ -349,6 +375,7 @@ main(int argc, char *argv[])
 	pid_t pid; 
 	OWPErrSeverity out;
 	OWPContext ctx;
+	OWPControl ctrl; /* XXX - remember to initialize. */
 	OWPInitializeConfigRec cfg  = {
 		0, 
 		0,
@@ -512,7 +539,7 @@ main(int argc, char *argv[])
 		}
 
 		if (pid == 0) { /* child */
-			doit(connfd);
+			doit(ctrl, connfd);
 			exit(0);
 		}
 
