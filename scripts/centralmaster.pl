@@ -156,7 +156,7 @@ while (1) {
 	    opendir(OWPDATA, "$top_dir/$recv/$src") 
 		    or die "Could not opendir $top_dir/$recv/$src: $!";
 	    my @files = grep {-f $_} readdir(DIR);
-	    closedir DIR;
+	    closedir OWPDATA;
 	    warn "top_dir=$top_dir\nrecv=$recv\nsrc=$src\nfiles: @files \n"
 		    if DEBUG;
 
