@@ -90,35 +90,78 @@ static	OWPInitializeConfigRec	OWPCfg = {{
 };
 
 static void
-usage(const char *progname, const char *msg)
+print_conn_args()
 {
-	if(msg) fprintf(stderr, "%s: %s\n", progname, msg);
-	if (!strcmp(progname, "owping")) {
-		fprintf(stderr,
-	 "usage: %s %s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n", 
-	 progname, "[arguments] testaddr [servaddr]",
-			"[arguments] are as follows: ",
-     "   -A authmode    requested modes: [A]uthenticated, [E]ncrypted, [O]pen",
+	fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n",
+		"              [Connection Args]",
+"   -A authmode    requested modes: [A]uthenticated, [E]ncrypted, [O]pen",
 "   -k keyfile     AES keyfile to use with Authenticated/Encrypted modes",
 "   -u username    username to use with Authenticated/Encrypted modes",
-"   -S srcaddr     use this as a local address for control connection and tests",
+"   -S srcaddr     use this as a local address for control connection and tests");
+}
+
+static void
+print_test_args()
+{
+	fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n",
+		"              [Test Args]",
 "   -f | -F file   perform one-way test from testhost [and save results to file]",
 "   -t | -T file   perform one-way test to testhost [and save results to file]",
 "   -c count       number of test packets",
 "   -i wait        mean average time between packets (seconds)",
 "   -L timeout     maximum time to wait for a packet before declaring it lost",
-"   -s padding     size of the padding added to each packet (bytes)",
-	"   -h             print this message and exit",
-	"   -Q             run the test and exit without reporting statistics",
-	"   [-v | -V]      print out individual delays, or full timestamps",
-"   -a alpha       report an additional percentile level for the delays"
-			);
-		
+"   -s padding     size of the padding added to each packet (bytes)");
+}
 
+static void
+print_output_args()
+{
+	fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n",
+		"              [Output Args]",
+		"   -h             print this message and exit",
+		"   -Q             run the test and exit without reporting statistics",
+		"   [-v | -V]      print out individual delays, or full timestamps",
+		"   -a alpha       report an additional percentile level for the delays"
+		);
+}
+
+static void
+usage(const char *progname, const char *msg)
+{
+	if(msg) fprintf(stderr, "%s: %s\n", progname, msg);
+	if (!strcmp(progname, "owping")) {
+		fprintf(stderr,
+			"usage: %s %s\n", 
+			progname, "[arguments] testaddr [servaddr]",
+			"[arguments] are as follows: "
+			);
+		fprintf(stderr, "\n");
+		print_conn_args();
+		
+		fprintf(stderr, "\n");
+		print_test_args();
+		
+		fprintf(stderr, "\n");
+		print_output_args();
+		
 	} else if (!strcmp(progname, "owstats")) {
-		;
+		fprintf(stderr,
+			"usage: %s %s\n", 
+			progname, "[arguments] sessionfile",
+			"[arguments] are as follows: "
+			);
+		fprintf(stderr, "\n");
+		print_output_args();
 	} else if (!strcmp(progname, "owfetch")) {
-		;
+		fprintf(stderr,
+			"usage: %s %s\n", 
+			progname, "[arguments] servaddr [SID savefile]+",
+			"[arguments] are as follows: "
+			);
+		fprintf(stderr, "\n");
+		print_conn_args();
+		fprintf(stderr, "\n");
+		print_output_args();
 	}
 
 	return;
@@ -294,6 +337,7 @@ owp_bucket(double delay)
 	
 	return OWP_MAX_BUCKET;
 }
+
 void
 owp_update_stats(fetch_state_ptr state, OWPCookedDataRecPtr rec) {
 	double delay;  
@@ -627,6 +671,7 @@ owp_fetch_sid(
 			I2ErrLog(eh, "WARNING: unlink(%s) failed: %M", 
 				 path);
 		}
+		free(path);
 	}
 
 
