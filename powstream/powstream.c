@@ -363,6 +363,35 @@ WriteSubSession(
 	return 0;
 }
 
+static int
+WriteSubSessionLost(
+	struct pow_parse_rec	*parse
+		)
+{
+				/* for alignment */
+	u_int32_t	msg[20/sizeof(u_int32_t)];
+	u_int8_t	*buf = (u_int8_t*)msg;
+	u_int32_t	i,n;
+
+	memset(msg,0,sizeof(msg));
+	n = parse->last - parse->first + 1;
+
+	for(i=0;i<n;i++){
+		if(parse->seen[i])
+			continue;
+		/*
+		 * Write 0rec to fp...
+		 * TODO: The format for this changes in V5... Perhaps it should
+		 * have an api too, but I need to get this done right now.
+		 */
+		*(u_int32_t*)&buf[0] = htonl(i);
+		if(fwrite(buf,1,20,parse->fp) < 20)
+			return -1;
+	}
+
+	return 0;
+}
+
 
 
 
@@ -572,7 +601,6 @@ main(
 	     exit(1);
 	}
 
-#if	NOT_IN_GDB
 	flk.l_start = 0;
 	flk.l_len = 0;
 	flk.l_type = F_WRLCK;
@@ -591,7 +619,6 @@ main(
 		I2ErrLog(eh,"Unable to write to lockfile:%M");
 		exit(1);
 	}
-#endif
 
 	file_offset = strlen(dirpath);
 	ext_offset = file_offset + OWP_TSTAMPCHARS;
@@ -909,6 +936,11 @@ AGAIN:
 			if(OWPParseRecords(p->fp,nrecs,&hdr,
 					WriteSubSession,&parse) != OWPErrOK){
 				I2ErrLog(eh,"WriteSubSession:???:%M");
+				goto error;
+			}
+
+			if(WriteSubSessionLost(&parse)){
+				I2ErrLog(eh,"WriteSubSessionLost:???:%M");
 				goto error;
 			}
 
