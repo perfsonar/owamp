@@ -100,6 +100,7 @@ print_output_args()
 		"   -I Interval    duration for OWP test sessions(seconds)\n"
 		"   -p             print completed filenames to stdout\n"
 		"   -h             print this message and exit\n"
+		"   -e             syslog facility to log to\n"
 		);
 }
 
@@ -476,7 +477,7 @@ main(
 	char			lockpath[PATH_MAX];
 	int			rc;
 	OWPErrSeverity		err_ret = OWPErrOK;
-	I2LogImmediateAttr	ia;
+	I2ErrLogSyslogAttr	syslogattr;
 	owp_policy_data		*policy;
 	OWPContext		ctx;
 	OWPPerConnDataRec	conndata;
@@ -487,7 +488,7 @@ main(
 	char                    optstring[128];
 	static char		*conn_opts = "A:S:k:u:";
 	static char		*test_opts = "c:i:s:L:";
-	static char		*out_opts = "d:I:p";
+	static char		*out_opts = "d:I:pe:r";
 	static char		*gen_opts = "hw";
 
 	int			which=0;	/* which cntrl connect used */
@@ -499,16 +500,47 @@ main(
 	struct flock		flk;
 	struct sigaction	act;
 
-	ia.line_info = (I2NAME | I2MSG | I2FILE | I2LINE);
-	ia.fp = stderr;
-
 	progname = (progname = strrchr(argv[0], '/')) ? ++progname : *argv;
+
+	/* Create options strings for this program. */
+	strcpy(optstring, conn_opts);
+	strcat(optstring, test_opts);
+	strcat(optstring, out_opts);
+	strcat(optstring, gen_opts);
+		
+
+	syslogattr.ident = progname;
+	syslogattr.logopt = LOG_PID;
+	syslogattr.facility = LOG_USER;
+	syslogattr.priority = LOG_ERR;
+	syslogattr.line_info = I2MSG;
+#ifndef	NDEBUG
+	syslogattr.line_info |= I2FILE | I2LINE;
+#endif
+
+	opterr = 0;
+	while((ch = getopt(argc, argv, optstring)) != -1){
+		if(ch == 'e'){
+			int fac;
+			if((fac = I2ErrLogSyslogFacility(optarg)) == -1){
+				fprintf(stderr,
+				"Invalid -e: Syslog facility \"%s\" unknown\n",
+				optarg);
+				exit(1);
+			}
+			syslogattr.facility = fac;
+		}
+		else if(ch == 'r'){
+			syslogattr.logopt |= LOG_PERROR;
+		}
+	}
+	opterr = optreset = optind = 1;
 
 	/*
 	* Start an error logging session for reporing errors to the
 	* standard error
 	*/
-	eh = I2ErrOpen(progname, I2ErrLogImmediate, &ia, NULL, NULL);
+	eh = I2ErrOpen(progname, I2ErrLogSyslog, &syslogattr, NULL, NULL);
 	if(! eh) {
 		fprintf(stderr, "%s : Couldn't init error module\n", progname);
 		exit(1);
@@ -522,12 +554,6 @@ main(
 	appctx.opt.meanWait = (float)0.1;
 	appctx.opt.seriesInterval = 1;
 
-	/* Create options strings for this program. */
-	strcpy(optstring, conn_opts);
-	strcat(optstring, test_opts);
-	strcat(optstring, out_opts);
-	strcat(optstring, gen_opts);
-		
 	while ((ch = getopt(argc, argv, optstring)) != -1)
 		switch (ch) {
 		/* Connection options. */
@@ -608,6 +634,10 @@ main(
 			break;
 		case 'p':
 			appctx.opt.printfiles = True;
+			break;
+		case 'e':
+		case 'r':
+			/* handled in prior getopt call... */
 			break;
 		/* Generic options.*/
 		case 'h':
