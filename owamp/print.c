@@ -6,6 +6,10 @@
 ** Basic function to print out ip2class.
 */
 
+#if 0
+extern void owp_print_id(I2datum *key);
+#endif
+
 void
 print_ip2class_binding(const struct I2binding *p, FILE* fp)
 {
@@ -51,7 +55,7 @@ print_id2class_binding(const struct I2binding *p, FILE* fp)
 	default:
 		return;
 	}
-	fprintf(fp, "DEBUG class of %s/%d is %s\n", buf, ptr->offset, class);
+	fprintf(fp, "DEBUG: class of %s/%d is %s\n", buf, ptr->offset, class);
 }
 
 

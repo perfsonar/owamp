@@ -108,6 +108,37 @@ owp_access_id_new()
 	return ret;
 }
 
+
+void
+owp_print_id(I2datum *key)
+{
+	owp_access_id *ptr;
+	struct in6_addr addr6;
+	char buf[INET6_ADDRSTRLEN];
+
+	ptr = (owp_access_id *)(key->dptr);
+
+	printf("DEBUG: from owp_print_id we have:\n");
+
+	switch (ptr->type) {
+	case OWP_IDTYPE_KID:
+		printf("DEBUG: KID is %s\n", ptr->kid);
+		break;
+	case OWP_IDTYPE_IPv6:
+		memcpy(addr6.s6_addr, ptr->addr6, 16); 
+		if (inet_ntop(AF_INET6, &addr6, buf, sizeof(buf)) == NULL) {
+			fprintf(stderr, "DEBUG: inet_ntop failed\n");
+			return;
+		}
+		break;
+	default:
+		printf("DEBUG: type = %d\n", ptr->type);
+		break;
+	}
+	printf("DEBUG class is %s/%d\n", buf, ptr->offset);
+}
+
+
 void
 owp_id2class_store_netmask(void *addr, 
 			   u_int8_t num_offset, 
@@ -134,7 +165,8 @@ owp_id2class_store_netmask(void *addr,
 		break;
 	case AF_INET6:
 		ptr->addr4 = (u_int32_t)0;
-		memcpy(ptr->addr6, addr, 16);
+		memcpy(ptr->addr6, 
+		       ((struct sockaddr_in6 *)addr)->sin6_addr.s6_addr, 16);
 		ptr->type = OWP_IDTYPE_IPv6;
 		break;
 	default:
@@ -143,23 +175,6 @@ owp_id2class_store_netmask(void *addr,
 	}
 	val = str2datum2(class, strlen(class) + 1);
 	I2hash_store(id2class_hash, key, val);
-}
-
-void
-owp_print_id(I2datum *key)
-{
-	owp_access_id *ptr;
-
-	ptr = (owp_access_id *)(key->dptr);
-	
-	switch (ptr->type) {
-	case OWP_IDTYPE_KID:
-		printf("DEBUG: KID is %s\n", ptr->kid);
-		break;
-	default:
-		printf("DEBUG: type = %d\n", ptr->type);
-		break;
-	}
 }
 
 /*
@@ -188,9 +203,6 @@ owp_id2class_store_kid(char *kid, char *class, I2table id2class_hash)
 
 	val = str2datum2(class, strlen(class) + 1);
 
-#if 0
-	owp_print_id(key);
-#endif
 	I2hash_store(id2class_hash, key, val);
 }
 
@@ -201,12 +213,7 @@ owamp_read_id2class(OWPContext ctx,
 {
 	FILE *fp;
 	char line[MAX_LINE];
-
 	unsigned long line_num = 0;
-#if 1
-	struct in6_addr addr6;
-	char buf[INET6_ADDRSTRLEN];
-#endif
 
 	printf("DEBUG: reading file %s...\n", id2class);
 
@@ -306,19 +313,8 @@ owamp_read_id2class(OWPContext ctx,
 					 (struct sockaddr_in6 *)(res->ai_addr),
 					 num_offset))
 				goto BAD_MASK;
-#if 1
-		    memcpy(addr6.s6_addr, 
-		   ((struct sockaddr_in6 *)(res->ai_addr))->sin6_addr.s6_addr, 
-			   16); 
-		if (inet_ntop(AF_INET6, &addr6, buf, sizeof(buf)) == NULL) {
-			fprintf(stderr, "DEBUG: inet_ntop failed\n");
-			continue;
-		}
-	       printf("DEBUG class of %s/%d is %s\n", buf, num_offset, class);
-
-#endif
-			owp_id2class_store_netmask(res->ai_addr, num_offset, 
-					 res->ai_family, class, id2class_hash);
+		owp_id2class_store_netmask(res->ai_addr, num_offset, 
+					res->ai_family, class, id2class_hash);
 			break;
 		default:
 			continue; /* Should not happen. */
