@@ -505,7 +505,7 @@ sub is_eligible {
     my $sec = sprintf "%.0f", $start / SCALE;
 
     return $sec if (defined $ARGV[2] && $ARGV[2] eq 'fake');
-    return ($sec - $init > $age_param)? $sec : undef;
+    return ($sec - $init > $param)? $sec : undef;
 }
 
 
