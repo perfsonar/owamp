@@ -1,3 +1,23 @@
+/*
+ *      $Id$
+ */
+/************************************************************************
+*									*
+*			     Copyright (C)  2002			*
+*				Internet2				*
+*			     All Rights Reserved			*
+*									*
+************************************************************************/
+/*
+ *	File:		print.c
+ *
+ *	Author:		Anatoly Karp
+ *			Internet2
+ *
+ *	Date:		Mon Jul 26 10:57:07 MDT 2002
+ *
+ *	Description:	
+ */
 #include <owamp/owampP.h>
 #include <I2util/table.h>
 #include "access.h"
