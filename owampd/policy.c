@@ -949,19 +949,16 @@ clean_catalog(
 	ftsargv[0] = path;
 	ftsargv[1] = NULL;
 
-	if(!(fts = fts_open(ftsargv, FTS_NOSTAT|FTS_PHYSICAL,NULL))){
-		if(errno == ENOENT){
-			/*
-			 * Make the catalog directory if it doesn't exist.
-			 */
-			if(mkdir(path,0755) == 0){
-				return True;
-			}
+	/*
+	 * Make sure catalog dir exists.
+	 */
+	if((mkdir(path,0755) != 0) && (errno != EEXIST)){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+				"Unable to mkdir(%s): %M",path);
+		return False;
+	}
 
-			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"Unable to mkdir(%s): %M",path);
-			return False;
-		}
+	if(!(fts = fts_open(ftsargv, FTS_PHYSICAL,NULL))){
 		OWPError(ctx,OWPErrFATAL,errno,"fts_open(%s): %M",path);
 		return False;
 	}
@@ -1223,6 +1220,17 @@ InitializeDiskUsage(
 		OWPError(policy->ctx,OWPErrFATAL,OWPErrINVALID,
 				"InitializeDiskUsage: datadir too long (%s)",
 				policy->datadir);
+		return False;
+	}
+
+	/*
+	 * verify datadir exists!
+	 */
+	if((strlen(policy->datadir) > 0) &&
+			(mkdir(policy->datadir,0755) != 0) &&
+			(errno != EEXIST)){
+		OWPError(policy->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+				"Unable to mkdir(%s): %M",policy->datadir);
 		return False;
 	}
 
