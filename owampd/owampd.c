@@ -1,7 +1,7 @@
 /*! \file owampd.c */
 
 #include <owamp/owamp.h>
-#include <access.h>
+#include <owpcontrib/access.h>
 #include <I2util/util.h>
 
 #define LISTENQ 5
@@ -21,15 +21,6 @@ int class2limits_flag = 0;
 int passwd_flag = 0;
 u_int32_t default_offered_mode = OWP_MODE_OPEN | OWP_MODE_AUTHENTICATED
                            | OWP_MODE_ENCRYPTED;
-
-const char *DefaultIPtoClassFile = DEFAULT_IP_TO_CLASS_FILE;
-char *IPtoClassFile = NULL;
-const char *DefaultClassToLimitsFile = DEFAULT_CLASS_TO_LIMITS_FILE;
-char *ClassToLimitsFile = NULL;
-const char *DefaultPasswdFile = DEFAULT_PASSWD_FILE;
-char *PasswdFile = NULL;
-
-
 /* Global variable - the total number of allowed Control connections. */
 #define DEFAULT_NUM_CONN 100
 int free_connections = DEFAULT_NUM_CONN;
@@ -52,16 +43,30 @@ usage(char *name)
 */
 
 OWPBoolean
-owamp_first_check(void *app_data,
+owamp_first_check(void *app_data,            /* to be cast into (policy *) */
 		  struct sockaddr *local,
 		  struct sockaddr *remote,
 		  OWPErrSeverity *err_ret
 		  )
 {
 	u_int32_t ip_addr; 
-	I2table ip2class_hash = ((policy_data *)&app_data)->ip2class;
+	I2table ip2class_hash;
+	if (!app_data){
+		*err_ret = OWPErrFATAL;
+		return False;
+	}
+	ip2class_hash = ((policy_data *)app_data)->ip2class;
+	if (!remote){
+		*err_ret = OWPErrFATAL;
+		return False;
+	}
 	switch (remote->sa_family){
 	case AF_INET:
+		if (!remote){
+			*err_ret = OWPErrFATAL;
+			return False;
+		}
+
 	    ip_addr = ntohl((((struct sockaddr_in *)remote)->sin_addr).s_addr);
 	    fprintf(stderr, "DEBUG: IP = %s\n", owamp_denumberize(ip_addr));
 	    fprintf(stderr, "DEBUG: class = %s\n", 
@@ -85,7 +90,7 @@ owamp_first_check(void *app_data,
 
 OWPBoolean 
 check_control(
-	      OWPContext      ctx,
+	      void*          app_data,
 	      OWPSessionMode mode_req,
 	      const char*         kid,
 	      struct sockaddr *local,
@@ -96,10 +101,15 @@ check_control(
 	return True;
 }
 
+/*
+**  create TCP socket, bind it and start listening.
+*/
 static int
 tcp_listen(OWPContext ctx, 
-	   const char *host, 
-	   const char *serv, 
+	   const char *host, /* hostname, or address string 
+				(dotted-decimal for IPv4 or hex for IPv6)
+				NULL for the server */
+	   const char *serv, /* service name, or decimal port number string */
 	   socklen_t *addrlenp)
 {
 	int listenfd, n;
@@ -167,13 +177,6 @@ tcp_listen(OWPContext ctx,
 }
 /* end tcp_listen */
 
-/* XXX - currently default. Make configurable later. */
-u_int32_t
-get_mode()
-{
-	return OWP_MODE_OPEN;
-}
-
 /* 
 ** This function is called when the server doesn't even want
 ** to speak Control protocol with a particular host.
@@ -240,13 +243,11 @@ main(int argc, char *argv[])
 	OWPInitializeConfigRec cfg  = {
 		0, 
 		0,
+		NULL,
 		owampd_err_func, 
 		NULL,
-		/* owamp_first_check, */
-		NULL,
-		/* check_control, */
-		NULL,
-		NULL,
+		owamp_first_check,
+		check_control, 
 		NULL,
 		NULL,
 		NULL,
@@ -297,27 +298,21 @@ main(int argc, char *argv[])
 		exit(1);
 	}
 
-	if (!port)
-		port = strdup(SERV_PORT_STR);
-	if (!IPtoClassFile)
-		IPtoClassFile = strdup(DefaultIPtoClassFile);
-	if (!ClassToLimitsFile)
-		ClassToLimitsFile = strdup(DefaultClassToLimitsFile);
-	if (!PasswdFile)
-		PasswdFile = strdup(DefaultPasswdFile);
+	sprintf(ip2class, "%s/owamp/owpcontrib/ip2class.conf", OWP_CONFDIR);
+	sprintf(class2limits, "%s/owamp/owpcontrib/class2limits.conf", 
+		OWP_CONFDIR);
+	sprintf(passwd, "%s/owamp/owpcontrib/passwd.conf", OWP_CONFDIR);
 
 	policy = PolicyInit(eh, ip2class, class2limits, passwd, &out);
 	if (out == OWPErrFATAL){
 		fprintf(stderr, "PolicyInit failed. Exiting...");
 		exit(1);
 	};
-	
+
 	cfg.app_data = (void *)policy;
 	ctx = OWPContextInitialize(&cfg);
 
-	/* XXX - remove eventually. */
-	fprintf(stderr, "DEBUG: exiting...\n");
-	exit(0);
+	listenfd = tcp_listen(ctx, NULL, SERV_PORT_STR, &addrlen);
 
 	while (1) {
 		char buf[MAX_MSG];
@@ -333,12 +328,12 @@ main(int argc, char *argv[])
 			}
 		}
 
-		if (OWPServerCheckAddrPolicy(ctx, NULL, &cliaddr, &out)
+		if (OWPServerCheckAddrPolicy(ctx, &cliaddr, &out)
 		    == False){
 			do_ban(connfd);     /* access denied */
 			continue;
 		}
-		
+
 		if (free_connections == 0){
 			do_ban(connfd);
 			continue;
@@ -369,7 +364,7 @@ main(int argc, char *argv[])
 			pid_t pidlet;
 			u_int8_t msg_type;
 			if ( OWPGetRequestType(cntrl, &msg_type) < 0){
-				clean_up();
+				/* clean_up(); */
 				exit(0);
 			}
 			
