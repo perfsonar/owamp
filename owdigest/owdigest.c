@@ -34,6 +34,11 @@
 #include <I2util/util.h>
 #include <owamp/owamp.h>
 
+#ifndef HAVE_MERGESORT
+#define mergesort(base, nmemb, size, compar)    \
+(qsort(base, nmemb, size, compar), 0)
+#endif
+
 #define PREC_THRESHOLD  ((u_int8_t)40)   /* packets where EITHER sender OR
 					    receiver has fewer precision bits
 					    get thrown out */

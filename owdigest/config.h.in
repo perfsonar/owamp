@@ -1,0 +1,6 @@
+/*
+ * $Id$
+ */
+
+/* Define if your system has a working `mergesort' function. */
+#undef HAVE_MERGESORT

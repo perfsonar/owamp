@@ -31,7 +31,7 @@ AC_INIT(owamp, 1.0, owamp-bugs@internet2.edu)
 AC_CONFIG_AUX_DIR(config)
 AM_INIT_AUTOMAKE(owamp, 1.0, [no-define])
 AC_CONFIG_SRCDIR(owamp/context.c)
-AM_CONFIG_HEADER(owamp/config.h owamp/access.h)
+AM_CONFIG_HEADER(owamp/config.h owamp/access.h owdigest/config.h)
 
 TOP_BUILD_DIRS=""
 
@@ -123,7 +123,7 @@ AC_HEADER_TIME
 
 # Checks for library functions.
 AC_FUNC_MALLOC
-AC_CHECK_FUNCS([memset socket getaddrinfo])
+AC_CHECK_FUNCS([memset socket getaddrinfo mergesort])
 
 # AC_CONFIG_FILES([Makefile owamp/Makefile])
 
