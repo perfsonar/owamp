@@ -61,6 +61,7 @@ char *ClassToLimitsFile = NULL;
 const char *DefaultPasswdFile = DEFAULT_PASSWD_FILE;
 char *PasswdFile = NULL;
 u_int32_t DefaultMode = OWP_MODE_OPEN;
+OWPContext ctx;
 
 /* Global variable - the total number of allowed Control connections. */
 #define DEFAULT_NUM_CONN 100
@@ -85,7 +86,7 @@ OWAMPGetSpace(OWAMPLimits * lim){
 
 u_int32_t
 OWAMPGetNumSessions(OWAMPLimits * lim){
-	return lim->num_sessions;
+	return lim->test_sessions;
 }
 
 static void
@@ -100,7 +101,7 @@ OWAMPSetSpace(OWAMPLimits * lim, u_int32_t space){
 
 static u_int32_t
 OWAMPSetNumSessions(OWAMPLimits * lim, u_int32_t ns){
-	lim->num_sessions = ns;
+	lim->test_sessions = ns;
 }
 
 /*
@@ -475,7 +476,7 @@ ipaddr2class(u_int32_t ip)
 ** one of the following: "test_sessions", "bandwidth" or "space".
 ** Each <value> is a non-negative integer. 
 
-** For each class, "num_sessions" is the maximal number of Test sessions
+** For each class, "test_sessions" is the maximal number of Test sessions
 ** that a single Control session is allowed to run altogether. 
 ** Moreover, "bandwidth" (bytes/sec) and "space" (bytes) limit 
 ** the resource consumption of each individual Test session.
@@ -759,6 +760,22 @@ sig_chld(int signo)
 	return;
 }
 
+/*
+** This is a basic function to report errors on the server.
+*/
+
+int
+owampd_err_func(
+		void           *app_data,
+		OWPErrSeverity severity,
+		OWPErrType     etype,
+		const char     *errmsg
+)
+{
+	syslog(LOG_ERR, errmsg);
+	return 0;
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -777,6 +794,21 @@ main(int argc, char *argv[])
 	char *host = NULL; 
 	pid_t pid;
 	OWPErrSeverity out;
+	OWPContext ctx;
+	OWPInitializeConfigRec cfg  = {
+		0, 
+		0,
+		NULL,
+		owampd_err_func, 
+		NULL,
+		NULL,
+		NULL,
+		NULL,
+		NULL,
+		NULL,
+		NULL,
+		NULL
+	};
 
 #if SCRATCH
 	if ( (scratch = fopen("scratch.txt", "w")) == NULL){
@@ -823,11 +855,20 @@ main(int argc, char *argv[])
 	if (!PasswdFile)
 		PasswdFile = strdup(DefaultPasswdFile);
 
+	ctx = OWPContextInitialize(&cfg);
+	
+
+
+	/* 
+	   XXX - can't think of a better place to put it, but it doesn't
+	   belong here. 
+	*/
+	openlog("owampd", LOG_PID | LOG_NDELAY | LOG_PERROR, LOG_DAEMON);
+	
 	/* Open the ip2class hash for writing. */
 	if ((ip2class_hash = hash_init(IPtoClassFile)) == NULL){
-		snprintf(err_msg, sizeof(err_msg),
-			 "hash_init %s.db for writing", IPtoClassFile);
-		perror(err_msg);
+		syslog(LOG_ERR, "Could not initialize hash for %s",
+		       IPtoClassFile);
 		exit(1);
 	}
 	owamp_read_ip2class(IPtoClassFile, ip2class_hash); 
@@ -835,9 +876,8 @@ main(int argc, char *argv[])
 
 	/* Open the class2limits hash for writing. */
 	if ((class2limits_hash = hash_init(ClassToLimitsFile)) == NULL){
-		snprintf(err_msg, sizeof(err_msg),
-			 "hash_init %s.db for writing", IPtoClassFile);
-		perror(err_msg);
+		syslog(LOG_ERR, "Could not initialize hash for %s",
+		       ClassToLimitsFile);
 		exit(1);
 	}
 	owamp_read_class2limits(ClassToLimitsFile, class2limits_hash);
@@ -845,12 +885,12 @@ main(int argc, char *argv[])
 
 	/* Open the passwd hash for writing. */
 	if ((passwd_hash = hash_init(PasswdFile)) == NULL){
-		snprintf(err_msg, sizeof(err_msg),
-			 "hash_init %s.db for writing", PasswdFile);
-		perror(err_msg);
+		syslog(LOG_ERR, "Could not initialize hash for %s",
+		       PasswdFile);
 		exit(1);
 	}
 	read_passwd_file(PasswdFile, passwd_hash);
+
 	listenfd = tcp_listen(host, port, &addrlen);
 	Signal(SIGCHLD, sig_chld);
 
