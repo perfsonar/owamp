@@ -19,6 +19,9 @@ use constant TMP_SECRET => 'abcdefgh12345678';
 use Math::BigInt;
 use IO::Socket;
 use Digest::MD5;
+use FindBin;
+use lib ("$FindBin::Bin");
+use OWP;
 
 ### Start of the configuration section. Change these values as appropriate.
 use constant VERBOSE => 2;
@@ -26,26 +29,31 @@ use constant DEBUG => 1;  # XXX - eventually set to 0 for production
 
 # ASCII address of the local node - to be used as directory
 # on the central host
-my $local_addr = "155.99.46.235";
+die "Usage:$FindBin::Script addr confdir" if($#ARGV != 2);
+my $local_addr = $ARGV[0];
+my $conf = new OWP::Conf($local_addr,$ARGV[1]);
 
 # locations of md5 executables
-my $local_md5_path = '/usr/bin/md5sum';
+# (The Conf module doesn't really help here... It only knows what "this"
+# system should be using. perl -e "Digest::MD5->blah" is a much better
+# solution.)
+my $local_md5_path = $conf->{'MDCMD'};
 my $remote_md5_path = '/usr/bin/md5sum';
 
 # arguments to ssh and scp
 #my $remote_user = 'karp\@marsalis.internet2.edu';
 #my $remote_host = 'marsalis.internet2.edu';
-my $remote_user = 'karp\@sss.advanced.org';
-my $remote_host = 'sss.advanced.org';
+my $remote_user = $conf->{'CENTRALHOSTUSER'}.'\@'.$conf->{'CENTRALHOST'};
+my $remote_host = $conf->{'UPTIMESENDTOADDR'};
+my $port = $conf->{'UPTIMESENDTOPORT'};
 
 # this local dir contains the subtree of senders to the local host
-my $local_top = '/home/karp/owp_new/owamp/powdir';
+my $local_top = $conf->{'NODEDATADIR'};
 
 # remote dir to place the files. NOTE: make sure it exists!
 # my $remote_top = 'owp/owamp/scripts';	
-my $remote_top = 'owp/owamp/datadep';
+my $remote_top = $conf->{'CENTRALUPLOADDIR'};
 
-my $port = 2345;		# port to sent updates to
 my $data_suffix = '\.owp';	# suffix for data files (Perl)
 
 # due to variety of md5 programs, the fields in which the md5 is found
@@ -65,29 +73,22 @@ my $local_md5_field = 0;
 my $remote_md5_field = 0;
 
 # this directory contains owampd configuration files describes below.
-my $owampd_confdir = '/home/karp/owp_new/owamp/etc';
+my $owampd_confdir = $conf->{'OWAMPDVARPATH'};
 
 # These files are relative to $owampd_confdir::
 my $owampd_pid_file = 'owampd.pid';    # file containing owampd pid
-my $passwd_file = 'owampd.passwd';     # file containing the secret
 my $owampd_info_file = 'owampd.info';  # file containing starttime
 
 ### End of configuration section.
 
 chdir $local_top or die "could not chdir $local_top: $!";
 
-# Read a secret key to hash messages with.
-my $passwd_path = "$owampd_confdir/$passwd_file";
-open(PASSWD, "<$passwd_path")
-	or die "Could not open $passwd_path: $!";
-my $secret = <PASSWD>;
-unless ($secret) {
-    die "no secret found in $passwd_path" unless DEBUG;
-    warn "no secret found in $passwd_path - using a fake one";
+unless (defined($conf->{'SECRETNAME'}) &&
+				defined($conf->{$conf->{'SECRETNAME'}})){
+    warn "no secret found in $conf->{'GLOBALCONF'} - using a fake one";
     $secret = TMP_SECRET;
 }
-chomp $secret;
-close PASSWD;
+$secret = $conf->{$conf->{'SECRETNAME'}};
 
 # Read owampd start time.
 my $info_path = "$owampd_confdir/$owampd_info_file";
@@ -141,8 +142,8 @@ while (1) {
     send $socket, "$msg.$hashed", 0;
 
     # Look for new data.
-    opendir(DIR, '.') || die "can't opendir $local_top: $!";
-    my @subdirs = grep {$_ !~ /^\./ && -d $_} readdir(DIR);
+    opendir(DIR, $addr) || die "can't opendir $local_top/$addr: $!";
+    my @subdirs = grep {$_ !~ m#/\.# && -d $_} readdir(DIR);
     if (VERBOSE) {
 	chomp(my $cwd = `pwd`);
 	warn "cwd = $cwd - found subdirs: @subdirs\n\n" if VERBOSE;
@@ -157,7 +158,7 @@ while (1) {
 # the argument is a path relative to $local_top
 sub push_dir {
     my $dirlink = $_[0];
-    my $rem_dir = "$remote_top/$local_addr/$dirlink";
+    my $rem_dir = "$remote_top/$dirlink";
     warn "push_dir: rem_dir = $rem_dir";
     my $cmd = "ssh $remote_user if test -f $rem_dir\\; " 
 	    . "then rm -rf $rem_dir\\; fi\\; if test ! -d $rem_dir\\; "
@@ -166,7 +167,7 @@ sub push_dir {
     system($cmd);
 
     opendir DIR, $dirlink or die "Could not open $dirlink: $!";
-    my @files = grep {$_ =~ /^.*$data_suffix$/} readdir(DIR);
+    my @files = sort grep {$_ =~ /$data_suffix$/} readdir(DIR);
     closedir(DIR);
 
     unless (@files) {
