@@ -325,30 +325,18 @@ while(1){
 		if($reset == 1){
 			$reset++;
 			warn "Handling SIGHUP... Stop processing...\n";
-			$funcname = "kill";
-			eval{
-				# SIGCHLD happens during kill - even if blocked.
-				kill 'TERM', keys %pid2info;
-			};
 		}
 		elsif($die == 1){
 			$die++;
 			warn "Exiting... Deleting sub-processes...\n";
-			$funcname = "kill";
-			eval{
-				# SIGCHLD happens during kill - even if blocked.
-				kill 'TERM', keys %pid2info;
-			};
 		}
-		else{
-			$funcname = "sigsuspend";
-			# Wait for children to exit
-			if((keys %pid2info) > 0){
-				eval{
-					sigsuspend($old_mask);
-				};
-			}
-		}
+		$funcname = "kill";
+		eval{
+			return if(sigprocmask(SIG_SETMASK,$old_mask) != 0);
+			# SIGCHLD happens during kill - even if blocked.
+			kill 'TERM', keys %pid2info;
+			sigprocmask(SIG_BLOCK,$block_mask);
+		};
 	}
 	else{
 		$funcname = "recv";
