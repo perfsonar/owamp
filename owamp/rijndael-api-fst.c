@@ -198,10 +198,10 @@ int blockDecrypt(BYTE *binIV, keyInstance *key,
 ** of the block to be encrypted. The rest are reset to be 0.
 */
 int 
-countermodeEncrypt(keyInstance *key, unsigned long i, BYTE *outBuffer) 
+countermodeEncrypt(keyInstance *key, unsigned long *i, BYTE *outBuffer) 
 {
 	BYTE input[16];
-	u_long counter = htonl(i);
+	u_long counter = htonl(*i);
 
 	if (key == NULL)
 		return BAD_CIPHER_STATE;
@@ -215,6 +215,7 @@ countermodeEncrypt(keyInstance *key, unsigned long i, BYTE *outBuffer)
 		
 	rijndaelEncrypt(key->rk, key->Nr, input, outBuffer);
 
+	*i = (*i) + 1;
 	return 128;
 }
 

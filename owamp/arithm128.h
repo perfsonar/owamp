@@ -57,7 +57,7 @@ struct num_128 num_new(unsigned short a,
  		 unsigned short h
 		 );
 struct num_128 ulong2num(unsigned long a);
-struct num_128 new_random(keyInstance *key, unsigned long in, BYTE *outBuffer);
+struct num_128 new_random(keyInstance *key,unsigned long *in, BYTE *outBuffer);
 
 /* Arithmetic operations */
 void num_add(num_128 x, num_128 y, num_128 z);
@@ -80,6 +80,6 @@ void print_bin(unsigned short n);
 void num_binprint(num_128 x);
 
 /* Generate an exponential deviate using 64-bit binary string as an input. */
-struct num_128 random_exp(keyInstance *key, unsigned long in);
+struct num_128 random_exp(keyInstance *key, unsigned long *in);
 #undef T 
 #endif

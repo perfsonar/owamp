@@ -374,7 +374,7 @@ raw2num(unsigned char *raw)
 
 
 struct num_128
-new_random(keyInstance *key, unsigned long in, BYTE *outBuffer)
+new_random(keyInstance *key, unsigned long *in, BYTE *outBuffer)
 {
 	if (countermodeEncrypt(key, in, outBuffer) != 128){
 		fprintf(stderr, "FATAL: counter mode encryption error");
@@ -393,7 +393,7 @@ new_random(keyInstance *key, unsigned long in, BYTE *outBuffer)
 ** Knuth's v.2 of "Art of Computer Programming" (1998), p.133.
 */
 struct num_128 
-random_exp(keyInstance *key, unsigned long in)
+random_exp(keyInstance *key, unsigned long *in)
 {
 	struct num_128 ret;
 	int i, j, k, count;
@@ -530,10 +530,10 @@ random_exp(keyInstance *key, unsigned long in)
 		exit(1);
 	}
 
-	V = new_random(key, in + 1, outBuffer);
+	V = new_random(key, in, outBuffer);
 	
 	for (i = 2; i <= k; i++){
-		tmp1 = new_random(key, in + i, outBuffer);
+		tmp1 = new_random(key, in, outBuffer);
 		if (num_cmp(&tmp1, &V) < 0)
 			V = tmp1;
 	}
