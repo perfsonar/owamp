@@ -18,5 +18,5 @@
 #
 #	Description:	toplevel build for owamp project
 #
-SUBDIRS = owamp contrib owampd owping
+SUBDIRS = @TOP_BUILD_DIRS@ . owamp contrib owampd owping
 include_HEADERS = owamp/owamp.h

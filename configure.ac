@@ -33,6 +33,54 @@ AM_INIT_AUTOMAKE(owamp, 1.0)
 AC_CONFIG_SRCDIR(owamp/context.c)
 AM_CONFIG_HEADER(owamp/config.h)
 
+TOP_BUILD_DIRS=""
+
+#
+# add configure options.
+#
+AC_ARG_WITH(I2util,
+		AC_HELP_STRING([--with-I2util=<dir>],
+				[defaults to building I2util under owamp if exists]),
+		with_I2util=$withval, with_I2util=yes)
+
+#
+# find I2util
+#
+I2UTILLIBS=""
+I2UTILINCS=""
+if test "$with_I2util" != "no"; then
+	# first, check for directory given.
+	if test "$with_I2util" != "yes"; then
+		I2util_dir=`dirname $with_I2util`
+		case $I2util_dir in
+			/*) ;; # already an absolute path
+			*) $I2util_dir="`pwd`/$I2util_dir" ;;
+		esac
+		I2UTILINCS="-I$I2util_dir/include $I2UTILINCS"
+		I2UTILLIBS="-L$I2util_dir/lib $I2UTILLIBS"
+	# now, check for sub-build/sub-configure
+	elif test -d $srcdir/I2util/I2util/; then
+		AC_CONFIG_SUBDIRS(I2util)
+		TOP_BUILD_DIRS="I2util $TOP_BUILD_DIRS"
+		I2util_dir="$srcdir/I2util/"
+		I2UTILINCS="-I$I2util_dir $I2UTILINCS"
+		I2UTILLIBS="-L$I2util_dir/I2util $I2UTILLIBS"
+		
+	# now, check for installed I2util
+	elif test -d /usr/local/I2util; then
+		I2UTILINCS="-I/usr/local/I2util/include $I2UTILINCS"
+		I2UTILLIBS="-L$I2util_dir $I2UTILLIBS"
+	fi
+
+	if test -z "$I2UTILLIBS"; then
+		AC_MSG_ERROR([couldn't find I2util library])
+	fi
+fi
+AC_SUBST(I2UTILINCS)
+AC_SUBST(I2UTILLIBS)
+
+AC_SUBST(TOP_BUILD_DIRS)
+
 # Checks for programs.
 AC_PROG_CC
 AC_PROG_RANLIB
