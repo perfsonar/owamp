@@ -271,7 +271,6 @@ owamp_datumify(const char *bytes, int dat_len)
 	return dat;
 }
 
-
 u_int32_t
 get_ip_addr(const datum * dat)
 {
@@ -442,14 +441,6 @@ owamp_read_limits(const char *class2limits)
 		}
 		
 	}
-}
-
-
-void
-datum2string(const datum * dat, char *str)
-{
-	bcopy(dat->dptr, str, dat->dsize);
-	str[dat->dsize] = '\0';
 }
 
 void
