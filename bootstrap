@@ -1,0 +1,28 @@
+#!/bin/sh
+#
+#      $Id$
+#
+#########################################################################
+#									#
+#			   Copyright (C)  2002				#
+#	     			Internet2				#
+#			   All Rights Reserved				#
+#									#
+#########################################################################
+#
+#	File:		bootstrap
+#
+#	Author:		Jeff Boote
+#			Internet2
+#
+#	Date:		Wed Apr 17 13:15:07 EDT 2002
+#
+#	Description:	
+#			This script is used to bootstrap the autobuild
+#			process.
+#
+set -x
+aclocal -I config
+autoheader
+automake --foreign --add-missing --copy
+autoconf

@@ -17,6 +17,7 @@ $Id$
         inetd model - don't need to worry about it
                 breaks need to be applied via inetd rules
         stand alone:
-                use preforked model (pthreads not portable)
-                traditional accept/fork/exec not responsive enough
-		breaks applied using controlling parent process
+                use traditional accept/fork/exec
+			breaks applied using controlling parent process
+			keeping track of maximum # children.
+

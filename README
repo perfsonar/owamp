@@ -1,0 +1,15 @@
+$Id$
+
+			owamp
+
+owamp [One Way Active Measurement Protocol] is a sample implementation of
+draft-ietf-ippm-owdp-03.txt(name to change).
+
+It is organized as follows:
+
+owamp/	directory for owamp api - a high level abstraction for speaking the
+	owamp protocol.
+util/	convienient utility functions including sample implementations of
+	some of the "configurable" parts of the owamp library.
+server/	An owamp server implementation.
+owping/	A command line owamp client (one way ping).
