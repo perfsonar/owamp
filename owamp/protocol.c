@@ -1192,7 +1192,8 @@ _OWPWriteControlAck(
 #endif
 	memset(&buf[16],0,16);	/* Zero padding */
 
-	if(_OWPSendBlocks(cntrl,buf,2) != 2)
+	if(_OWPSendBlocks(cntrl,buf,_OWP_CONTROL_ACK_BLK_LEN) !=
+						_OWP_CONTROL_ACK_BLK_LEN)
 		return OWPErrFATAL;
 
 	cntrl->state &= ~_OWPStateControlAck;
@@ -1207,18 +1208,16 @@ _OWPReadControlAck(
 {
 	u_int8_t		*buf = (u_int8_t*)cntrl->msg;
 
+	*acceptval = OWP_CNTRL_INVALID;
+
 	if(!_OWPStateIs(_OWPStateControlAck,cntrl)){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
 				"_OWPReadControlAck called in wrong state.");
 		return OWPErrFATAL;
 	}
 
-	/*
-	 * Already read the first block - read the rest for this message
-	 * type.
-	 */
-	if(_OWPReceiveBlocks(cntrl,&buf[16],_OWP_CONTROL_ACK_BLK_LEN-1) != 
-					(_OWP_CONTROL_ACK_BLK_LEN-1)){
+	if(_OWPReceiveBlocks(cntrl,&buf[16],_OWP_CONTROL_ACK_BLK_LEN) != 
+					(_OWP_CONTROL_ACK_BLK_LEN)){
 		cntrl->state = _OWPStateInvalid;
 		return OWPErrFATAL;
 	}
