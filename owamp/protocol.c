@@ -25,6 +25,7 @@
 **			The idea is to basically keep all network ordering
 **			architecture dependant things in this file.
 */
+#include <owampP.h>
 
 /*
  * Function: _OWPReadServerGreeting
@@ -40,7 +41,7 @@
 int
 _OWPReadServerGreeting(
 	OWPControl	cntrl,		/* cntrl state structure	*/
-	u_int32_t	&mode,		/* modes available - returned	*/
+	u_int32_t	*mode,		/* modes available - returned	*/
 	OWPErrSeverity	*err_ret	/* error - returned		*/
 )
 {

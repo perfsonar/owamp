@@ -40,16 +40,16 @@ typedef struct OWPAddrRec OWPAddrRec;
 struct OWPAddrRec{
 	OWPContext	ctx;
 
-	OWPBool		node_set;
+	OWPBoolean	node_set;
 	char		node[MAXHOSTNAMELEN+1];
 
-	OWPBool		ai_free;	/* free ai list directly...*/
+	OWPBoolean	ai_free;	/* free ai list directly...*/
 	struct addrinfo	*ai;
 
-	OWPBool		saddr_set;
+	OWPBoolean	saddr_set;
 	struct sockaddr	saddr;
 
-	OWPBool		fd_user;
+	OWPBoolean	fd_user;
 	int		fd;
 };
 
@@ -74,8 +74,8 @@ struct OWPControlRec{
 };
 
 struct OWPTestSessionRec{
-	struct sockaddr			send_addr,
-	struct sockaddr			recv_addr,
+	struct sockaddr			send_addr;
+	struct sockaddr			recv_addr;
 	struct OWPTestSessionRec	*next;
 };
 

@@ -22,9 +22,22 @@
 */
 #ifndef	OWAMP_H
 #define	OWAMP_H
+#include <stdlib.h>
+#include <errno.h>
 #include <sys/types.h>
-#include <netdb.h>
 #include <sys/socket.h>
+#include <netdb.h>
+
+#ifndef	False
+#define	False	(0)
+#endif
+#ifndef	True
+#define	True	(!False)
+#endif
+
+#ifndef	MAXHOSTNAMELEN
+#define	MAXHOSTNAMELEN	64
+#endif
 
 #define	OWP_MODE_UNDEFINED		(0)
 #define	OWP_MODE_OPEN			(01)
@@ -55,15 +68,17 @@ typedef enum {
 
 typedef enum {
 	OWPErrPOLICY,
-	OWPErrUNDEFINED
+	OWPErrUNKNOWN
 } OWPErrType;
+
+#define	OWP_ERR_MAXSTRING	(1024)
 
 typedef int		OWPBoolean;
 typedef u_int32_t	OWPSID[4];
 typedef u_int32_t	OWPSequence;
 typedef char		OWPKID[8];
 typedef u_int8_t	OWPKey[16];
-typedef u_int32_t	OWPSessionModes;
+typedef u_int32_t	OWPSessionMode;
 
 
 typedef struct OWPTimeStampRec{
@@ -132,7 +147,7 @@ typedef int (*OWPErrFunc)(
  * the caller will check the err_ret value. If OK, then the kid simply didn't
  * exist - otherwise it indicates an error in the key store mechanism.
  */	
-typedef OWPBool	(*OWPGetAESKeyFunc)(
+typedef OWPBoolean	(*OWPGetAESKeyFunc)(
 	void		*app_data,
 	OWPKID		kid,
 	OWPKey		*key_ret,
@@ -149,7 +164,7 @@ typedef OWPBool	(*OWPGetAESKeyFunc)(
  * If local_sa_addr is NULL - then it is not being specified.
  * remote_sa_addr MUST be set.
  */
-typedef void (*OWPCheckAddrPolicy)(
+typedef OWPBoolean (*OWPCheckAddrPolicy)(
 	void		*app_data,
 	struct sockaddr	*local_sa_addr,
 	struct sockaddr	*remote_sa_addr,
@@ -162,9 +177,9 @@ typedef void (*OWPCheckAddrPolicy)(
  * It is called after connecting, and after determining that encryption
  * is working properly.
  */
-typedef void (*OWPCheckControlPolicyFunc)(
+typedef OWPBoolean (*OWPCheckControlPolicyFunc)(
 	void		*app_data,
-	OWPSessionModes	*mode_req,
+	OWPSessionMode	mode_req,
 	OWPKID		kid,
 	struct sockaddr	*local_sa_addr,
 	struct sockaddr	*remote_sa_addr,
@@ -182,7 +197,7 @@ typedef void (*OWPCheckControlPolicyFunc)(
  * Only the IP address values will be set in the sockaddr structures -
  * i.e. port numbers will not be valid.
  */
-typedef void (*OWPCheckTestPolicyFunc)(
+typedef OWPBoolean (*OWPCheckTestPolicyFunc)(
 	void		*app_data,
 	OWPTestSpec	*test_spec,
 	OWPEndpoint	local,
@@ -245,7 +260,7 @@ typedef OWPTimeStamp (*OWPGetTimeStampFunc)(
  * This structure encodes parameters needed to initialize the library.
  */ 
 typedef struct {
-	time_sec_perhaps		tm_out;
+	struct timeval			tm_out;
 	void				*app_data;
 	OWPErrFunc			*err_func;
 	OWPGetAESKeyFunc		*get_aes_key_func;
@@ -361,7 +376,7 @@ OWPControlOpen(
 	OWPContext	ctx,
 	OWPAddr		local_addr,	/* src addr or NULL	*/
 	OWPAddr		server_addr,	/* server addr or NULL	*/
-	u_int32_t	mode_mask,	/* OR of OWPSessionModes */
+	u_int32_t	mode_mask,	/* OR of OWPSessionMode */
 	const OWPKID	*kid,		/* null if unwanted	*/
 	OWPErrSeverity	*err_ret
 );
@@ -399,12 +414,13 @@ OWPCreateSendEndpoint(
  * Request a test session - if err_ret is OWPErrOK - then the function
  * returns a valid SID for the session.
  */
-extern OWPSID
+extern OWPBoolean
 OWPRequestTestSession(
 	OWPControl	control_handle,
 	OWPEndpoint	sender,
 	OWPEndpoint	receiver,
-	OWPTestSpec	test_spec
+	OWPTestSpec	test_spec,
+	OWPSID		sid_ret,
 	OWPErrSeverity	*err_ret
 );
 

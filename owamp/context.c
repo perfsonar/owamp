@@ -28,7 +28,7 @@
  * 	If the application didn't define the get_key function, then provide
  * 	the default response of False.
  */
-OWPBool
+OWPBoolean
 _OWPCallGetAESKey(
 	OWPContext	ctx,		/* library context	*/
 	OWPKID		kid,		/* identifies key	*/
@@ -48,10 +48,10 @@ _OWPCallGetAESKey(
 	/*
 	 * Default action is no encryption support.
 	 */
-	if(!ctx->get_aes_key_func)
+	if(!ctx->cfg.get_aes_key_func)
 		return False;
 
-	return (*ctx->get_aes_key_func)(ctx->app_data,kid,key_ret,err_ret);
+	return (*ctx->cfg.get_aes_key_func)(ctx->cfg.app_data,kid,key_ret,err_ret);
 }
 
 /*
@@ -62,7 +62,7 @@ _OWPCallGetAESKey(
  * 	If the application didn't define the check_addr_func, then provide
  * 	the default response of True(allowed).
  */
-OWPBool
+OWPBoolean
 _OWPCallCheckAddrPolicy(
 	OWPContext	ctx,		/* library context	*/
 	struct sockaddr	*local_sa_addr,	/* local addr or NULL	*/
@@ -82,10 +82,10 @@ _OWPCallCheckAddrPolicy(
 	/*
 	 * Default action is to allow anything.
 	 */
-	if(!ctx->check_addr_func)
+	if(!ctx->cfg.check_addr_func)
 		return True;
 
-	return (*ctx->check_addr_func)(ctx->app_data,local_sa_addr,
+	return (*ctx->cfg.check_addr_func)(ctx->cfg.app_data,local_sa_addr,
 							remote_sa_addr,err_ret);
 }
 
@@ -97,10 +97,10 @@ _OWPCallCheckAddrPolicy(
  * 	If the application didn't define the check_control_func, then provide
  * 	the default response of True(allowed).
  */
-OWPBool
+OWPBoolean
 _OWPCallCheckControlPolicy(
 	OWPContext	ctx,		/* library context	*/
-	OWPSessionModes	mode,		/* reqested mode	*/
+	OWPSessionMode	mode,		/* reqested mode	*/
 	OWPKID		kid,		/* key identity		*/
 	struct sockaddr	*local_sa_addr,	/* local addr or NULL	*/
 	struct sockaddr	*remote_sa_addr,/* remote addr		*/
@@ -119,10 +119,10 @@ _OWPCallCheckControlPolicy(
 	/*
 	 * Default action is to allow anything.
 	 */
-	if(!ctx->check_control_func)
+	if(!ctx->cfg.check_control_func)
 		return True;
 
-	return (*ctx->check_control_func)(ctx->app_data,modes,kid,
+	return (*ctx->cfg.check_control_func)(ctx->cfg.app_data,mode,kid,
 					local_sa_addr,remote_sa_addr,err_ret);
 }
 
@@ -134,7 +134,7 @@ _OWPCallCheckControlPolicy(
  * 	If the application didn't define the check_test_func, then provide
  * 	the default response of True(allowed).
  */
-OWPBool
+OWPBoolean
 _OWPCallCheckTestPolicy(
 	OWPContext	ctx,		/* library context		*/
 	OWPTestSpec	*test_spec,	/* test requested		*/
@@ -155,9 +155,9 @@ _OWPCallCheckTestPolicy(
 	/*
 	 * Default action is to allow anything.
 	 */
-	if(!ctx->check_test_func)
+	if(!ctx->cfg.check_test_func)
 		return True;
 
-	return (*ctx->check_test_func)(ctx->app_data,test_spec,local,remote,
+	return (*ctx->cfg.check_test_func)(ctx->cfg.app_data,test_spec,local,remote,
 								err_ret);
 }

@@ -21,7 +21,8 @@
 #include <owampP.h>
 
 static OWPInitializeConfigRec	def_cfg = {
-	/* tm_out			*/	0,
+	/* tm_out.tv_sec		*/	0,
+	/* tm_out.tv_usec		*/	0,
 	/* app_data			*/	NULL,
 	/* err_func			*/	NULL,
 	/* check_control_func		*/	NULL,
@@ -43,7 +44,7 @@ OWPContextInitialize(
 
 	if(!ctx){
 		OWPErrorLine(NULL,OWPLine,
-			OWPErrFatal,ENOMEM,":malloc(%d)",
+			OWPErrFATAL,ENOMEM,":malloc(%d)",
 			sizeof(OWPContextRec));
 		return NULL;
 	}
@@ -74,7 +75,7 @@ AllocAddr(
 	OWPAddr	addr = malloc(sizeof(struct OWPAddrRec));
 
 	if(!addr){
-		OWPErrorLine(ctx,OWPLine,OWPErrFatal,errno,
+		OWPErrorLine(ctx,OWPLine,OWPErrFATAL,errno,
 				":malloc(%d)",sizeof(struct OWPAddrRec));
 		return NULL;
 	}
@@ -86,7 +87,10 @@ AllocAddr(
 	addr->ai_free = 0;
 	addr->ai = NULL;
 
-	addr->fd_set = -1;
+	addr->saddr_set = 0;
+
+	addr->fd_user = 0;
+	addr->fd= -1;
 
 	return addr;
 }
@@ -122,9 +126,9 @@ OWPAddrFree(
 	}
 
 	if((addr->fd >= 0) && !addr->fd_user){
-		if(close(fd) < 0){
+		if(close(addr->fd) < 0){
 			OWPErrorLine(addr->ctx,OWPLine,OWPErrWARNING,
-					errno,":close(%d)",fd);
+					errno,":close(%d)",addr->fd);
 			err = OWPErrWARNING;
 		}
 	}
@@ -153,8 +157,8 @@ OWPAddrByNode(
 
 struct addrinfo*
 _OWPCopyAddrRec(
-	OWPContext	ctx,
-	struct addrinfo	*src
+	OWPContext		ctx,
+	const struct addrinfo	*src
 )
 {
 	struct addrinfo	*dst = malloc(sizeof(struct addrinfo));
@@ -183,7 +187,7 @@ _OWPCopyAddrRec(
 
 		if(len > MAXHOSTNAMELEN){
 			OWPErrorLine(ctx,OWPLine,OWPErrWARNING,
-					OWPErrUNDEFINED,
+					OWPErrUNKNOWN,
 					":Invalid canonname!");
 			dst->ai_canonname = NULL;
 		}else{
@@ -267,7 +271,9 @@ _OWPControlAlloc(
 	cntrl->server = 0;
 	cntrl->state = 0;
 	cntrl->mode = 0;
-	cntrl->addr = NULL;
+	/*
+	 * TODO: Need to init more var's...
+	 */
 	cntrl->next = NULL;
 
 	return cntrl;
@@ -284,6 +290,9 @@ _OWPAddrInfo(
 	OWPAddr		addr
 )
 {
+	struct addrinfo	hints, *airet;
+	const char	*node=NULL;
+
 	/*
 	 * Don't need addr_info if we already have a fd.
 	 */
@@ -295,8 +304,6 @@ _OWPAddrInfo(
 	/*
 	 * Call getaddrinfo to find useful addresses
 	 */
-	struct addrinfo	hints, *airet;
-	const char	*node=NULL;
 
 	if(addr->node_set)
 		node = addr->node;
@@ -307,8 +314,7 @@ _OWPAddrInfo(
 
 	if((getaddrinfo(node,OWP_CONTROL_SERVICE_NAME,&hints,&airet)!=0)
 								|| !airet){
-		OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,errno,
-					":getaddrinfo()");
+		OWPErrorLine(ctx,OWPLine,OWPErrFATAL,errno,":getaddrinfo()");
 		return OWPErrFATAL;
 	}
 
@@ -328,15 +334,19 @@ _OWPClientBind(
 	struct addrinfo	*ai;
 
 	if(local_addr->fd > -1){
-		OWPErrorLine(cntrl->ctx,OWPLine,OWPErrUNKNOWN,
+		OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
 						"Invalid local_addr - ByFD");
 		*err_ret = OWPErrFATAL;
+		return;
 	}
 
-	if(!local_addr->ai){
+	if(!local_addr->ai &&
+		(_OWPAddrInfo(cntrl->ctx,local_addr) < OWPErrWARNING)){
+		*err_ret = OWPErrFATAL;
+		return;
 	}
 
-	for(ai=local_addrinfo;ai;ai = ai_next){
+	for(ai=local_addr->ai;ai;ai = ai->ai_next){
 		if(ai->ai_family != remote_addrinfo->ai_family)
 			continue;
 		if(ai->ai_socktype != remote_addrinfo->ai_socktype)
@@ -346,13 +356,15 @@ _OWPClientBind(
 
 		if(bind(fd,ai->ai_addr,ai->ai_addrlen) == 0)
 			return;
-		OWPErrorLine(cntrl->ctx,OWPLine,errno,"bind(,,):%m");
+		OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,errno,
+							"bind(,,):%m");
 		*err_ret = OWPErrFATAL;
 		return;
 	}
 
-	OWPErrorLine(cntrl->ctx,OWPLine,errno,"Invalid local addr spec's");
-	err_ret = OWPErrFATAL;
+	OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,errno,
+						"Invalid local addr spec's");
+	*err_ret = OWPErrFATAL;
 	return;
 }
 
@@ -365,9 +377,10 @@ _OWPClientConnect(
 )
 {
 	int		fd=-1;
+	struct addrinfo	*ai=NULL;
 
 	if((!server_addr) &&
-		!(server_addr = OWPAddrByNode("localhost"))){
+		!(server_addr = OWPAddrByNode(cntrl->ctx,"localhost"))){
 		return -1;
 	}
 
@@ -425,7 +438,7 @@ _OWPClientConnect(
 		 */
 		if(connect(fd,ai->ai_addr,ai->ai_addrlen) == 0){
 			server_addr->fd = fd;
-			server_addr->saddr = ai->ai_addr;
+			server_addr->saddr = *ai->ai_addr;
 			cntrl->remote_addr = server_addr;
 			return _OWPClientSetSock(cntrl,local_addr,err_ret);
 		}
@@ -438,10 +451,10 @@ next:
 		}
 	}
 
-	OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,OWPErrUNDEFINED,
+	OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
 			"No Valid Addr's");
 	*err_ret = OWPErrFATAL;
-	return NULL;
+	return -1;
 }
 
 OWPControl
@@ -539,9 +552,13 @@ OWPControlOpen(
 	 * Now determine if client side is willing to actually talk control
 	 * given the kid/addr combinations.
 	 */
-	if(!_OWPCallCheckControlPolicy(ctx,cntrl->mode,kid,cntrl->key,)){
+	if(!_OWPCallCheckControlPolicy(ctx,cntrl->mode,kid,cntrl->key,
+			&local_addr->saddr,&server_addr->saddr,err_ret)){
 		_OWPControlFree(cntrl);
 		return NULL;
 	}
 
+	/*
+	 * TODO: Not done...
+	 */
 }

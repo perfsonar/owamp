@@ -19,6 +19,7 @@
 **	Description:	
 */
 #include <stdio.h>
+#include <stdarg.h>
 #include <owampP.h>
 
 static void
@@ -46,8 +47,8 @@ _OWPError(
 	char	buff[OWP_ERR_MAXSTRING];
 
 	vsnprintf(buff,sizeof(buff),fmt,args);
-	if(!ctx || !ctx->cfg.errfunc ||
-		(*ctx->cfg.errfunc)(ctx->cfg.app_data,severity,etype,buff))
+	if(!ctx || !ctx->cfg.err_func ||
+		(*ctx->cfg.err_func)(ctx->cfg.app_data,severity,etype,buff))
 		OWPDefErrFunc(severity,etype,buff);
 
 	return;
