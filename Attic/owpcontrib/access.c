@@ -448,11 +448,25 @@ owamp_print_ip2class(hash_ptr hash)
 void
 print_limits(OWAMPLimits * limits)
 {
-	printf("DEBUG: bw = %lu, space = %lu, num_sessions = %u\n",
+	printf("bw = %lu, space = %lu, num_sessions = %u\n",
 	       OWAMPGetBandwidth(limits),
 	       OWAMPGetSpace(limits),
 	       OWAMPGetNumSessions(limits)
 	       );
+}
+
+void
+owamp_print_class2limits(hash_ptr hash)
+{
+	datum key, val;
+
+	for(key=hash_firstkey(hash);key.dptr != NULL;key = hash_nextkey(hash)){
+		val = hash_fetch(hash, key);
+		if (!val.dptr)
+			continue;
+		printf("the limits for class %s are: ", key.dptr);
+		print_limits((OWAMPLimits *)val.dptr);
+	}
 }
 
 /* 
@@ -538,8 +552,6 @@ main(int argc, char *argv[])
 	if (!ClassToLimitsFile)
 		ClassToLimitsFile = strdup(DefaultClassToLimitsFile);
 
-	/* Uncomment if wish to read config file. Else will use db on disk */
-
 	/* Open the ip2class hash for writing. */
 	if ((ip2class_hash = hash_init(IPtoClassFile)) == NULL){
 		snprintf(err_msg, sizeof(err_msg),
@@ -559,6 +571,8 @@ main(int argc, char *argv[])
 		exit(1);
 	}
 	owamp_read_class2limits(ClassToLimitsFile, class2limits_hash);
+	owamp_print_class2limits(class2limits_hash);
+	hash_close(class2limits_hash);
 
 	exit(0);
 }
