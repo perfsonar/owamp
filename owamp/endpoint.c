@@ -143,62 +143,11 @@ EndpointFree(
 	return;
 }
 
-static char *
-make_data_dir(
-	OWPContext		ctx,
-	char			*datadir,
-	owp_tree_node_ptr	node,
-	unsigned int		add_chars
-	)
-{
-	char		*path;
-	int		len;
-
-	if(node){
-		path = make_data_dir(ctx,datadir,node->parent,
-			strlen(node->data)+OWP_PATH_SEPARATOR_LEN+add_chars);
-		if(!path)
-			return NULL;
-		strcat(path,OWP_PATH_SEPARATOR);
-		strcat(path,node->data);
-	}
-	else{
-		len = strlen(datadir) + OWP_PATH_SEPARATOR_LEN
-			+ strlen(OWP_NODES_DIR) + add_chars;
-		if(len > FILENAME_MAX){
-			OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
-						"Datapath length too long.");
-			return NULL;
-		}
-		path = malloc(len+1);
-		if(!path){
-			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"malloc(%d):%M",
-									len+1);
-			return NULL;
-		}
-		strcpy(path,datadir);
-
-		strcat(path,OWP_PATH_SEPARATOR);
-		strcat(path, OWP_NODES_DIR);
-	}
-
-	if((mkdir(path,0755) != 0) && (errno != EEXIST)){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-			"Unable to mkdir(%s):%M",path);
-		free(path);
-		return NULL;
-	}
-
-	return path;
-}
-
-
 static FILE *
 opendatafile(
 	OWPContext		ctx,
-	char			*datadir,
+	char			*real_data_dir, /* already encodes node */
 	char			*sid_name,
-	owp_tree_node_ptr	node,
 	char			**file_path
 )
 {
@@ -208,10 +157,15 @@ opendatafile(
 	/*
 	 * 1 for the final '\0'.
 	 */
-	if(!(path = make_data_dir(ctx,datadir,node,
-				OWP_PATH_SEPARATOR_LEN+sizeof(OWPSID)*2
-				  + strlen(OWP_INCOMPLETE_EXT) + 1 )))
+	if (!(path = (char *)malloc(strlen(real_data_dir)
+				    + OWP_PATH_SEPARATOR_LEN
+				    + sizeof(OWPSID)*2
+				    + strlen(OWP_INCOMPLETE_EXT) + 1))) {
+		OWPError(ctx, OWPErrFATAL, errno, 
+			 "FATAL: opendatafile: malloc failed");
 		return NULL;
+
+	}
 
 	strcat(path,OWP_PATH_SEPARATOR);
 	strcat(path,sid_name);
@@ -368,7 +322,7 @@ OWPDefEndpointInit(
 		}
 		else{
 			OWPError(ctx,OWPErrFATAL,OWPErrUNSUPPORTED,
-					"EndpointInit:Unknown address family.");
+				       "EndpointInit:Unknown address family.");
 			goto error;
 		}
 
@@ -388,32 +342,19 @@ OWPDefEndpointInit(
 			goto error;
 
 		/*
-		 * Ensure datadir exists.
+		 * Ensure real_data_dir exists.
 		 */
-		if((mkdir(cdata->datadir,0755) != 0) && (errno != EEXIST)){
-			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"mkdir(%s):%M",
-							cdata->datadir);
+		if((mkdir(cdata->real_data_dir,0755) != 0) 
+		   && (errno != EEXIST)){
+			 OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"mkdir(%s):%M",
+				  cdata->datadir);
 			goto error;
 		}
 
 		/*
-		 * Open file for saving data.
-		 * 1  for the final '\0'
+		 * Ensure link_data_dir exists.
 		 */
-		ep->linkpath = malloc(strlen(cdata->datadir) +
-			OWP_PATH_SEPARATOR_LEN*2 +
-			sizeof(OWPSID)*2 + strlen(OWP_SESSIONS_DIR) 
-				      + strlen(OWP_INCOMPLETE_EXT) + 1);
-				      
-		if(!ep->linkpath){
-			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"malloc():%M");
-			goto error;
-		}
-		strcpy(ep->linkpath,cdata->datadir);
-		strcat(ep->linkpath,OWP_PATH_SEPARATOR);
-		strcat(ep->linkpath,OWP_SESSIONS_DIR);
-
-		if((mkdir(ep->linkpath,0755) != 0) && (errno != EEXIST)){
+		if((mkdir(cdata->link_data_dir,0755) != 0)&&(errno != EEXIST)){
 			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
 				"Unable to mkdir(%s):%M",ep->linkpath);
 			goto error;
@@ -422,13 +363,24 @@ OWPDefEndpointInit(
 		/*
 		 * Now complete the filename for the linkpath.
 		 */
+		if (!(ep->linkpath 
+		      = (char *)malloc(strlen(cdata->link_data_dir)
+				       + OWP_PATH_SEPARATOR_LEN
+				       + sizeof(OWPSID)*2
+				       + strlen(OWP_INCOMPLETE_EXT) + 1))) {
+			OWPError(ctx, OWPErrFATAL, errno,
+				 "FATAL: OWPDefEndpointInit: malloc failed");
+			goto error;
+		}
+
+		strcpy(ep->linkpath, cdata->link_data_dir);
 		strcat(ep->linkpath,OWP_PATH_SEPARATOR);
 		OWPHexEncode(sid_name,sid,sizeof(OWPSID));
 		strcat(ep->linkpath,sid_name);
 		strcat(ep->linkpath, OWP_INCOMPLETE_EXT);
 
-		ep->datafile = opendatafile(ctx,cdata->datadir,sid_name,
-				cdata->node,&ep->filepath);
+		ep->datafile = opendatafile(ctx,cdata->real_data_dir, sid_name,
+					    &ep->filepath);
 		if(!ep->datafile){
 			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
 				"Unable to open session file:%M");
@@ -552,7 +504,7 @@ sig_nothing(
 			break;
 		default:
 			OWPError(NULL,OWPErrFATAL,OWPErrUNKNOWN,
-					"sig_nothing:Invalid signal(%d)",signo);
+				       "sig_nothing:Invalid signal(%d)",signo);
 			exit(OWP_CNTRL_FAILURE);
 	}
 	return;
@@ -776,7 +728,7 @@ run_sender(
 		 */
 		if(ep->mode == OWP_MODE_AUTHENTICATED)
 			rijndaelEncrypt(ep->aeskey->rk,ep->aeskey->Nr,
-						&clr_buffer[0],&ep->payload[0]);
+					       &clr_buffer[0],&ep->payload[0]);
 
 AGAIN:
 		if(owp_int)
@@ -833,7 +785,7 @@ AGAIN:
 
 				/* but do note it as INFO for debugging */
 				OWPError(ep->ctx,OWPErrINFO,OWPErrUNKNOWN,
-						"send(%d,#%d):%M",ep->sockfd,i);
+					       "send(%d,#%d):%M",ep->sockfd,i);
 			}
 
 			i++;
@@ -947,7 +899,7 @@ run_receiver(
 		}
 
 		if(recvfrom(ep->sockfd,ep->payload,ep->len_payload,0,
-					NULL,NULL) != (ssize_t)ep->len_payload){
+				      NULL, NULL) != (ssize_t)ep->len_payload){
 			if(errno == EINTR)
 				continue;
 			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
@@ -1012,7 +964,7 @@ run_receiver(
 			/*
 			 * TODO:
 			 * If we want to short-cut the recvier to try and
-			 * detect a completed session before last+lossThreshold:
+			 * detect a completed session before last+lossThresh.
 			 * We would need to try and detect the "completion"
 			 * here - and would probably have to update some kind
 			 * of data structure if it is not complete...
@@ -1239,11 +1191,12 @@ OWPDefEndpointInitHook(
 		exit(OWP_CNTRL_FAILURE);
 	}
 
-	if(!OWPCvtTimestamp2Timespec(&ep->start,&ep->test_spec.any.start_time)){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"TStamp2TSpec conversion?");
-		exit(OWP_CNTRL_FAILURE);
-	}
+	if(!OWPCvtTimestamp2Timespec(&ep->start,&ep->test_spec.any.start_time))
+		{
+			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+				 "TStamp2TSpec conversion?");
+			exit(OWP_CNTRL_FAILURE);
+		}
 
 	/*
 	 * compute all relative offsets for sending/receiving packets.
@@ -1373,7 +1326,7 @@ AGAIN:
 			err = OWPErrWARNING;
 		}
 		else if(p > 0)
-			ep->acceptval = (OWPAcceptType)WEXITSTATUS(childstatus);
+		       ep->acceptval = (OWPAcceptType)WEXITSTATUS(childstatus);
 	}
 
 	*aval = ep->acceptval;
