@@ -168,3 +168,4 @@ limit sand with parent=box,\
 
 assign default sand
 assign net ::/127 root
+assign net 127.0.0.1/32 root

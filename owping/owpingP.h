@@ -33,6 +33,7 @@ typedef	struct {
 		I2Boolean       records;          /* -v */
 		I2Boolean       full;             /* -V */
 		I2Boolean	quiet;            /* -Q */
+		I2Boolean	raw;		/* -R */
 
 		I2Boolean	to;               /* -t */
 		I2Boolean	from;             /* -f */

@@ -99,11 +99,12 @@ static void
 print_output_args()
 {
 	fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n",
-		"              [Output Args]",
-		"   -h             print this message and exit",
-		"   -Q             run the test and exit without reporting statistics",
-		"   [-v | -V]      print out individual delays, or full timestamps",
-		"   -a alpha       report an additional percentile level for the delays"
+"              [Output Args]",
+"   -h             print this message and exit",
+"   -Q             run the test and exit without reporting statistics",
+"   -R             print RAW data: \"SEQNO STIME SS SERR RTIME RS RERR\\n\"",
+"   [-v|-V]        print out individual delays, or full timestamps",
+"   -a alpha       report an additional percentile level for the delays"
 		);
 }
 
@@ -208,7 +209,7 @@ typedef struct fetch_state {
         u_int32_t        r;                  /* Ring pointer for next write. */
         u_int32_t        l;                  /* Number of seq numbers read.  */
 
-} fetch_state, *fetch_state_ptr;
+} fetch_state;
 
 #define OWP_CMP(a,b) ((a) < (b))? -1 : (((a) == (b))? 0 : 1)
 
@@ -234,7 +235,7 @@ owp_seqno_cmp(
 */
 int
 look_for_spot(
-	fetch_state_ptr	state,
+	fetch_state	*state,
 	OWPDataRec	*rec
 	)
 {
@@ -256,7 +257,7 @@ look_for_spot(
 */
 void
 owp_record_out(
-	fetch_state_ptr	state,
+	fetch_state	*state,
 	OWPDataRec	*rec
 	)
 {
@@ -351,7 +352,7 @@ owp_bucket(double delay)
 
 void
 owp_update_stats(
-	fetch_state_ptr	state,
+	fetch_state	*state,
 	OWPDataRec	*rec
 	)
 {
@@ -406,7 +407,7 @@ owp_update_stats(
 ** with a fuzz factor due to use of buckets.
 */
 double
-owp_get_percentile(fetch_state_ptr state, double alpha)
+owp_get_percentile(fetch_state *state, double alpha)
 {
 	int i;
 	double sum = 0;
@@ -439,7 +440,7 @@ do_single_record(
 	) 
 {
 	int i;
-	fetch_state_ptr state = (fetch_state_ptr)calldata;
+	fetch_state *state = (fetch_state*)calldata;
 	u_int32_t j;
 
 	assert(state);
@@ -517,7 +518,7 @@ do_single_record(
 ** Print out summary results, ping-like style. sent + dup == lost +recv.
 */
 int
-owp_do_summary(fetch_state_ptr state)
+owp_do_summary(fetch_state *state)
 {
 	double min = ((double)(state->tmin)) * THOUSAND;    /* msec */
 	u_int32_t sent = state->max_seqno + 1;
@@ -579,6 +580,35 @@ owp_do_summary(fetch_state_ptr state)
 }
 
 /*
+ * RAW ascii format is:
+ * "SEQ STIME SS SERR RTIME RS RERR\n"
+ * name		desc			type
+ * SEQ		sequence number		unsigned long
+ * STIME	sendtime		owptimestamp (%020llu)
+ * RTIME	recvtime		owptimestamp (%020llu)
+ * SS		send synchronized	boolean unsigned
+ * RS		recv synchronized	boolean unsigned
+ * SERR		send err estimate	float (%g)
+ * RERR		recv err estimate	float (%g)
+ */
+#define RAWFMT "%lu %020llu %u %g %020llu %u %g\n"
+static int
+printraw(
+	OWPDataRec	*rec,
+	void		*udata
+	)
+{
+	FILE		*out = (FILE*)udata;
+
+	fprintf(out,RAWFMT,rec->seq_no,
+			rec->send.owptime,rec->send.sync,
+				OWPGetTimeStampError(&rec->send),
+			rec->recv.owptime,rec->recv.sync,
+				OWPGetTimeStampError(&rec->recv));
+	return 0;
+}
+
+/*
 ** Master output function - reads the records from the disk
 ** and prints them to <out> in a style specified by <type>.
 ** Its value is interpreted as follows:
@@ -590,8 +620,8 @@ owp_do_summary(fetch_state_ptr state)
 int
 do_records_all(
 		OWPContext	ctx,
+		FILE		*output,
 		FILE		*fp,
-		fetch_state_ptr	state,
 		char		*from,
 		char		*to
 		)
@@ -600,53 +630,99 @@ do_records_all(
 	u_int32_t		num_rec;
 	OWPSessionHeaderRec	hdr;
 	off_t			hdr_len;
-
-	/*
-	  Initialize fields of state to keep track of.
-	*/
-	state->cur_win_size = 0;
-	state->tmin = 9999.999;
-	state->tmax = 0.0;
-	state->num_received = state->dup_packets = state->max_seqno = 0;
-
-	state->order_disrupted = 0;
-
-	state->from = from;
-	state->to = to;
-	state->count_out = 0;
-
-	state->errest = 0.0;
-	state->sync = 1;
-
-	/* N-reodering fields/ */
-	state->r = state->l = 0;
-	for (i = 0; i < OWP_MAX_N; i++) 
-		state->m[i] = 0;
-
-	num_buckets = OWP_NUM_LOW + OWP_NUM_MID + OWP_NUM_HIGH;
-
-	state->buckets 
-		= (u_int32_t *)malloc(num_buckets*sizeof(*(state->buckets)));
-	if (!state->buckets) {
-		I2ErrLog(eh, "FATAL: main: malloc(%d) failed: %M",num_buckets);
-		exit(1);
-	}
-	for (i = 0; i <= OWP_MAX_BUCKET; i++)
-		state->buckets[i] = 0;
+	fetch_state		state;
+	char			frombuf[NI_MAXHOST+1];
+	char			tobuf[NI_MAXHOST+1];
 
 	if(!(num_rec = OWPReadDataHeader(ctx,fp,&hdr_len,&hdr))){
 		I2ErrLog(eh, "OWPReadDataHeader:Empty file?");
 		return -1;
 	}
+
+	if(ping_ctx.opt.raw){
+		if(OWPParseRecords(ctx,fp,num_rec,hdr.version,printraw,output)
+							< OWPErrWARNING){
+			I2ErrLog(eh,"OWPParseRecords(): %M");
+			return -1;
+		}
+		return 0;
+	}
+
+	memset(&state,0,sizeof(state));
+	/*
+	 * Get pretty names...
+	 */
+	if(from){
+		state.from = from;
+	}
+	else{
+		if(!hdr.header || getnameinfo(
+					(struct sockaddr*)&hdr.addr_sender,
+					hdr.addr_len,
+					frombuf,sizeof(frombuf),
+					NULL,0,0)){
+			strcpy(frombuf,"***");
+		}
+
+		state.from = frombuf;
+	}
+
+	if(to){
+		state.to = to;
+	}
+	else{
+		if(!hdr.header || getnameinfo(
+					(struct sockaddr*)&hdr.addr_receiver,
+					hdr.addr_len,
+					tobuf,sizeof(tobuf),
+					NULL,0,0)){
+			strcpy(tobuf,"***");
+		}
+
+		state.to = tobuf;
+	}
+
+	/*
+	 * Initialize fields of state to keep track of.
+	 */
+	state.fp = output;
+	state.cur_win_size = 0;
+	state.tmin = 9999.999;
+	state.tmax = 0.0;
+	state.num_received = state.dup_packets = state.max_seqno = 0;
+
+	state.order_disrupted = 0;
+
+	state.count_out = 0;
+
+	state.errest = 0.0;
+	state.sync = 1;
+
+	/* N-reodering fields/ */
+	state.r = state.l = 0;
+	for (i = 0; i < OWP_MAX_N; i++) 
+		state.m[i] = 0;
+
+	num_buckets = OWP_NUM_LOW + OWP_NUM_MID + OWP_NUM_HIGH;
+
+	state.buckets 
+		= (u_int32_t *)malloc(num_buckets*sizeof(*(state.buckets)));
+	if (!state.buckets) {
+		I2ErrLog(eh, "FATAL: main: malloc(%d) failed: %M",num_buckets);
+		exit(1);
+	}
+	for (i = 0; i <= OWP_MAX_BUCKET; i++)
+		state.buckets[i] = 0;
+
 	
-	if(OWPParseRecords(ctx,fp,num_rec,hdr.version,do_single_record,state)
+	if(OWPParseRecords(ctx,fp,num_rec,hdr.version,do_single_record,&state)
 							< OWPErrWARNING){
 		I2ErrLog(eh,"OWPParseRecords():%M");
 		return -1;
 	}
 	
 	/* Stats are requested and failed to keep records sorted - redo */
-	if (state->order_disrupted) {
+	if (state.order_disrupted) {
 		I2ErrLog(eh, "Severe out-of-order condition observed.");
 		I2ErrLog(eh, 
 	     "Producing statistics for this case is currently unimplemented.");
@@ -654,11 +730,11 @@ do_records_all(
 	}
 
 	/* Incorporate remaining records left in the window. */
-	for (i = 0; i < state->cur_win_size; i++)
-		owp_update_stats(state, &state->window[i]);
+	for (i = 0; i < state.cur_win_size; i++)
+		owp_update_stats(&state, &state.window[i]);
 
-	owp_do_summary(state);
-	free(state->buckets);
+	owp_do_summary(&state);
+	free(state.buckets);
 	return 0;
 }
 
@@ -666,15 +742,11 @@ do_records_all(
 ** Fetch a session with the given <sid> from the remote server.
 ** It is assumed that control connection has been opened already.
 */
-void
+FILE *
 owp_fetch_sid(
 	char		*savefile,
 	OWPControl	cntrl,
-	OWPSID		sid,
-	fetch_state_ptr	statep,
-	char		*local,
-	char		*remote,
-	int		do_stats
+	OWPSID		sid
 	      )
 {
 	char		*path;
@@ -689,7 +761,7 @@ owp_fetch_sid(
 		path = savefile;
 		if( !(fp = fopen(path,"wb+"))){
 			I2ErrLog(eh,"owp_fetch_sid:fopen(%s):%M",path);
-			exit(1);
+			return NULL;
 		}
 	}
 	else{
@@ -719,7 +791,6 @@ owp_fetch_sid(
 		path = NULL;
 	}
 
-
 	/*
 	 * Ask for complete session 
 	 */
@@ -729,27 +800,17 @@ owp_fetch_sid(
 			(void)unlink(path);
 		if(rc < OWPErrWARNING){
 			I2ErrLog(eh,"owp_fetch_sid:OWPFetchSession error?");
-			exit(1);
+			return NULL;
 		}
 		/*
 		 * server denied request...
 		 */
 		I2ErrLog(eh,
 		"owp_fetch_sid:Server denied request for to session data");
-		return;
+		return NULL;
 	}
 
-	if (do_stats) {
-		if(do_records_all(OWPGetContext(cntrl),fp,statep,local,remote)
-									< 0){
-			I2ErrLog(eh, "FATAL: do_records_all(to session)");
-		}
-	}
-	
-	if(fclose(fp) != 0) {
-		I2ErrLog(eh,"fclose():%M");
-	}
-	return;
+	return fp;
 }
 
 /*
@@ -837,17 +898,17 @@ main(
 	OWPSID			tosid, fromsid;
 	OWPAcceptType		acceptval;
 	OWPErrSeverity		err;
-	fetch_state             state;
 	FILE			*fromfp=NULL;
-	OWPAddr                 local;
-	char                    local_str[NI_MAXHOST], *remote;
+	char			localbuf[NI_MAXHOST+1+NI_MAXSERV+1];
+	char			remotebuf[NI_MAXHOST+1+NI_MAXSERV+1];
+	char                    *local, *remote;
 
 	int			ch;
 	char                    *endptr = NULL;
 	char                    optstring[128];
 	static char		*conn_opts = "A:S:k:u:";
 	static char		*test_opts = "fF:tT:c:i:s:L:";
-	static char		*out_opts = "a:vVQ";
+	static char		*out_opts = "a:vVQR";
 	static char		*gen_opts = "h";
 #ifndef	NDEBUG
 	static char		*debug_opts = "w";
@@ -860,8 +921,6 @@ main(
 	ia.fp = stderr;
 
 	progname = (progname = strrchr(argv[0], '/')) ? ++progname : *argv;
-
-	state.fp = stdout;
 
 	/*
 	* Start an error logging session for reporing errors to the
@@ -884,7 +943,8 @@ main(
 
 	/* Set default options. */
 	ping_ctx.opt.records = ping_ctx.opt.full = ping_ctx.opt.childwait 
-            = ping_ctx.opt.from = ping_ctx.opt.to = ping_ctx.opt.quiet = False;
+            = ping_ctx.opt.from = ping_ctx.opt.to = ping_ctx.opt.quiet
+	    = ping_ctx.opt.raw = False;
 	ping_ctx.opt.save_from_test = ping_ctx.opt.save_to_test 
 		= ping_ctx.opt.identity = ping_ctx.opt.passwd 
 		= ping_ctx.opt.srcaddr = ping_ctx.opt.authmode = NULL;
@@ -1007,6 +1067,10 @@ main(
              case 'Q':
 		     ping_ctx.opt.quiet = True;
                      break;
+
+		case 'R':
+		     ping_ctx.opt.raw = True;
+		     break;
 
              case 'a':
 		     ping_ctx.opt.percentile =(float)(strtod(optarg, &endptr));
@@ -1202,7 +1266,6 @@ main(
 				FailSession(ping_ctx.cntrl);
 		}
 		
-		local = OWPAddrByLocalControl(ping_ctx.cntrl); /* sender */
 
 		if(OWPStartSessions(ping_ctx.cntrl) < OWPErrINFO)
 			FailSession(ping_ctx.cntrl);
@@ -1222,33 +1285,72 @@ main(
 			I2ErrLog(eh, "Test session(s) Questionable...");
 		}
 
-		if (ping_ctx.opt.to || ping_ctx.opt.from) {
-			char	*ptr;
-			size_t	local_strlen = sizeof(local_str);
-			OWPAddrNodeName(local,local_str,&local_strlen);
-			remote = strdup(ping_ctx.remote_test);
-			if (!remote) {
-			   I2ErrLog(eh, "Failed to copy remote host name: %M");
-			   remote = "";
-			} else {
-				if ((ptr = strrchr(remote, ':')))
-					*ptr = '\0';
+		/*
+		 * Get "local" and "remote" names for pretty printing
+		 * if we need them.
+		 */
+		local = remote = NULL;
+		if(!ping_ctx.opt.quiet && !ping_ctx.opt.raw){
+			OWPAddr	laddr;
+			size_t	lsize;
+
+			/*
+			 * First determine local address.
+			 */
+			if(ping_ctx.opt.srcaddr){
+				laddr = OWPAddrByNode(ctx,
+						ping_ctx.opt.srcaddr);
 			}
+			else{
+				laddr = OWPAddrByLocalControl(
+							ping_ctx.cntrl);
+			}
+			lsize = sizeof(localbuf);
+			OWPAddrNodeName(laddr,localbuf,&lsize);
+			if(lsize > 0){
+				local = localbuf;
+			}
+			OWPAddrFree(laddr);
+
+			/*
+			 * Now determine remote address.
+			 */
+			laddr = OWPAddrByNode(ctx,ping_ctx.remote_test);
+			lsize = sizeof(remotebuf);
+			OWPAddrNodeName(laddr,remotebuf,&lsize);
+			if(lsize > 0){
+				remote = remotebuf;
+			}
+			OWPAddrFree(laddr);
 		}
 		
-		if(ping_ctx.opt.to)
-			owp_fetch_sid(ping_ctx.opt.save_to_test,ping_ctx.cntrl,
-				      tosid, &state, local_str, remote, 1);
+		if(ping_ctx.opt.to && (ping_ctx.opt.save_to_test ||
+							 !ping_ctx.opt.quiet)){
+			FILE	*tofp;
 
-		if(ping_ctx.opt.from){
-			if(do_records_all(ctx,fromfp,&state,remote,local_str)
+			tofp = owp_fetch_sid(ping_ctx.opt.save_to_test,
+					ping_ctx.cntrl,tosid);
+			if(tofp && !ping_ctx.opt.quiet &&
+					(do_records_all(ctx,stdout,tofp,
+							local,remote) < 0)){
+				I2ErrLog(eh,
+					"do_records_all(\"to\" session): %M");
+			}
+			if(tofp && fclose(tofp)){
+				I2ErrLog(eh,"close(): %M");
+			}
+		}
+
+		if(fromfp && !ping_ctx.opt.quiet){
+			if(do_records_all(ctx,stdout,fromfp,remote,local)
 									< 0){
-				I2ErrLog(eh,"do_records_all(from session):%M");
-				exit(1);
+				I2ErrLog(eh,
+					"do_records_all(\"from\" session): %M");
 			}
-			if(fclose(fromfp) != 0){
-				I2ErrLog(eh,"close():%M");
-			}
+		}
+
+		if(fromfp && fclose(fromfp)){
+			I2ErrLog(eh,"close(): %M");
 		}
 		
 		exit(0);
@@ -1257,23 +1359,19 @@ main(
 
 	if (!strcmp(progname, "owstats")) {
 		FILE		*fp;
-		u_int32_t	num_rec;
-		off_t		hdr_len;
 
 		if(!(fp = fopen(argv[0],"rb"))){
 			I2ErrLog(eh,"fopen(%s):%M",argv[0]);
 			exit(1);
 		}
 
-		if (!(num_rec = OWPReadDataHeader(ctx,fp,&hdr_len,NULL))) {
+		if (do_records_all(ctx,stdout,fp,NULL,NULL) < 0){
 			I2ErrLog(eh,"do_records_all() failed.");
 			exit(1);
 		}
-		
-		if (do_records_all(ctx,fp,&state,NULL,NULL) < 0){
-			I2ErrLog(eh,"do_records_all() failed.");
-			exit(1);
-		}
+
+		fclose(fp);
+
 		exit(0);
 	}
 	
@@ -1310,12 +1408,29 @@ main(
 		}
 
 		for (i = 0; i < argc/2; i++) {
-			OWPSID sid;
-			OWPHexDecode(*argv++, sid, 16);
-			owp_fetch_sid(*argv++, ping_ctx.cntrl, sid, &state,
-				      NULL, NULL, 0);
+			OWPSID	sid;
+			FILE	*fp;
+			char	*sname;
+			char	*fname;
+
+			sname = *argv++;
+			fname = *argv++;
+			OWPHexDecode(sname, sid, 16);
+			if(!(fp = owp_fetch_sid(fname,ping_ctx.cntrl,sid))){
+				I2ErrLog(eh,"Unable to fetch sid(%s)",sname);
+			}
+			else if(!ping_ctx.opt.quiet &&
+					do_records_all(ctx,stdout,fp,NULL,NULL)
+									< 0){
+				I2ErrLog(eh,"do_records_all() failed.");
+			}
+			else if(fclose(fp)){
+				I2ErrLog(eh,"fclose(): %M");
+			}
 		}
-	}	
+
+		exit(0);
+	}
 
 	exit(0);
 }

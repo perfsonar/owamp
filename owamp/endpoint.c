@@ -1347,7 +1347,7 @@ again:
 
 		/*
 		 * TODO: v6 If owp_usr2 - get the last seq number from other
-		 * side. (Hmmm - how should I going to do this ipc? thinking...)
+		 * side. (Hmmm - how should I do this ipc? thinking...)
 		 *
 		 * if(owp_usr2){
 		 * 	fetch last_seq.

@@ -1411,8 +1411,8 @@ OWPDelay(
 	OWPTimeStamp	*recv_time
 	)
 {
-	return OWPNum64ToDouble(
-			OWPNum64Diff(send_time->owptime,recv_time->owptime));
+	return OWPNum64ToDouble(recv_time->owptime) -
+			OWPNum64ToDouble(send_time->owptime);
 }
 
 /*

@@ -56,17 +56,24 @@ foreach $node (@nodes){
 		print "$adj ==>> $node\n";
 		# init "warning" value to "ok"
 		foreach (@mtypes){
-			$naddr = $conf->get_val(NODE=>$node,
+			next if(!$conf->get_val(NODE=>$node,
 						TYPE=>$_,
-						ATTR=>'ADDR');
-			$aaddr = $conf->get_val(NODE=>$adj,
+						ATTR=>'MESH'));
+			next if(!$conf->get_val(NODE=>$adj,
 						TYPE=>$_,
-						ATTR=>'ADDR');
-			if(defined($naddr) && defined($aaddr)){
+						ATTR=>'MESH'));
+
+#			$naddr = $conf->get_val(NODE=>$node,
+#						TYPE=>$_,
+#						ATTR=>'ADDR');
+#			$aaddr = $conf->get_val(NODE=>$adj,
+#						TYPE=>$_,
+#						ATTR=>'ADDR');
+#			if(defined($naddr) && defined($aaddr)){
 				# set "warning" value to worst of current
 				# value, or value from here.
-				print "DataRoot/$_/$naddr/$aaddr/LossAndVarience\n"
-			}
+			print "DataRoot/$_/$node/$adj/LossAndVarience\n"
+#			}
 		}
 		# Color $adjnode -->> $node arrow with "warning" value.
 	}
@@ -77,21 +84,37 @@ foreach $node (@nodes){
 # all pairs for a given mesh-type.
 #
 print "\nGRID VALUE FETCHING EXAMPLE\n";
+MESH:
 foreach $mtype (@mtypes){
+	print "Mesh: $mtype\n";
 	foreach $node (@nodes){
+		next if(!$conf->get_val(NODE=>$node,
+					TYPE=>$mtype,
+					ATTR=>'MESH'));
+		print "$node:\t";
 		foreach $adj (@nodes){
-			next if($node eq $adj);	# don't test with self.
-			$naddr = $conf->get_val(NODE=>$node,
+			next if(!$conf->get_val(NODE=>$adj,
 						TYPE=>$mtype,
-						ATTR=>'ADDR');
-			$aaddr = $conf->get_val(NODE=>$adj,
-						TYPE=>$mtype,
-						ATTR=>'ADDR');
-			if(defined($naddr) && defined($aaddr)){
-				# fetch grid value/color from here.
-				print "DataRoot/$mtype/$naddr/$aaddr/LossAndVarience\n"
+						ATTR=>'MESH'));
+			if($node eq $adj){	# don't test with self.
+				print "     ";
 			}
+			else{
+				print "$adj ";
+			}
+
+#			$naddr = $conf->get_val(NODE=>$node,
+#						TYPE=>$mtype,
+#						ATTR=>'ADDR');
+#			$aaddr = $conf->get_val(NODE=>$adj,
+#						TYPE=>$mtype,
+#						ATTR=>'ADDR');
+#			if(defined($naddr) && defined($aaddr)){
+				# fetch grid value/color from here.
+#			print "DataRoot/$mtype/$node/$adj/LossAndVarience\n"
+#			}
 		}
+		print "\n";
 	}
 }
 
