@@ -264,7 +264,7 @@ CloseChldFD(
 	while((close(cstate->fd) < 0) && (errno == EINTR));
 	FD_CLR(cstate->fd, readfds);
 	if(I2hash_delete(fdtable,&cstate->fdkey) != 0)
-		OWPErrorLine(cstate->ctx,OWPLine,OWPErrWARNING,OWPErrUNKNOWN,
+		OWPError(cstate->ctx,OWPErrWARNING,OWPErrUNKNOWN,
 					"fd(%d) not in fdtable!?!",cstate->fd);
 	cstate->fd = -1;
 }
@@ -277,7 +277,7 @@ FreeChldState(
 {
 	CloseChldFD(cstate,readfds);
 	if(I2hash_delete(pidtable,&cstate->pidkey) != 0)
-		OWPErrorLine(cstate->ctx,OWPLine,OWPErrWARNING,OWPErrUNKNOWN,
+		OWPError(cstate->ctx,OWPErrWARNING,OWPErrUNKNOWN,
 				"pid(%d) not in pidtable!?!",cstate->pid);
 	/*
 	 * TODO:Do we need to keep track of the number of fd's in use?
@@ -307,7 +307,7 @@ ReapChildren(
 	while ( (child = waitpid(-1, &status, WNOHANG)) > 0){
 		key.dsize = child;
 		if(!(val = I2hash_fetch(pidtable,&key))){
-			OWPErrorLine(cstate->ctx,OWPLine,OWPErrWARNING,
+			OWPError(cstate->ctx,OWPErrWARNING,
 				OWPErrUNKNOWN,
 				"pid(%d) not in pidtable!?!",child);
 		}
@@ -358,7 +358,7 @@ CheckFD(
 		in = sizeof(cstate->authmode);
 		if((out = OWPReadn(cstate->fd,&cstate->authmode,in)) != in){
 			if(out != 0){
-				OWPErrorLine(cstate->ctx,OWPLine,OWPErrWARNING,
+				OWPError(cstate->ctx,OWPErrWARNING,
 					OWPErrUNKNOWN,
 					"read error:(%s)",strerror(errno));
 			}
@@ -438,7 +438,7 @@ ACCEPT:
 				return;
 				break;
 			default:
-				OWPErrorLine(ctx,OWPLine,OWPErrFATAL,errno,
+				OWPError(ctx,OWPErrFATAL,errno,
 						"accept():%s",strerror(errno));
 				return;
 				break;
@@ -446,7 +446,7 @@ ACCEPT:
 	}
 
 	if (pipe(new_pipe) < 0){
-		OWPErrorLine(ctx,OWPLine,OWPErrFATAL,errno,
+		OWPError(ctx,OWPErrFATAL,errno,
 						"pipe():%s",strerror(errno));
 		(void)close(connfd);
 		return;
@@ -456,7 +456,7 @@ ACCEPT:
 
 	/* fork error */
 	if (pid < 0){
-		OWPErrorLine(ctx,OWPLine,OWPErrFATAL,errno,
+		OWPError(ctx,OWPErrFATAL,errno,
 						"fork():%s",strerror(errno));
 		(void)close(new_pipe[0]);
 		(void)close(new_pipe[1]);
@@ -545,7 +545,7 @@ ACCEPT:
 		mode = OWPGetMode(cntrl);
 		n = sizeof(mode);
 		if(OWPWriten(new_pipe[1],&mode,n) < n){
-			OWPErrorLine(ctx,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
+			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
 					"Write on pipe failed:(%s)",
 					strerror(errno));
 			exit(-1);
@@ -698,7 +698,7 @@ main(int argc, char *argv[])
 	}
 
 	policy = PolicyInit(errhand, ip2class, class2limits, passwd, &out);
-	if (out == OWPErrFATAL){
+	if (out != OWPErrOK){
 		I2ErrLog(errhand, "PolicyInit failed. Exiting...");
 		exit(1);
 	};

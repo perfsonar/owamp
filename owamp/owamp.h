@@ -124,7 +124,7 @@ typedef enum {
 	OWPErrWARNING=4,
 	OWPErrINFO=6,
 	OWPErrDEBUG=7,
-	OWPErrOK=-1
+	OWPErrOK=8
 } OWPErrSeverity;
 
 typedef enum {
@@ -133,6 +133,36 @@ typedef enum {
 	OWPErrINVALID,
 	OWPErrUNSUPPORTED
 } OWPErrType;
+
+/*
+ * Notice that this macro expands to multiple statements so it is
+ * imperative that you enclose it's use in {} in single statement
+ * context's such as:
+ * 	if(test)
+ * 		OWPError(...);	NO,NO,NO,NO!
+ * Instead:
+ * 	if(test){
+ * 		OWPError(...);
+ * 	}
+ *
+ *
+ * (Sure would be nice if it were possible to to vararg macros...)
+ */
+#define OWPError	I2ErrLocation_(__FILE__,__DATE__,__LINE__);	\
+			OWPError_
+
+/*
+ * Don't call this directly - use the OWPError macro.
+ */
+extern void
+OWPError_(
+	OWPContext	ctx,
+	OWPErrSeverity	severity,
+	OWPErrType	etype,
+	const char	*fmt,
+	...
+	);
+
 
 /*
  * Valid values for "accept" - this will be added to for the purpose of
@@ -162,7 +192,6 @@ typedef struct OWPTimeStampRec{
 	u_int8_t		prec;
 } OWPTimeStamp;
 
-#define OWP_TS_REC_SIZE    20  /* size (in byts) of a timestamp record */
 
 typedef enum {
 	OWPTestUnspecified,	/* invalid value	*/
@@ -196,18 +225,6 @@ typedef union _OWPTestSpec{
 /*
  * The following types are used to initialize the library.
  */
-/*
- * This type is used to define the function that is called whenever an error
- * is encountered within the library.
- * This function should return 0 on success and non-0 on failure. If it returns
- * failure - the default library error function will be called.
- */
-typedef int (*OWPErrFunc)(
-	void		*err_data,
-	OWPErrSeverity	severity,
-	OWPErrType	etype,
-	const char	*errmsg
-);
 
 /*
  * This type is used to define the function that retrieves the shared
@@ -360,32 +377,6 @@ OWPContextInitialize(
 extern void
 OWPContextFree(
 	OWPContext	ctx
-);
-
-/*
- * Error reporting routines - in the end these will just call the
- * function that is registered for the context as the OWPErrFunc
- */
-extern void
-OWPError(
-	OWPContext	ctx,
-	OWPErrSeverity	severity,
-	OWPErrType	etype,
-	const char	*fmt,
-	...
-);
-
-#define OWPLine	__FILE__,__LINE__
-
-extern void
-OWPErrorLine(
-	OWPContext	ctx,
-	const char	*file,	/* fill with __FILE__ macro */
-	int		line,	/* fill with __LINE__ macro */
-	OWPErrSeverity	severity,
-	OWPErrType	etype,
-	const char	*fmt,
-	...
 );
 
 /*

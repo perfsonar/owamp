@@ -43,7 +43,7 @@ _OWPClientBind(
 	struct addrinfo	*ai;
 
 	if(local_addr->fd > -1){
-		OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 						"Invalid local_addr - ByFD");
 		*err_ret = OWPErrFATAL;
 		return False;
@@ -57,7 +57,7 @@ _OWPClientBind(
 		const char	*port=NULL;
 
 		if(!local_addr->node_set){
-			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,
+			OWPError(cntrl->ctx,OWPErrFATAL,
 				OWPErrUNKNOWN,"Invalid localaddr specified");
 			*err_ret = OWPErrFATAL;
 			return False;
@@ -72,7 +72,7 @@ _OWPClientBind(
 
 		if((getaddrinfo(local_addr->node,port,&hints,&airet)!=0) ||
 									!airet){
-			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,errno,
+			OWPError(cntrl->ctx,OWPErrFATAL,errno,
 					":getaddrinfo()");
 			*err_ret = OWPErrFATAL;
 			return False;
@@ -140,7 +140,7 @@ SetClientAddrInfo(
 	hints.ai_socktype = SOCK_STREAM;
 
 	if((getaddrinfo(node,port,&hints,&ai)!=0) || !ai){
-		OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,errno,
+		OWPError(cntrl->ctx,OWPErrFATAL,errno,
 					"getaddrinfo():%s",strerror(errno));
 		return False;
 	}
@@ -263,7 +263,7 @@ _OWPClientConnect(
 	else
 		tstr = "Server";
 
-	OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
+	OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 			"Unable to connect to %s",tstr);
 
 error:
@@ -469,7 +469,7 @@ SetEndpointAddrInfo(
 		 * Get an saddr to describe the fd...
 		 */
 		if(getsockname(addr->fd,(void*)&sbuff,&so_size) != 0){
-			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,
+			OWPError(cntrl->ctx,OWPErrFATAL,
 				errno,"getsockname():%s",
 				strerror(errno));
 			goto error;
@@ -480,14 +480,14 @@ SetEndpointAddrInfo(
 		 */
 		if(getsockopt(addr->fd,SOL_SOCKET,SO_TYPE,
 				(void*)&so_type,&so_typesize) != 0){
-			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,
+			OWPError(cntrl->ctx,OWPErrFATAL,
 				errno,"getsockopt():%s",
 				strerror(errno));
 			goto error;
 		}
 
 		if(! (saddr = malloc(so_size))){
-			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,
+			OWPError(cntrl->ctx,OWPErrFATAL,
 				errno,"malloc():%s",strerror(errno));
 			goto error;
 		}
@@ -497,7 +497,7 @@ SetEndpointAddrInfo(
 		 * create an addrinfo to describe this sockaddr
 		 */
 		if(! (ai = malloc(sizeof(struct addrinfo)))){
-			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,
+			OWPError(cntrl->ctx,OWPErrFATAL,
 				errno,"malloc():%s",strerror(errno));
 			goto error;
 		}
@@ -536,7 +536,7 @@ SetEndpointAddrInfo(
 		if(addr->port_set)
 			port = addr->port;
 		if((getaddrinfo(addr->node,port,&hints,&ai)!=0) || !ai){
-			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,
+			OWPError(cntrl->ctx,OWPErrFATAL,
 				errno,"getaddrinfo():%s",
 				strerror(errno));
 			goto error;
@@ -614,7 +614,7 @@ _OWPClientRequestTestReadResponse(
 				port_ret = &saddr4->sin_port;
 				break;
 			default:
-				OWPErrorLine(cntrl->ctx,OWPLine,
+				OWPError(cntrl->ctx,
 						OWPErrFATAL,OWPErrINVALID,
 						"Invalid address family");
 				return -1;
@@ -886,8 +886,7 @@ OWPStartTestSessions(
 	}
 
 	if((rc = _OWPWriteStartSessions(cntrl)) < 0)
-		return _OWPFailControlSession(cntrl,(OWPErrSeverity)rc,
-				OWPErrUNKNOWN,NULL);
+		return _OWPFailControlSession(cntrl,rc);
 
 	/*
 	 * Small optimization... - start local receivers while waiting for
@@ -898,26 +897,25 @@ OWPStartTestSessions(
 		if(tsession->recv_end_data){
 			if(!_OWPCallEndpointStart(tsession,
 						tsession->recv_end_data,&err))
-				return _OWPFailControlSession(cntrl,err,
-							OWPErrUNKNOWN,NULL);
+				return _OWPFailControlSession(cntrl,err);
 			err2 = MIN(err,err2);
 		}
 
 	if(((rc = _OWPReadControlAck(cntrl,&acceptval)) < 0) ||
 					(acceptval != OWP_CNTRL_ACCEPT))
-		return _OWPFailControlSession(cntrl,(OWPErrSeverity)rc,
-							OWPErrUNKNOWN,NULL);
+		return _OWPFailControlSession(cntrl,rc);
 
 	for(tsession = cntrl->tests;tsession;tsession = tsession->next)
 		if(tsession->send_end_data){
 			if(!_OWPCallEndpointStart(tsession,
 						tsession->send_end_data,&err))
-				return _OWPFailControlSession(cntrl,err,
-							OWPErrUNKNOWN,NULL);
+				return _OWPFailControlSession(cntrl,err);
 			err2 = MIN(err,err2);
 		}
 
 	return err2;
+error:
+
 }
 
 OWPErrSeverity
@@ -1034,7 +1032,7 @@ OWPFetchRecords(OWPControl cntrl,
 	   Compute the number of 16-byte blocks to read. 
 	   Will read 5 blocks at a time (= 4 records = 80 octets)
 	*/
-	nbytes = (u_int64_t)num_rec * OWP_TS_REC_SIZE;
+	nbytes = (u_int64_t)num_rec * _OWP_TS_REC_SIZE;
 	nchunks = nbytes / (5 * _OWP_RIJNDAEL_BLOCK_SIZE);
 	rem_bytes = nbytes % (5 * _OWP_RIJNDAEL_BLOCK_SIZE);
 	for (i = 0; i < nchunks; i++) { /* each chunk is 4 records */
@@ -1062,7 +1060,7 @@ OWPFetchRecords(OWPControl cntrl,
 	*/
 	if (rem_bytes)  
 		more_blocks = (rem_bytes / _OWP_RIJNDAEL_BLOCK_SIZE) + 1;
-	more_records = rem_bytes / OWP_TS_REC_SIZE; /* can be zero */
+	more_records = rem_bytes / _OWP_TS_REC_SIZE; /* can be zero */
 	more_blocks++;      /* throw in the final block of padding */
 	assert(more_blocks <= 6);
 
@@ -1085,7 +1083,7 @@ OWPFetchRecords(OWPControl cntrl,
 	
 	/* Make sure padding is really zero. */
 	padding_size = (_OWP_RIJNDAEL_BLOCK_SIZE * more_blocks)
-		- (OWP_TS_REC_SIZE * more_records);
+		- (_OWP_TS_REC_SIZE * more_records);
 
 	for (k = 0; k < padding_size; k++, cur_rec++)
 		if (*cur_rec) {

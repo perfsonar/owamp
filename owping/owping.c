@@ -68,6 +68,7 @@ fetch_state_init(fetch_state_ptr state, FILE *fp)
 	state->fp = fp;
 }
 
+#ifdef	NOT
 static int
 OWPingErrFunc(
 	void		*app_data,
@@ -91,6 +92,7 @@ OWPingErrFunc(
 
 	return 0;
 }
+#endif
 	
 /*
  * Library initialization structure;

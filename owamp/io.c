@@ -201,7 +201,7 @@ _OWPSendBlocks(
 
 	n = OWPWriten(cntrl->sockfd, buf, num_blocks*_OWP_RIJNDAEL_BLOCK_SIZE);
 	if (n < 0){
-		OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 				"OWPWriten failed:(%s)",strerror(errno));
 		return -1;
 	} 
@@ -216,7 +216,7 @@ _OWPReceiveBlocks(OWPControl cntrl, u_int8_t *buf, int num_blocks)
 
 	n = OWPReadn(cntrl->sockfd,buf,num_blocks*_OWP_RIJNDAEL_BLOCK_SIZE);
 	if (n < 0){
-		OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 				"OWPReadn failed:(%s)",strerror(errno));
 		return -1;
 	} 

@@ -22,94 +22,29 @@
 #include <stdarg.h>
 #include <owampP.h>
 
-static void
-_OWPError(
+void
+OWPError_(
 	OWPContext		ctx,
 	OWPErrSeverity		severity,
 	OWPErrType		etype,
 	const char		*fmt,
-	va_list			args
+	...
 )
 {
-	char			buff[_OWP_ERR_MAXSTRING];
+	va_list		ap;
 
-	vsnprintf(buff,sizeof(buff),fmt,args);
+	va_start(ap,fmt);
 	if(ctx && ctx->cfg.eh){
-		I2ErrLogT(ctx->cfg.eh,(int)severity,etype,buff);
+		I2ErrLogVT(ctx->cfg.eh,(int)severity,etype,fmt,ap);
 	}
 	else{
+		char		buff[_OWP_ERR_MAXSTRING];
+
+		vsnprintf(buff,sizeof(buff),fmt,ap);
 		fwrite(buff,sizeof(char),strlen(buff),stderr);
 		fwrite("\n",sizeof(char),1,stderr);
 	}
+	va_end(ap);
 
 	return;
-}
-
-void
-OWPError(
-	OWPContext	ctx,
-	OWPErrSeverity	severity,
-	OWPErrType	etype,
-	const char	*fmt,
-	...
-)
-{
-	va_list		args;
-
-	if(!fmt)
-		return;
-
-	va_start(args,fmt);
-	_OWPError(ctx,severity,etype,fmt,args);
-	va_end(args);
-
-	return;
-}
-
-void
-OWPErrorLine(
-	OWPContext		ctx,
-	const char		*file,
-	int			line,
-	OWPErrSeverity	severity,
-	OWPErrType		etype,
-	const char		*fmt,
-	...
-)
-{
-	va_list		args;
-	int		rc;
-	char		buff[_OWP_ERR_MAXSTRING];
-
-	rc = snprintf(buff,sizeof(buff),"%s(%d):",file,line);
-	if(fmt)
-		strncat(buff,fmt,sizeof(buff)-rc);
-
-	va_start(args,fmt);
-	_OWPError(ctx,severity,etype,buff,args);
-	va_end(args);
-
-	return;
-}
-
-OWPErrSeverity
-_OWPFailControlSession(
-	OWPControl	cntrl,
-	OWPErrSeverity	err,
-	OWPErrType	etype,
-	char		*fmt,
-	...
-		)
-{
-	va_list		args;
-
-	if(fmt){
-		va_start(args,fmt);
-		_OWPError(cntrl->ctx,err,etype,fmt,args);
-		va_end(args);
-	}
-
-	cntrl->state = _OWPStateInvalid;
-
-	return err;
 }

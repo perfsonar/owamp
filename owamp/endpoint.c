@@ -1251,7 +1251,7 @@ OWPDefEndpointInitHook(
 	}
 
 	/* should not get here. */
-	OWPErrorLine(ctx,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
+	OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
 			"Shouldn't get to this line of code... Hmmpf.");
 	exit(1);
 }

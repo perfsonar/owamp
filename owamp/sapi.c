@@ -45,7 +45,7 @@ AddrByWildcard(
 
 	if( (ai_err = getaddrinfo(NULL,OWP_CONTROL_SERVICE_NAME,&hints,&ai)!=0)
 								|| !ai){
-		OWPErrorLine(ctx,OWPLine,OWPErrFATAL,errno,"getaddrinfo():%s",
+		OWPError(ctx,OWPErrFATAL,errno,"getaddrinfo():%s",
 							strerror(errno));
 		return NULL;
 	}
@@ -99,7 +99,7 @@ SetServerAddrInfo(
 
 	if( (ai_err = getaddrinfo(addr->node,port,&hints,&ai)!=0) || !ai){
 		*err_ret = OWPErrFATAL;
-		OWPErrorLine(ctx,OWPLine,OWPErrFATAL,errno,"getaddrinfo():%s",
+		OWPError(ctx,OWPErrFATAL,errno,"getaddrinfo():%s",
 							strerror(errno));
 		return False;
 	}
@@ -137,14 +137,14 @@ AddrSetSAddr(
 
 	if(getsockopt(addr->fd,SOL_SOCKET,SO_TYPE,
 				(void*)&so_type,&so_typesize) != 0){
-		OWPErrorLine(addr->ctx,OWPLine,OWPErrFATAL,errno,
+		OWPError(addr->ctx,OWPErrFATAL,errno,
 				"getsockopt():%s",strerror(errno));
 		goto error;
 	}
 
 	if( !(saddr = malloc(fromaddrlen)) ||
 				!(ai = malloc(sizeof(struct addrinfo)))){
-		OWPErrorLine(addr->ctx,OWPLine,OWPErrFATAL,errno,"malloc():%s",
+		OWPError(addr->ctx,OWPErrFATAL,errno,"malloc():%s",
 				strerror(errno));
 		goto error;
 	}
@@ -203,7 +203,7 @@ AddrSetSockName(
 	}
 
 	if(getsockname(addr->fd,(void*)&sbuff,&so_size) != 0){
-		OWPErrorLine(addr->ctx,OWPLine,OWPErrFATAL,errno,
+		OWPError(addr->ctx,OWPErrFATAL,errno,
 				"getsockname():%s",strerror(errno));
 		goto error;
 	}
@@ -337,7 +337,7 @@ OWPServerSockCreate(
 	 * We have a bound socket - set the listen backlog.
 	 */
 	if(listen(addr->fd,OWP_LISTEN_BACKLOG) < 0){
-		OWPErrorLine(ctx,OWPLine,OWPErrFATAL,errno,"listen(%d,%d):%s",
+		OWPError(ctx,OWPErrFATAL,errno,"listen(%d,%d):%s",
 				addr->fd,OWP_LISTEN_BACKLOG,strerror(errno));
 		goto error;
 	}
@@ -477,7 +477,7 @@ OWPControlAccept(
 		}
 		
 		if (OWPDecryptToken(binKey,rawtoken,token) < 0){
-			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,
+			OWPError(cntrl->ctx,OWPErrFATAL,
 					OWPErrUNKNOWN,
 					"Encryption state problem?!?!");
 			(void)_OWPWriteServerOK(cntrl,
@@ -524,7 +524,7 @@ OWPControlAccept(
 			(void)_OWPWriteServerOK(cntrl,OWP_CNTRL_REJECT);
 		}
 		else{
-			OWPErrorLine(ctx,OWPLine,*err_ret,OWPErrUNKNOWN,
+			OWPError(ctx,*err_ret,OWPErrUNKNOWN,
 						"Policy function failed.");
 			(void)_OWPWriteServerOK(cntrl,
 						OWP_CNTRL_FAILURE);
@@ -573,14 +573,14 @@ AddrBySAddrRef(
 		return NULL;
 
 	if(!(ai = malloc(sizeof(struct addrinfo)))){
-		OWPErrorLine(addr->ctx,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
+		OWPError(addr->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 				"malloc():%s",strerror(errno));
 		(void)OWPAddrFree(addr);
 		return NULL;
 	}
 
 	if(!(addr->saddr = malloc(saddrlen))){
-		OWPErrorLine(addr->ctx,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
+		OWPError(addr->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 				"malloc():%s",strerror(errno));
 		(void)OWPAddrFree(addr);
 		(void)free(ai);
@@ -809,12 +809,10 @@ OWPProcessStartSessions(
 	OWPErrSeverity	err,err2=OWPErrOK;
 
 	if( (rc = _OWPReadStartSessions(cntrl)) < 0)
-		return _OWPFailControlSession(cntrl,(OWPErrSeverity)rc,
-							OWPErrUNKNOWN,NULL);
+		return _OWPFailControlSession(cntrl,rc);
 
 	if( (rc = _OWPWriteControlAck(cntrl,OWP_CNTRL_ACCEPT)) < 0)
-		return _OWPFailControlSession(cntrl,(OWPErrSeverity)rc,
-							OWPErrUNKNOWN,NULL);
+		return _OWPFailControlSession(cntrl,rc);
 
 	for(tsession = cntrl->tests;tsession;tsession = tsession->next){
 		if(tsession->recv_end_data){
@@ -822,8 +820,7 @@ OWPProcessStartSessions(
 						tsession->recv_end_data,&err)){
 				(void)_OWPWriteStopSessions(cntrl,
 							    OWP_CNTRL_FAILURE);
-				return _OWPFailControlSession(cntrl,err,
-							OWPErrUNKNOWN,NULL);
+				return _OWPFailControlSession(cntrl,err);
 			}
 			err2 = MIN(err,err2);
 		}
@@ -832,8 +829,7 @@ OWPProcessStartSessions(
 						tsession->send_end_data,&err)){
 				(void)_OWPWriteStopSessions(cntrl,
 							    OWP_CNTRL_FAILURE);
-				return _OWPFailControlSession(cntrl,err,
-							OWPErrUNKNOWN,NULL);
+				return _OWPFailControlSession(cntrl,err);
 			}
 			err2 = MIN(err,err2);
 		}
@@ -853,8 +849,7 @@ OWPProcessStopSessions(
 	OWPErrSeverity	err,err2=OWPErrOK;
 
 	if( (rc = _OWPReadStopSessions(cntrl,&acceptval)) < 0)
-		return _OWPFailControlSession(cntrl,(OWPErrSeverity)rc,
-							OWPErrUNKNOWN,NULL);
+		return _OWPFailControlSession(cntrl,rc);
 
 	for(tsession = cntrl->tests;tsession;tsession = tsession->next){
 		if(tsession->recv_end_data){
@@ -875,8 +870,7 @@ OWPProcessStopSessions(
 		acceptval = OWP_CNTRL_ACCEPT;
 
 	if( (rc = _OWPWriteStopSessions(cntrl,acceptval)) < 0)
-		return _OWPFailControlSession(cntrl,(OWPErrSeverity)rc,
-							OWPErrUNKNOWN,NULL);
+		return _OWPFailControlSession(cntrl,rc);
 
 
 	return err2;
@@ -892,20 +886,20 @@ OWPSendFullDataFile(OWPControl cntrl, int fd, u_int32_t blksize,off_t filesize)
 	u_int32_t    num_records, i;
 	off_t        bytes_left, saved_bytes;
 
-	if ((p = (u_int8_t *)malloc(blksize + (4*OWP_TS_REC_SIZE))) == NULL) {
+	if ((p = (u_int8_t *)malloc(blksize + (4*_OWP_TS_REC_SIZE))) == NULL) {
 		OWPError(cntrl->ctx, OWPErrFATAL, errno, 
 			 "OWPSendDataFile: malloc(%d) failed: ", 
 			 blksize);	
 		return OWPErrFATAL;
 	}
 
-	q = &p[(4*OWP_TS_REC_SIZE)];
+	q = &p[(4*_OWP_TS_REC_SIZE)];
 
 	/* 
 	   Compute the number of records. 
 	   '4' for Type-P descriptor at file start.
 	*/
-	num_records = (filesize - 4) / OWP_TS_REC_SIZE; 
+	num_records = (filesize - 4) / _OWP_TS_REC_SIZE; 
 	*(u_int32_t *)p = htonl(num_records);
 	if (OWPReadn(fd, &p[4], 4) == -1) {
 		OWPError(cntrl->ctx, OWPErrFATAL, errno, 
@@ -928,14 +922,14 @@ OWPSendFullDataFile(OWPControl cntrl, int fd, u_int32_t blksize,off_t filesize)
 			return OWPErrFATAL;
 		}
 		bytes_left -= blksize;
-		r = p + ((4*OWP_TS_REC_SIZE) - saved_bytes);
-		for (i = 0; i<(blksize + saved_bytes)/(4*OWP_TS_REC_SIZE);i++){
+		r = p + ((4*_OWP_TS_REC_SIZE) - saved_bytes);
+		for (i = 0; i<(blksize + saved_bytes)/(4*_OWP_TS_REC_SIZE);i++){
 			if (_OWPSendBlocks(cntrl, r, 5) != 5)
 				goto send_err;
-			r += (4*OWP_TS_REC_SIZE);
+			r += (4*_OWP_TS_REC_SIZE);
 		}
-		saved_bytes = (blksize + saved_bytes)%(4*OWP_TS_REC_SIZE);
-		memcpy(p + ((4*OWP_TS_REC_SIZE) - saved_bytes), r,saved_bytes);
+		saved_bytes = (blksize + saved_bytes)%(4*_OWP_TS_REC_SIZE);
+		memcpy(p + ((4*_OWP_TS_REC_SIZE) - saved_bytes), r,saved_bytes);
 	}
 
 	/* Read any remaining bytes from file. */
@@ -948,15 +942,15 @@ OWPSendFullDataFile(OWPControl cntrl, int fd, u_int32_t blksize,off_t filesize)
 			}
 	}
 
-	r = p + ((4*OWP_TS_REC_SIZE) - saved_bytes);
-	for (i = 0; i < (bytes_left + saved_bytes) / (4*OWP_TS_REC_SIZE); i++){
+	r = p + ((4*_OWP_TS_REC_SIZE) - saved_bytes);
+	for (i = 0; i < (bytes_left + saved_bytes) / (4*_OWP_TS_REC_SIZE); i++){
 		if (_OWPSendBlocks(cntrl, r, 5) != 5)
 			goto send_err;
-		r += (4*OWP_TS_REC_SIZE);
+		r += (4*_OWP_TS_REC_SIZE);
 	}
 
 	/* At most 79 bytes remain now */
-	bytes_left = (bytes_left + saved_bytes)%(4*OWP_TS_REC_SIZE);
+	bytes_left = (bytes_left + saved_bytes)%(4*_OWP_TS_REC_SIZE);
 	if (bytes_left) {
 		u_int32_t nblocks, padding_bytes;
 		nblocks       =  bytes_left / 16;
@@ -1017,7 +1011,7 @@ OWPProcessRecordsInRange(OWPControl      cntrl,
 {
 	u_int32_t    m = 0;      /* number of unprocessed bytes in buffer */
 	off_t        bytes_left = rem_bytes;     /* unread bytes from file */
-	u_int8_t     send_buf[4*OWP_TS_REC_SIZE];
+	u_int8_t     send_buf[4*_OWP_TS_REC_SIZE];
 	u_int8_t     *p, *q, *r;
 
 	u_int32_t    bytes_to_read, ret = 0;
@@ -1026,25 +1020,25 @@ OWPProcessRecordsInRange(OWPControl      cntrl,
 	int did_send = 0; /* flag */
 
 
-	if (!(p = (u_int8_t *)malloc(blksize + OWP_TS_REC_SIZE))) {
+	if (!(p = (u_int8_t *)malloc(blksize + _OWP_TS_REC_SIZE))) {
 		OWPError(cntrl->ctx, OWPErrFATAL, errno, 
 		     "OWPProcessRecordsInRange: malloc(%d) failed: ", blksize);
 		*err_ret = OWPErrFATAL;
 		return 0;
 	}
 
-	q = &p[OWP_TS_REC_SIZE];
+	q = &p[_OWP_TS_REC_SIZE];
 	r = q;
 
 	while (bytes_left > 0) { /* try read 4 records at a time */
 		int nblocks, padbytes;
 
 		for (k = 0; k < 4; ) {
-			if (m < OWP_TS_REC_SIZE) { /* refill */
+			if (m < _OWP_TS_REC_SIZE) { /* refill */
 				/* Save away remaining odd bytes if any */
 				if (m) {
-					memcpy(p +(OWP_TS_REC_SIZE - m), r, m);
-					r = p + (OWP_TS_REC_SIZE - m);
+					memcpy(p +(_OWP_TS_REC_SIZE - m), r, m);
+					r = p + (_OWP_TS_REC_SIZE - m);
 				}
 
 				bytes_to_read = MIN(bytes_left, blksize);
@@ -1056,13 +1050,13 @@ OWPProcessRecordsInRange(OWPControl      cntrl,
 				m +=  bytes_to_read;
 				bytes_left -= bytes_to_read;
 			}
-			if (m < OWP_TS_REC_SIZE)
+			if (m < _OWP_TS_REC_SIZE)
 				break;
-			m -= OWP_TS_REC_SIZE;
+			m -= _OWP_TS_REC_SIZE;
 			if (_OWPRecordIsInRange(r, begin, end)) {
-				memcpy(&send_buf[k*OWP_TS_REC_SIZE], r, 
-				       OWP_TS_REC_SIZE);
-				r += OWP_TS_REC_SIZE;
+				memcpy(&send_buf[k*_OWP_TS_REC_SIZE], r, 
+				       _OWP_TS_REC_SIZE);
+				r += _OWP_TS_REC_SIZE;
 				k++;
 			}
 		}
@@ -1132,8 +1126,7 @@ OWPProcessRetrieveSession(
 	OWPErrSeverity  err;
 
 	if( (rc = _OWPReadRetrieveSession(cntrl,&begin,&end,sid)) < 0)
-		return _OWPFailControlSession(cntrl,(OWPErrSeverity)rc,
-							OWPErrUNKNOWN,NULL);
+		return _OWPFailControlSession(cntrl,rc);
 
 	/*
 	  XXX - TODO: check for path length overflow
@@ -1181,8 +1174,7 @@ OWPProcessRetrieveSession(
 
 	if ((begin == 0) && (end == 0xFFFFFFFF)) /* complete session  */ {
 		if( (rc = _OWPWriteControlAck(cntrl, OWP_CNTRL_ACCEPT)) < 0)
-			return _OWPFailControlSession(cntrl,(OWPErrSeverity)rc,
-						      OWPErrUNKNOWN,NULL);
+			return _OWPFailControlSession(cntrl,rc);
 		return OWPSendFullDataFile(cntrl, fd, stat_buf.st_blksize,
 					   stat_buf.st_size);
 	} else {                        /* range of sequence numbers */
@@ -1221,8 +1213,7 @@ OWPProcessRetrieveSession(
 		   any errors down the road.
 		*/
 		if( (rc = _OWPWriteControlAck(cntrl, OWP_CNTRL_ACCEPT)) < 0) {
-			return _OWPFailControlSession(cntrl,(OWPErrSeverity)rc,
-						      OWPErrUNKNOWN,NULL);
+			return _OWPFailControlSession(cntrl,rc);
 		}
 		
 		if (_OWPSendBlocks(cntrl, buf, 1) != 1){ /* First 16 bytes */
@@ -1245,8 +1236,7 @@ OWPProcessRetrieveSession(
  fail:
 	if( (rc = _OWPWriteControlAck(cntrl,
 				      OWP_CNTRL_FAILURE)) < 0)
-		return _OWPFailControlSession(cntrl,(OWPErrSeverity)rc,
-					      OWPErrUNKNOWN,NULL);
+		return _OWPFailControlSession(cntrl,rc);
 	return OWPErrOK;
 
 }

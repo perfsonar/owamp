@@ -537,7 +537,7 @@ get_ip2class_line(OWPContext ctx, FILE *fp, policy_data *policy)
  bad_mask:
 	owp_buf_free(&buf);
 	free(netmask); free(class);
-OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN,
+	OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN,
 		 "FATAL: %s: line %lu: bad netmask.",
 		 filename, err_linenum);
 	return OWP_ERR;

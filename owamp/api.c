@@ -50,7 +50,7 @@ OWPContextInitialize(
 	OWPContext		ctx = malloc(sizeof(OWPContextRec));
 
 	if(!ctx){
-		OWPErrorLine(NULL,OWPLine,
+		OWPError(NULL,
 			OWPErrFATAL,ENOMEM,":malloc(%d)",
 			sizeof(OWPContextRec));
 		return NULL;
@@ -70,7 +70,7 @@ OWPContextInitialize(
 		ctx->cfg.eh = I2ErrOpen("libowamp",I2ErrLogImmediate,&ia,
 				NULL,NULL);
 		if(!ctx->cfg.eh){
-			OWPErrorLine(NULL,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
+			OWPError(NULL,OWPErrFATAL,OWPErrUNKNOWN,
 					"Cannot init error module");
 			free(ctx);
 			return NULL;
@@ -87,7 +87,7 @@ OWPContextInitialize(
 	if( !(ctx->rand_src = I2RandomSourceInit(ctx->cfg.eh,
 			       ctx->cfg.rand_type,
 			       ctx->cfg.rand_data))){
-		OWPErrorLine(ctx,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
 			     "Failed to initialize randomness sources");
 		OWPContextFree(ctx);
 		return NULL;
@@ -117,7 +117,7 @@ _OWPAddrAlloc(
 	OWPAddr	addr = malloc(sizeof(struct OWPAddrRec));
 
 	if(!addr){
-		OWPErrorLine(ctx,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
 			":malloc(%d):%s",sizeof(struct OWPAddrRec),
 			strerror(errno));
 		return NULL;
@@ -174,7 +174,7 @@ OWPAddrFree(
 
 	if((addr->fd >= 0) && !addr->fd_user){
 		if(close(addr->fd) < 0){
-			OWPErrorLine(addr->ctx,OWPLine,OWPErrWARNING,
+			OWPError(addr->ctx,OWPErrWARNING,
 					errno,":close(%d)",addr->fd);
 			err = OWPErrWARNING;
 		}
@@ -257,7 +257,7 @@ _OWPCopyAddrRec(
 	struct addrinfo	*dst = malloc(sizeof(struct addrinfo));
 
 	if(!dst){
-		OWPErrorLine(ctx,OWPLine,OWPErrFATAL,errno,
+		OWPError(ctx,OWPErrFATAL,errno,
 				":malloc(sizeof(struct addrinfo))");
 		return NULL;
 	}
@@ -267,7 +267,7 @@ _OWPCopyAddrRec(
 	if(src->ai_addr){
 		dst->ai_addr = malloc(src->ai_addrlen);
 		if(!dst->ai_addr){
-			OWPErrorLine(ctx,OWPLine,OWPErrFATAL,errno,
+			OWPError(ctx,OWPErrFATAL,errno,
 				"malloc(%u):%s",src->ai_addrlen,
 				strerror(errno));
 			free(dst);
@@ -283,14 +283,14 @@ _OWPCopyAddrRec(
 		int	len = strlen(src->ai_canonname);
 
 		if(len > MAXHOSTNAMELEN){
-			OWPErrorLine(ctx,OWPLine,OWPErrWARNING,
+			OWPError(ctx,OWPErrWARNING,
 					OWPErrUNKNOWN,
 					":Invalid canonname!");
 			dst->ai_canonname = NULL;
 		}else{
 			dst->ai_canonname = malloc(sizeof(char)*(len+1));
 			if(!dst->ai_canonname){
-				OWPErrorLine(ctx,OWPLine,OWPErrWARNING,
+				OWPError(ctx,OWPErrWARNING,
 					errno,":malloc(sizeof(%d)",len+1);
 				dst->ai_canonname = NULL;
 			}else
@@ -432,7 +432,7 @@ _OWPControlAlloc(
 	OWPControl	cntrl;
 	
 	if( !(cntrl = malloc(sizeof(OWPControlRec)))){
-		OWPErrorLine(ctx,OWPLine,OWPErrFATAL,errno,
+		OWPError(ctx,OWPErrFATAL,errno,
 				":malloc(%d)",sizeof(OWPControlRec));
 		*err_ret = OWPErrFATAL;
 		return NULL;
@@ -524,6 +524,16 @@ OWPGetAESkeyInstance(
 		default:
 			return NULL;
 	}
+}
+
+OWPErrSeverity
+_OWPFailControlSession(
+	OWPControl	cntrl,
+	int		level
+	)
+{
+	cntrl->state = _OWPStateInvalid;
+	return (OWPErrSeverity)level;
 }
 
 OWPErrSeverity

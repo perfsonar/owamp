@@ -56,6 +56,7 @@
 #define _OWP_CONTROL_ACK_BLK_LEN	2
 #define _OWP_MAX_MSG_BLK_LEN		_OWP_TEST_REQUEST_BLK_LEN
 #define _OWP_MAX_MSG	(_OWP_MAX_MSG_BLK_LEN*_OWP_RIJNDAEL_BLOCK_SIZE)
+#define _OWP_TS_REC_SIZE    20  /* size (in byts) of a timestamp record */
 
 /*
  * Control state constants.
@@ -520,10 +521,7 @@ OWPGetContext(OWPControl cntrl);
 extern OWPErrSeverity
 _OWPFailControlSession(
 	OWPControl	cntrl,
-	OWPErrSeverity	err,
-	OWPErrType	etype,
-	char		*fmt,
-	...
+	int		err
 	);
 
 /*

@@ -40,7 +40,7 @@ _OWPCallGetAESKey(
 	*err_ret = OWPErrOK;
 
 	if(!cntrl){
-		OWPErrorLine(NULL,OWPLine,OWPErrFATAL,OWPErrINVALID,
+		OWPError(NULL,OWPErrFATAL,OWPErrINVALID,
 					"_OWPCallGetAESKey:No Control Record!");
 		*err_ret = OWPErrFATAL;
 		return False;
@@ -76,7 +76,7 @@ _OWPCallCheckControlPolicy(
 	*err_ret = OWPErrOK;
 
 	if(!cntrl){
-		OWPErrorLine(NULL,OWPLine,OWPErrFATAL,OWPErrINVALID,
+		OWPError(NULL,OWPErrFATAL,OWPErrINVALID,
 			"_OWPCallCheckControlPolicy:No Control record!");
 		*err_ret = OWPErrFATAL;
 		return False;
@@ -113,7 +113,7 @@ _OWPCallCheckTestPolicy(
 	*err_ret = OWPErrOK;
 
 	if(!cntrl){
-		OWPErrorLine(NULL,OWPLine,OWPErrFATAL,OWPErrINVALID,
+		OWPError(NULL,OWPErrFATAL,OWPErrINVALID,
 				"_OWPCallCheckTestPolicy:No Control record!");
 		*err_ret = OWPErrFATAL;
 		return False;
@@ -147,7 +147,7 @@ _OWPCallEndpointInit(
 	OWPEndpointInitFunc	init_func = OWPDefEndpointInit;
 
 	if(!cntrl){
-		OWPErrorLine(NULL,OWPLine,OWPErrFATAL,OWPErrINVALID,
+		OWPError(NULL,OWPErrFATAL,OWPErrINVALID,
 				"_OWPCallCheckTestPolicy:No Control record!");
 		*err_ret = OWPErrFATAL;
 		return False;
@@ -177,7 +177,7 @@ _OWPCallEndpointInitHook(
 	OWPEndpointInitHookFunc	initH_func = OWPDefEndpointInitHook;
 
 	if(!cntrl){
-		OWPErrorLine(NULL,OWPLine,OWPErrFATAL,OWPErrINVALID,
+		OWPError(NULL,OWPErrFATAL,OWPErrINVALID,
 				"_OWPCallCheckTestPolicy:No Control record!");
 		*err_ret = OWPErrFATAL;
 		return False;
@@ -205,7 +205,7 @@ _OWPCallEndpointStart(
 	OWPEndpointStartFunc	func = OWPDefEndpointStart;
 
 	if(!tsession){
-		OWPErrorLine(NULL,OWPLine,OWPErrFATAL,OWPErrINVALID,
+		OWPError(NULL,OWPErrFATAL,OWPErrINVALID,
 				"_OWPCallEndpointStart:No TestSession record!");
 		*err_ret = OWPErrFATAL;
 		return False;
@@ -231,7 +231,7 @@ _OWPCallEndpointStop(
 	OWPEndpointStopFunc	func = OWPDefEndpointStop;
 
 	if(!tsession){
-		OWPErrorLine(NULL,OWPLine,OWPErrFATAL,OWPErrINVALID,
+		OWPError(NULL,OWPErrFATAL,OWPErrINVALID,
 				"_OWPCallEndpointStop:No TestSession record!");
 		*err_ret = OWPErrFATAL;
 		return False;
