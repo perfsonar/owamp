@@ -62,14 +62,11 @@ die "Usage: buckets2stats.pl <resolution> [mode]" unless (@ARGV >= 1);
 my $res = $ARGV[0]; # current resolution we are working with
 my $mode = $ARGV[1] || 1;
 
-warn "DEBUG: starting 0";
-
 $| = 1;
 
 my $conf = new OWP::Conf(CONFDIR => "$FindBin::Bin");
 # setup syslog
 
-if (0) {
 local(*MYLOG);
 my $slog = tie *MYLOG, 'OWP::Syslog',
 		facility	=> $conf->must_get_val(ATTR=>'SyslogFacility'),
@@ -78,7 +75,6 @@ my $slog = tie *MYLOG, 'OWP::Syslog',
 # make die/warn goto syslog, and also to STDERR.
 $slog->HandleDieWarn();
 undef $slog;	# Don't keep tie'd ref's around unless you need them...
-}
 
 my(@mtypes, @nodes, $val, $rec_addr, $send_addr);
 @mtypes = $conf->get_val(ATTR=>'MESHTYPES');
@@ -95,8 +91,6 @@ my $res_name = $conf->must_get_val(DIGESTRES=>$res, ATTR=>'COMMONRESNAME');
 my $period_name = $conf->must_get_val(DIGESTRES=>$res,
 				      ATTR=>'PLOT_PERIOD_NAME');
 my $vtimefile = $conf->must_get_val(ATTR=>'CentralPerDirValidFile');
-
-warn "DEBUG: starting";
 
 foreach my $mtype (@mtypes){
     foreach my $recv (@nodes){
