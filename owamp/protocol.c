@@ -342,10 +342,8 @@ OWPReadRequestType(
 
 	/* Read one block so we can peek at the message type */
 	if((n = _OWPReceiveBlocks(cntrl, (u_int8_t*)cntrl->msg, 1)) != 1){
-		OWPError(cntrl->ctx,OWPErrFATAL,errno,
-			"OWPReadRequestType:Unable to read from socket.");
 		cntrl->state = _OWPStateInvalid;
-		return -OWPErrFATAL;
+		return 0;
 	}
 
 	msgtype = *(u_int8_t*)cntrl->msg;

@@ -829,6 +829,11 @@ OWPStopSessions(
 	err2 = MIN(err,err2);
 
 	msgtype = OWPReadRequestType(cntrl);
+	if(msgtype == 0){
+		OWPError(cntrl->ctx,OWPErrFATAL,errno,
+				"OWPStopSessions:Control socket closed: %M");
+		return _OWPFailControlSession(cntrl,OWPErrFATAL);
+	}
 	if(msgtype != 3){	/* 3 is StopSessions message */
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
 				"Invalid protocol message received...");
@@ -1101,6 +1106,11 @@ AGAIN:
 	}
 
 	msgtype = OWPReadRequestType(cntrl);
+	if(msgtype == 0){
+		OWPError(cntrl->ctx,OWPErrFATAL,errno,
+				"OWPStopSessions:Control socket closed: %M");
+		return _OWPFailControlSession(cntrl,OWPErrFATAL);
+	}
 	if(msgtype != 3){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
 				"Invalid protocol message received...");
