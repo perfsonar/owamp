@@ -64,9 +64,8 @@ $Conf::REVISION = '$Id$';
 $Conf::VERSION='1.0';
 $Conf::CONFPATH='~';			# default dir for config files.
 $Conf::GLOBALCONFENV='OWPGLOBALCONF';
-$Conf::NODECONFENV='OWPNODECONF';
+$Conf::DEVCONFENV='OWPCONF';
 $Conf::GLOBALCONFNAME='owmesh.conf';
-$Conf::NODECONFNAME='ownode.conf';
 
 #
 # This hash is used to privide default values for "some" parameters.
@@ -113,8 +112,9 @@ my %ARRS = (
 
 # Opts that in effect create sub opt hashes.
 #
-# The keys here actually define new syntax for the config file. A very
-# ugly description of this would be:
+# The keys here actually define new syntax for the config file. The values
+# are an array of names that are valid names for the new key.
+# A very ugly description of this would be:
 # <"KEY"="any one of @{$HASHOPTS{"KEY"}}">
 # </"KEY">
 my %HASHOPTS = (
@@ -364,23 +364,15 @@ sub init {
 	}
 	$self->load_file($self->{'GLOBALCONF'},$nodename);
 
-# Remove this for now - lets see if we can use a single conf file.
-# 	#
-# 	# Host specific conf file
-# 	#
-#	if(defined($ENV{$Conf::NODECONFENV})){
-#		$file = $self->resolve_home($ENV{$Conf::NODECONFENV});
-#	}elsif(defined($confdir)){
-#		$file = $self->resolve_home($confdir.'/'.$Conf::NODECONFNAME);
-#	}else{
-#		$file = $self->resolve_home(
-#				$DEFS{CONFDIR}.'/'.$Conf::NODECONFNAME);
-#	}
-#	if(-e $file){
-#		$self->{'NODECONF'} = $file
-#	}
-#	$self->load_file($self->{'NODECONF'},$nodename)
-#		if defined($self->{'NODECONF'});
+	undef $file;
+	if(defined($ENV{$Conf::DEVCONFENV})){
+		$file = $self->resolve_home($ENV{$Conf::DEVCONFENV});
+	}
+	if(defined($file) and -e $file){
+		$self->{'NODECONF'} = $file
+	}
+	$self->load_file($self->{'NODECONF'},$nodename)
+		if defined($self->{'NODECONF'});
 
 #
 #	args passed in as initializers over-ride everything else.
@@ -435,10 +427,41 @@ sub get_val {
 		/^$/		and return $val;
 		/HASH/		and return %$val;
 		/ARRAY/		and return @$val;
-		/SCALAR/	and return $$val;
 	}
 	
 	die "Invalid hash value!";
 }
 
+sub dump_hash{
+	my($self,$href,$pre)	=@_;
+	my($key);
+	my($rtnval) = "";
+
+	KEY:
+	foreach $key (sort keys %$href){
+		my($val);
+		$val = "";
+		for (ref $href->{$key}){
+			/^$/	and $rtnval.= $pre.$key."=$href->{$key}\n",
+					next KEY;
+			/ARRAY/	and $rtnval.=
+				$pre.$key.join ' ',@{$href->{$key}}."\n",
+					next KEY;
+			/HASH/ and $rtnval.=$pre.$key."[\n".
+				$self->dump_hash($href->{$key},"$pre\t").
+					$pre."]\n",
+					next KEY;
+			die "Invalid hash value!";
+		}
+	}
+
+	return $rtnval;
+}
+
+
+sub dump{
+	my($self)	= @_;
+
+	return $self->dump_hash($self,"");
+}
 1;

@@ -37,33 +37,7 @@ my $conf = new OWP::Conf(
 
 my($key);
 
-foreach $key (sort keys %$conf){
-	my($ref,$val);
-	$ref = ref($conf->{$key});
-	if($ref eq ""){
-		$val = $conf->{$key};
-	}
-	elsif($ref eq "ARRAY"){
-		$val = "";
-		foreach (@{$conf->{$key}}){
-			$val .= $_." ";
-		}
-	}
-	elsif($ref eq "HASH"){
-		print "$key [\n";
-		foreach (sort keys %{$conf->{$key}}){
-			print "\t$_		${$conf->{$key}}{$_}\n";
-		}
-		print "	]\n";
-		next;
-	}
-	else{
-		print "$key	UNKNOWN type: $ref!?!\n";
-		next;
-	}
-		
-	print "$key		$val\n";
-}
+print $conf->dump;
 
 #
 # test get_val functionality...
