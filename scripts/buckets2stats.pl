@@ -340,7 +340,7 @@ sub index2pt {
 }
 
 # Given a number <alpha> in [0, 1], compute
-# min {x: F(x) >= alpha}
+# min {x: F(x) >= alpha}#
 # where F is the empirical distribution function (in our case,
 # with a fuzz factor due to use of buckets. Multiply the result
 # by 1000 to convert from sec to ms.
@@ -451,6 +451,9 @@ sub get_buck_ref {
 	next unless $count;
 	push @pairs, [$index, $count];
     }
+
+    # Lost packets get "infinite" delay.
+    push @pairs, [MAX_BUCKET, $lost] if $lost;
 
     return [$sent, $min, $lost, \@pairs];
 }
