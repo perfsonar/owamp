@@ -49,6 +49,14 @@
 #define	_OWP_ERR_MAXSTRING	1024
 #define	_OWP_DO_CIPHER		(OWP_MODE_AUTHENTICATED|OWP_MODE_ENCRYPTED)
 
+/* 
+** Lengths (in 16-byte blocks) of various Control messages. 
+*/
+#define OWP_TEST_REQUEST_BLK_LEN     6
+#define OWP_TEST_START_BLK_LEN       2
+#define OWP_TEST_STOP_BLK_LEN        2
+#define OWP_TEST_RETRIEVE_BLK_LEN    3
+
 /*
  * Data structures
  */
@@ -210,5 +218,12 @@ _OWPClientRequestModeReadResponse(
 	OWPByte		*token,
 	OWPErrSeverity	*err_ret
 );
+
+/*
+** sprotocol.c
+*/
+
+extern 
+_OWPServerOK(OWPControl cntrl, u_int8_t code);
 
 #endif	/* OWAMPP_H */
