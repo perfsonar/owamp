@@ -21,29 +21,51 @@
 **
 **	testing
 */
+#ifndef	OWAMPP_H
+#define	OWAMPP_H
+#include <owamp.h>
+
+#define	OWP_ERR_MAXSTRING	1024
 
 /*
  * Data structures
  */
-
-struct OWAMPAddrRec{
-	char			node[MAXHOSTNAMELEN];
-
-	struct addrinfo		*ai;
-
-	int			af;
-	struct in_addr		v4addr;
-	struct in6_addr		v6addr;
+typedef struct OWPContextRec OWPContextRec;
+struct OWPContextRec{
+	OWPInitializeConfigRec	cfg;
 };
 
-struct OWAMPControlConnectionRec{
+typedef struct OWPAddrRec OWPAddrRec;
+struct OWPAddrRec{
+	OWPContext	ctx;
+
+	OWPBool		node_set;
+	char		node[MAXHOSTNAMELEN+1];
+
+	OWPBool		ai_free;	/* free ai list directly...*/
+	struct addrinfo	*ai;
+
+	OWPBool		fd_user;
+	int		fd;
+};
+
+typedef struct OWPControlRec OWPControlRec;
+struct OWPControlRec{
+	OWPContext		ctx;
+
 	int			server;	/* connection represents server */
 	int			state;	/* current state of connection */
-	OWAMPSessionMode	mode;
+	OWPSessionMode		mode;
+
+	OWPAddr			addr;
+
+	struct OWPControlRec	*next;
 };
 
-struct OWAMPTestSessionRec{
+struct OWPTestSessionRec{
 	struct sockaddr			send_addr,
 	struct sockaddr			recv_addr,
-	struct OWAMPTestSessionRec	*next;
+	struct OWPTestSessionRec	*next;
 };
+
+#endif	/* OWAMPP_H */
