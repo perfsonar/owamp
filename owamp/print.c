@@ -1,4 +1,4 @@
-#include <owamp/owamp.h>
+#include <owamp/owampP.h>
 #include <I2util/table.h>
 #include "access.h"
 
@@ -6,14 +6,11 @@
 ** Print the value (address + offset) of a given netmask.
 */
 void
-owp_print_netmask(const I2datum *key, FILE* fp)
+owp_print_strnet(owp_access_netmask *ptr, FILE* fp)
 {
-	owp_access_netmask *ptr;
 	struct in_addr addr4;
 	struct in6_addr addr6;
 	char buf[INET6_ADDRSTRLEN];
-
-	ptr = (owp_access_netmask *)(key->dptr);
 
 	switch (ptr->af) {
 	case AF_INET:
@@ -31,10 +28,24 @@ owp_print_netmask(const I2datum *key, FILE* fp)
 		}
 		break;
 	default:
-		printf("DEBUG: warning: unusual type = %d...\n", ptr->af);
+		fprintf(stderr,
+			"DEBUG: warning: unusual type = %d...\n", ptr->af);
 		return;
 	}
-	fprintf(fp, "DEBUG: netmask  is %s/%d\n", buf, ptr->offset);
+
+	fprintf(fp, "DEBUG: netmask is %s/%d\n", buf, ptr->offset);
+}
+
+
+/*
+** Print the value (address + offset) of a given netmask.
+*/
+void
+owp_print_netmask(const I2datum *key, FILE* fp)
+{
+	owp_access_netmask *ptr;
+	ptr = (owp_access_netmask *)(key->dptr);
+	owp_print_strnet(ptr, fp);
 }
 
 /*
@@ -71,8 +82,64 @@ owp_print_class2node_binding(const struct I2binding *p, FILE* fp)
 			       "del_on_close", "del_on_fetch", "open_mode_ok"};
 
 	fprintf(fp, "Class %s has data = %s, parent = %s\n", 
-		p->key->dptr, node->data, parent);
+		(char *)(p->key->dptr), node->data, parent);
 	for (i = 0; i < 6; i++)
 		printf("%s = %llu\n", lim_names[i], node->limits.values[i]);
 }
 
+/*
+** Show the contents of a sockaddr_in struct.
+*/
+void
+owp_print_sockaddr(struct sockaddr *sock)
+{
+	char host[128];
+	unsigned short port;
+	struct sockaddr_in *addr;
+	struct sockaddr_in6 *addr6;
+
+	switch (sock->sa_family) {
+	case AF_INET:
+		addr = (struct sockaddr_in *)sock;
+		port = ntohs(addr->sin_port);
+	
+		if (inet_ntop(AF_INET, &(addr->sin_addr), host, 
+			      sizeof(host))==NULL) {
+			perror("inet_ntop");
+			return;
+		}
+		
+		break;
+	case AF_INET6:
+		addr6 = (struct sockaddr_in6 *)sock;
+		port = ntohs(addr6->sin6_port);
+		if (inet_ntop(AF_INET6, &(addr6->sin6_addr), host, 
+			      sizeof(host))==NULL) {
+			perror("inet_ntop");
+			return;
+		}
+
+		break;
+	default:
+		return;
+		/* UNREACHED */
+	}
+
+	fprintf(stderr, 
+		"DEBUG: socket address is %s, port = %u \n", host, port);
+}
+
+void
+owp_print_owpaddr(FILE *fp, OWPAddr addr)
+{
+	if (addr->node_set)
+		fprintf(fp, "Node = %s\n", addr->node);
+
+	if (addr->port_set)
+		fprintf(fp, "Port = %s\n", addr->port);
+
+	fprintf(fp, "addrlen = %d\n", addr->saddrlen);
+
+	if (addr->saddr)
+		owp_print_sockaddr(addr->saddr);
+}
