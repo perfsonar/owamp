@@ -46,7 +46,10 @@ static I2table		fdtable=NULL;
 static I2table		pidtable=NULL;
 
 static void
-usage(const char *progname, const char *msg)
+usage(
+	const char *progname,
+	const char *msg	__attribute__((unused))
+	)
 {
 	fprintf(stderr, "Usage: %s [options]\n", progname);
 	fprintf(stderr, "\nWhere \"options\" are:\n\n");
@@ -508,6 +511,7 @@ main(int argc, char *argv[])
 {
 	char			*progname;
 	I2LogImmediateAttr	ia;
+	I2ErrLogSyslogAttr	syslogattr;
 	OWPErrSeverity		out = OWPErrFATAL;
 	owp_policy_data		*policy;
 	char			ip2class[MAXPATHLEN],
@@ -548,15 +552,23 @@ main(int argc, char *argv[])
 	/*	rand_data		*/	NULL
 	};
 
-	ia.line_info = (I2NAME | I2MSG);
-	ia.fp = stderr;
 
 	/*
 	* Start an error loggin session for reporting errors to the
 	* standard error
 	*/
 	progname = (progname = strrchr(argv[0], '/')) ? ++progname : *argv;
+	syslogattr.ident = progname;
+	syslogattr.logopt = LOG_PID|LOG_PERROR;
+	syslogattr.facility = LOG_LOCAL5;
+	syslogattr.priority = LOG_ERR;
+	syslogattr.line_info = I2MSG;
+#ifdef	NOT
+	ia.fp = stderr;
+	a.line_info = I2MSG|I2NAME;
 	errhand = I2ErrOpen(progname, I2ErrLogImmediate, &ia, NULL, NULL);
+#endif
+	errhand = I2ErrOpen(progname, I2ErrLogSyslog, &syslogattr, NULL, NULL);
 	if(! errhand) {
 		fprintf(stderr, "%s : Couldn't init error module\n", progname);
 		exit(1);
