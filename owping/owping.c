@@ -173,6 +173,9 @@ static	I2OptDescRec	set_options[] = {
 	{"verbose",0,NULL,"blah, blah, blah..."},
 	{"help",0,NULL,"Print this message and exit"},
 
+	{"to",0,NULL,"Only test toward test address"},
+	{"from",0,NULL,"Only test from test address"},
+	{"srcaddr",1,NULL,"Local address for test"},
 	/*
 	 * policy config file options.
 	 */
@@ -190,8 +193,6 @@ static	I2OptDescRec	set_options[] = {
 	/*
 	 * test setup args
 	 */
-	{"sender", -2, NULL, "IP address/node name of sender [and server]"},
-	{"zreceiver",-2, NULL,"IP address/node name of receiver [and server]"},
 	{"padding", 1, "0", "min size of padding for test packets (octets)"},
 	{"rate", 1, "1.0", "rate of test packets (packets/sec)"},
 	{"percentile", 1, "50.0", "report given percentile of delays (0-100)"},
@@ -229,6 +230,18 @@ static  I2Option  get_options[] = {
 	"help", I2CvtToBoolean, &ping_ctx.opt.help,
 	sizeof(ping_ctx.opt.help)
 	},
+        {
+	"to", I2CvtToBoolean, &ping_ctx.opt.to,
+	sizeof(ping_ctx.opt.to)
+	},
+        {
+	"from", I2CvtToBoolean, &ping_ctx.opt.from,
+	sizeof(ping_ctx.opt.from)
+	},
+	{
+	"srcaddr", I2CvtToString, &ping_ctx.opt.srcaddr,
+	sizeof(ping_ctx.opt.srcaddr)
+	},
 	{
 	"confdir", I2CvtToString, &ping_ctx.opt.confdir,
 	sizeof(ping_ctx.opt.confdir)
@@ -249,6 +262,7 @@ static  I2Option  get_options[] = {
 	"tmout", I2CvtToInt, &ping_ctx.opt.tmout,
 	sizeof(ping_ctx.opt.tmout)
 	},
+#if	NOT
         {
 	"sender", I2CvtToString, &ping_ctx.opt.sender,
 	sizeof(ping_ctx.opt.sender)
@@ -257,6 +271,7 @@ static  I2Option  get_options[] = {
 	"zreceiver", I2CvtToString, &ping_ctx.opt.receiver,
 	sizeof(ping_ctx.opt.receiver)
 	},
+#endif
         {
 	"padding", I2CvtToUInt, &ping_ctx.opt.padding,
 	sizeof(ping_ctx.opt.padding)
@@ -308,7 +323,8 @@ static void	usage(int od, const char *progname, const char *msg)
 {
 	if(msg) fprintf(stderr, "%s: %s\n", progname, msg);
 
-	fprintf(stderr,"Usage: %s [options]\n", progname);
+	fprintf(stderr,"Usage: %s [options] testaddress [servaddr]\n",
+								progname);
 	fprintf(stderr, "\nWhere \"options\" are:\n\n");
 	I2PrintOptionHelp(od, stderr);
 
@@ -680,12 +696,27 @@ owp_do_summary(fetch_state_ptr state)
 **     (original ping style: max/avg/min/stdev) at the end.
 */
 int
-do_records_all(char *datafile, fetch_state_ptr state)
+do_records_all(
+		char		*datadir,
+		OWPSID		sid,
+		fetch_state_ptr	state
+		)
 {
-	int fd, i, num_buckets;
-	u_int32_t num_rec, typeP;
-	struct stat     stat_buf;
+	int		fd, i, num_buckets;
+	u_int32_t	num_rec, typeP;
+	struct stat	stat_buf;
+	char		datafile[PATH_MAX]; /* full path to data file */
+	char		sid_name[(sizeof(OWPSID)*2)+1];
 	
+	if(sid){
+		strcpy(datafile,datadir);
+		strcat(datafile,OWP_PATH_SEPARATOR);
+		OWPHexEncode(sid_name,sid,sizeof(OWPSID));
+		strcat(datafile, sid_name);
+	}
+	else
+		strcpy(datafile,datadir);
+
  open_again:
 	if ((fd = open(datafile, O_RDONLY)) < 0) {
 		if (errno == EINTR)
@@ -792,14 +823,12 @@ main(
 	int			rc;
 	OWPContext		ctx;
 	OWPTestSpecPoisson	test_spec;
-	OWPSID			sid_ret;
+	OWPSID			tosid,fromsid;
 	OWPTimeStamp		start_time_rec={0,0,0,0};
 	OWPPerConnDataRec	conndata;
 	OWPAcceptType		acceptval;
 	OWPErrSeverity		err;
 	fetch_state             state;
-	char datafile[PATH_MAX]; /* full path to data file */
-	char sid_name[(sizeof(OWPSID)*2)+1];
 
 	ia.line_info = (I2NAME | I2MSG);
 	ia.fp = stderr;
@@ -829,6 +858,17 @@ main(
 		exit(1);
 	}
 
+	if((argc < 2) || (argc > 3)){
+		usage(od, progname, NULL);
+		exit(1);
+	}
+
+	ping_ctx.remote_test = argv[1];
+	if(argc > 2)
+		ping_ctx.remote_serv = argv[2];
+	else
+		ping_ctx.remote_serv = ping_ctx.remote_test;
+
 	/*
 	* load the options into opt
 	*/
@@ -853,10 +893,10 @@ main(
 
 	if (ping_ctx.opt.readfrom) {
 		ping_ctx.opt.keepdata = 1;
-		if (do_records_all(ping_ctx.opt.readfrom, &state) < 0){
+		if (do_records_all(ping_ctx.opt.readfrom, NULL, &state) < 0){
 			I2ErrLog(eh, 
 			 "FATAL: do_records_all(%s): failure processing data",
-				 datafile);
+				 ping_ctx.opt.readfrom);
 			exit(1);
 		}
 		exit(0);
@@ -901,24 +941,6 @@ main(
 	 * This is in reality dependent upon the actual protocol used
 	 * (ipv4/ipv6) - it is also dependent upon the auth mode since
 	 * authentication implies 128bit block sizes.
-	 *
-	 * Here MAX_PADDING_SIZE is just used to thow out obviously bad
-	 * values - however, the socket will have Path MTU discovery
-	 * turned on - and we will not allow any datagrams to be sent
-	 * that are larger than this value. This will be our attempt
-	 * to ensure that we are measuring singleton's in the network, and
-	 * not multiple fragments.
-	 *
-	 * (For IPv4 this means setting IP_PMTUDISC_DO - then any "send"
-	 * with data greater than the current PMTU will cause EMSGSIZE.)
-	 *
-	 * For IPv6 this is a little more complicated because the
-	 * Advanced Socket API is not yet formalized - for the current
-	 * version see: draft-ietf-ipngwg-rfc2292bis - currently in draft 7.
-	 * (Section 11.3 specifies setting IPV6_RECVPATHMTU to get our
-	 * desired behavior. - however, most OS's don't have this option
-	 * yet. If this option is not available, I will use IPV6_USEMTU
-	 * and set it to 1280 - the minimum MTU required by IPv6 (RFC2460)
 	 */
 	if(ping_ctx.opt.padding > MAX_PADDING_SIZE)
 		ping_ctx.opt.padding = MAX_PADDING_SIZE;
@@ -956,69 +978,20 @@ main(
 							OWP_MODE_ENCRYPTED;
 	}
 
-	/*
-	 * Control connections should go to the "server" address for
-	 * each connection if it is different from the send/recv address.
-	 * If no "server" specified, assume same address as send/recv
-	 * address.
-	 */
-	if((!ping_ctx.opt.senderServ && ping_ctx.opt.sender) &&
-			( !(ping_ctx.opt.senderServ =
-			    			strdup(ping_ctx.opt.sender)))){
-		I2ErrLog(eh,"strdup():%M");
-		exit(1);
-	}
-
-	if((!ping_ctx.opt.receiverServ && ping_ctx.opt.receiver) &&
-			( !(ping_ctx.opt.receiverServ =
-			    		strdup(ping_ctx.opt.receiver)))){
-		I2ErrLog(eh,"strdup():%M");
-		exit(1);
-	}
-
+	if(!ping_ctx.opt.to && !ping_ctx.opt.from)
+		ping_ctx.opt.to = ping_ctx.opt.from = True;
 
 	/*
-	 * Determine "locality" of server addresses.
-	 */
-	ping_ctx.sender_local = is_local_node(ping_ctx.opt.senderServ,0);
-	ping_ctx.receiver_local = is_local_node(ping_ctx.opt.receiverServ,0);
-
-	/*
-	 * If both send/recv server addrs are not local, then they MUST be the
-	 * same - otherwise this is a request for a 3rd party transaction and
-	 * it can't work.
-	 * ("same" is fairly simply defined as the same string here - it is
-	 * possible that 2 different names would resolv to the same
-	 * address, but we ignore that complexity here.)
-	 */
-	if(!ping_ctx.sender_local && !ping_ctx.receiver_local &&
-		strcmp(ping_ctx.opt.senderServ,ping_ctx.opt.receiverServ)){
-		I2ErrLog(eh,"Unable to broker 3rd party transactions...");
-		exit(1);
-	}
-
-	/*
-	 * If both are local - then this process will handle receiver, and
-	 * contact a local owampd to be sender.
-	 * (probably not real useful... but non-fatal defaults are good.)
-	 */
-	if(ping_ctx.receiver_local){
-		ping_ctx.local_addr = ping_ctx.opt.receiverServ;
-		ping_ctx.remote_addr = ping_ctx.opt.senderServ;
-		ping_ctx.sender_local = False;
-	}else{
-		ping_ctx.local_addr = ping_ctx.opt.senderServ;
-		ping_ctx.remote_addr = ping_ctx.opt.receiverServ;
-	}
-
-	/*
-	 * Start test one second from now.
+	 * TODO: create a "start" option.
+	 *
+	 * For now, start test two seconds from now.
 	 */
 	if(!OWPGetTimeOfDay(&start_time_rec)){
 		I2ErrLogP(eh,errno,"Unable to get current time:%M");
 		exit(1);
 	}
-	start_time_rec.sec++;
+
+	start_time_rec.sec += 2;
 
 	test_spec.test_type = OWPTestPoisson;
 	test_spec.start_time = start_time_rec;
@@ -1061,8 +1034,8 @@ main(
 	 * Open connection to owampd.
 	 */
 	if( !(ping_ctx.cntrl = OWPControlOpen(ctx,
-			OWPAddrByNode(ctx,ping_ctx.local_addr),
-			OWPAddrByNode(ctx,ping_ctx.remote_addr),
+			OWPAddrByNode(ctx,ping_ctx.opt.srcaddr),
+			OWPAddrByNode(ctx,ping_ctx.remote_serv),
 			ping_ctx.auth_mode,
 			ping_ctx.opt.identity,
 			(void*)&conndata,
@@ -1075,50 +1048,53 @@ main(
 	/*
 	 * Now ready to make test requests...
 	 */
-	if(!OWPSessionRequest(ping_ctx.cntrl,
-			OWPAddrByNode(ctx,ping_ctx.opt.sender),
-			!ping_ctx.sender_local,
-			OWPAddrByNode(ctx,ping_ctx.opt.receiver),
-			!ping_ctx.receiver_local,
-			(OWPTestSpec*)&test_spec,
-			sid_ret,
-			&err_ret))
+	if(ping_ctx.opt.to &&
+		!OWPSessionRequest(ping_ctx.cntrl,
+			NULL,False,
+			OWPAddrByNode(ctx,ping_ctx.remote_test),True,
+			(OWPTestSpec*)&test_spec, tosid, &err_ret))
+		FailSession(ping_ctx.cntrl);
+	if(ping_ctx.opt.from &&
+		!OWPSessionRequest(ping_ctx.cntrl,
+			OWPAddrByNode(ctx,ping_ctx.remote_test),True,
+			NULL,False,
+			(OWPTestSpec*)&test_spec, fromsid, &err_ret))
 		FailSession(ping_ctx.cntrl);
 	
 	if(OWPStartSessions(ping_ctx.cntrl)< OWPErrINFO)
 		FailSession(ping_ctx.cntrl);
+
 	/*
 	 * TODO install sig handler for keyboard interupt - to send stop
-	 * sessions.
+	 * sessions. (Currently SIGINT causes everything to be killed and
+	 * lost - might be reasonable to keep it that way.)
 	 */
 	if(OWPStopSessionsWait(ping_ctx.cntrl,NULL,&acceptval,&err) != 0)
 		exit(1);
 
-	/* If local sender - fetch data to local disk first. */
-	if (!ping_ctx.receiver_local) {
-		if (acceptval == 1) {
-			I2ErrLog(eh, "Test session failed.");
-			exit(0);
-		}
-		
-		if (owp_fetch_to_local(conndata.cntrl, 
-				       conndata.real_data_dir, sid_ret) < 0) {
-			I2ErrLog(eh, "Failed to fetch records to local disk");
-			exit(1);
-		}
+	if (acceptval != 0) {
+		I2ErrLog(eh, "Test session(s) Questionable...");
 	}
 
-	/* Create the path. */
-	strcpy(datafile, conndata.real_data_dir);
-	strcat(datafile,OWP_PATH_SEPARATOR);
-	OWPHexEncode(sid_name, sid_ret, sizeof(OWPSID));
-	strcat(datafile, sid_name);
-
-	if (do_records_all(datafile, &state) < 0){
-		I2ErrLog(eh, 
-			 "FATAL: do_records_all(%s): failure processing data",
-			 datafile);
-		exit(1);
+	if(ping_ctx.opt.to){
+		if(owp_fetch_to_local(conndata.cntrl, 
+				       conndata.real_data_dir, tosid) < 0){
+			I2ErrLog(eh, "Failed to fetch remote records");
+			goto next_test;
+		}
+		fprintf(state.fp,"\n--------to session-----------\n");
+		if(do_records_all(conndata.real_data_dir, tosid, &state) < 0){
+			I2ErrLog(eh,"FATAL: do_records_all(to session)");
+		}
+		fprintf(state.fp,"--------end to session--------\n");
+	}
+next_test:
+	if(ping_ctx.opt.from){
+		fprintf(state.fp,"\n------from session--------\n");
+		if(do_records_all(conndata.real_data_dir, fromsid, &state) < 0){
+			I2ErrLog(eh,"FATAL: do_records_all(from session)");
+		}
+		fprintf(state.fp,"--------end from session--------\n");
 	}
 
 	exit(0);

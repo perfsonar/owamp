@@ -32,6 +32,10 @@ typedef	struct {
 		I2Boolean	verbose;
 		I2Boolean	help;
 
+		I2Boolean	to;
+		I2Boolean	from;
+
+		char		*srcaddr;
 		char		*confdir;
 		char		*passwd;
 
@@ -39,12 +43,6 @@ typedef	struct {
 		char		*identity;
 
 		int		tmout;
-
-		char		*sender;
-		char		*senderServ;
-
-		char		*receiver;
-		char		*receiverServ;
 
 		u_int32_t	padding;
 		float		rate;
@@ -69,12 +67,8 @@ typedef	struct {
 
 	} opt;
 
-	I2table			local_addr_table;
-	I2Boolean		sender_local;
-	I2Boolean		receiver_local;
-
-	char			*local_addr;
-	char			*remote_addr;
+	char			*remote_test;
+	char			*remote_serv;
 
 	u_int32_t		auth_mode;
 
