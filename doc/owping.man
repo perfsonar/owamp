@@ -95,7 +95,8 @@ True, unless the \fI\-t\fR or \fI\-T\fR have been specified explicitly.
 .br
 .I send_schedule
 indicates the scheduled delay between sent packets. This is done by
-specifying a list of \fIdelays\fR in a comma separated string. Each \fIdelay\fR
+specifying a list of \fIdelays\fR in a comma separated string (spaces are
+not allowed. Each \fIdelay\fR
 is indicated by a \fIvalue\fR and a \fItype\fR. There are two currently
 available types of \fIdelays\fR that can be specified:
 .RS
@@ -105,11 +106,13 @@ a real offset.
 .IP \fBe\fR
 [\fBe\fR]xponential. This is used to indicate an exponentially distributed
 pseudo-random quantity with a mean about the \fIvalue\fR given. (This
-is the default if no alpha qualifier is specified.)
+is the default if no alpha qualifier is specified. The intent of this is
+to negate periodicity effects.)
 .PP
 When the sending process starts, it looks at the first \fIdelay\fR in the
 list and waits that long to send the first packet. It takes the next
-\fIdelay\fR from the list to send the second packet. This process continues
+\fIdelay\fR from the list to determine how much longer to wait before sending
+the second packet. This process continues
 until there are no more \fIdelay\fR values specified in the list. At this
 point the sending process loops back to the beginning of the complete
 \fIsend_schedule\fR and this process begins again. This continues until
