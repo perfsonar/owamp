@@ -594,7 +594,7 @@ owp_read_class2limits2(OWPContext ctx,
 		}
 
 	}
-#ifndef VERBOSE
+#ifdef VERBOSE
 	printf("DEBUG: owp_read_class2limits2: printing classnode hash:\n");
 	I2hash_print(class2node_hash, stdout);
 	fprintf(stderr, "DEBUG: printing out the tree...\n");

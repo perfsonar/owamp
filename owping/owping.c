@@ -113,7 +113,10 @@ static	I2OptDescRec	set_options[] = {
 	/*
 	 * Recv specific args.
 	 */
-	{"lossThreshold", 1, "600", "elapsed time when recv declares packet lost (sec)"},
+	{"lossThreshold", 1, "120",
+			"elapsed time when recv declares packet lost (sec)"},
+	{"datadir", 1, OWP_DATADIR,
+				"Data directory to store test session data"},
 	{NULL,0,NULL,NULL}
 };
 
@@ -161,6 +164,10 @@ static  I2Option  get_options[] = {
         {
 	"numPackets", I2CvtToUInt, &ping_ctx.opt.numPackets,
 	sizeof(ping_ctx.opt.numPackets)
+	},
+        {
+	"datadir", I2CvtToString, &ping_ctx.opt.datadir,
+	sizeof(ping_ctx.opt.datadir)
 	},
         {
 	"lossThreshold", I2CvtToUInt, &ping_ctx.opt.lossThreshold,
@@ -410,9 +417,12 @@ main(
 	 * the pipefd portion of PerConnData is -1....
 	 */
 	conndata.pipefd = -1;
-	/*
-	conndata.session_data_path = ping_ctx.opts.data_path;
-	 */
+	conndata.datadir = ping_ctx.opt.datadir;
+/*
+	conndata.policy = policy;
+*/
+	conndata.lossThreshold = ping_ctx.opt.lossThreshold;
+	conndata.node = NULL;
 
 	/*
 	 * Open connection to owampd.

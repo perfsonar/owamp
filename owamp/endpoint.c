@@ -40,7 +40,7 @@ typedef struct _DefEndpointRec{
 	OWPTestSpec		test_spec;
 	OWPSessionMode		mode;
 	keyInstance		*aeskey;
-
+	u_int32_t		lossThreshold;
 
 	OWPSID			sid;
 	pid_t			child;
@@ -51,6 +51,10 @@ typedef struct _DefEndpointRec{
 	char			*fbuff;
 
 	struct timespec		start;
+	u_int8_t		*payload;
+	u_int8_t		*clr_buffer;
+
+	size_t			len_payload;
 	struct timespec		*relative_offsets;
 	u_int8_t		*received_packets;
 } _DefEndpointRec, *_DefEndpoint;
@@ -67,10 +71,47 @@ EndpointAlloc(
 		return NULL;
 	}
 
-	ep->child = 0;
+	memset(ep,0,sizeof(*ep));
 	ep->test_spec.test_type = OWPTestUnspecified;
+	ep->sockfd = -1;
 
 	return ep;
+}
+
+static void
+EndpointClear(
+	_DefEndpoint	ep
+	)
+{
+	if(!ep)
+		return;
+
+	if(ep->filepath){
+		free(ep->filepath);
+		ep->filepath = NULL;
+	}
+	if(ep->datafile){
+		fclose(ep->datafile);
+		ep->datafile = NULL;
+	}
+	if(ep->fbuff){
+		free(ep->fbuff);
+		ep->fbuff = NULL;
+	}
+	if(ep->sockfd > -1){
+		close(ep->sockfd);
+		ep->sockfd = -1;
+	}
+	if(ep->payload){
+		free(ep->payload);
+		ep->payload = NULL;
+	}
+	if(ep->clr_buffer){
+		free(ep->clr_buffer);
+		ep->clr_buffer = NULL;
+	}
+
+	return;
 }
 
 static void
@@ -81,12 +122,8 @@ EndpointFree(
 	if(!ep)
 		return;
 
-	if(ep->filepath)
-		free(ep->filepath);
-	if(ep->datafile)
-		fclose(ep->datafile);
-	if(ep->fbuff)
-		free(ep->fbuff);
+	EndpointClear(ep);
+
 	free(ep);
 
 	return;
@@ -151,7 +188,7 @@ make_data_dir(
 
 	}
 
-	if((mkdir(path,0x0755) != 0) && (errno != EEXIST)){
+	if((mkdir(path,0755) != 0) && (errno != EEXIST)){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
 			"Unable to mkdir(%s):%s",path,strerror(errno));
 		free(path);
@@ -181,7 +218,7 @@ opendatafile(
 	if(!(path = make_data_dir(ctx,datadir,node,33)))
 		return NULL;
 
-	hexencode(sid_name,sid,sizeof(sid));
+	hexencode(sid_name,sid,sizeof(OWPSID));
 	strcat(path,PATH_SEPARATOR);
 	strcat(path,sid_name);
 	strcat(path,".i");	/* in-progress	*/
@@ -237,6 +274,7 @@ OWPDefEndpointInit(
 	ep->test_spec = *test_spec;
 	ep->mode = OWPGetMode(cdata->cntrl);
 	ep->aeskey = OWPGetAESkeyInstance(cdata->cntrl,send);
+	ep->lossThreshold = cdata->lossThreshold;
 
 	tpsize = OWPTestPacketSize(localaddr->saddr->sa_family,
 				ep->mode,test_spec->any.packet_size_padding);
@@ -247,6 +285,25 @@ OWPDefEndpointInit(
 				"Packet size overflow - invalid padding");
 		goto error;
 	}
+
+	if(!(ep->relative_offsets = malloc(sizeof(struct timespec) *
+						ep->test_spec.any.npackets))){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"malloc():%s",
+				strerror(errno));
+		goto error;
+	}
+
+	ep->len_payload = OWPTestPayloadSize(ep->mode,
+				ep->test_spec.any.packet_size_padding);
+	ep->payload = malloc(ep->len_payload);
+	ep->clr_buffer = malloc(16);	/* one block - dynamic for alignment */
+
+	if(!ep->payload || !ep->clr_buffer){
+		OWPError(NULL,OWPErrFATAL,OWPErrUNKNOWN,"malloc():%s",
+				strerror(errno));
+		goto error;
+	}
+
 
 	/*
 	 * Create the socket.
@@ -347,6 +404,13 @@ OWPDefEndpointInit(
 			goto error;
 		}
 
+		*(u_int32_t *)&ep->payload[0] = htonl(ep->test_spec.any.typeP);
+		if(fwrite(ep->payload,sizeof(u_int32_t),1,ep->datafile) != 1){
+			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+				"fwrite(1,u_int32_t):%s",strerror(errno));
+			goto error;
+		}
+
 		/*
 		 * set file buffer such that ~ 1 second of data will fit
 		 * in buffer.
@@ -365,6 +429,11 @@ OWPDefEndpointInit(
 		
 		if(size)
 			setvbuf(ep->datafile,ep->fbuff,_IOFBF,size);
+
+		/*
+		 * TODO: Write dataheader to datafile.
+		 */
+
 		/*
 		 * receiver - need to set the recv buffer size large
 		 * enough for the packet, so we can get it in a single
@@ -429,6 +498,8 @@ error:
 static int owp_usr1;
 static int owp_usr2;
 static int owp_int;
+static int owp_alrm;
+
 
 static void
 sig_catch(
@@ -444,6 +515,9 @@ sig_catch(
 			break;
 		case SIGINT:
 			owp_int = 1;
+			break;
+		case SIGALRM:
+			owp_alrm = 1;
 			break;
 		default:
 			OWPError(NULL,OWPErrFATAL,OWPErrUNKNOWN,
@@ -529,14 +603,16 @@ GetTimespec(
 	else
 		*sync = 1;
 
-	*ts = ntv.time;
 	*esterr = (u_int32_t)ntv.esterror;
 	assert((long)*esterr == ntv.esterror);
 
 #ifdef	STA_NANO
+	*ts = ntv.time;
 	if(ntp_status & STA_NANO)
 		;
 	else
+#else
+	*(struct timeval*)ts = ntv.time;
 #endif
 		/*
 		 * convert usec to nsec if not STA_NANO
@@ -556,7 +632,7 @@ GetTimespec(
  *
  * 		TODO: Figure out how to report errors reasonably -
  * 		OWPError will only work with the current apps if they
- * 		are printing to stderr...
+ * 		are printing to stderr... (and perhaps not then.)
  *
  * In Args:	
  *
@@ -575,26 +651,14 @@ run_sender(
 	struct timespec	currtime;
 	struct timespec	nexttime;
 	u_int32_t	esterror;
+	u_int32_t	lasterror=0;
 	int		sync;
-	size_t		len_snd;
 	ssize_t		sent;
 	u_int32_t	*seq;
-	u_int8_t	*snd_buffer;
 	u_int8_t	*clr_buffer;
 	u_int8_t	*payload;
 	u_int32_t	*tstamp;
 	OWPTimeStamp	owptstamp;
-
-	len_snd = OWPTestPayloadSize(ep->mode,
-				ep->test_spec.any.packet_size_padding);
-	snd_buffer = malloc(len_snd);
-	clr_buffer = malloc(16);	/* one block for encryption */
-
-	if(!snd_buffer || !clr_buffer){
-		OWPError(NULL,OWPErrFATAL,OWPErrUNKNOWN,"malloc():%s",
-				strerror(errno));
-		exit(1);
-	}
 
 	/*
 	 * Initialize pointers to various positions in the packet buffer,
@@ -602,21 +666,21 @@ run_sender(
 	 */
 	switch(ep->mode){
 		case OWP_MODE_OPEN:
-			seq = (u_int32_t*)snd_buffer;
-			tstamp = (u_int32_t*)&snd_buffer[4];
-			payload = &snd_buffer[12];
+			seq = (u_int32_t*)ep->payload;
+			tstamp = (u_int32_t*)&ep->payload[4];
+			payload = &ep->payload[12];
 			break;
 		case OWP_MODE_AUTHENTICATED:
-			seq = (u_int32_t*)clr_buffer;
-			tstamp = (u_int32_t*)&snd_buffer[16];
-			payload = &snd_buffer[24];
-			memset(&clr_buffer[4],0,12);
+			seq = (u_int32_t*)ep->clr_buffer;
+			tstamp = (u_int32_t*)&ep->payload[16];
+			payload = &ep->payload[24];
+			memset(&ep->clr_buffer[4],0,12);
 			break;
 		case OWP_MODE_ENCRYPTED:
-			seq = (u_int32_t*)clr_buffer;
-			tstamp = (u_int32_t*)&clr_buffer[4];
-			payload = &snd_buffer[16];
-			memset(&clr_buffer[12],0,4);
+			seq = (u_int32_t*)ep->clr_buffer;
+			tstamp = (u_int32_t*)&ep->clr_buffer[4];
+			payload = &ep->payload[16];
+			memset(&ep->clr_buffer[12],0,4);
 			break;
 		default:
 			/*
@@ -658,7 +722,7 @@ run_sender(
 		 */
 		if(ep->mode == OWP_MODE_AUTHENTICATED)
 			rijndaelEncrypt(ep->aeskey->rk,ep->aeskey->Nr,
-						&clr_buffer[0],&snd_buffer[0]);
+						&clr_buffer[0],&ep->payload[0]);
 
 AGAIN:
 		if(owp_int)
@@ -676,7 +740,9 @@ AGAIN:
 			/* send-packet */
 
 			(void)OWPCvtTimespec2Timestamp(&owptstamp,&currtime,
-						       &esterror);
+						       &esterror,&lasterror);
+			lasterror = esterror;
+			owptstamp.sync = sync;
 			OWPEncodeTimeStamp(tstamp,&owptstamp);
 
 			/*
@@ -685,9 +751,10 @@ AGAIN:
 			 */
 			if(ep->mode == OWP_MODE_ENCRYPTED)
 				rijndaelEncrypt(ep->aeskey->rk,ep->aeskey->Nr,
-					&clr_buffer[0],&snd_buffer[0]);
+					&clr_buffer[0],&ep->payload[0]);
 
-			if( (sent = send(ep->sockfd,snd_buffer,len_snd,0)) < 0){
+			if( (sent = send(ep->sockfd,ep->payload,
+						ep->len_payload,0)) < 0){
 				if(errno == ENOBUFS)
 					goto AGAIN;
 				OWPError(NULL,OWPErrFATAL,OWPErrUNKNOWN,
@@ -714,6 +781,8 @@ AGAIN:
 		}
 
 	} while(i<ep->test_spec.any.npackets);
+
+	exit(0);
 }
 
 static void
@@ -721,9 +790,150 @@ run_receiver(
 		_DefEndpoint	ep
 		)
 {
-	if(!ep)
-		exit(1);
+	struct timespec	currtime;
+	struct timespec	lasttime;
+	struct timespec	expecttime;
+	u_int32_t	seq_num;
+	u_int32_t	*seq;
+	u_int32_t	*tstamp;
+	u_int32_t	esterror,lasterror=0;
+	int		sync;
+	size_t		lenpath;
+	char		*newpath;
+
+	/*
+	 * Initialize pointers to various positions in the packet buffer,
+	 * for data that changes for each packet. Also set zero padding.
+	 */
+	seq = (u_int32_t*)ep->payload;
+	switch(ep->mode){
+		case OWP_MODE_OPEN:
+		case OWP_MODE_ENCRYPTED:
+			tstamp = (u_int32_t*)&ep->payload[4];
+			break;
+		case OWP_MODE_AUTHENTICATED:
+			tstamp = (u_int32_t*)&ep->payload[16];
+			break;
+		default:
+			/*
+			 * things would have failed way earlier
+			 * but put default in to stop annoying
+			 * compiler warnings...
+			 */
+			exit(1);
+	}
+	lasttime = ep->relative_offsets[ep->test_spec.any.npackets-1];
+	lasttime.tv_sec += ep->lossThreshold;
+	lasttime.tv_sec++;
+
+	alarm(lasttime.tv_sec);
+
+	/*
+	 * TODO: setitimer/alarm for lasttime, w/sighandler to modify sigalrm.
+	 */
+
+	while(1){
+		if(owp_int){
+			goto error;
+		}
+		if(owp_alrm || owp_usr2){
+			break;
+		}
+
+		if(recv(ep->sockfd,ep->payload,ep->len_payload,0) !=
+						(ssize_t)ep->len_payload)
+			continue;
+
+		if(!GetTimespec(&currtime,&esterror,&sync)){
+			OWPError(NULL,OWPErrFATAL,OWPErrUNKNOWN,
+				"Problem retrieving time");
+			goto error;
+		}
+
+		if(ep->mode & _OWP_DO_CIPHER){
+			rijndaelDecrypt(ep->aeskey->rk,ep->aeskey->Nr,
+					&ep->payload[0],&ep->payload[0]);
+			/* TODO:validate zero bits? */
+		}
+
+		seq_num = ntohl(*seq);
+		if(seq_num >= ep->test_spec.any.npackets)
+			continue;
+
+		expecttime = ep->relative_offsets[seq_num];
+		timespecadd(&expecttime, &ep->start);
+		expecttime.tv_sec += ep->lossThreshold;
+
+		if(timespeccmp(&currtime,&expecttime,<)){
+			OWPTimeStamp	owptstamp;
+
+			/* write "sent" tstamp */
+			if(fwrite(tstamp,sizeof(u_int32_t),2,ep->datafile)
+									!= 2){
+				OWPError(NULL,OWPErrFATAL,OWPErrUNKNOWN,
+						"fwrite():%s",strerror(errno));
+				goto error;
+			}
+
+			/* encode "recv" tstamp */
+			(void)OWPCvtTimespec2Timestamp(&owptstamp,&currtime,
+						       &esterror,&lasterror);
+			lasterror = esterror;
+			owptstamp.sync = sync;
+			OWPEncodeTimeStamp((u_int32_t*)ep->clr_buffer,
+								&owptstamp);
+
+			/* write "recv" tstamp */
+			if(fwrite(ep->clr_buffer,sizeof(u_int32_t),2,
+						ep->datafile) != 2){
+				OWPError(NULL,OWPErrFATAL,OWPErrUNKNOWN,
+						"fwrite():%s",strerror(errno));
+				goto error;
+			}
+
+#ifdef	NOT
+			/*
+			 * If we want to short-cut the recvier - try and
+			 * detect a completed session before last+lossThreshold:
+			 * It would happen here.
+			 * set found-bit to determine "finished"
+			 * determine if session is complete
+			 */
+			if(seq_num == (ep->test_spec.any.npackets-1)){
+				if(IsTestDone)
+					break;
+			}
+#endif
+		}
+	}
+
+	/*
+	 * Move file from "SID.i" in-progress test to "SID".
+	 *
+	 * Don't worry about free'ing memory - we are exiting.
+	 */
+	fclose(ep->datafile);
+	ep->datafile = NULL;
+	lenpath = strlen(ep->filepath);
+	newpath = malloc(lenpath+1);
+	strcpy(newpath,ep->filepath);
+	newpath[lenpath-2] = '\0';	/* remove the ".i" from the end. */
+	if(rename(ep->filepath,newpath) != 0){
+		OWPError(NULL,OWPErrFATAL,OWPErrUNKNOWN,
+					"rename():%s",strerror(errno));
+		goto error;
+	}
 	exit(0);
+
+error:
+	/*
+	 * unlink file - error.
+	 */
+	if(ep->datafile)
+		fclose(ep->datafile);
+	if(ep->filepath)
+		unlink(ep->filepath);
+	exit(1);
 }
 
 /*
@@ -773,6 +983,7 @@ OWPDefEndpointInitHook(
 	owp_usr1 = 0;
 	owp_usr2 = 0;
 	owp_int = 0;
+	owp_alrm = 0;
 	act.sa_handler = sig_catch;
 	sigemptyset(&act.sa_mask);
 	act.sa_flags = 0;
@@ -781,15 +992,18 @@ OWPDefEndpointInitHook(
 	sigaddset(&sigs,SIGUSR1);
 	sigaddset(&sigs,SIGUSR2);
 	sigaddset(&sigs,SIGINT);
+	sigaddset(&sigs,SIGALRM);
 	
 	if(	(sigprocmask(SIG_BLOCK,&sigs,&osigs) != 0) ||
 					(sigaction(SIGUSR1,&act,NULL) != 0) ||
 					(sigaction(SIGUSR2,&act,NULL) != 0) ||
-					(sigaction(SIGINT,&act,NULL) != 0)){
+					(sigaction(SIGINT,&act,NULL) != 0) ||
+					(sigaction(SIGALRM,&act,NULL) != 0)){
 		act.sa_handler = SIG_DFL;
 		(void)sigaction(SIGUSR1,&act,NULL);
 		(void)sigaction(SIGUSR2,&act,NULL);
 		(void)sigaction(SIGINT,&act,NULL);
+		(void)sigaction(SIGALRM,&act,NULL);
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
 				"sigaction failed:%s",strerror(errno));
 		EndpointFree(ep);
@@ -804,6 +1018,7 @@ OWPDefEndpointInitHook(
 		(void)sigaction(SIGUSR1,&act,NULL);
 		(void)sigaction(SIGUSR2,&act,NULL);
 		(void)sigaction(SIGINT,&act,NULL);
+		(void)sigaction(SIGALRM,&act,NULL);
 		(void)sigprocmask(SIG_SETMASK,&osigs,NULL);
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fork failed:%s",
 				strerror(errno));
@@ -816,19 +1031,15 @@ OWPDefEndpointInitHook(
 		act.sa_handler = SIG_DFL;
 		if(	(sigaction(SIGUSR1,&act,NULL) != 0) ||
 			(sigaction(SIGUSR2,&act,NULL) != 0) ||
-			(sigaction(SIGINT,&act,NULL) != 0) ||
+			(sigaction(SIGUSR2,&act,NULL) != 0) ||
+			(sigaction(SIGALRM,&act,NULL) != 0) ||
 			(sigprocmask(SIG_SETMASK,&osigs,NULL) != 0)){
 			OWPError(ctx,OWPErrWARNING,OWPErrUNKNOWN,
 				"sigaction(DFL) failed:%s",strerror(errno));
 			return OWPErrWARNING;
 		}
 
-		fclose(ep->datafile);
-		ep->datafile = NULL;
-		free(ep->fbuff);
-		ep->fbuff = NULL;
-		close(ep->sockfd);
-		ep->sockfd = -1;
+		EndpointClear(ep);
 		return OWPErrOK;
 	}
 
@@ -859,12 +1070,6 @@ OWPDefEndpointInitHook(
 	if(!OWPCvtTimestamp2Timespec(&ep->start,&ep->test_spec.any.start_time)){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
 				"TStamp2TSpec conversion?");
-		exit(1);
-	}
-
-	if(!(ep->relative_offsets = malloc(sizeof(struct timespec)*ep->test_spec.any.npackets))){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"malloc():%s",
-				strerror(errno));
 		exit(1);
 	}
 
@@ -940,10 +1145,12 @@ OWPDefEndpointInitHook(
 		if(timespeccmp(&ep->start,&currtime,<))
 			ep->start = currtime;
 
-		if(ep->send)
+		if(ep->send){
 			run_sender(ep);
-		else
+		}
+		else{
 			run_receiver(ep);
+		}
 	}
 
 	/* should not get here. */
@@ -978,21 +1185,17 @@ OWPDefEndpointStop(
 {
 	OWPPerConnData		cdata = (OWPPerConnData)app_data;
 	_DefEndpoint		ep=(_DefEndpoint)end_data;
+	int			sig;
 
-	if(aval){
-		if(kill(ep->child,SIGINT) == 0)
-			return OWPErrOK;
-		OWPError(OWPGetContext(cdata->cntrl),OWPErrFATAL,OWPErrUNKNOWN,
+	if(aval)
+		sig = SIGINT;
+	else
+		sig = SIGUSR2;
+
+	if(kill(ep->child,sig) == 0)
+		return OWPErrOK;
+	OWPError(OWPGetContext(cdata->cntrl),OWPErrFATAL,OWPErrUNKNOWN,
 			"EndpointStart:Can't signal child #%d:%s",ep->child,
 			strerror(errno));
-		return OWPErrFATAL;
-	}
-	else{
-		if(kill(ep->child,SIGUSR2) == 0)
-			return OWPErrOK;
-		OWPError(OWPGetContext(cdata->cntrl),OWPErrFATAL,OWPErrUNKNOWN,
-			"EndpointStart:Can't signal child #%d:%s",ep->child,
-			strerror(errno));
-		return OWPErrFATAL;
-	}
+	return OWPErrFATAL;
 }

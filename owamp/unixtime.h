@@ -41,7 +41,8 @@ extern OWPTimeStamp *
 OWPCvtTimespec2Timestamp(
 	OWPTimeStamp	*tstamp,
 	struct timespec	*tval,
-	u_int32_t	*errest		/* usec's */
+	u_int32_t	*errest,	/* usec's */
+	u_int32_t	*last_errest	/* usec's */
 	);
 
 extern struct timespec *

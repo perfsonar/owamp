@@ -177,7 +177,7 @@ AGAIN:
 		return -1;
 
 DONE:
-	fcntl(fd,F_SETFL,flags);
+	fcntl(fd,F_SETFL,flags&(~O_NONBLOCK));
 	return 0;
 }
 

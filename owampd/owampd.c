@@ -70,6 +70,8 @@ static I2OptDescRec	set_options[] = {
 	{"nodename",1,NULL,"Local nodename to bind to: addr:port"},
 	{"tmout",1,OWD_TMOUT,
 		"Max time to wait for control connection reads (sec)"},
+	{"lossThreshold",1,"120",
+		"elapsed time when recv declares packet lost (sec)"},
 #ifndef	NDEBUG
 	{"childwait",0,NULL,
 		"Debugging: busy-wait children after fork to allow attachment"},
@@ -103,6 +105,10 @@ static	I2Option	get_options[] = {
 	sizeof(opts.passwd)
 	},
 	{
+	"datadir", I2CvtToString, &opts.datadir,
+	sizeof(opts.datadir)
+	},
+	{
 	"authmode", I2CvtToString, &opts.authmode,
 	sizeof(opts.authmode)
 	},
@@ -113,6 +119,10 @@ static	I2Option	get_options[] = {
 	{
 	"tmout", I2CvtToInt, &opts.tmout,
 	sizeof(opts.tmout)
+	},
+	{
+	"lossThreshold", I2CvtToInt, &opts.lossThreshold,
+	sizeof(opts.lossThreshold)
 	},
 #ifndef	NDEBUG
 	{
@@ -341,14 +351,16 @@ CheckFD(
 	 * child initialization - first message.
 	 */
 	if(!cstate->authmode){
-		ssize_t	n;
+		ssize_t	in,out;
 
-		n = sizeof(cstate->authmode);
-		if(OWPReadn(cstate->fd,&cstate->authmode,n) != n){
-			OWPErrorLine(cstate->ctx,OWPLine,OWPErrWARNING,
+		in = sizeof(cstate->authmode);
+		if((out = OWPReadn(cstate->fd,&cstate->authmode,in)) != in){
+			if(out != 0){
+				OWPErrorLine(cstate->ctx,OWPLine,OWPErrWARNING,
 					OWPErrUNKNOWN,
 					"read error:(%s)",strerror(errno));
-			CloseChldFD(cstate,arg->readfds);
+			}
+			/* CloseChldFD(cstate,arg->readfds); */
 			(void)kill(cstate->pid,SIGKILL);
 		}
 		/* TODO: validate authmode received. */
@@ -397,19 +409,19 @@ NewConnection(
 	policy_data     *policy
 	)
 {
-	int		connfd;
-	u_int8_t	sbuff[SOCK_MAXADDRLEN];
-	socklen_t	sbufflen;
-	int		new_pipe[2];
-	pid_t		pid;
-	OWPSessionMode	mode = opts.auth_mode;
-	int		listenfd = OWPAddrFD(listenaddr);
-	OWPControl	cntrl=NULL;
-	OWPErrSeverity	out;
+	int			connfd;
+	struct sockaddr_storage	sbuff;
+	socklen_t		sbufflen;
+	int			new_pipe[2];
+	pid_t			pid;
+	OWPSessionMode		mode = opts.auth_mode;
+	int			listenfd = OWPAddrFD(listenaddr);
+	OWPControl		cntrl=NULL;
+	OWPErrSeverity		out;
 
 ACCEPT:
 	sbufflen = sizeof(sbuff);
-	connfd = accept(listenfd, (struct sockaddr *)sbuff, &sbufflen);
+	connfd = accept(listenfd, (struct sockaddr *)&sbuff, &sbufflen);
 	if (connfd < 0){
 		switch(errno){
 			case EINTR:
@@ -511,9 +523,11 @@ ACCEPT:
 		conndata.pipefd = new_pipe[1];
 		conndata.datadir = opts.datadir;
 		conndata.policy = policy;
+		conndata.lossThreshold = opts.lossThreshold;
+		conndata.node = NULL;
 
 		cntrl = OWPControlAccept(ctx,connfd,
-					(struct sockaddr *)sbuff,sbufflen,
+					(struct sockaddr *)&sbuff,sbufflen,
 					mode,(void*)&conndata,&out);
 		/*
 		 * session not accepted.
@@ -680,13 +694,13 @@ main(int argc, char *argv[])
 		exit(1);
 	}
 
-#ifdef	NOTYET
 	policy = PolicyInit(errhand, ip2class, class2limits, passwd, &out);
 	if (out == OWPErrFATAL){
 		I2ErrLog(errhand, "PolicyInit failed. Exiting...");
 		exit(1);
 	};
 
+#ifdef	NOTYET
 	printf("DEBUG: policy init ok. Printing out ip2class hash...\n");
 	I2hash_print(policy->ip2class, stdout);
 #endif

@@ -76,7 +76,8 @@ OWPTimeStamp *
 OWPCvtTimespec2Timestamp(
 	OWPTimeStamp	*tstamp,
 	struct timespec	*tval,
-	u_int32_t	*errest		/* usec's */
+	u_int32_t	*errest,	/* usec's */
+	u_int32_t	*last_errest
 	)
 {
 	u_int64_t	err_frac;
@@ -86,22 +87,31 @@ OWPCvtTimespec2Timestamp(
 
 	tstamp->sec = tval->tv_sec + OWPJAN_1970;
 	tstamp->frac_sec = ((double)tval->tv_nsec/1000000000.0) * (1<<24);
-	tstamp->prec = 56; /*nsec is 30 bits - 1 rnd errors:max 56 */
 	if(errest){
-		err_frac = OWPusec2num64(*errest);
 		/*
-		 * count digits in err_frac to determine how many digits
-		 * must be discounted from precision.
+		 * If last_errest is set, and the error hasn't changed,
+		 * then we don't touch the prec portion assuming it is
+		 * already correct.
 		 */
-		err_frac >>= 8;	/* lowest 8 don't count. */
-		while(err_frac){
-			tstamp->prec--;
-			err_frac >>= 1;
+		if(!last_errest || (*errest != *last_errest)){
+			tstamp->prec = 56;
+			err_frac = OWPusec2num64(*errest);
+			/*
+			 * count digits in err_frac to determine how many digits
+			 * must be discounted from precision.
+			 */
+			err_frac >>= 8;	/* lowest 8 don't count. */
+			while(err_frac){
+				tstamp->prec--;
+				err_frac >>= 1;
+			}
 		}
 		tstamp->sync = 1;
 	}
-	else
+	else{
+		tstamp->prec = 56;
 		tstamp->sync = 0;
+	}
 
 	return tstamp;
 }

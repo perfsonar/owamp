@@ -52,6 +52,7 @@ typedef struct {
 
 	int		maxconnections;
 	int		tmout;
+	unsigned int	lossThreshold;
 
 #ifndef	NDEBUG
 	I2Boolean	childwait;

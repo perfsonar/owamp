@@ -47,6 +47,7 @@ typedef	struct {
 		float		rate;
 		u_int32_t	numPackets;
 
+		char		*datadir;
 		u_int32_t	lossThreshold;
 
 	} opt;

@@ -33,6 +33,7 @@ typedef struct OWPPerConnDataRec{
 
 	int			pipefd;		/* pipe to parent	*/
 
+	u_int32_t		lossThreshold;
 	char			*datadir;
 
 	policy_data		*policy;	/* global policy hash */

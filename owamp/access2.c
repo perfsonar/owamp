@@ -372,8 +372,11 @@ get_ip2class_line(OWPContext ctx, FILE *fp, policy_data *policy)
 			break;
 	}
 
+#ifdef	VERBOSE
 	owp_buf_print(stderr, &buf);
 	fprintf(stderr, "%u\n", linenum);
+#endif
+
 
 	owp_buf_reset(&buf);
 	if (owp_symbol_save(ctx, &buf, c) < 0) {
@@ -417,7 +420,9 @@ get_ip2class_line(OWPContext ctx, FILE *fp, policy_data *policy)
 		goto malloc_err;
 	}
 
+#ifdef	VERBOSE
 	owp_buf_print(stderr, &buf);
+#endif
 
 	if (!class_has_limits(class, policy)){
 		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
