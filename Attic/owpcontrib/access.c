@@ -1,5 +1,7 @@
 #include "access.h"
 
+#define MAX_LINE 1024
+
 const char *DefaultConfigFile = DEFAULT_CONFIG_FILE;
 char *ConfigFile = NULL;
 const char *DefaultIPtoClassFile = DEFAULT_IP_TO_CLASS_FILE;
@@ -25,6 +27,7 @@ parse_options(int argc, char *argv[])
 {
     extern char *optarg;
     int c;
+    ConfigFile = strdup(DefaultConfigFile);
 
     while ((c = getopt(argc, argv, "f:h")) != -1) {
 	switch (c) {
@@ -48,7 +51,7 @@ parse_options(int argc, char *argv[])
 ** partial addresses.
 */
 
-unsigned long 
+unsigned long
 numberize(const char *addr)
 {
         unsigned long sin_addr;
@@ -87,16 +90,16 @@ denumberize(unsigned long addr)
 ** This function takes a string of the form <address/netmask>
 ** where address is a dot-separated IP address, and netmask
 ** is a mask offset. It returns 0 on successm and -1 on failure. 
-** The lower and upper limits of the netmask range are returned 
-** through the pointers lb and ub. 
+** The lower limit of the netmask range, and mask offset are returned 
+** through the pointers lb and off. This pair uniquely identifies the mask. 
 */
 
 int
-owamp_parse_text(const char *text, unsigned int *lb, unsigned int *ub)
+owamp_parse_mask(const char *text, unsigned int *lb, unsigned int *off)
 {
 	char *addr_str = NULL;
 	char *mask_str = NULL;
-	unsigned int addr, mask, host_bits, host_max;
+	unsigned long addr, mask, host_bits;
 	int offset;
 
 	if((addr_str = strdup(text)) == NULL)
@@ -117,18 +120,15 @@ owamp_parse_text(const char *text, unsigned int *lb, unsigned int *ub)
 		/* CIDR */
 		offset = atoi(mask_str);
 		
-		if(offset < 1 || offset > 32)
+		if(offset > 32)
 			{
 				/* bad CIDR offset */
 				return -1;
 			};
 		
 		host_bits = 32 - offset;
-		host_max = pow(2, host_bits);
 		*lb = (addr >> host_bits) << host_bits;
-		*ub = *lb + host_max - 1;
-		printf("DEBUG: lb = %s\n", denumberize(*lb));
-		printf("DEBUG: ub = %s\n", denumberize(*ub));
+		*off = offset;
 	}
 	else
 	{
@@ -136,11 +136,9 @@ owamp_parse_text(const char *text, unsigned int *lb, unsigned int *ub)
 		if((addr = numberize(addr_str)) == -1)
 			return -1;
 		*lb = addr;
-		*ub = addr;
-		printf("DEBUG: lb = %s\n", denumberize(*lb));
-		printf("DEBUG: ub = %s\n", denumberize(*ub));
+		*off = 0;
 	}
-
+	
 	free(addr_str); 
 	return 0;
 }
@@ -153,34 +151,44 @@ owamp_parse_text(const char *text, unsigned int *lb, unsigned int *ub)
 void
 owamp_read_config()
 {
+	char line[MAX_LINE], mask[MAX_LINE], class[MAX_LINE];
+	char err_msg[1024];
+	char key[128];
+	unsigned int *lb, *offset;
+	FILE *fp;
+	
+	if ( (lb = (void *)malloc(sizeof(int))) == NULL){
+		perror("malloc");
+		exit(1);
+	}
+	if ( (offset = (void *)malloc(sizeof(int))) == NULL){
+		perror("malloc");
+		exit(1);
+	}
+
+	if ( (fp = fopen(ConfigFile, "r")) == NULL){
+		snprintf(err_msg, sizeof(err_msg),"fopen %s for reading", 
+			ConfigFile);
+		perror(err_msg);
+		exit(1);
+	}
+
+	while ( (fgets(line, sizeof(line), fp)) != NULL) {
+		if (sscanf(line, "%s%s", mask, class) != 2) continue;
+		if (owamp_parse_mask(mask, lb, offset) == -1) continue;
+		snprintf(key, sizeof(key), "%u/%u", *lb, *offset);
+
+		/* Now save the key/class pair in a hash. */
+
+	}
 	return;
 }
 
 int
 main(int argc, char *argv[])
 {
-	unsigned int *lb, *ub;
-	int i;
-	char buf[1024];
 	parse_options(argc, argv);
+	owamp_read_config();
 
-	lb = (void *)malloc(sizeof(int));
-	if (!lb){
-		perror("malloc");
-		exit(1);
-	}
-
-	ub = (void *)malloc(sizeof(int));
-	if (!lb){
-		perror("malloc");
-		exit(1);
-	}
-
-	while (1){
-		printf("Enter an address/offset - CIDR style:\n");
-		if ( fgets(buf, 1024, stdin) == NULL) exit(1);
-		owamp_parse_text(buf, lb, ub);
-		printf("\n*********************************\n");
-	}
 	exit(0);
 }
