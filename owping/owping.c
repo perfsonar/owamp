@@ -649,6 +649,7 @@ owp_fetch_sid(
 	int fd;
 	u_int32_t num_rec;
 	u_int8_t     typeP[4]; 
+	FILE *fp;
 
 	/*
 	 * Prepare paths for datafiles. Unlink if not keeping data.
@@ -668,26 +669,30 @@ owp_fetch_sid(
 			exit(1);
 		}
 		if ((fd = mkstemp(path)) < 0) {
-			I2ErrLog(eh, "FATAL: open(%s) failed: %M", 
-				 path);
+			I2ErrLog(eh, "FATAL: open(%s) failed: %M", path);
 			exit(1);	
 		}
 		if (unlink(path) < 0) {
-			I2ErrLog(eh, "WARNING: unlink(%s) failed: %M", 
-				 path);
+			I2ErrLog(eh, "WARNING: unlink(%s) failed: %M", path);
 		}
 		free(path);
 	}
 
 
-	/* Ask for complete session - for now. */
+	/* Ask for complete session - for now. Ignore typeP */
 	if (OWPFetchSessionInfo(cntrl, 0, (u_int32_t)0xFFFFFFFF, sid, 
 				&num_rec, typeP) == OWPErrFATAL) {
 		I2ErrLog(eh, "Failed to fetch remote records");
 		return;
 	}
 
-	OWPWriteDataHeader(cntrl, fd, typeP);
+	if ((fp = fdopen(fd, "a")) == NULL) {
+		I2ErrLog(eh, "FATAL: fdopen(%d) failed: %M", fd);
+		exit(1);
+	}
+	/* Currently the server does not send Session Request -
+	   so write a simplified (version 0) header. */
+	OWPWriteDataHeadeR(fp, 0, NULL, 0);
 	
 	if (OWPFetchRecords(cntrl, fd, num_rec) == OWPErrFATAL){
 		I2ErrLog(eh, "Failed to fetch remote records");
