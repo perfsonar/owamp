@@ -882,3 +882,13 @@ OWPAddrCheck(
 
 	return (*ctx->cfg.check_addr_func)(app_data, local, remote, err_ret);
 }
+
+
+void
+random_bytes(char *ptr, int count)
+{
+	int i;
+	long scale = (RAND_MAX / 1<<8);
+	for (i = 0; i < count; i++)
+		*(u_int8_t *)(ptr+i) = random()/scale; 
+}

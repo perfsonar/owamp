@@ -159,15 +159,6 @@ get_mode()
 	return OWP_MODE_OPEN;
 }
 
-void
-random_bytes(char *ptr, int count)
-{
-	int i;
-	long scale = (RAND_MAX / 1<<8);
-	for (i = 0; i < count; i++)
-		*(u_int8_t *)(ptr+i) = random()/scale; 
-}
-
 int
 send_data(int sock, char *buf, size_t len, OWPBoolean encrypt)
 {
