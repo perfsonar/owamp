@@ -60,6 +60,15 @@ my $mode = $ARGV[1] || 1;
 $| = 1;
 
 my $conf = new OWP::Conf(CONFDIR => "$FindBin::Bin");
+# setup syslog
+local(*MYLOG);
+my $slog = tie *MYLOG, 'OWP::Syslog',
+		facility	=> $conf->must_get_val(ATTR=>'SyslogFacility'),
+		log_opts	=> 'pid',
+		setlogsock	=> 'unix';
+# make die/warn goto syslog, and also to STDERR.
+$slog->HandleDieWarn();
+undef $slog;	# Don't keep tie'd ref's around unless you need them...
 
 my(@mtypes, @nodes, $val, $rec_addr, $send_addr);
 @mtypes = $conf->get_val(ATTR=>'MESHTYPES');
