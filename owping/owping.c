@@ -62,7 +62,7 @@ owp_fetch_to_local(OWPControl cntrl, char *datadir, OWPSID sid)
 	strcat(datafile, sid_name);
 	strcat(datafile, OWP_INCOMPLETE_EXT);
 
-	fd = open(datafile, O_WRONLY | O_CREAT | O_EXCL);
+	fd = open(datafile, O_WRONLY | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
 	if (fd < 0) {
 		I2ErrLog(eh, "FATAL: open(%s):%M", datafile);
 		return -1;
@@ -89,8 +89,12 @@ owp_fetch_to_local(OWPControl cntrl, char *datadir, OWPSID sid)
 	}
 
 	free(new_name);
-	if (close(fd) < 0)
+ again:
+	if (close(fd) < 0) {
+		if (errno == EINTR)
+			goto again;
 		I2ErrLog(eh, "main: close():%M");
+	}
 	return 0;
 	
  fatal:
@@ -433,9 +437,38 @@ owp_record_out(fetch_state_ptr state, OWPCookedDataRecPtr rec)
 				rec->seq_no, delay*THOUSAND);
 }
 
+
+#define OWP_MAX_BUCKET  (OWP_NUM_LOW + OWP_NUM_MID + OWP_NUM_HIGH - 1)
+/*
+** Given a delay, compute index of the corresponding bucket.
+*/
+int
+owp_bucket(double delay)
+{
+	if (delay < 0)
+		return 0;
+	if (delay < OWP_CUTOFF_LOW)
+		return (int)(delay/OWP_MESH_LOW);
+	if (delay < OWP_CUTOFF_MID)
+		return OWP_NUM_LOW + (int)(delay-OWP_CUTOFF_LOW)/OWP_MESH_MID; 
+	return OWP_MIN(OWP_NUM_LOW + OWP_NUM_MID 
+		       + (int)((delay - OWP_CUTOFF_MID)/OWP_MESH_HIGH),
+		       OWP_NUM_LOW + OWP_NUM_MID + OWP_NUM_HIGH - 1);
+}
+
 void
 owp_update_stats(fetch_state_ptr state, OWPCookedDataRecPtr rec) {
-	double delay = owp_delay(&rec->send, &rec->recv);
+	double delay;  
+	int bucket;  
+
+	assert(state); assert(rec);
+
+	delay =  owp_delay(&rec->send, &rec->recv);
+	bucket = owp_bucket(delay);
+	
+	assert((0 <= bucket) && (bucket <= OWP_MAX_BUCKET));
+	state->buckets[bucket]++;
+
 	if (delay < state->tmin)
 		state->tmin = delay;
 	
@@ -549,22 +582,6 @@ owp_do_summary(fetch_state_ptr state)
 		"one-way delay min/avg/stddev = %.3f/%.3f/%.3f ms\n",
 		min, avg*THOUSAND, sqrt(vari)*THOUSAND);
 	return 0;
-}
-
-/*
-** Given a delay, compute index of the corresponding bucket.
-*/
-int
-owp_bucket(double delay)
-{
-	if (delay < 0)
-		return 0;
-	if (delay <= OWP_CUTOFF_LOW)
-		return (int)(delay/OWP_MESH_LOW);
-	if (delay <= OWP_CUTOFF_MID)
-		return OWP_NUM_LOW + (int)(delay-OWP_CUTOFF_LOW)/OWP_MESH_MID; 
-	return OWP_NUM_LOW + OWP_NUM_MID 
-		+ (int)((delay - OWP_CUTOFF_MID)/OWP_MESH_HIGH);
 }
 
 /*
