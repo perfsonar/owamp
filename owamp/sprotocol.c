@@ -29,8 +29,6 @@
 #include <owampP.h>
 
 void
-owp_block_decrypt(char *a, char* b, char* c, int d, char* e);
-void
 _OWPServerOK(OWPControl ctrl, u_int8_t code);
 
 int
@@ -51,7 +49,7 @@ _OWPSendServerGreeting(
 	random_bytes(cntrl->challenge, 16);
 	memcpy(buf + 16, cntrl->challenge, 16); /* the last 16 bytes */
 
-	if (send_blocks(cntrl->sockfd, buf, 2, encrypt) < 0){
+	if (_OWPSendBlocks(cntrl, buf, 2) < 0){
 		close(cntrl->sockfd);
 		return -1; 
 	}
@@ -89,18 +87,26 @@ _OWPReadClientGreeting(
 	}
 	
 	if (mode_requested & OWP_MODE_AUTHENTICATED){
+		OWPByte binKey[16];
+
 		memcpy(cntrl->kid, buf + 4, 8); /* Save 8 bytes of kid */
 
-		(*cntrl->ctx->cfg.get_aes_key_func)(app_data, buf + 4, 
-					       cntrl->key, &err_ret);
-		/* if all ok - set up key + cipher now 
-		     XXX - TODO
+		/* XXX - need to change to fetch keyInstance.
+		if(!_OWPCallGetAESKey(cntrl->ctx,buf + 4,cntrl->key,err_ret)){
+			if(*err_ret != OWPErrOK)
+				goto error;
+		}
+		else
+			key = key_value;
 		*/
 
-		/* Decrypt two 16-byte blocks - save the result into token.*/
-		owp_block_decrypt(cntrl->readIV, cntrl->key, 
-				  buf + 12, 2*(16*8), token);
+		(*cntrl->ctx->cfg.get_aes_key_func)(app_data, buf + 4, 
+					       binKey, &err_ret);
 		
+		random_bytes(cntrl->writeIV, 16);
+
+		OWPDecryptToken(binKey, buf + 12, token);
+
 		/* Decrypted challenge is in the first 16 bytes */
 		if (memcmp(cntrl->challenge, token, 16) != 0){
 			_OWPServerOK(cntrl, CTRL_REJECT);
@@ -111,6 +117,7 @@ _OWPReadClientGreeting(
 		/* Save 16 bytes of session key and 16 bytes of client IV*/
 		memcpy(cntrl->session_key, token + 16, 16);
 		memcpy(cntrl->readIV, buf + 44, 16);
+		_OWPMakeKey(cntrl, cntrl->session_key); 
 	}
 
 	/* Apparently everything is ok. Accept the Control session. */
@@ -128,23 +135,14 @@ _OWPReadClientGreeting(
 ** Code = CTRL_ACCEPT/CTRL_REJECT with the obvious meaning.
 */
 void
-_OWPServerOK(OWPControl ctrl, u_int8_t code)
+_OWPServerOK(OWPControl cntrl, u_int8_t code)
 {
 	char buf[MAX_MSG];
 
 	memset(buf, 0, 32);
 	*(u_int8_t *)(buf+15) = code;
-	if (code == 0){ /* accept */
-		random_bytes(buf + 16, 16); /* Generate Server-IV */
-		/* XXX - TODO
-		   OWPSetWriteIV(ctrl, buf + 16); 
-		*/
+	if (cntrl->mode && OWP_MODE_AUTHENTICATED){
+		memcpy(buf + 16, cntrl->writeIV, 16);
 	}
-	send_blocks(ctrl->sockfd, buf, 2, 0);
-}
-
-void
-owp_block_decrypt(char *a, char* b, char* c, int d, char* e)
-{
-	;
+	_OWPSendBlocks(cntrl, buf, 2);
 }
