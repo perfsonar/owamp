@@ -116,6 +116,7 @@ owp_cmp_netmask_match(const I2datum *address, const I2datum *netmask)
 	case AF_INET:
 		return (addr->addr4 != net->addr4);
 		break;
+#ifdef AF_INET6
 	case AF_INET6:
 		nbytes = net->offset/8;
 		nbits = net->offset%8;
@@ -133,6 +134,7 @@ owp_cmp_netmask_match(const I2datum *address, const I2datum *netmask)
 			(FIRST_BITS(*ptra, nbits) != FIRST_BITS(*ptrb, nbits)) 
 			: 0;
 		break;
+#endif
 	default:
 		break;
 	}
@@ -193,6 +195,7 @@ owp_netmask2class_store(void *addr,
 		ptr->addr4 = *(u_int32_t *)addr;
 		memset(ptr->addr6, 0, 16);
 		break;
+#ifdef AF_INET6
 	case AF_INET6:
 		ptr->addr4 = (u_int32_t)0;
 		memcpy(ptr->addr6, 
@@ -202,6 +205,7 @@ owp_netmask2class_store(void *addr,
 		owp_print_netmask(key, stderr);
 #endif
 		break;
+#endif
 	default:
 		return 0;
 		break;
@@ -298,9 +302,11 @@ owp_read_ip2class(OWPContext ctx,
 			case AF_INET:
 				num_offset = 32;
 				break;
+#ifdef AF_INET6
 			case AF_INET6:
 				num_offset = 128;
 				break;
+#endif
 			default: 
 				continue;
 				break;
@@ -345,6 +351,7 @@ owp_read_ip2class(OWPContext ctx,
 			owp_netmask2class_store(&addr, num_offset, 
 					 res->ai_family, class, id2class_hash);
 			break;
+#ifdef AF_INET6
 		case AF_INET6:
 			if (!is_valid_netmask6(
 					 (struct sockaddr_in6 *)(res->ai_addr),
@@ -360,6 +367,7 @@ owp_read_ip2class(OWPContext ctx,
 		owp_netmask2class_store(res->ai_addr, num_offset, 
 					res->ai_family, class, id2class_hash);
 			break;
+#endif
 		default:
 			continue; /* Should not happen. */
 		}
@@ -449,6 +457,7 @@ owp_netmask2class(owp_access_netmask *netmask, policy_data* policy)
 		}
 		break;
 	case AF_INET6:
+#ifdef AF_INET6
 #ifdef ACCESS_DEBUG
 		fprintf(stderr, "Original mask is:\n");
 		owp_print_strnet(netmask, stderr);
@@ -485,6 +494,7 @@ owp_netmask2class(owp_access_netmask *netmask, policy_data* policy)
 				return val->dptr;
 		}
 		break;
+#endif /* AF_INET6 */
 	default:
 		break;
 	}
@@ -512,6 +522,7 @@ owp_sockaddr2class(struct sockaddr *addr, policy_data* policy)
 		mask.af = AF_INET;
 		return owp_netmask2class(&mask, policy);
 		/* UNREACHED */
+#ifdef AF_INET6
 	case AF_INET6:
 		/* Prepare the address part of the mask */
 		mask.addr4 = 0;
@@ -520,6 +531,7 @@ owp_sockaddr2class(struct sockaddr *addr, policy_data* policy)
 		mask.af = AF_INET6;
 		return owp_netmask2class(&mask, policy);
 		/* UNREACHED */
+#endif /* AF_INET6 */
 	default:
 		break;
 	}
