@@ -77,7 +77,7 @@ OWPGetType(OWPControl cntrl)
 int
 OWPParseTestRequest(
 		    OWPControl cntrl, 
-		    OWPAddr server, 
+		    OWPAddr sender, 
 		    OWPAddr receiver,
 		    OWPBoolean *conf_sender,
 		    OWPBoolean *conf_receiver,
@@ -229,4 +229,10 @@ OWPServerCheckAddrPolicy(OWPContext ctx,
 			 )
 {
 	return _OWPCallCheckAddrPolicy(ctx, NULL, addr, err_ret);
+}
+
+void
+OWPServerAcceptSession(OWPControl cntrl, int code)
+{
+	
 }

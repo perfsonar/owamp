@@ -551,6 +551,7 @@ OWPControlAccept(
 extern u_int8_t
 OWPGetType(OWPControl cntrl);
 
+#define OWP_TEST_REJECT 1
 /* The next four functions parse each of their repective message types */
 extern int
 OWPParseTestRequest(
@@ -594,5 +595,8 @@ OWPServerCheckAddrPolicy(OWPContext ctx,
 			 struct sockaddr *addr, 
 			 OWPErrSeverity *err_ret
 			 );
+
+void
+OWPServerAcceptSession(OWPControl cntrl, int code);
 
 #endif	/* OWAMP_H */

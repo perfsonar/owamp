@@ -269,23 +269,19 @@ ServerMainControl(OWPControl cntrl, OWPErrSeverity* out)
 		fprintf(stderr, 
 			"DEBUG: client issued a session request");
 		CNTRLNEXT;
-		
-		
 
+		if (OWPParseTestRequest(cntrl, sender, receiver, 
+					&conf_sender, &conf_receiver, 
+					test_spec, sid) < 0){
+			/* Ignore bad messages */
+			CNTRLNEXT;
+		}
+		
 		if (_OWPCallCheckTestPolicy(cntrl, NULL, False, NULL, NULL, 
 					    NULL, &out) == False){
-					  
-			/*
-			  polite_close();
-			  clean_up();
-			*/
-			CNTRLSTOP;
+			OWPServerAcceptSession(cntrl, OWP_TEST_REJECT);
+			CNTRLNEXT;
 		}
-		/*
-		  prepare_for fork();  
-		  data for kid,
-		  sig_handlers etc
-		*/
 		
 		pidlet = fork();
 		switch (pidlet) {
