@@ -534,9 +534,10 @@ sub do_req{
 			unlink $req{'FNAME'};
 			die "Unable to digest raw session data";
 		}
+		# file no longer needed.
+		unlink $req{'FNAME'};
 
 		if(!combine_digests($dir,$base,$res,\@res,\%state)){
-			unlink $req{'FNAME'};
 			unlink "$dir/$res/$base$digestsuffix";
 			die "Unable to climb digest tree";
 		}
