@@ -114,7 +114,7 @@ _OWPAddrAlloc(
 	OWPContext	ctx
 )
 {
-	OWPAddr	addr = malloc(sizeof(struct OWPAddrRec));
+	OWPAddr	addr = calloc(1,sizeof(struct OWPAddrRec));
 
 	if(!addr){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
@@ -192,7 +192,7 @@ OWPAddrByNode(
 )
 {
 	OWPAddr		addr;
-	char		buff[MAXHOSTNAMELEN];
+	char		buff[MAXHOSTNAMELEN+1];
 	const char	*nptr=node;
 	char		*pptr=NULL;
 	char		*s1,*s2;

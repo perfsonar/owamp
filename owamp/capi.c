@@ -113,7 +113,7 @@ SetClientAddrInfo(
 	OWPErrSeverity	*err_ret
 	)
 {
-	struct addrinfo	*ai;
+	struct addrinfo	*ai=NULL;
 	struct addrinfo	hints;
 	const char	*node=NULL;
 	const char	*port=NULL;
@@ -457,6 +457,7 @@ SetEndpointAddrInfo(
 	struct addrinfo		*ai=NULL;
 	struct addrinfo		hints;
 	char			*port=NULL;
+	int			rc;
 
 	if(!addr){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
@@ -539,10 +540,10 @@ SetEndpointAddrInfo(
 
 		if(addr->port_set)
 			port = addr->port;
-		if((getaddrinfo(addr->node,port,&hints,&ai)!=0) || !ai){
+		if(((rc = getaddrinfo(addr->node,port,&hints,&ai))!=0) || !ai){
 			OWPError(cntrl->ctx,OWPErrFATAL,
 				errno,"getaddrinfo():%s",
-				strerror(errno));
+				gai_strerror(rc));
 			goto error;
 		}
 		addr->ai = ai;
@@ -651,13 +652,14 @@ AddrByLocalControl(
 	struct addrinfo		*ai=NULL;
 	OWPAddr			addr;
 	struct sockaddr_storage	saddr_rec;
-	struct sockaddr		*oaddr;
+	struct sockaddr		*oaddr=NULL;
 	socklen_t		len;
 
 	if(cntrl->local_addr && cntrl->local_addr->saddr){
 		oaddr = cntrl->local_addr->saddr;
 		len = cntrl->local_addr->saddrlen;
 	}else{
+		u_int16_t	*port=NULL;
 		memset(&saddr_rec,0,sizeof(saddr_rec));
 		oaddr = (struct sockaddr*)&saddr_rec;
 		len = sizeof(saddr_rec);
@@ -666,19 +668,40 @@ AddrByLocalControl(
 					"getsockname():%M");
 			return NULL;
 		}
+
+		switch(oaddr->sa_family){
+			struct sockaddr_in	*saddr4;
+#ifdef	AF_INET6
+			struct sockaddr_in6	*saddr6;
+
+			case AF_INET6:
+				saddr6 = (struct sockaddr_in6*)oaddr;
+				port = &saddr6->sin6_port;
+				break;
+#endif
+			case AF_INET:
+				saddr4 = (struct sockaddr_in*)oaddr;
+				port = &saddr4->sin_port;
+				break;
+			default:
+				OWPError(cntrl->ctx,
+						OWPErrFATAL,OWPErrINVALID,
+						"Invalid address family");
+				return NULL;
+		}
+		*port = 0;
 	}
 
-	if(!oaddr || !len)
+	if(!len)
 		return NULL;
 
 	if( !(addr = _OWPAddrAlloc(cntrl->ctx)))
 		return NULL;
 
-	if( !(ai = malloc(sizeof(struct addrinfo))) ||
-					!(addr->saddr = malloc(sizeof(len)))){
-			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"malloc():%M");
-			goto error;
+	if( !(ai = calloc(1,sizeof(struct addrinfo))) ||
+					!(addr->saddr = calloc(1,sizeof(len)))){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,"malloc():%M");
+		goto error;
 	}
 
 	memcpy(addr->saddr,oaddr,len);
