@@ -437,7 +437,7 @@ look_for_spot(fetch_state_ptr state,
 double
 owp_bits2prec(int nbits)
 {
-	return 1.0/pow(2.0, (double)(nbits - 32));
+	return 1000.0/pow(2.0, (double)(nbits - 32));
 }
 
 /*
