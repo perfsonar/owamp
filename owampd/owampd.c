@@ -646,8 +646,6 @@ main(int argc, char *argv[])
 		exit(1);
 	}
 
-	I2ErrLogP(errhand,0,"Testing!");
-
 	od = I2OpenOptionTbl(errhand);
 
 	if(I2ParseOptionTable(od, &argc, argv, set_options) < 0){

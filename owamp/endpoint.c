@@ -361,7 +361,8 @@ OWPDefEndpointInit(
 			if((mkdir(cdata->link_data_dir,0755) != 0) &&
 							(errno != EEXIST)){
 				OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"Unable to mkdir(%s):%M",ep->linkpath);
+					"Unable to mkdir(%s):%M",
+					cdata->link_data_dir);
 				goto error;
 			}
 

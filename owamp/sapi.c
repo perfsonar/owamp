@@ -222,8 +222,9 @@ error:
 
 static int
 OpenSocket(
-	int	family,
-	OWPAddr	addr
+	OWPContext	ctx	__attribute__((unused)),
+	int		family,
+	OWPAddr		addr
 	)
 {
 	struct addrinfo	*ai;
@@ -238,9 +239,11 @@ OpenSocket(
 		if(addr->fd < 0)
 			continue;
 
-		if((setsockopt(addr->fd,SOL_SOCKET,SO_REUSEADDR,&on,
-							sizeof(on)) == 0) &&
-			(bind(addr->fd,ai->ai_addr,ai->ai_addrlen) == 0)){
+		if(setsockopt(addr->fd,SOL_SOCKET,SO_REUSEADDR,&on,
+							sizeof(on)) != 0)
+			goto failsock;
+
+		if(bind(addr->fd,ai->ai_addr,ai->ai_addrlen) == 0){
 
 			addr->saddr = ai->ai_addr;
 			addr->saddrlen = ai->ai_addrlen;
@@ -249,6 +252,10 @@ OpenSocket(
 			break;
 		}
 
+		if(errno == EADDRINUSE)
+			return -2;
+
+failsock:
 		while((close(addr->fd) < 0) && (errno == EINTR));
 		addr->fd = -1;
 	}
@@ -320,21 +327,21 @@ OWPServerSockCreate(
 	/*
 	 * First try IPv6 addrs only
 	 */
-	fd = OpenSocket(AF_INET6,addr);
+	fd = OpenSocket(ctx,AF_INET6,addr);
 
 	/*
 	 * Fall back to IPv4 addrs if necessary.
 	 */
-	if(fd < 0)
+	if(fd == -1)
 #endif
-		fd = OpenSocket(AF_INET,addr);
+		fd = OpenSocket(ctx,AF_INET,addr);
 
 	/*
 	 * if we failed to find any IPv6 or IPv4 addresses... punt.
 	 */
 	if(fd < 0){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"OWPServerSockCreate:No valid addresses");
+			"OWPServerSockCreate:%M");
 		goto error;
 	}
 
