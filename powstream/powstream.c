@@ -1237,6 +1237,14 @@ AGAIN:
 								arecs,nrecs);
 				goto error;
 			}
+			/*
+			 * If we have read to the end of the stream, we need
+			 * to clear the eof flag so the stream will work
+			 * if the child process adds more records.
+			 */
+			if(feof(p->fp)){
+				clearerr(p->fp);
+			}
 
 			if(WriteSubSessionLost(&parse)){
 				I2ErrLog(eh,"WriteSubSessionLost: %M");
