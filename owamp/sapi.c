@@ -1221,22 +1221,23 @@ OWPProcessFetchSession(
 	 */
 	_OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_ACCEPT);
 
-	/*
-	 * zero pad any "incomplete" records...
-	 */
-	assert(dodata.inbuf < _OWP_FETCH_TESTREC_BLOCKS);
-	/* zero out any partial data blocks */
-	while(dodata.inbuf && (dodata.inbuf < _OWP_FETCH_TESTREC_BLOCKS)){
-		memset(&buf[dodata.inbuf*_OWP_TESTREC_SIZE],0,
-							_OWP_TESTREC_SIZE);
-		dodata.inbuf++;
-	}
+	if(dodata.inbuf){
+		/*
+		 * Set "blks" to number of AES blocks that need to be sent to
+		 * hold all "leftover" records.
+		 */
+		int blks = dodata.inbuf * _OWP_TESTREC_SIZE /
+				_OWP_RIJNDAEL_BLOCK_SIZE + 1;
 
-	/* send final data blocks */
-	if(dodata.inbuf &&
-		(_OWPSendBlocksIntr(cntrl,buf,_OWP_FETCH_AES_BLOCKS,intr) !=
-							_OWP_FETCH_AES_BLOCKS)){
-		return _OWPFailControlSession(cntrl,err);
+		/* zero out any partial data blocks */
+		memset(&buf[dodata.inbuf*_OWP_TESTREC_SIZE],0,
+				(blks*_OWP_RIJNDAEL_BLOCK_SIZE)-
+				(dodata.inbuf*_OWP_TESTREC_SIZE));
+		/*
+		 * Write enough AES blocks to get remaining records.
+		 */
+		if( (_OWPSendBlocksIntr(cntrl,buf,blks,intr) != blks))
+			return _OWPFailControlSession(cntrl,err);
 	}
 
 	/* now send final Zero Integrity Block */
