@@ -17,9 +17,34 @@
 #	Date:		Tue Sep 24 10:40:10  2002
 #
 #	Description:	
-#			
+#			This module is used to set configuration parameters
+#			for the OWP one-way-ping mesh configuration.
 #
+#			To add additional configuration parameters just add
+#			them to the OPTS hash.  If the new parameter is
+#			a BOOL then also add it to the BOOL hash. If the
+#			new parameter is an array that itself defines additional
+#			parameters, then add it to DEPS.
 #	Usage:
+#
+#			my $conf = new OWP::Conf($addr,$confpath)
+#			$addr is required
+#			$confpath will default to $HOME
+#
+#			The config files can have sections that are
+#			only relevant to a particular system/node/addr by
+#			using the pseudo httpd.conf file syntax:
+#
+#			<OS=$regex>
+#			osspecificsettings	val
+#			</OS>
+#
+#			The names for the headings are OS/Node/Addr.
+#			$regex is a text string used to match uname -s,
+#			uname -n, and $addr. It can contain the wildcard
+#			chars '*' and '?' with '*' matching 0 or more occurances
+#			of *anything* and '?' matching exactly 1 occurance
+#			of *anything*.
 #
 #	Environment:
 #
@@ -215,6 +240,7 @@ sub init {
 	my($self,$addr,$confpath,$rest) = @_;
 	my($file,$key);
 
+	die "Conf requires an addr specification!" if(!defined($addr));
 	if(defined($ENV{$Conf::GLOBALCONFENV})){
 		$file = $self->resolve_home($ENV{$Conf::GLOBALCONFENV});
 	}elsif(defined($confpath)){
