@@ -410,31 +410,12 @@ random_exp(keyInstance *key)
 	/* Grab the last 8 bytes of the encrypted block */
 	U = raw2num(outBuffer + 8);
 
-	/* XXX - remove later */
-
-	/* 	*/
-
-	/*
-	fprintf(stderr, "DEBUG: in = %lu, initial U = \n", in);
-	num_print(&U); 
-	num_binprint(&U);
-	*/
-
 	/* Get U and shift */
 	count = 1;
 	for (i = 3; i >= 0; i--){
 		unsigned short mask = 0x8000;
 
-		/*
-		fprintf(stderr, "DEBUG: looking for '1' - digit = %d\n", i);
-		fprintf(stderr, "DEBUG: U.digits[%d] = %hx\n", i, U.digits[i]);
-		*/
-
 		for (j = 0; j < 16; j++){
-
-			/*
-			fprintf(stderr, "DEBUG: j = %d, mask = %hx, digit & mask = %hx\n", j, mask, U.digits[i] & mask);
-			*/
 
 			if (!(U.digits[i] & mask))
 				goto FOUND; /* found the first '1' */
@@ -448,11 +429,7 @@ random_exp(keyInstance *key)
 		/* XXX - TODO - handle this case */
 	}
 
-	/* fprintf(stderr, "DEBUG: in = %lu, count = %d\n\n", in, count); */
-
-
 	/* Normal case. 1 <= count <= 64. Shift by count bits. */
-
 	num_blocks = count/16; /* integer number of 16-bit blocks to shift */
 	num_bits   = count%16; /* remaining number of bits                 */
 	j = count - 1;
@@ -467,31 +444,10 @@ random_exp(keyInstance *key)
 	} else { /* need some cut and paste */
 
 		for (i = 0; i <= 2 - num_blocks; i++){
-
-			/*
-			fprintf(stderr, "DEBUG: U.digits[%d] = \n", 3-i);
-			print_bin(U.digits[3-i]);
-			fprintf(stderr, "\n");
-
-			fprintf(stderr, "DEBUG: second = \n");
-			print_bin(second(U.digits[3-i], num_bits));
-			fprintf(stderr, "\n");
-			fprintf(stderr, "DEBUG: first = \n");
-			print_bin(first(U.digits[3-(i+1)], num_bits));
-			fprintf(stderr, "\n");
-			*/
-
 			U.digits[3-i] = second(U.digits[3-i-num_blocks], 
 					       num_bits)
 				| first(U.digits[3-(i+1)-num_blocks], 
 					num_bits);
-			/*
-			fprintf(stderr, 
-				"DEBUG: inside loop U.digits[%d] is = \n",3-i);
-			print_bin(U.digits[3-i]);
-			fprintf(stderr, "\n");
-			*/
-			
 		}
 
 		U.digits[num_blocks] = 
@@ -500,16 +456,6 @@ random_exp(keyInstance *key)
 		for (i = 4 - num_blocks; i < 4; i++)
 			U.digits[3-i] = (unsigned short)0;
 	}
-	/*
-	fprintf(stderr, "DEBUG: after the loop U.digits[3] is = \n");
-	print_bin(U.digits[3]);
-	fprintf(stderr, "\n");
-	*/
-	/* XXX - debug only. remove 
-	fprintf(stderr, "DEBUG: bl = %d, bi = %d, count = %d, shifted U = \n", 
-		num_blocks, num_bits, count);
-	num_binprint(&U);
-	*/
 
 	/* Immediate acceptance? */
 	if (num_cmp(&U, LN2) < 0){ 
