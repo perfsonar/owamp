@@ -42,6 +42,8 @@
 #define	MAXHOSTNAMELEN	64
 #endif
 
+#include "./arithm128.h"
+
 #define	OWP_MODE_UNDEFINED		(0)
 #define	OWP_MODE_OPEN			(01)
 #define	OWP_MODE_AUTHENTICATED		(02)
@@ -572,8 +574,6 @@ OWPParseTestStop(OWPControl cntrl);
 
 extern int
 OWPParseTestRetrieve(OWPControl cntrl);
-
-
 
 extern int
 OWPServerReadRequest(OWPControl cntrl, char *buf);

@@ -24,7 +24,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
-#include "arithm.h"
+#include "arithm128.h"
 
 /* we often need to scale by 10^6 so let's fix a struct for that */
 static struct num_128 million = {0, 0, 0, 0, 16960, 15, 0, 0};
