@@ -18,9 +18,8 @@
 **
 **	Description:	
 */
-#include <owampP.h>
-#include <rijndael-api-fst.h>
-#include "../contrib/table.h"
+#include "./owampP.h"
+#include "./rijndael-api-fst.h"
 
 static OWPInitializeConfigRec	def_cfg = {
 	/* tm_out.tv_sec		*/	0,
@@ -730,10 +729,10 @@ OWPControlAccept(
 	u_int8_t kid[8]; /* XXX - assuming Stas will extend KID to 8 bytes */
 
 	/* Remove what's not needed. */
+	/* 
 	datum *key;
 	keyInstance keyInst;
 
-	/* 
 	   XXX - need to hide this
 	   hash_ptr passwd_hash = ((struct data *)app_data)->passwd; 
 	*/
