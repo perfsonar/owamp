@@ -698,7 +698,7 @@ AddrByLocalControl(
 		return NULL;
 
 	if( !(ai = calloc(1,sizeof(struct addrinfo))) ||
-					!(addr->saddr = calloc(1,sizeof(len)))){
+					!(addr->saddr = calloc(1,len))){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,"malloc():%M");
 		goto error;
 	}
