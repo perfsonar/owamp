@@ -12,6 +12,7 @@ use Socket;
 use Sys::Hostname;
 use Fcntl;
 use Digest::MD5;
+
 use GDBM_File;
 
 use constant DEBUG => 1;
@@ -19,17 +20,19 @@ use constant TMP_SECRET => 'abcdefgh12345678';
 use constant LOW => 0;
 use constant HIGH => 1;
 
+use constant VERBOSE => 1;
+
 ### Configuration section.
 my $server_port = 2345;
 
 # $top_dir contains the hierarchy of receiver directories
-my $top_dir = '/home/karp/owp/owamp/scripts';
+my $top_dir = '/home/karp/projects/owamp/scripts';
 
 # path to the 'owdigest' executable.
-my $digest_path = '/home/karp/owp/owamp/owdigest/owdigest';
+my $digest_path = '/home/karp/projects/owamp/owdigest/owdigest';
 
 # this is the file containing the secret to hash timestamps with.
-my $passwd_file = '/home/karp/owp/owamp/etc/owampd.passwd';
+my $passwd_file = '/home/karp/projects/owamp/etc/owampd.passwd';
 
 # this is a log file with liveness reports from nodes
 my $log_file = "$top_dir/liveness.dat";
@@ -90,6 +93,8 @@ while (1) {
 	my $src = inet_ntoa($addr);
 	my ($start_time, $cur_time, $hashed) = split /\./, $buf;
 	my $plain = "$start_time.$cur_time.$secret";
+	warn "received $plain" if VERBOSE;
+	die "DEBUG set - exiting" if DEBUG;
 	unless (Digest::MD5::md5_hex("$start_time.$cur_time.$secret") 
 		eq $hashed) {
 	    warn "DEBUG: hash mismatch\n";
@@ -141,48 +146,57 @@ while (1) {
 	# When get a new update for a host - process all files for which
 	# it is the sender. Then can return back into the loop - since there's
 	# no more information to act upon
-	my @dirlist = qw(recv_a);
-	for my $dir (@dirlist) {
-	    chdir "$top_dir/$dir/$src" or die "Could not chdir $dir/$src: $!";
-	    my $out =  qx/ls/;
-	    warn "\nDEBUG: printing contents of $dir/$src:\n$out\n" if DEBUG;
-	    my @files = split /\s/, $out;
+
+	opendir(DIR, "$top_dir") || die "Cannot opendir $top_dir: $!";
+	my @receivers = grep {$_ !~ /^\./ && -d $_} readdir(DIR);
+	closedir DIR;
+
+	for my $recv (@receivers) {
+
+	    opendir(OWPDATA, "$top_dir/$recv/$src") 
+		    or die "Could not opendir $top_dir/$recv/$src: $!";
+	    my @files = grep {-f $_} readdir(DIR);
+	    closedir DIR;
+	    warn "top_dir=$top_dir\nrecv=$recv\nsrc=$src\nfiles: @files \n"
+		    if DEBUG;
+
 	  FILE:
 	    for (@files) {
 		my $name = $_;
 		next unless ($name =~ s/\.owp$//);
 		my ($start, $end) = split /_/, $name;
 		warn "start=$start    end=$end\n" if DEBUG;
+		my $fullpath = "$top_dir/$recv/$src/$_";
 
 		next unless (exists $live_times{$src}); # status unknown
 		my $final = $#{$live_times{$src}};
 
 		if ($end > $live_times{$src}[$final][HIGH]
 		    || $start < $live_times{$src}[0][LOW]) {
-		    warn "file $_: status unknown: skipping\n" if DEBUG;
+		    warn "file $fullpath: status unknown: skipping\n" if DEBUG;
 		    next;
 		}
 
 		if (contains($start, $end, $live_times{$src}[0][HIGH])
 		    || contains($start, $end, $live_times{$src}[$final][LOW])){
-		    warn "file $_ invalid: archiving\n" if DEBUG;
-		    archive($_);
+		    warn "file $fullpath invalid: archiving\n" if DEBUG;
+		    archive($fulpath);
 		    next;
 		}
 
 		for (my $i = 1; $i <= $final - 1; $i++) {
 		    if (contains($start, $end, $live_times{$src}[$i][LOW])
 			||contains($start, $end, $live_times{$src}[$i][HIGH])){
-			warn "file $_ invalid: archiving\n" if DEBUG;
-			archive($_);
+			warn "file $fullpath invalid: archiving\n" if DEBUG;
+			archive($fullpath);
 			next FILE;
 		    }
 		}
 
-		warn "validated file $_ ... digesting + archiving now...\n" 
+		warn "validated file $fullpath ..digesting + archiving now..\n"
 			if DEBUG;
-		system("$digest_path $_ $_.digest > /dev/null");
-		archive($_);
+		system("$digest_path $fullpath $fullpath.digest > /dev/null");
+		archive($fullpath);
 	    }
 	}
 	warn "DEBUG: no more dirs - going back into recv loop\n\n" if DEBUG;
