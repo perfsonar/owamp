@@ -1,0 +1,25 @@
+#include <stdio.h>
+#include <string.h>
+#include <sys/types.h>
+#include <limits.h>
+#include <db.h>
+#include <math.h>
+
+/* for inet_pton */
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
+/* for ntohl */
+#include <sys/param.h>
+
+/* extern const char *DefaultConfigFile; */ /* DEFAULT_CONFIG_FILE */
+
+/*
+** This structure is used to keep track of usage resources.
+*/
+
+struct OWAMPLimits {
+	int fake;
+};
+
