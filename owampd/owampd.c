@@ -159,32 +159,6 @@ get_mode()
 	return OWP_MODE_OPEN;
 }
 
-int
-send_data(int sock, char *buf, size_t len, OWPBoolean encrypt)
-{
-	if (!encrypt){
-		if (writen(sock, buf, len) < 0)
-			return -1;
-	}
-	return 0;
-}
-
-/*
-** Accept or reject the Control Connection request.
-** Code = CTRL_ACCEPT/CTRL_REJECT with the obvious meaning.
-*/
-void
-OWPServerOK(OWPControl ctrl, int sock, u_int8_t code, char* buf)
-{
-	bzero(buf, 32);
-	*(u_int8_t *)(buf+15) = code;
-	if (code == 0){ /* accept */
-		random_bytes(buf + 16, 16); /* Generate Server-IV */
-		/* OWPSetWriteIV(ctrl, buf + 16); */
-	}
-	send_data(sock, buf, 32, 0);
-}
-
 /* 
 ** This function is called when the server doesn't even want
 ** to speak Control protocol with a particular host.
