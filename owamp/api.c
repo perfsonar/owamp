@@ -18,6 +18,9 @@
 **
 **	Description:	
 */
+#include <unistd.h>
+#include <fcntl.h>
+
 #include "./owampP.h"
 #include "./rijndael-api-fst.h"
 
@@ -360,7 +363,7 @@ _OWPClientBind(
 static int
 connect_tmout(
 	int		fd,
-	struct sa_addr	*ai_addr,
+	struct sockaddr	*ai_addr,
 	size_t		ai_addr_len,
 	struct timeval	*tm_out
 )
