@@ -550,11 +550,10 @@ owp_read_class2limits2(OWPContext ctx,
 		       policy_data* policy)
 {
 	FILE* fp;
-	int type, t;
+	int t;
 	unsigned int line_num = 1;
 	I2table class2node_hash = policy->class2node;
-	owp_tree_node_ptr last, cur_node, root = NULL;
-	int is_first = 1; 
+	owp_tree_node_ptr cur_node, root = NULL;
 	fp = fopen(class2limits, "r");
 	if (!fp) {
 		OWPError(ctx, OWPErrFATAL, errno, 
