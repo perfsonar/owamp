@@ -909,7 +909,7 @@ main(
 		/*
 		  XXX - TODO: create the directory.
 		*/
-		  conndata.real_data_dir = NULL; ping_ctx.opt.datadir;
+		  conndata.real_data_dir = ping_ctx.opt.datadir;
 	}	
 	else { /* create a unique temp dir */
 		conndata.real_data_dir = strdup(OWP_TMPDIR_TEMPLATE);
@@ -971,7 +971,7 @@ main(
 		exit(1);
 
 	/*
-	  Fetch here
+	  TODO - do the Fetch here.
 	*/
 	exit(0);
 }
