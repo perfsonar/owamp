@@ -434,11 +434,11 @@ owp_record_out(fetch_state_ptr state, OWPCookedDataRecPtr rec)
 	delay = owp_delay(&rec->send, &rec->recv);
 	if (ping_ctx.opt.full)
 		fprintf(state->fp, 
-	 "seq_no=%u send=%u.%us sync=%u prec=%u recv=%u.%us sync=%u prec=%u\n",
+	 "#%-10u send=%8X:%-8X %u%c     recv=%8X:%-8X %u%c\n",
 			rec->seq_no, rec->send.sec, rec->send.frac_sec, 
-			rec->send.sync, rec->send.prec,
-			rec->recv.sec, rec->recv.frac_sec, rec->recv.sync, 
-			rec->recv.prec);
+			rec->send.prec, (rec->send.sync)? 'S' : 'U', 
+			rec->recv.sec, rec->recv.frac_sec, 
+			rec->recv.prec, (rec->recv.sync)? 'S' : 'U');
 	else {
 		if (rec->send.sync && rec->recv.sync) {
 			double prec = owp_bits2prec(rec->send.prec) 
@@ -561,7 +561,6 @@ do_single_record(void *calldata, OWPCookedDataRecPtr rec)
 	if (state->order_disrupted)
 		return 0;
 	
-
 	/* Update N-reordering state. */
 	for (j = 0; j < OWP_MIN(state->l, OWP_MAX_N); j++) { 
 		 if (!((rec->seq_no) 
