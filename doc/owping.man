@@ -53,7 +53,7 @@ test will not be complete until \fItimeout\fR after the last packet is
 scheduled to be sent.
 .PP
 With no options specified, \fBowping\fR will perform concurrent bidirectional
-tests of 100 packets each at a rate of approxamently 1 packet every 0.1
+tests of 100 packets each at a rate of approximately 1 packet every 0.1
 seconds to and from the \fIpeerhost\fR. This works out to about 10 seconds
 of sending. Then, the receivers on each host
 will wait a reasonable period after that to count possible duplicate packets.

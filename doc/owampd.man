@@ -155,7 +155,7 @@ option is specified.
 .TP
 .B \-Z
 Run the master \fBowampd\fR process in the foreground. In this mode, error
-messages are printed to stderr as well as being sent to syslog. Also, normal
+messages are printed to STDERR as well as being sent to syslog. Also, normal
 terminal controls are available. (i.e., <Cntr\-C> will cause the daemon to
 kill it's child processes and exit.) This is useful for debugging.
 .SH REQUIREMENTS
