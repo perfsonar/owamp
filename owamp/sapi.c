@@ -573,19 +573,27 @@ AddrBySAddrRef(
 		return NULL;
 	}
 
+	if(!(addr->saddr = malloc(saddrlen))){
+		OWPErrorLine(addr->ctx,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
+				"malloc():%s",strerror(errno));
+		(void)OWPAddrFree(addr);
+		(void)OWPAddrFree(ai);
+		return NULL;
+	}
+	memcpy(addr->saddr,saddr,saddrlen);
+	ai->ai_addr = addr->saddr;
+	addr->saddrlen = saddrlen;
+	ai->ai_addrlen = saddrlen;
+
 	ai->ai_flags = 0;
 	ai->ai_family = saddr->sa_family;
 	ai->ai_socktype = SOCK_DGRAM;
 	ai->ai_protocol = IPPROTO_IP;	/* reasonable default.	*/
-	ai->ai_addrlen = saddrlen;
 	ai->ai_canonname = NULL;
-	ai->ai_addr = saddr;
 	ai->ai_next = NULL;
 
 	addr->ai = ai;
 	addr->ai_free = True;
-	addr->saddr = saddr;
-	addr->saddrlen = saddrlen;
 	addr->so_type = SOCK_DGRAM;
 	addr->so_protocol = IPPROTO_IP;
 
@@ -622,11 +630,15 @@ OWPProcessTestRequest(
 	OWPTestSpec	tspec;
 	OWPTestSession	tsession = NULL;
 	OWPErrSeverity	err_ret=OWPErrOK;
+	u_int32_t	offset;
 	u_int16_t	*sendport;
 	u_int16_t	*recvport;
 	u_int16_t	port;
 	int		rc;
 	OWPAcceptType	acceptval = OWP_CNTRL_FAILURE;
+
+	memset(sendaddr,0,sizeof(struct sockaddr_storage));
+	memset(recvaddr,0,sizeof(struct sockaddr_storage));
 
 	if( (rc = _OWPReadTestRequest(cntrl,sendaddr,recvaddr,&addrlen,
 			&ipvn,&conf_sender,&conf_receiver,sid,&tspec)) < 0){
@@ -635,24 +647,23 @@ OWPProcessTestRequest(
 	}
 
 	switch (ipvn){
-		struct sockaddr_in	*saddr4;
 #ifdef	AF_INET6
-		struct sockaddr_in6	*saddr6;
 
 		case 6:
 			af_family = AF_INET6;
-			saddr6 = (struct sockaddr_in6*)sendaddr;
-			sendport = &saddr6->sin6_port;
-			saddr6 = (struct sockaddr_in6*)recvaddr;
-			recvport = &saddr6->sin6_port;
+			/* compute offset of port field */
+			offset =
+			(((char*)&(((struct sockaddr_in6*)NULL)->sin6_port)) -
+				((char*)NULL));
+
 			break;
 #endif
 		case 4:
 			af_family = AF_INET;
-			saddr4 = (struct sockaddr_in*)sendaddr;
-			sendport = &saddr4->sin_port;
-			saddr4 = (struct sockaddr_in*)recvaddr;
-			recvport = &saddr4->sin_port;
+			/* compute offset of port field */
+			offset =
+			(((char*)&(((struct sockaddr_in*)NULL)->sin_port)) -
+				((char*)NULL));
 			break;
 		default:
 			af_family = AF_UNSPEC;
@@ -669,7 +680,10 @@ OWPProcessTestRequest(
 	}
 
 	SendAddr = AddrBySAddrRef(cntrl->ctx,sendaddr,addrlen);
+	sendport = (u_int16_t *)((u_int8_t*)SendAddr->saddr + offset);
 	RecvAddr = AddrBySAddrRef(cntrl->ctx,recvaddr,addrlen);
+	recvport = (u_int16_t *)((u_int8_t*)RecvAddr->saddr + offset);
+
 	if( !(tsession = _OWPTestSessionAlloc(cntrl,SendAddr,conf_sender,
 					RecvAddr,conf_receiver,&tspec)))
 		goto error;

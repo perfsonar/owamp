@@ -20,6 +20,7 @@
  *		This file contains the "default" implementation for
  *		the send and recv endpoints of an OWAMP test session.
  */
+#include <stdio.h>
 #include <unistd.h>
 #include <signal.h>
 #include <netinet/in.h>
@@ -1046,6 +1047,14 @@ OWPDefEndpointInitHook(
 	/*
 	 * We are now in the child send/recv process.
 	 */
+
+#ifdef	WAIT_FOR
+	{
+		int	waitfor=1;
+
+		while(waitfor);
+	}
+#endif
 
 	for(i=getdtablesize()-1;i>=0;i--){
 #ifndef	NDEBUG
