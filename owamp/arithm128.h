@@ -29,17 +29,17 @@
 
 #define NUM_DIGITS 8
 
-typedef struct num_128 {
+typedef struct num128 {
 	unsigned short digits[NUM_DIGITS];
-} *num_128;
+} *num128;
 
 /*
 ** Context for seeding AES-based random-number generator.
 */
 typedef struct rand_context {
-	unsigned long counter[4];
-	keyInstance key;
-	BYTE out[16];
+	unsigned char counter[16]; /* 128-bit counter (network byte ordered) */
+	keyInstance key;           /* key used to encrypt the counter.       */
+	BYTE out[16];              /* the encrypted block is kept there.     */
 } rand_context;
 
 /* 
@@ -55,19 +55,16 @@ typedef struct {
 } *OWPFormattedTime;
 
 /* Conversion operations */
-void num2formatted(num_128 from, OWPFormattedTime to);
-void formatted2num(OWPFormattedTime from, num_128 to);
-void num2timeval(num_128 from, struct timeval *to);
-void timeval2num(struct timeval *from, num_128 to);
+void num2formatted(num128 from, OWPFormattedTime to);
+void formatted2num(OWPFormattedTime from, num128 to);
+void num2timeval(num128 from, struct timeval *to);
+void timeval2num(struct timeval *from, num128 to);
 
 /* Random number generating functions */
 void rand_context_init(BYTE *sid);  /* Initialize the generator */
-struct num_128 exp_rand();       /* Generate an exponential (mean 1) deviate */
+struct num128 exp_rand();       /* Generate an exponential (mean 1) deviate */
 
 /* Debugging and auxilliary functions */
-void num_print(num_128 x);
-unsigned long num2ulong(num_128 x);
-void print_bin(unsigned short n);
-void num_binprint(num_128 x);
-
+void num_print(num128 x);
+unsigned long num2ulong(num128 x);
 #endif
