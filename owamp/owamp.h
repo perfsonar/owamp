@@ -167,7 +167,7 @@ typedef int (*OWPErrFunc)(
 typedef OWPBoolean	(*OWPGetAESKeyFunc)(
 	void		*app_data,
 	OWPKID		kid,
-	OWPKey		*key_ret,
+	OWPByte		**key_ret,
 	OWPErrSeverity	*err_ret
 );
 
