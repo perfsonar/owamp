@@ -563,7 +563,11 @@ WriteSubSession(
 		return -1;
 	}
 
-	if(parse->buckets){
+        /*
+         * If doing summary, and this is not a duplicate packet, bucket
+         * this delay.
+         */
+	if(parse->buckets && (parse->seen[rec->seq_no].seen == 1)){
 		I2Datum	key,val;
 		double	d;
 		int	b;
