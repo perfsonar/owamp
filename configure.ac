@@ -127,6 +127,7 @@ AC_CHECK_FUNCS([memset socket getaddrinfo mergesort])
 
 # Checks for variable/function declarations.
 AC_CHECK_DECLS([optreset])
+AC_CHECK_DECLS([fseeko])
 
 # AC_CONFIG_FILES([Makefile owamp/Makefile])
 

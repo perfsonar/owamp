@@ -54,6 +54,10 @@
 #define __attribute__(x)
 #endif
 
+#if	defined HAVE_DECL_FSEEKO && !HAVE_DECL_FSEEKO
+#define fseeko(a,b,c) fseek(a,b,c)
+#endif
+
 #ifndef	OWP_DATADIR
 #define OWP_DATADIR "/data"
 #endif
