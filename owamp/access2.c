@@ -52,6 +52,8 @@ owp_raw2datum(const void *bytes, size_t len)
 	if ( (dat = (void *)malloc(sizeof(*dat))) == NULL){
 		return NULL;
 	}
+	memset(dat, 0, sizeof(*dat));
+
 	if ( (dat->dptr = (void *)malloc(len)) == NULL) {
 		free(dat);
 		return NULL;
@@ -173,6 +175,7 @@ owp_netmask2datum(owp_access_netmask *netmask)
 	if (!ret) {
 		return NULL;
 	}
+	memset(ret, 0, sizeof(*ret));
 	
 	ret->dptr = (void *)netmask;
 	ret->dsize = sizeof(*netmask);
@@ -202,6 +205,8 @@ owp_netmask2class_store(void *addr,
 	if ((ptr = (owp_access_netmask *)malloc(sizeof(*ptr))) == NULL){
 		return -1;
 	}
+	memset(ptr, 0, sizeof(*ptr));
+
 	ptr->offset = num_offset;
 	ptr->af = family;
 	if ((key = owp_netmask2datum(ptr)) == NULL)
@@ -684,6 +689,8 @@ owp_netmask2class(owp_access_netmask *netmask, owp_policy_data* policy)
 	if (!(cur_mask = malloc(sizeof(*cur_mask)))) {
 		return NULL;
 	}
+	memset(cur_mask, 0, sizeof(*cur_mask));
+
 	cur_mask->af = netmask->af;
 	hash = policy->ip2class;
 	switch (netmask->af) {
@@ -847,6 +854,7 @@ owp_read_passwd_file(OWPContext ctx,
 				 "FATAL: malloc() failed");
 			return -1;
 		}
+		memset(kid_data, 0, sizeof(*kid_data));
 
 		strncpy(kid_data->passwd, secret, OWP_HEX_PASSWD_LEN);
 
