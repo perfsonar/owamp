@@ -25,6 +25,7 @@
 
 #include <sys/time.h>
 #include "rijndael-api-fst.h"
+#include "rijndael-alg-fst.h"
 
 #define NUM_DIGITS 8
 
@@ -33,11 +34,13 @@ typedef struct num_128 {
 } *num_128;
 
 /*
-** This structure is used to represent a 128-bit counter.
+** Context for seeding AES-based random-number generator.
 */
-typedef struct exp_count {
-	unsigned long d[4];
-} exp_count;
+typedef struct rand_context {
+	unsigned long counter[4];
+	keyInstance key;
+	BYTE out[16];
+} rand_context;
 
 /* 
 ** This structure represents 32.24 style time format
@@ -54,17 +57,7 @@ typedef struct {
 } *OWPFormattedTime;
 
 /* Constructors. */
-struct num_128 num_new(unsigned short a, 
-		 unsigned short b, 
-		 unsigned short c, 
-		 unsigned short d,
-		 unsigned short e, 
-		 unsigned short f, 
-		 unsigned short g, 
- 		 unsigned short h
-		 );
 struct num_128 ulong2num(unsigned long a);
-struct num_128 new_random(keyInstance *key, BYTE *outBuffer);
 
 /* Arithmetic operations */
 void num_add(num_128 x, num_128 y, num_128 z);
@@ -79,7 +72,6 @@ void num2timeval(num_128 from, struct timeval *to);
 void timeval2num(struct timeval *from, num_128 to);
 struct num_128 raw2num(const unsigned char *raw);
 
-void counter_increment(exp_count *counter);
 /* Debugging and auxilliary functions */
 void num_print(num_128 x);
 unsigned long num2ulong(num_128 x);
@@ -90,6 +82,8 @@ void print_bin(unsigned short n);
 void num_binprint(num_128 x);
 
 /* Generate an exponential deviate using 64-bit binary string as an input. */
-struct num_128 random_exp(keyInstance *key);
-int countermodeEncrypt(keyInstance *key, BYTE *outBuffer);
+struct num_128 random_exp();
+
+void rand_context_init(BYTE *sid); 
+struct num_128 rand_get();
 #endif

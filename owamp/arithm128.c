@@ -25,12 +25,16 @@
 #include <stdio.h>
 #include <assert.h>
 #include "arithm128.h"
-#include "rijndael-api-fst.h"
 
 /* we often need to scale by 10^6 so let's fix a struct for that */
 static struct num_128 million = {{0, 0, 0, 0, 16960, 15, 0, 0}};
 
+/* initialize the RNG counter */
+static rand_context next;
+
 #define K 19 /* As in Knuth: the first k such that Q[k] > 1 - 1/(2^64) */
+
+#define EXPDEBUG 0
 
 /*
 ** Obtained by running:
@@ -87,28 +91,6 @@ static unsigned short mask2[16] = {
 **        a*(2^48) + b*(2^32) + c*(2^16) + d + 
 **        e/(2^16) + f/(2^32) + g*(2^48) + h/(2^64)
 */
-struct num_128 num_new(unsigned short a,
-		       unsigned short b,
-		       unsigned short c,
-		       unsigned short d,
-		       unsigned short e,
-		       unsigned short f,
-		       unsigned short g,
-		       unsigned short h)
-{
-	struct num_128 x = { {0, 0, 0, 0, 0, 0, 0, 0} };
-	
-	x.digits[0] = h;
-	x.digits[1] = g;
-	x.digits[2] = f;
-	x.digits[3] = e;
-	x.digits[4] = d;
-	x.digits[5] = c;
-	x.digits[6] = b;
-	x.digits[7] = a;
-	
-	return x;
-}
 
 #define BASE 0x10000 /* i.e., arithmetic is done modulo 2^16 */
 
@@ -288,9 +270,9 @@ num2timeval(num_128 from, struct timeval *to)
 	struct num_128 res;
 
 	/* first convert the fractional part */
-	unsigned short a = from->digits[3];
-	unsigned short b = from->digits[2];
-	struct num_128 tmp = num_new(0, 0, 0, 0, a, b, 0, 0);
+	struct num_128 tmp = {{0, 0, 0, 0, 0, 0, 0, 0}};
+	tmp.digits[2] = from->digits[2];
+	tmp.digits[3] = from->digits[3];
 
 	num_mul(&tmp, &million, &res);
 	to->tv_usec = res.digits[4];
@@ -361,38 +343,14 @@ ulonglong2num(unsigned long long a)
 struct num_128
 raw2num(const unsigned char *raw)
 {
-	unsigned short dig[4];
 	int i;
+	struct num_128 x = {{0, 0, 0, 0, 0, 0, 0, 0}};
 
 	for (i = 0; i < 4; i++)
-		dig[i] = (((unsigned short)(*(raw + 2*i))) << 8) 
+		x.digits[3-i] = (((unsigned short)(*(raw + 2*i))) << 8) 
 			+ *(raw + 2*i + 1);
 
-	return num_new(0, 0, 0, 0, ntohs(dig[0]), ntohs(dig[1]), 
-		       ntohs(dig[2]), ntohs(dig[3]));
-}
-
-/*
-** Generate a new uniformly distributed 64-bit random number.
-** Return it in lower part of struct num_128.
-*/
-struct num_128
-new_random(keyInstance *key, BYTE *outBuffer)
-{
-#if 1
-	static int reuse = 1;
-	reuse = 1 - reuse;
-	if (reuse)
-		return raw2num(outBuffer + 8);
-#endif
-
-	if (countermodeEncrypt(key, outBuffer) != 128){
-		fprintf(stderr, "FATAL: counter mode encryption error");
-		exit(1);
-	}
-
-	/* Grab the first 8 bytes of the encrypted block */
-	return raw2num(outBuffer);
+	return x;
 }
 
 /* 
@@ -401,22 +359,18 @@ new_random(keyInstance *key, BYTE *outBuffer)
 ** Knuth's v.2 of "Art of Computer Programming" (1998), p.133.
 */
 struct num_128 
-random_exp(keyInstance *key)
+random_exp()
 {
 	struct num_128 ret;
 	int i, j, k, count;
-	BYTE outBuffer[16];
 	struct num_128 U, V; 
 	struct num_128 tmp1, tmp2;   /* structs to hold intermediate results */
 
-	static int gen_calls = 0; /* XXX - DEBUG only */
-
-	gen_calls++;
-	U = new_random(key, outBuffer);
-	
+	U = rand_get();
+#if EXPDEBUG
 	printf("Start of random_exp - generated rand number\n");
 	num_print(&U);
-
+#endif
 	/* Get U and shift */
 	count = 1;
 	for (i = 3; i >= 0; i--){
@@ -438,10 +392,10 @@ random_exp(keyInstance *key)
 
 	j = count - 1;
 	num_leftshift(&U, count);
-	
+#if EXPDEBUG	
 	printf("shifted U now is:\n");
 	num_print(&U);
-		
+#endif		
 
 	/* Immediate acceptance? */
 	if (num_cmp(&U, LN2) < 0){ 
@@ -462,12 +416,10 @@ random_exp(keyInstance *key)
 		exit(1);
 	}
 
-	gen_calls++;
-	V = new_random(key, outBuffer);
+	V = rand_get();
 	
 	for (i = 2; i <= k; i++){
-		gen_calls++;
-		tmp1 = new_random(key, outBuffer);
+		tmp1 = rand_get();
 		if (num_cmp(&tmp1, &V) < 0)
 			V = tmp1;
 	}
@@ -516,55 +468,9 @@ print_bin(unsigned short n)
 	fprintf(stderr, "%hu ", tmp);
 }
 
-
 /*
-** This function encrypts an 128-bit counter with a given key.
+** Left-shift the fractional part of a num_128 struct U by <count> many bits.
 */
-int 
-countermodeEncrypt(keyInstance *key, BYTE *outBuffer) 
-{
-	BYTE input[16];
-	int j;
-	u_long digit; /*  = htonl(*i); */
-	static exp_count i = {{0, 0, 0, 0}};
-
-	if (key == NULL)
-		return BAD_CIPHER_STATE;
-	
-	if (input == NULL)
-		return 0; /* nothing to do */
-	
-	/* Prepare the block for encryption */
-	memset(input, 0, 16);
-	for (j = 0; j < 4; j++){ /* most significant digits come first */
-		digit = htonl(i.d[3-j]);
-		memcpy(input + 4*j, &digit, 4);
-	}
-		
-	rijndaelEncrypt(key->rk, key->Nr, input, outBuffer);
-
-	counter_increment(&i);
-	return 128;
-}
-
-void 
-counter_increment(exp_count *counter)
-{
-	int i;
-	int finished = 0;
-
-	for (i = 0; i < 4; i++){
-		if (++(counter->d[i]) != 0){
-			finished++;
-			break;
-		}
-	}
-
-	if (!finished)
-		counter->d[0] = 1;
-}
-
-
 void
 num_leftshift(num_128 U, int count)
 {
@@ -593,4 +499,49 @@ num_leftshift(num_128 U, int count)
 	U->digits[0] = 
 		second(U->digits[0], num_bits);
 	
+}
+
+/*
+** Seed the random number generator using a 16-byte string.
+*/
+void 
+rand_context_init(BYTE *sid)
+{
+	int i;
+	
+	bytes2Key(&next.key, sid);
+	memset(next.out, 0, 16);
+	for (i = 0; i < 4; i++)
+		next.counter[i] = 0UL;
+}
+
+/*
+** Generate a 64-bit uniform random string and save it in the lower
+** part of the struct.
+*/
+struct num_128
+rand_get()
+{
+	static int reuse = 1;
+	BYTE input[16];
+	int j;
+	u_long dig;
+#if 1
+	reuse = 1 - reuse;
+	if (reuse)
+		return raw2num(next.out + 8);
+#endif
+
+	/* Prepare the block for encryption */
+	memset(input, 0, 16);
+	for (j = 0; j < 4; j++){ /* most significant digits come first */
+		dig = htonl(next.counter[3-j]);
+		memcpy(input + 4*j, &dig, 4);
+	}
+		
+	rijndaelEncrypt(next.key.rk, next.key.Nr, input, next.out);
+
+	next.counter[0]++;
+	/* XXX - TODO - do the real counter increment */
+	return raw2num(next.out);
 }
