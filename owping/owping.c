@@ -626,7 +626,7 @@ do_records_all(char *datadir, OWPSID sid, int type, FILE *out)
 	rec_list window;
 	fetch_state state;
 	int fd;
-	u_int32_t num_rec;
+	u_int32_t num_rec, typeP;
 	char datafile[PATH_MAX]; /* full path to data file */
 	char sid_name[(sizeof(OWPSID)*2)+1];
 	struct stat     stat_buf;
@@ -657,6 +657,11 @@ do_records_all(char *datadir, OWPSID sid, int type, FILE *out)
 		I2ErrLog(eh, 
 		       "FATAL: data file %s contains uneven number of records",
 			 datafile);
+		return -1;
+	}
+
+	if (OWPGetDataHeader(fd, &typeP) != OWPErrOK) {
+		I2ErrLog(eh, "FATAL: could not get data header");
 		return -1;
 	}
 	
