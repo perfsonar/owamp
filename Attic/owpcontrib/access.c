@@ -27,7 +27,7 @@ usage()
 */
 
 static void
-parse_options(int argc, char *argv[])
+owamp_parse_options(int argc, char *argv[])
 {
     extern char *optarg;
     int c;
@@ -56,7 +56,7 @@ parse_options(int argc, char *argv[])
 */
 
 unsigned long
-numberize(const char *addr)
+owamp_numberize(const char *addr)
 {
         unsigned long sin_addr;
         int retval;
@@ -80,7 +80,7 @@ numberize(const char *addr)
 */
 
 const char *
-denumberize(unsigned long addr)
+owamp_denumberize(unsigned long addr)
 {
 	static char buffer[INET_ADDRSTRLEN];
 	unsigned long addr_nl = htonl(addr);
@@ -151,8 +151,12 @@ owamp_parse_mask(const char *text)
 	return key;
 }
 
+/*
+** This function fills out a datum structure with the given string.
+*/
+
 int
-datumify(const char *str, datum *dat)
+owamp_datumify(const char *str, datum *dat)
 {
 	unsigned int len; 
 	
@@ -193,13 +197,14 @@ owamp_read_config(const char *ip2class)
 
 	if ( (fp = fopen(ip2class, "r")) == NULL){
 		snprintf(err_msg, sizeof(err_msg),"fopen %s for reading", 
-			ConfigFile);
+			ip2class);
 		perror(err_msg);
 		exit(1);
 	}
 
 	while ( (fgets(line, sizeof(line), fp)) != NULL) {
-		if (sscanf(line, "%s%s", mask, class) != 2) continue;
+		if (sscanf(line, "%s%s", mask, class) != 2) 
+			continue;
 		if ( (key = owamp_parse_mask(mask)) == NULL) 
 			continue;
 
@@ -220,12 +225,12 @@ owamp_read_config(const char *ip2class)
 
 
 /*
-** This function prints out the database, given by the argument base.
+** This function prints out the database, given by the argument <base>.
 ** It is used mostly for debugging.
 */
 
 void
-print_dbm(char *base)
+owamp_print_dbm(char *base)
 {
 	DBM *dbm;
 	datum key, val;
@@ -244,7 +249,9 @@ int
 main(int argc, char *argv[])
 {
 	parse_options(argc, argv);
-	if (!IPtoClassFile) {IPtoClassFile = strdup(DefaultIPtoClassFile);};
+	if (!IPtoClassFile)
+		IPtoClassFile = strdup(DefaultIPtoClassFile);
+	
 	owamp_read_config(IPtoClassFile);
 	print_dbm(IPtoClassFile);
 	exit(0);
