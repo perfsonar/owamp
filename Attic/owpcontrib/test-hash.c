@@ -23,54 +23,6 @@ test_ip2class()
 
 
 void
-print_limits(OWAMPLimits * limits)
-{
-	printf("bw = %lu, space = %lu, num_sessions = %u\n",
-	       OWAMPGetBandwidth(limits),
-	       OWAMPGetSpace(limits),
-	       OWAMPGetNumSessions(limits)
-	       );
-}
-
-/*
-void
-owamp_print_class2limits(hash_ptr hash)
-{
-	datum key, val;
-
-	for(key=hash_firstkey(hash);key.dptr != NULL;key = hash_nextkey(hash)){
-		val = hash_fetch(hash, key);
-		if (!val.dptr)
-			continue;
-		printf("the limits for class %s are: ", key.dptr);
-		print_limits((OWAMPLimits *)val.dptr);
-	}
-}
-*/
-
-
-/*
-** This function prints out the hash, given by the argument <hash>.
-** It is used mostly for debugging.
-*/
-
-/*
-void
-owamp_print_ip2class(hash_ptr hash)
-{
-	datum key, val;
-
-	for(key=hash_firstkey(hash);key.dptr != NULL;key = hash_nextkey(hash)){
-		val = hash_fetch(hash, key);
-		if (!val.dptr)
-			continue;
-		fprintf(stderr, "the value of key %s/%u is = %s\n",
-	     owamp_denumberize(get_ip_addr(&key)), get_offset(&key), val.dptr);
-	}
-}
-*/
-
-void
 test_policy_check()
 {
 	;

@@ -13,7 +13,7 @@
 **
 **	Author:		Anatoly Karp
 **
-**	Date:		Thu Apr 19 13:47:17  2002
+**	Date:		Thu Apr 19 13:47:17  EDT 2002
 **
 **	Description:	Simple hash table - header file.
 */
@@ -22,28 +22,38 @@
 
 #include "../owamp/owamp.h"
 
-#define hash_ptr Table_T 
-typedef struct hash_ptr *hash_ptr;
+#define T hash_ptr
+typedef struct T *T;
 
 typedef struct {
              char *dptr;
              int dsize;
 } datum;
 
-extern hash_ptr hash_init(
+struct binding {
+	struct binding *link;
+	const datum *key;
+	datum *value;
+};
+
+typedef void (*print_binding_func)(const struct binding *p, FILE* fp);
+
+extern T hash_init(
 		   OWPContext ctx,
 		   int hint,
 		   int cmp(const datum *x, const datum *y),
-		   unsigned long hash(const datum *key)
+		   unsigned long hash(const datum *key),
+		   void print_binding(const struct binding *p, FILE* fp)
 		   );
-extern datum* hash_fetch(hash_ptr hash, const datum *key);
+extern datum* hash_fetch(T hash, const datum *key);
 extern int hash_store(
 		      OWPContext ctx, 
-		      hash_ptr table, 
+		      T table, 
 		      const datum *key, 
 		      datum *value
 		      );
-extern void hash_close(hash_ptr *table);
+extern void hash_print(T table, FILE* fp);
+extern void hash_close(T *table);
 
-/* #undef hash_ptr */
+#undef T
 #endif

@@ -13,7 +13,7 @@
 **
 **	Author:		Anatoly Karp
 **
-**	Date:		Thu Apr 19 13:47:17  2002
+**	Date:		Thu Apr 19 13:47:17  EDT 2002
 **
 **	Description:	Simple hash table - implementation.
 */
@@ -24,19 +24,16 @@
 #include <string.h>
 #include "table.h"
 
-#define hash_ptr Table_T
+#define T hash_ptr
 
 /* Types used to define a hash table. */
-struct hash_ptr {
+struct T {
 	int size;
 	int (*cmp)(const datum *x, const datum *y);
 	unsigned long (*hash)(const datum *key);
 	int length;
-	struct binding {
-		struct binding *link;
-		const datum *key;
-		datum *value;
-	}  **buckets;
+	struct binding  **buckets;
+	print_binding_func print_binding;
 };
 
 /* Static functions (used by default unless specified). */
@@ -55,15 +52,23 @@ hashatom(const datum *key)
 	return (unsigned long)key->dptr>>2;
 }
 
-hash_ptr 
+static void
+simple_print_binding(const struct binding *p, FILE* fp)
+{
+	fprintf(fp, "the value for key %s is %s\n", 
+		p->key->dptr, p->value->dptr);
+}
+
+T 
 hash_init(
 	    OWPContext ctx,
 	    int hint,
 	    int cmp(const datum *x, const datum *y),
-	    unsigned long hash(const datum *key)
+	    unsigned long hash(const datum *key),
+	    void print_binding(const struct binding *p, FILE* fp)
 )
 {
-	hash_ptr table;
+	T table;
 	int i;
 	static int primes[] = { 509, 509, 1021, 2053, 4093, 8191, 16381,
 	32771, 65521, INT_MAX };
@@ -83,6 +88,8 @@ hash_init(
 	table->size = primes[i-1];
 	table->cmp = cmp? cmp : cmpatom;
 	table->hash = hash ? hash : hashatom;
+	table->print_binding = print_binding ? 
+		print_binding : simple_print_binding;
 	table->buckets = (struct binding **)(table + 1);
 	for (i = 0; i < table->size; i++)
 		table->buckets[i] = NULL;
@@ -91,7 +98,7 @@ hash_init(
 }
 
 void
-hash_close(hash_ptr *table)
+hash_close(T *table)
 {
 	assert(table && *table);
 	if ((*table)->length > 0){
@@ -109,7 +116,7 @@ hash_close(hash_ptr *table)
 }
 
 int 
-hash_store(OWPContext ctx, hash_ptr table, const datum *key, datum *value)
+hash_store(OWPContext ctx, T table, const datum *key, datum *value)
 {
 	int i;
 	struct binding *p;
@@ -132,16 +139,17 @@ hash_store(OWPContext ctx, hash_ptr table, const datum *key, datum *value)
 				 "FATAL: malloc for hash table");
 			return -1;
 		}
-	} else {
 		p->key = key;
 		p->link = table->buckets[i];
 		table->buckets[i] = p;
 		table->length++;
 	}
+	p->value = value;
+	return 0;
 }
 
 datum *
-hash_fetch(hash_ptr table, const datum *key){
+hash_fetch(T table, const datum *key){
 	int i;
 	struct binding *p;
 	datum ret;
@@ -162,7 +170,7 @@ hash_fetch(hash_ptr table, const datum *key){
 }
 
 void
-hash_print(hash_ptr table)
+hash_print(T table, FILE* fp)
 {
 	int i;
 	struct binding *p;
@@ -171,6 +179,6 @@ hash_print(hash_ptr table)
 
 	for (i = 0; i < table->size; i++)
 		for (p = table->buckets[i]; p; p = p->link)
-			fprintf(stderr, "DEBUG: the value of key %s is %s\n",
-				p->key->dptr, p->value->dptr);
+			table->print_binding(p, fp);
 }
+
