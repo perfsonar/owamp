@@ -392,7 +392,9 @@ OWPControlOpen(
 		unsigned char	buf[32];
 
 		memcpy(buf,challenge,16);
-		I2RandomBytes(cntrl->session_key,16);
+		if(I2RandomBytes(ctx->rand_src,cntrl->session_key,16) != 0)
+			goto error;
+
 		memcpy(&buf[16],cntrl->session_key,16);
 
 		_OWPMakeKey(cntrl,cntrl->session_key);
@@ -402,9 +404,11 @@ OWPControlOpen(
 			goto error;
 	}
 	else{
-		I2RandomBytes(token,32);
+		if(I2RandomBytes(ctx->rand_src,token,32) != 0)
+			goto error;
 	}
-	I2RandomBytes(cntrl->writeIV,16);
+	if(I2RandomBytes(ctx->rand_src,cntrl->writeIV,16) != 0)
+		goto error;
 
 	/*
 	 * Write the client greeting, and see if the Server agree's to it.

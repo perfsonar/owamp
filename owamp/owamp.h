@@ -49,22 +49,20 @@
 #ifndef	OWP_DATADIR
 #define OWP_DATADIR "/data"
 #endif
-
 #ifndef OWP_PATH_SEPARATOR
 #define	OWP_PATH_SEPARATOR	"/"
 #endif
 #ifndef	OWP_PATH_SEPARATOR_LEN
 #define	OWP_PATH_SEPARATOR_LEN	1
 #endif
-#ifndef OWP_SESSIONS_DIR
-#define OWP_SESSIONS_DIR         "sessions"
+#ifndef	OWP_SESSIONS_DIR
+#define	OWP_SESSIONS_DIR         "sessions"
 #endif
-#ifndef OWP_NODES_DIR
-#define OWP_NODES_DIR            "nodes"
+#ifndef	OWP_NODES_DIR
+#define	OWP_NODES_DIR            "nodes"
 #endif
-
-#ifndef  OWP_INCOMPLETE_EXT
-#define OWP_INCOMPLETE_EXT         ".i"
+#ifndef	OWP_INCOMPLETE_EXT
+#define	OWP_INCOMPLETE_EXT         ".i"
 #endif
 
 #include <sys/types.h>
@@ -120,19 +118,20 @@ typedef struct OWPControlRec	*OWPControl;
 typedef struct OWPAddrRec	*OWPAddr;
 
 /* Codes for returning error severity and type. */
+/* values are mapped to syslog "priorities" we want to use. */
 typedef enum {
-	OWPErrFATAL=-4,
-	OWPErrWARNING=-3,
-	OWPErrINFO=-2,
-	OWPErrDEBUG=-1,
-	OWPErrOK=0
+	OWPErrFATAL=3,
+	OWPErrWARNING=4,
+	OWPErrINFO=6,
+	OWPErrDEBUG=7,
+	OWPErrOK=-1
 } OWPErrSeverity;
 
 typedef enum {
+	OWPErrUNKNOWN=0,
 	OWPErrPOLICY,
 	OWPErrINVALID,
-	OWPErrUNSUPPORTED,
-	OWPErrUNKNOWN
+	OWPErrUNSUPPORTED
 } OWPErrType;
 
 /*
@@ -334,8 +333,7 @@ typedef OWPTimeStamp (*OWPGetTimeStampFunc)(
  */ 
 typedef struct {
 	struct timeval			tm_out;
-	void				*err_data;
-	OWPErrFunc			err_func;
+	I2ErrHandle                     eh;
 	OWPGetAESKeyFunc		get_aes_key_func;
 	OWPCheckControlPolicyFunc	check_control_func;
 	OWPCheckTestPolicyFunc		check_test_func;
@@ -346,7 +344,6 @@ typedef struct {
 	OWPGetTimeStampFunc		get_timestamp_func;
 	int                             rand_type;
 	void*                           rand_data;
-	I2ErrHandle                     rand_eh;
 } OWPInitializeConfigRec, *OWPInitializeConfig;
 
 /*

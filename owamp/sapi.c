@@ -425,7 +425,10 @@ OWPControlAccept(
 				cntrl->remote_addr->port);
 
 	/* generate 16 random bytes of challenge and save them away. */
-	I2RandomBytes(challenge, 16);
+	if(I2RandomBytes(ctx->rand_src,challenge, 16) != 0){
+		*err_ret = OWPErrFATAL;
+		goto error;
+	}
 	if( (rc = _OWPWriteServerGreeting(cntrl,mode_offered,
 						challenge)) < 0){
 		*err_ret = (OWPErrSeverity)rc;
@@ -498,7 +501,12 @@ OWPControlAccept(
 		
 		/* Authentication ok - set encryption fields */
 		cntrl->kid = cntrl->kid_buffer;
-		I2RandomBytes(cntrl->writeIV, 16);
+		if(I2RandomBytes(cntrl->ctx->rand_src,cntrl->writeIV, 16) != 0){
+			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+					"Unable to fetch randomness...");
+			(void)_OWPWriteServerOK(cntrl,OWP_CNTRL_FAILURE);
+			goto error;
+		}
 		memcpy(cntrl->session_key,&token[16],16);
 		_OWPMakeKey(cntrl,cntrl->session_key); 
 	}

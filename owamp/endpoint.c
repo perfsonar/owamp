@@ -38,6 +38,7 @@
  * managed by these functions.
  */
 typedef struct _DefEndpointRec{
+	I2RandomSource		rand_src;
 	OWPTestSpec		test_spec;
 	OWPSessionMode		mode;
 	keyInstance		*aeskey;
@@ -261,6 +262,7 @@ OWPDefEndpointInit(
 	ep->mode = OWPGetMode(cdata->cntrl);
 	ep->aeskey = OWPGetAESkeyInstance(cdata->cntrl,send);
 	ep->lossThreshold = cdata->lossThreshold;
+	ep->rand_src = ctx->rand_src;
 
 	tpsize = OWPTestPacketSize(localaddr->saddr->sa_family,
 				ep->mode,test_spec->any.packet_size_padding);
@@ -377,7 +379,8 @@ OWPDefEndpointInit(
 		/*
 		 * Random bytes.
 		 */
-		I2RandomBytes(&sid[12],4);
+		if(I2RandomBytes(ep->rand_src,&sid[12],4) != 0)
+			goto error;
 
 		/*
 		 * Ensure datadir exists.
@@ -737,7 +740,11 @@ run_sender(
 #ifdef	OWP_ZERO_TEST_PAYLOAD
 	memset(payload,0,ep->test_spec.any.packet_size_padding);
 #else
-	I2RandomBytes(payload,ep->test_spec.any.packet_size_padding);
+	/*
+	 * Ignore errors here - it isn't that critical that it be random.
+	 */
+	(void)I2RandomBytes(ep->rand_src,payload,
+			    ep->test_spec.any.packet_size_padding);
 #endif
 #endif
 
@@ -749,7 +756,8 @@ run_sender(
 #ifdef	OWP_ZERO_TEST_PAYLOAD
 		memset(payload,0,ep->test_spec.any.packet_size_padding);
 #else
-		I2RandomBytes(payload,ep->test_spec.any.packet_size_padding);
+		(void)I2RandomBytes(ep->rand_src,payload,
+				    ep->test_spec.any.packet_size_padding);
 #endif
 #endif
 		nexttime = ep->start;

@@ -177,7 +177,7 @@ _OWPWriteClientGreeting(
 	if(cntrl->kid)
 		memcpy(&buf[4],cntrl->kid,16);
 	else
-		I2RandomBytes(&buf[4],16);
+		(void)I2RandomBytes(cntrl->ctx->rand_src,&buf[4],16);
 
 	memcpy(&buf[20],token,32);
 	memcpy(&buf[52],cntrl->writeIV,16);

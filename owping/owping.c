@@ -98,8 +98,7 @@ OWPingErrFunc(
 static	OWPInitializeConfigRec	OWPCfg = {{
 	/* tm_out.tv_sec		*/	0,
 	/* tm_out.tv_usec		*/	0},
-	/* app_data			*/	(void*)&ping_ctx,
-	/* err_func			*/	OWPingErrFunc,
+	/* eh				*/	NULL,
 	/* get_aes_key			*/	owp_get_aes_key,
 	/* check_control_func		*/	owp_check_control,
 	/* check_test_func		*/	owp_check_test,
@@ -108,9 +107,8 @@ static	OWPInitializeConfigRec	OWPCfg = {{
 	/* endpoint_start_func		*/	NULL,
 	/* endpoint_stop_func		*/	NULL,
 	/* get_timestamp_func		*/	NULL,
-	/* rand_type                    */      RAND_DEV,
-	/* rand_data                    */      "/dev/urandom",
-	/* rand_eh                      */      NULL
+	/* rand_type                    */      I2RAND_DEV,
+	/* rand_data                    */      NULL
 };
 
 /*

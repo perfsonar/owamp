@@ -39,4 +39,5 @@ aclocal -I config
 autoheader
 automake --foreign --add-missing --copy
 autoconf
-./configure $*
+# run configure by hand.
+# ./configure $*

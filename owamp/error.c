@@ -23,33 +23,24 @@
 #include <owampP.h>
 
 static void
-OWPDefErrFunc(
-	OWPErrSeverity		severity	__attribute__((unused)),
-	OWPErrType		etype		__attribute__((unused)),
-	char			*buff
-)
-{
-	fwrite(buff,sizeof(char),strlen(buff),stderr);
-	fwrite("\n",sizeof(char),1,stderr);
-
-	return;
-}
-
-static void
 _OWPError(
 	OWPContext		ctx,
-	OWPErrSeverity	severity,
+	OWPErrSeverity		severity,
 	OWPErrType		etype,
 	const char		*fmt,
 	va_list			args
 )
 {
-	char	buff[_OWP_ERR_MAXSTRING];
+	char			buff[_OWP_ERR_MAXSTRING];
 
 	vsnprintf(buff,sizeof(buff),fmt,args);
-	if(!ctx || !ctx->cfg.err_func ||
-		(*ctx->cfg.err_func)(ctx->cfg.err_data,severity,etype,buff))
-		OWPDefErrFunc(severity,etype,buff);
+	if(ctx && ctx->cfg.eh){
+		I2ErrLogT(ctx->cfg.eh,(int)severity,etype,buff);
+	}
+	else{
+		fwrite(buff,sizeof(char),strlen(buff),stderr);
+		fwrite("\n",sizeof(char),1,stderr);
+	}
 
 	return;
 }

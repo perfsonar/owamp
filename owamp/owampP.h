@@ -114,6 +114,8 @@ typedef struct OWPControlRec OWPControlRec;
 
 struct OWPContextRec{
 	OWPInitializeConfigRec	cfg;
+	OWPBoolean		lib_eh;
+	I2RandomSource		rand_src;
 	OWPControlRec		*cntrl_list;
 };
 

@@ -163,6 +163,7 @@ sig_chld(
 ** This is a basic function to report errors on the server.
 */
 
+#if	NOT
 static int
 owampd_err_func(
 		void           *app_data	__attribute__((unused)),
@@ -184,6 +185,7 @@ owampd_err_func(
 
 	return 0;
 }
+#endif
 
 struct ChldStateRec{
 	OWPContext	ctx;
@@ -621,7 +623,6 @@ main(int argc, char *argv[])
 		{0, 
 		0},
 		NULL,
-		owampd_err_func, 
 		owp_get_aes_key,
                 owp_check_control,
                 owp_check_test,
@@ -630,8 +631,7 @@ main(int argc, char *argv[])
 		NULL,
 		NULL,
 		NULL,
-		RAND_DEV,
-		"/dev/urandom",
+		I2RAND_DEV,
 		NULL
 	};
 
@@ -758,21 +758,10 @@ main(int argc, char *argv[])
 	}
 
 	/*
-	 * Set the app_data for the context - this pointer will be passed
-	 * on to the gettimestamp/err_func functions.
-	 *
-	 * Once this is initialized, all errors should be reported using the
-	 * OWPError* functions so they all go through the installed error
-	 * handler.
+	 * Initialize the context. (Set the error handler to the app defined
+	 * one.)
 	 */
-
-	/*
-	 * TODO: clean this up.
-	 *
-	 * The policy pointer is only needed by the parent now - so it
-	 * shouldn't need to be passed into the api.
-	cfg.app_data = (void *)policy;
-	 */
+	cfg.eh = errhand;
 	ctx = OWPContextInitialize(&cfg);
 
 	/*

@@ -28,8 +28,7 @@
 static OWPInitializeConfigRec	def_cfg = {
 	/* tm_out.tv_sec		*/	{0,
 	/* tm_out.tv_usec		*/	0},
-	/* err_data			*/	NULL,
-	/* err_func			*/	NULL,
+	/* eh				*/	NULL,
 	/* get_aes_key			*/	NULL,
 	/* check_control_func		*/	NULL,
 	/* check_test_func		*/	NULL,
@@ -38,9 +37,8 @@ static OWPInitializeConfigRec	def_cfg = {
 	/* endpoint_start_func		*/	NULL,
 	/* endpoint_stop_func		*/	NULL,
 	/* get_timestamp_func		*/	NULL,
-	/* rand_type                    */      RAND_DEV,
-	/* rand_data                    */      "/dev/urandom",
-	/* rand_eh                      */      NULL
+	/* rand_type			*/	I2RAND_DEV,
+	/* rand_data			*/	NULL
 };
 
 OWPContext
@@ -48,7 +46,8 @@ OWPContextInitialize(
 	OWPInitializeConfig	config
 )
 {
-	OWPContext	ctx = malloc(sizeof(OWPContextRec));
+	I2LogImmediateAttr	ia;
+	OWPContext		ctx = malloc(sizeof(OWPContextRec));
 
 	if(!ctx){
 		OWPErrorLine(NULL,OWPLine,
@@ -64,11 +63,33 @@ OWPContextInitialize(
 
 	ctx->cntrl_list = NULL;
 
-	if (I2RandomSourceInit(ctx->cfg.rand_eh,
+	if(!ctx->cfg.eh){
+		ctx->lib_eh = True;
+		ia.line_info = (I2NAME|I2MSG);
+		ia.fp = stderr;
+		ctx->cfg.eh = I2ErrOpen("libowamp",I2ErrLogImmediate,&ia,
+				NULL,NULL);
+		if(!ctx->cfg.eh){
+			OWPErrorLine(NULL,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
+					"Cannot init error module");
+			free(ctx);
+			return NULL;
+		}
+	}
+	else
+		ctx->lib_eh = False;
+
+	if(ctx->cfg.rand_type == 0){
+		ctx->cfg.rand_type = I2RAND_DEV;
+		ctx->cfg.rand_data = NULL;
+	}
+
+	if( !(ctx->rand_src = I2RandomSourceInit(ctx->cfg.eh,
 			       ctx->cfg.rand_type,
-			       ctx->cfg.rand_data) < 0) {
+			       ctx->cfg.rand_data))){
 		OWPErrorLine(ctx,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
 			     "Failed to initialize randomness sources");
+		OWPContextFree(ctx);
 		return NULL;
 	}
 
@@ -80,6 +101,9 @@ OWPContextFree(
 	OWPContext	ctx
 )
 {
+	if(ctx->lib_eh)
+		I2ErrClose(ctx->cfg.eh);
+	I2RandomSourceClose(ctx->rand_src);
 	free(ctx);
 
 	return;
