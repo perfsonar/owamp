@@ -267,6 +267,7 @@ sig_check()
 	}
 	if(pow_reset){
 		pow_reset = 0;
+		I2ErrLog(eh,"SIGHUP: Re-opening connections.");
 		return 1;
 	}
 	
@@ -289,7 +290,6 @@ SetupSession(
 
 	if(p->numPackets)
 		return 0;
-
 
 	/*
 	 * First open a connection if we don't have one.
