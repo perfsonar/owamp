@@ -59,14 +59,13 @@ print_conn_args()
 static void
 print_test_args()
 {
-	fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n",
-		"              [Test Args]",
-"   -f | -F file   perform one-way test from testhost [and save results to file]",
-"   -t | -T file   perform one-way test to testhost [and save results to file]",
-"   -c count       number of test packets",
-"   -i wait        mean average time between packets (seconds)",
-"   -L timeout     maximum time to wait for a packet before declaring it lost",
-"   -s padding     size of the padding added to each packet (bytes)");
+	fprintf(stderr,"              [Test Args]\n\n"
+"   -f | -F file   perform one-way test from testhost [and save results to file]\n",
+"   -t | -T file   perform one-way test to testhost [and save results to file]\n",
+"   -c count       number of test packets\n",
+"   -i wait        mean average time between packets (seconds)\n",
+"   -L timeout     maximum time to wait for a packet before declaring it lost\n",
+"   -s padding     size of the padding added to each packet (bytes)\n");
 }
 
 static void
