@@ -43,12 +43,10 @@ typedef struct rand_context {
 } rand_context;
 
 /* 
-** This structure represents 32.24 style time format
-** (32-bit number of seconds, and 24-bit number of
-** fractional seconds), i.e. A + (B/2^24), where
-** 0 <= A <= 2^32 - 1, and 0 <= B <= 2^24 - 1.
-**
-** The interpretation is: 
+** This structure represents 32.24 style time format (32-bit number of seconds,
+** and 24-bit number of fractional seconds), i.e. A + (B/2^24), where
+** 0 <= A <= 2^32 - 1, and 0 <= B <= 2^24 - 1. The interpretation is: 
+** 
 ** t[0] = A
 ** t[1] = B << 8 (thus, the 8 least significant bits are unused)
 */
@@ -61,18 +59,14 @@ void num2formatted(num_128 from, OWPFormattedTime to);
 void formatted2num(OWPFormattedTime from, num_128 to);
 void num2timeval(num_128 from, struct timeval *to);
 void timeval2num(struct timeval *from, num_128 to);
-struct num_128 raw2num(const unsigned char *raw);
 
 /* Random number generating functions */
 void rand_context_init(BYTE *sid);  /* Initialize the generator */
 struct num_128 exp_rand();       /* Generate an exponential (mean 1) deviate */
-struct num_128 unif_rand();      /* Generate a Unif(0,1) deviate */
 
 /* Debugging and auxilliary functions */
 void num_print(num_128 x);
 unsigned long num2ulong(num_128 x);
-/* unsigned long long num2ulonglong(num_128 x);
-   struct num_128 ulonglong2num(unsigned long long a); */
 void print_bin(unsigned short n);
 void num_binprint(num_128 x);
 
