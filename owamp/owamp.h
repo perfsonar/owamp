@@ -453,6 +453,17 @@ OWPError_(
 #define OWPInterruptIO		"OWPInterruptIO"
 
 /*
+ * This type is used to hold a pointer to a port-range record. This
+ * record is used to indicate what port ranges should be used for
+ * opening test connections.
+ */
+#define	OWPTestPortRange	"OWPTestPortRange"
+typedef	struct OWPTestPortRangeRec{
+	u_int16_t	low;	/* If 0, indictes ephemeral, and high unused */
+	u_int16_t	high;
+} OWPTestPortRangeRec, *OWPTestPortRange;
+
+/*
  * This type is used to define the function that retrieves the shared
  * secret from whatever key-store is in use.
  * It should return True if it is able to fill in the key_ret variable that

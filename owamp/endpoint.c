@@ -344,6 +344,10 @@ _OWPEndpointInit(
 	socklen_t		opt_size;
 	u_int64_t		i;
 	OWPTimeStamp		tstamp;
+	u_int16_t		port=0;
+	u_int16_t		p;
+	u_int16_t		range;
+	OWPTestPortRange	portrange=NULL;
 
 	*err_ret = OWPErrFATAL;
 
@@ -391,20 +395,120 @@ _OWPEndpointInit(
 	}
 
 	/*
-	 * bind it to the local address getting an ephemeral port number.
+	 * Determine what port to try:
 	 */
-	if(bind(ep->sockfd,localaddr->saddr,localaddr->saddrlen) != 0){
-		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-			"bind([%s]:%s): %M",localaddr->node,localaddr->port);
-		goto error;
+
+	/* first - see if saddr specifs a port directly... */
+	switch(localaddr->saddr->sa_family){
+		struct sockaddr_in	*s4;
+#ifdef	AF_INET6
+		struct sockaddr_in6	*s6;
+
+		case AF_INET6:
+			s6 = (struct sockaddr_in6*)localaddr->saddr;
+			port = ntohs(s6->sin6_port);
+			break;
+#endif
+		case AF_INET4:
+			s4 = (struct sockaddr_in*)loacladdr->saddr;
+			port = ntohs(s4->sin_port);
+			break;
+		default:
+			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+					"Invalid address family for test");
+			goto error;
 	}
 
+
+	if(port){
+		/*
+		 * port specified by saddr
+		 */
+		p = port;
+	}
+	else if(!(portrange = (OWPTestPortRange)OWPContextConfigGet(cntrl->ctx,
+			OWPTestPortRange)) || !portrange->low){
+		p = port = 0;
+	}else{
+		u_int32_t	r;
+		double		d;
+
+		/*
+		 * Get a random 32 bit number to aid in selecting first
+		 * port to try.
+		 */
+		if(I2RandomBytes(cntrl->ctx->rand_src,(u_int8_t*)&r,4) != 0)
+			goto error;
+
+		if(portrange->high < portrange->low){
+			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+					"Invalid port range specified");
+			goto error;
+		}
+
+		range = portrange->high - portrange->low;
+		p = port = portrange->low + ((double)r / 0xffffffff * range);
+	}
+
+	do{
+		/* Specify the port number */
+		switch(localaddr->saddr->sa_family){
+			struct sockaddr_in	*s4;
+#ifdef	AF_INET6
+			struct sockaddr_in6	*s6;
+
+			case AF_INET6:
+				s6 = (struct sockaddr_in6*)localaddr->saddr;
+				s6->sin6_port = htons(p);
+				break;
+#endif
+			case AF_INET4:
+				s4 = (struct sockaddr_in*)loacladdr->saddr;
+				s4->sin_port = htons(p);
+				break;
+			default:
+				OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+					"Invalid address family for test");
+				goto error;
+		}
+
+		/*
+		 * Try binding.
+		 */
+		if(bind(ep->sockfd,localaddr->saddr,localaddr->saddrlen) == 0)
+			goto success;
+		/*
+		 * If it failed, and we are not using a "range" then exit
+		 * loop and report failure. (Or if the error is not EADDRINUSE
+		 * this is a permenent failure.)
+		 */
+		if(!portrange || (errno != EADDRINUSE))
+			goto bind_fail;
+
+		/*
+		 * compute next port to try.
+		 */
+		if(range){
+			p -= portrange->low;
+			p = (p + 1) % range;
+			p += portrange->low;
+		}
+	} while(p != port);
+
+	OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+			"Full port range exhausted");
+bind_fail:
+	OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+			"bind([%s]:%s): %M",localaddr->node,p);
+success:
+
 	/*
-	 * Retrieve the ephemeral port picked by the system.
+	 * Retrieve the saddr as defined by the system.
 	 */
 	memset(&sbuff,0,sizeof(sbuff));
 	if(getsockname(ep->sockfd,(void*)&sbuff,&sbuff_len) != 0){
-		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,"getsockname(): %M");
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+				"getsockname(): %M");
 		goto error;
 	}
 

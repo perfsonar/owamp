@@ -1036,7 +1036,7 @@ OWPSessionRequest(
 	if(!cntrl || !_OWPStateIsRequest(cntrl)){
 		*err_ret = OWPErrFATAL;
 		OWPError(cntrl->ctx,*err_ret,OWPErrINVALID,
-		"OWPSessionRequest called with invalid cntrl record");
+			"OWPSessionRequest called with invalid cntrl record");
 		goto error;
 	}
 
