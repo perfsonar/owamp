@@ -2091,7 +2091,7 @@ OWPParseRecords(
 
 	for(i=0;i<num_rec;i++){
 		if(fread(rbuf,_OWP_TESTREC_SIZE,1,fp) < 1){
-			if(feof()){
+			if(feof(fp)){
 				OWPError(ctx,OWPErrFATAL,errno,"fread(): EOF");
 			}
 			else{
