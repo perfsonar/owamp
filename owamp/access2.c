@@ -27,7 +27,6 @@
 #include <ctype.h>
 #include <owamp/owamp.h>
 #include "./access.h"
-#include "./tree.h"
 
 /*
 ** This function fills out a datum structure with the given string.
