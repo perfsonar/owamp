@@ -1074,19 +1074,17 @@ owp_delay(OWPTimeStamp *send_time, OWPTimeStamp *recv_time)
 ** After calling OWPFetchSession, the client reads the exact number
 ** of data records advertised (= <num_rec>), and process them,
 ** one by one with a user-supplied call-back function <proc_rec>.
-** If called with <proc_rec> being NULL, the default function
-** print_record() is called.
+** NOTE: the final 16 bytes of padding are not handled here.
 */
 OWPErrSeverity
 OWPFetchRecords(OWPControl cntrl, 
 		u_int32_t num_rec, 
-		OWPDoDataRecord proc_rec,
+		OWPDoRawDataRecord proc_rec,
 		void *app_data)
 {
 	u_int64_t        nbytes, nchunks, rem_bytes;
-	u_int32_t        i, j, seq_num;
+	u_int32_t        i, j;
 	u_int8_t         *cur_rec;
-	OWPTimeStamp     send_time, recv_time;
 	u_int8_t*	 buf;
 	int              k, more_records, padding_size, more_blocks = 0;
 
@@ -1103,29 +1101,24 @@ OWPFetchRecords(OWPControl cntrl,
 			return OWPErrFATAL;
 		cur_rec = buf;
 		for (j = 0; j < 4; j++) {
-			seq_num = ntohl(*(u_int32_t *)cur_rec);
-			cur_rec += 4;
-			OWPDecodeTimeStamp(&send_time, (u_int32_t *)cur_rec);
-			cur_rec += 8;
-			OWPDecodeTimeStamp(&recv_time, (u_int32_t *)cur_rec);
-			cur_rec += 8;
-			if (proc_rec(app_data, seq_num, &send_time, 
-				     &recv_time)<0)
+			if (proc_rec(app_data, cur_rec) < 0)
 				return OWPErrFATAL;
+			cur_rec += _OWP_TS_REC_SIZE;
 		}
 	}
 
+	if (!rem_bytes)  /* whenever num_rec is a mutltiple of 4 */
+		return OWPErrOK;
 	/* 
 	   If there's a remainder then rem_bytes should be divisible by 20,
 	   and not divisible by 16. Now more_blocks handles remaining blocks
-	   + partial zero padding. Hence, more_blocks <= 4.
+	   + partial zero padding.
 	*/
-	if (rem_bytes)  
-		more_blocks = (rem_bytes / _OWP_RIJNDAEL_BLOCK_SIZE) + 1;
-	more_records = rem_bytes / _OWP_TS_REC_SIZE; /* can be zero */
-	more_blocks++;      /* throw in the final block of padding */
-	assert(more_blocks <= 6);
 
+	more_blocks = (rem_bytes / _OWP_RIJNDAEL_BLOCK_SIZE) + 1;
+	more_records = rem_bytes / _OWP_TS_REC_SIZE; /* can be zero */
+	
+	assert(more_blocks <= 5);
 	buf = (u_int8_t*)cntrl->msg;
 	if (_OWPReceiveBlocks(cntrl, buf, more_blocks) != more_blocks)
 		return OWPErrFATAL;
@@ -1133,14 +1126,9 @@ OWPFetchRecords(OWPControl cntrl,
 	/* Process remaining records. */
 	cur_rec = buf;
 	for (k = 0; k < more_records; k++) {
-		seq_num = ntohl(*(u_int32_t *)cur_rec);
-		cur_rec += 4;
-		OWPDecodeTimeStamp(&send_time, (u_int32_t *)cur_rec);
-		cur_rec += 8;
-		OWPDecodeTimeStamp(&recv_time, (u_int32_t *)cur_rec);
-		cur_rec += 8;
-		if (proc_rec(app_data, seq_num, &send_time, &recv_time)<0)
+		if (proc_rec(app_data, cur_rec)<0)
 			return OWPErrFATAL;
+		cur_rec += _OWP_TS_REC_SIZE;
 	}
 	
 	/* Make sure padding is really zero. */
@@ -1150,8 +1138,76 @@ OWPFetchRecords(OWPControl cntrl,
 	for (k = 0; k < padding_size; k++, cur_rec++)
 		if (*cur_rec) {
 			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-				 "Non-zero padding in the data stream.");
+		      "OWPFetchRecords: Non-zero padding in the data stream.");
 			return OWPErrFATAL;
 		}
+
 	return OWPErrOK;
+}
+
+/*
+** Read the final 16 bytes of data stream and make sure it's all zeros.
+*/
+OWPErrSeverity
+OWPCheckPadding(OWPControl cntrl)
+{
+	int k;
+	u_int8_t *ptr = (u_int8_t*)cntrl->msg;
+
+	if (_OWPReceiveBlocks(cntrl, ptr, 1) != 1)
+		return OWPErrFATAL;
+
+	for (k = 0; k < 16; k++, ptr++)
+		if (*ptr) {
+			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+		      "OWPCheckPadding: Non-zero padding in the data stream.");
+			return OWPErrFATAL;
+		}
+	
+	return OWPErrOK;
+}
+
+#define OWP_BUFSIZ 960 /* must be divisible by 20 */
+
+/*
+** "Fetching" data from local disk - assume the header has been
+** processed already. 
+*/
+OWPErrSeverity
+OWPFetchLocalRecords(int fd, 
+		     u_int32_t num_rec, 
+		     OWPDoRawDataRecord proc_rec,
+		     void *app_data)
+{
+	u_int64_t        nbytes, nchunks, rem_bytes;
+	u_int32_t        i, j;
+	u_int8_t         *cur_rec;
+	u_int8_t	 buf[OWP_BUFSIZ];
+
+	/* 
+	   Compute the number of OWP_BUFIZE-byte blocks to read. 
+	*/
+	nbytes = (u_int64_t)num_rec * _OWP_TS_REC_SIZE;
+	nchunks = nbytes / sizeof(buf);
+	rem_bytes = nbytes % sizeof(buf);
+	for (i = 0; i < nchunks; i++) {
+		if (I2Readn(fd, buf, sizeof(buf)) != sizeof(buf))
+			return OWPErrFATAL;
+		cur_rec = buf;
+		for (j = 0; j < sizeof(buf) / _OWP_TS_REC_SIZE; j++) {
+			if (proc_rec(app_data, cur_rec) < 0)
+				return OWPErrFATAL;
+			cur_rec += _OWP_TS_REC_SIZE;
+		}
+	}
+	
+	/* Read and process the remaining records. */
+	if (I2Readn(fd, buf, rem_bytes) != rem_bytes)
+		return OWPErrFATAL;
+	cur_rec = buf;
+	for (j = 0; j < rem_bytes / _OWP_TS_REC_SIZE; j++) {
+		if (proc_rec(app_data, cur_rec) < 0)
+			return OWPErrFATAL;
+		cur_rec += _OWP_TS_REC_SIZE;
+	}
 }

@@ -670,6 +670,14 @@ typedef int (*OWPDoDataRecord)(
 			       OWPTimeStamp *send_time,
 			       OWPTimeStamp *recv_time
 			       );
+/*
+** This (type of) function is used by Fetch-Client to process (raw)
+** data records. 
+*/
+typedef int (*OWPDoRawDataRecord)(
+			       void *calldata,
+			       u_int8_t *rec  /* 20-byte record */
+			       );
 
 /*
 ** Request records with numbers from <begin> to <end>
@@ -688,8 +696,24 @@ OWPFetchSession(OWPControl cntrl,
 OWPErrSeverity
 OWPFetchRecords(OWPControl cntrl, 
 		u_int32_t num_rec, 
-		OWPDoDataRecord proc_rec,
+		OWPDoRawDataRecord proc_rec,
 		void *app_data);
+
+/*
+** "Fetching" data from local disk - assume the header has been
+** processed already. 
+*/
+OWPErrSeverity
+OWPFetchLocalRecords(int fd, 
+		     u_int32_t num_rec, 
+		     OWPDoRawDataRecord proc_rec,
+		     void *app_data);
+
+/*
+** Read the final 16 bytes of data stream and make sure it's all zeros.
+*/
+OWPErrSeverity
+OWPCheckPadding(OWPControl cntrl);
 
 /*
 ** Compute delay between send time and receive time.
