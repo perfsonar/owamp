@@ -46,7 +46,7 @@ sub merge {
     my ($newname, @files) = @_;
 
     unless (@files) {
-	warn "no files to be merged - continuing...";
+	warn "no files to be merged into $newname - continuing...";
 	return;
     }
 
@@ -62,6 +62,7 @@ sub merge {
     my ($total_sent, $total_lost, $total_dup) = (0, 0, 0);
 
     my ($magic, $version, $hdr_len);
+    my $seen = 0;
     foreach my $file (@files) {
     	next if(!-r $file);
 	open(FH, "<$file") or die "Could not open $file: $!";
@@ -109,6 +110,16 @@ sub merge {
 
 	}
 	close FH;
+	$seen = 1;
+    }
+
+    unless ($seen) {
+	warn "DEBUG: no files to be merged into $newname - continuing...";
+	return;
+    }
+
+    unless ($total_sent) {
+	warn "DEBUG: sent == 0 upon merge into $newname";
     }
 
     # Trick to compute header length and place it within the header itself.
