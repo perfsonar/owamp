@@ -129,5 +129,5 @@ AC_CHECK_FUNCS([memset socket getaddrinfo])
 
 AC_SUBST(ac_aux_dir)
 
-AC_OUTPUT([Makefile owamp/Makefile owampd/Makefile owping/Makefile powstream/Makefile],
+AC_OUTPUT([Makefile owamp/Makefile owampd/Makefile owping/Makefile powstream/Makefile owdigest/Makefile],
 	[test -z "$CONFIG_HEADERS" || echo timestamp > owamp/stamp-h.in])
