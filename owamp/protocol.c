@@ -1107,8 +1107,8 @@ _OWPWriteRetrieveSession(
 OWPErrSeverity
 _OWPReadRetrieveSession(
 	OWPControl	cntrl,
-	u_int32_t	*begin,
-	u_int32_t	*end,
+	u_int32_t	*begin, /* returns in network byte order */
+	u_int32_t	*end,   /* returns in network byte order */
 	OWPSID		sid
 )
 {
@@ -1263,10 +1263,10 @@ _OWPReadControlAck(
 
 /*
 ** During Fetch session, read the first 16 bytes of data transmission.
-** Save the promised number of records into *num_rec.
+** Save the promised number of records into *num_rec (host byte order).
 */
 OWPErrSeverity
-_OWPReadDataHeader(OWPControl cntrl, u_int32_t *num_rec)
+_OWPReadDataHeader(OWPControl cntrl, u_int32_t *num_rec, u_int8_t *typeP)
 {
 	u_int8_t *buf = (u_int8_t*)cntrl->msg;
 	u_int8_t *tmp;
@@ -1294,10 +1294,7 @@ _OWPReadDataHeader(OWPControl cntrl, u_int32_t *num_rec)
 	}
 
 	*num_rec = ntohl(*(u_int32_t *)buf);
-	
-	/*
-	  XXX - Type-P descriptor (octets 8-11)
-	*/
+	memcpy(typeP, &buf[4], 4);
 	
 	return OWPErrOK;
 }
@@ -1305,3 +1302,25 @@ _OWPReadDataHeader(OWPControl cntrl, u_int32_t *num_rec)
 /*
  * TODO:Send session data functions...
  */
+
+OWPErrSeverity
+_OWPSendData(OWPControl cntrl, FILE *fp)
+{
+	u_int8_t buf[16];
+
+	memset(buf, 0, 16);
+
+	/*
+	  TODO: set the fields in buf:
+	  4 octets of num_packs
+	  4 octets of Type-P descriptor
+	  8 octets of zero padding (ok already)
+	*/
+
+	if(_OWPSendBlocks(cntrl, buf, 1) != 1){
+		cntrl->state = _OWPStateInvalid;
+		return OWPErrFATAL;
+	}
+
+	return OWPErrOK;
+}

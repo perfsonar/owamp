@@ -964,6 +964,7 @@ OWPFetchSession(OWPControl cntrl,
 	OWPAcceptType acc_type;
 	u_int32_t    num_rec;
 	int          more_blocks;
+	u_int8_t     typeP[4]; /* network byte order */
 	u_int8_t     buf[OWP_APP_BUFSIZ];
 	u_int64_t    nbytes, rem_bytes, i; 
 
@@ -976,7 +977,7 @@ OWPFetchSession(OWPControl cntrl,
 	if (acc_type != OWP_CNTRL_ACCEPT)
 		return OWPErrFATAL;
 	
-	if (_OWPReadDataHeader(cntrl, &num_rec) != OWPErrOK)
+	if (_OWPReadDataHeader(cntrl, &num_rec, typeP) != OWPErrOK)
 		return OWPErrFATAL;
 	
 	nbytes   = (u_int64_t)num_rec * _OWP_TS_REC_SIZE;

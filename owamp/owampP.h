@@ -440,7 +440,7 @@ _OWPReadControlAck(
 );
 
 extern OWPErrSeverity
-_OWPReadDataHeader(OWPControl cntrl, u_int32_t *num_rec);
+_OWPReadDataHeader(OWPControl cntrl, u_int32_t *num_rec, u_int8_t *typeP);
 
 /*
  * TODO:Send session data functions...
