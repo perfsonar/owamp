@@ -4,15 +4,15 @@
 
 use strict;
 
-# This script runs every 1 minute and generates an (almost static)
-# HTML page of stat report grids for each mesh.
+# This script generates top-level html page for all active meshes.
+
+# usage: make_top_html.pl
 
 use constant DEBUG => 1;
 use constant VERBOSE => 1;
 
 use FindBin;
 use lib ("$FindBin::Bin");
-use IO::Handle;
 use File::Path;
 use CGI qw/:standard/;
 use OWP;
@@ -20,22 +20,22 @@ use OWP;
 $| = 1;
 
 my $conf = new OWP::Conf(CONFDIR => "$FindBin::Bin");
-my $wwwdir = $conf->{'CENTRALWWWDIR'};
-
 my @mtypes = $conf->get_val(ATTR=>'MESHTYPES');
 my @nodes = $conf->get_val(ATTR=>'MESHNODES');
-
-my $dataroot = $conf->{'CENTRALUPLOADDIR'};
-
-print start_html('Abilene OWAMP mesh.'),
-	h1('Abilene OWAMP mesh');
+my $wwwdir = $conf->get_www_path("");
+my $index_page = "$wwwdir/index.html";
 
 my $recv;
 
+open INDEXFH, ">$index_page" or die "Could not open $index_page";
+
+print INDEXFH start_html('Abilene OWAMP actives meshes.'),
+	h1('Abilene OWAMP active meshes.');
+
 foreach my $mtype (@mtypes){
     my $first_row = [$mtype, @nodes];
-    my $table_str = 
-    q/print table({-border=>1},
+    my $table_str =
+    q/print INDEXFH table({-border=>1},
 		caption(''),
 		Tr({-align=>'CENTER',-valign=>'TOP'},
 		   [
@@ -43,10 +43,7 @@ foreach my $mtype (@mtypes){
     foreach $recv (@nodes){
 	my $rec_addr = $conf->get_val(NODE=>$recv, TYPE=>$mtype, ATTR=>'ADDR');
 	next unless defined $rec_addr;
-	my @senders_data = map {fetch_sender_data($_, $recv)} @nodes;
-
-#	print "\@sender_data is:\n";
-#	print join " ", @senders_data, "\n";
+	my @senders_data = map {fetch_sender_data($_, $recv, $mtype)} @nodes;
 
 	$table_str .= "td(['$recv ($rec_addr)', ";
 	$table_str .= join(', ', @senders_data);
@@ -60,15 +57,34 @@ foreach my $mtype (@mtypes){
 		  )
 	       )/;
 
-#    print "\n\n", $table_str;
     eval $table_str;
 }
 
-print end_html;
-
-die;
+print INDEXFH end_html;
+close INDEXFH;
 
 sub fetch_sender_data {
-    my ($sender, $recv) = @_;
-    return "'$recv/$sender'";
+    my ($sender, $recv, $mtype) = @_;
+
+    my ($datadir, $rel_wwwdir, $filename, $png_file) =
+	    $conf->get_names_info($mtype, $recv, $sender, 30, 2);
+
+    my $wwwdir = $conf->get_www_path($rel_wwwdir);
+
+    my $summary_file = "$datadir/$filename";
+    unless (-f $summary_file) {
+	warn "summary file $summary_file not found - skipping";
+	return "'N/A'";
+    }
+
+    open FH, "<$summary_file" or die "Could not open $summary_file: $!";
+    my $line = <FH>;
+    close FH;
+
+    chomp $line;
+
+    my ($median, $med, $ninety_perc) = split / /, $line;
+
+    # create a proper link here
+    return "'<a href=$rel_wwwdir>$median</a>'";
 }
