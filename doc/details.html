@@ -44,7 +44,7 @@ $Date$</h5></center>
 <h3>
 Architecture</h3>
 OWAMP is a typical client-server application. The <b>owping</b> client
-contacts the <b>owampd</b> daemon on the peer host to requests a specific
+contacts the <b>owampd</b> daemon on the peer host to request a specific
 test. That request includes an indication of the complete send schedule
 as well as parameters to indicate packet characteristics. <b>owampd</b>
 is responsible for accepting or denying the request.
@@ -96,7 +96,7 @@ switches between the actual receipt of a packet and the fetching of a timestamp.
 a clock register available so that timestamp fetching can be done without
 a system call.) It is entirely possible to increase the accuracy of OWAMP
 by writing custom kernel modules that do some of the OWAMP functionality
-in the kernel instead of in "user space". If the <b>OWAMP</b> protocol
+in the kernel instead of in "user space". If the <i>OWAMP</i> protocol
 becomes popular this will make more sense.
 <h3>
 A matter of time...</h3>
@@ -131,7 +131,7 @@ if you look at them at very fine resolutions.</li>
 NTP peer clocks sometime become unavailable. When this happens, the current
 offset estimate from UTC is likely to jump. OWAMP currently uses the NTP
 computed offset in addition to the local system clock to determine timestamps.
-This has the very undesirable side effect of creating a "usually very accurate"
+This has the very undesirable side effect of creating a usually very accurate
 but sometimes very jumpy clock. Future versions of OWAMP will address this
 problem.</li>
 </ol>
