@@ -29,6 +29,7 @@ use lib ("$FindBin::Bin");
 use IO::Handle;
 use File::Path;
 use File::Temp qw/ tempfile /;
+use OWP::Syslog;
 
 use OWP;
 
