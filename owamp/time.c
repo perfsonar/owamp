@@ -96,8 +96,8 @@ OWPDecodeTimeStamp(
 	tstamp->sec = ntohl(tstamp->sec);
 
 	/*
-	 * network order is big endien - so copy 24 bit fraction to low
-	 * order 3 bytes of t32 in big endien ordering, then use the
+	 * network order is big endian - so copy 24 bit fraction to low
+	 * order 3 bytes of t32 in big endian ordering, then use the
 	 * ntohl macro to covert it to the correct byte ordering for
 	 * the host.
 	 */
@@ -208,6 +208,7 @@ OWPCvtTimespec2Timestamp(
 		if(!last_errest || (*errest != *last_errest)){
 			tstamp->prec = 56;
 			err_frac = OWPusec2num64(*errest);
+
 			/*
 			 * count digits in err_frac to determine how many digits
 			 * must be discounted from precision.
@@ -253,4 +254,23 @@ OWPCvtTimestamp2Timespec(
 	tval->tv_nsec =((double)frac * 1000000000.0) / (double)(1<<24);
 
 	return tval;
+}
+
+double
+owp_bits2prec(int nbits)
+{
+	return (nbits >= 32)? 1.0/(1 << (nbits - 32)) 
+		: (double)(1 << (32 - nbits));
+}
+
+double
+OWPPrecision(OWPDataRecPtr rec)
+{
+	return owp_bits2prec(rec->send.prec) + owp_bits2prec(rec->recv.prec);
+}
+
+u_int8_t
+OWPGetPrecBits(OWPDataRecPtr rec)
+{
+	return MIN(rec->send.prec, rec->recv.prec);
 }

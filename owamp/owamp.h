@@ -952,4 +952,13 @@ OWPCvtTimestamp2Timespec(
 	OWPTimeStamp	*tstamp
 	);
 
+extern double
+owp_bits2prec(int nbits);
+
+double
+OWPPrecision(OWPDataRecPtr rec);
+
+u_int8_t
+OWPGetPrecBits(OWPDataRecPtr rec);
+
 #endif	/* OWAMP_H */

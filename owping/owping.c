@@ -258,12 +258,6 @@ look_for_spot(fetch_state_ptr state,
 	return -1;
 }
 
-double
-owp_bits2prec(int nbits)
-{
-	return (nbits >= 32)? 1.0/(1 << (nbits - 32)) 
-		: (double)(1 << (32 - nbits));
-}
 
 /*
 ** Generic function to output timestamp record <rec> in given format
@@ -535,9 +529,15 @@ owp_do_summary(fetch_state_ptr state)
 	u_int32_t sent = state->max_seqno + 1;
 	u_int32_t lost = state->dup_packets + sent - state->num_received; 
 	double percent_lost = (100.0*(double)lost)/(double)sent;
-	int j;
+	int j, nonempty = 0;
 
 	assert(state); assert(state->fp);
+
+	for (j = 0; j <= OWP_MAX_BUCKET; j++) {
+		if (state->buckets[j]) 
+			nonempty++;
+	}
+	fprintf(state->fp, "%d nonempty buckets\n", nonempty);
 
 	fprintf(state->fp, "\n--- owping statistics from %s to %s ---\n",
 		       (state->from)? state->from : "***", 

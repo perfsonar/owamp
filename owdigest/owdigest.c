@@ -34,6 +34,10 @@
 #include <I2util/util.h>
 #include <owamp/owamp.h>
 
+#define PREC_THRESHOLD  ((u_int8_t)40)   /* packets where EITHER sender OR
+					    receiver has fewer precision bits
+					    get thrown out */
+
 static I2ErrHandle	eh;
 static char magic[9] = "OwD";
 static u_int8_t version = 1;
@@ -64,12 +68,7 @@ owp_seqno_cmp(OWPDataRecPtr a, OWPDataRecPtr b)
 	return OWP_CMP(a->seq_no, b->seq_no);
 }
 
-double
-owp_bits2prec(int nbits)
-{
-	return (nbits >= 32)? 1.0/(1 << (nbits - 32)) 
-		: (double)(1 << (32 - nbits));
-}
+
 #define OWP_MAX_BUCKET  (OWP_NUM_LOW + OWP_NUM_MID + OWP_NUM_HIGH - 1)
 
 #define OWP_NUM_LOW         50000
@@ -138,7 +137,7 @@ do_single_record(void *calldata, OWPDataRecPtr rec)
 void
 usage()
 {
-	fprintf(stderr, "usage: owdigest datafile out_file\n");
+	fprintf(stderr, "usage: owdigest [-p prec_bits] datafile out_file\n");
 	exit(1);
 }
 
@@ -195,12 +194,12 @@ main(int argc, char *argv[])
 	FILE *fp, *out = stdout;
 	u_int32_t hdr_len, num_rec, i, last_seqno, dup, sent, lost;
 	state s;
-	u_int8_t prec;
+	u_int8_t prec = PREC_THRESHOLD;
 	u_int16_t *counts;
 	double delay;
 	
 	char     *progname;
-	int num_buckets;
+	int num_buckets, ch;
 	I2LogImmediateAttr	ia;
 	u_int8_t out_hdrlen = sizeof(magic) + sizeof(version) 
 		+ sizeof(prec) + sizeof(out_hdrlen) + sizeof(sent) 
@@ -219,7 +218,22 @@ main(int argc, char *argv[])
 		exit(1);
 	}
 
-	if (argc != 3)
+	while ((ch = getopt(argc, argv, "hp:")) != -1)
+             switch (ch) {
+		     /* Connection options. */
+             case 'p':
+		     prec = (u_int8_t)atoi(optarg);
+		     break;
+	     case 'h':
+             case '?':
+             default:
+                     usage();
+	     }
+
+	argc -= optind;
+	argv += optind;
+
+	if (argc != 2)
 		usage();
 
 	num_buckets = OWP_NUM_LOW + OWP_NUM_MID + OWP_NUM_HIGH;
@@ -232,14 +246,12 @@ main(int argc, char *argv[])
 	for (i = 0; i <= OWP_MAX_BUCKET; i++)
 		counts[i] = 0;
 	
-	prec = 30; /* XXX - make user option */
-
-	if ((fp = fopen(argv[1], "rb")) == NULL){
+	if ((fp = fopen(argv[0], "rb")) == NULL){
 		I2ErrLog(eh, "fopen(%s):%M", argv[0]);
 		exit(1);
 	}
 
-	if ((out = fopen(argv[2], "w")) == NULL) {
+	if ((out = fopen(argv[1], "w")) == NULL) {
 		I2ErrLog(eh, "fopen(%s): %N", argv[1]);
 		exit(1);
 	}
@@ -277,6 +289,9 @@ main(int argc, char *argv[])
 
 		/* XXX - throw out records with bad precision here */
 
+		if (OWPGetPrecBits(&s.records[i]) < prec)
+			continue;
+
 		if (s.records[i].seq_no == last_seqno) {
 			dup++;
 			continue;
@@ -300,7 +315,9 @@ main(int argc, char *argv[])
 	
 	/* 
 	   Header contains: magic number, version, precision,
-	   sent, lost, dup and header length.
+	   sent, lost, dup and header length. NOTE: precision is
+	   given as the worse of send/recv - rather than the sum.
+	   Otherwise every merge would lead to worsening precision.
 	*/
 	if ((fwrite(magic, 1, sizeof(magic), out) < 1) 
 	    || (fwrite(&version, sizeof(version), 1, out) < 1)
