@@ -25,6 +25,7 @@
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <string.h>
+#include <assert.h>
 
 #include <I2util/util.h>
 
@@ -972,5 +973,135 @@ OWPFetchSession(OWPControl cntrl,
 	if (_OWPReadDataHeader(cntrl, num_rec) != OWPErrOK)
 		return OWPErrFATAL;
 	
+	return OWPErrOK;
+}
+
+static u_int64_t
+tstamp2int64(OWPTimeStamp *tstamp)
+{
+	return (((u_int64_t)(tstamp->sec))<<24) + tstamp->frac_sec;
+}
+
+/*
+** Quick hint: we are computing
+** (a + b/(2^24)) - (c + d/(2^24)) = 
+** [(a*2^24 + b) - (c*2^24 + d)] / 2^24
+*/
+static double
+owp_delay(OWPTimeStamp *send_time, OWPTimeStamp *recv_time)
+{
+	static double scale = (double)0x1000000; /* 2^24 */
+	u_int64_t t1, t2;
+
+	t1 = tstamp2int64(send_time);
+	t2 = tstamp2int64(recv_time);
+
+	/* Return negative quantity if send_time is before recv_time. 
+	   Yes weird, -  but possible with bad clocks. */
+	return (t2 > t1)? (double)(t2 - t1)/scale : (double)(t1 - t2)/(-scale);
+}
+	     
+/*
+** Given a pointer to a 20-byte data record, print it out
+** to a given file (if not NULL), or stdout otherwise.
+*/
+static int
+print_record(void *calldata,             /* currently just a file pointer */
+	     u_int32_t seq_num,
+	     OWPTimeStamp *send_time,
+	     OWPTimeStamp *recv_time)
+{
+	FILE* fp = (calldata)? (FILE *)calldata : stdout;
+	double delay = owp_delay(send_time, recv_time) / 1000.0; /* msec */
+
+	fprintf(fp, "seq_num=%u delay=%.3f", seq_num, delay);
+
+	return 0;
+}
+
+#define OWP_TS_REC_SIZE    20  /* size (in byts) of a timestamp record */
+/*
+** After calling OWPFetchSession, the client reads the exact number
+** of data records advertised (= <num_rec>), and process them,
+** one by one with a user-supplied call-back function <proc_rec>.
+** If called with <proc_rec> being NULL, the default function
+** print_record() is called.
+*/
+OWPErrSeverity
+OWPFetchRecords(OWPControl cntrl, 
+		u_int32_t num_rec, 
+		OWPDoDataRecord proc_rec,
+		void *app_data)
+{
+	u_int64_t        nbytes, nchunks, rem_bytes;
+	u_int32_t        i, j, seq_num;
+	u_int8_t         *cur_rec;
+	OWPTimeStamp     send_time, recv_time;
+	u_int8_t*	 buf;
+	int              k, more_records, padding_size, more_blocks = 0;
+	OWPDoDataRecord func = (proc_rec)? proc_rec : print_record;
+		
+	/* 
+	   Compute the number of 16-byte blocks to read. 
+	   Will read 5 blocks at a time (= 4 records = 80 octets)
+	*/
+	nbytes = (u_int64_t)num_rec * OWP_TS_REC_SIZE;
+	nchunks = nbytes / (5 * _OWP_RIJNDAEL_BLOCK_SIZE);
+	rem_bytes = nbytes % (5 * _OWP_RIJNDAEL_BLOCK_SIZE);
+	for (i = 0; i < nchunks; i++) { /* each chunk is 4 records */
+		buf = (u_int8_t*)cntrl->msg;
+		if (_OWPReceiveBlocks(cntrl, buf, 5) != 5)
+			return OWPErrFATAL;
+		cur_rec = buf;
+		for (j = 0; j < 4; j++) {
+			seq_num = ntohl(*(u_int32_t *)cur_rec);
+			cur_rec += 4;
+			OWPDecodeTimeStamp(&send_time, (u_int32_t *)cur_rec);
+			cur_rec += 8;
+			OWPDecodeTimeStamp(&recv_time, (u_int32_t *)cur_rec);
+			cur_rec += 8;
+			if (func(app_data, seq_num, &send_time, &recv_time)<0)
+				return OWPErrFATAL;
+		}
+	}
+
+	/* 
+	   If there's a remainder then rem_bytes should be divisible by 20,
+	   and not divisible by 16. Now more_blocks handles remaining blocks
+	   + partial zero padding. Hence, more_blocks <= 4.
+	*/
+	if (rem_bytes)  
+		more_blocks = (rem_bytes / _OWP_RIJNDAEL_BLOCK_SIZE) + 1;
+	more_records = rem_bytes / OWP_TS_REC_SIZE; /* can be zero */
+	more_blocks++;      /* throw in the final block of padding */
+	assert(more_blocks <= 6);
+
+	buf = (u_int8_t*)cntrl->msg;
+	if (_OWPReceiveBlocks(cntrl, buf, more_blocks) != more_blocks)
+		return OWPErrFATAL;
+
+	/* Process remaining records. */
+	cur_rec = buf;
+	for (k = 0; k < more_records; k++) {
+		seq_num = ntohl(*(u_int32_t *)cur_rec);
+		cur_rec += 4;
+		OWPDecodeTimeStamp(&send_time, (u_int32_t *)cur_rec);
+		cur_rec += 8;
+		OWPDecodeTimeStamp(&recv_time, (u_int32_t *)cur_rec);
+		cur_rec += 8;
+		if (func(app_data, seq_num, &send_time, &recv_time)<0)
+			return OWPErrFATAL;
+	}
+	
+	/* Make sure padding is really zero. */
+	padding_size = (_OWP_RIJNDAEL_BLOCK_SIZE * more_blocks)
+		- (OWP_TS_REC_SIZE * more_records);
+
+	for (k = 0; k < padding_size; k++, cur_rec++)
+		if (*cur_rec) {
+			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+				 "Non-zero padding in the data stream.");
+			return OWPErrFATAL;
+		}
 	return OWPErrOK;
 }

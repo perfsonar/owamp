@@ -101,7 +101,6 @@ typedef u_int8_t	OWPSequence[4];
 typedef u_int8_t	OWPKey[16];
 typedef u_int32_t	OWPSessionMode;
 
-
 typedef struct OWPTimeStampRec{
 	u_int32_t		sec;
 	u_int32_t		frac_sec;
@@ -620,6 +619,16 @@ typedef u_int64_t owp_packsize_t;
 */
 owp_packsize_t owp_ip_packet_size(int af, int mode, u_int32_t padding);
 
+/*
+** This (type of) function is used by Fetch-Client to process (cooked)
+** data records. 
+*/
+typedef int (*OWPDoDataRecord)(
+			       void *calldata,
+			       u_int32_t seq_num,
+			       OWPTimeStamp *send_time,
+			       OWPTimeStamp *recv_time
+			       );
 
 /*
 ** Request records with numbers from <begin> to <end>
@@ -634,4 +643,10 @@ OWPFetchSession(OWPControl cntrl,
 		u_int32_t  end,
 		OWPSID	   sid,
 		u_int32_t  *num_rec);
+
+OWPErrSeverity
+OWPFetchRecords(OWPControl cntrl, 
+		u_int32_t num_rec, 
+		OWPDoDataRecord proc_rec,
+		void *app_data);
 #endif	/* OWAMP_H */
