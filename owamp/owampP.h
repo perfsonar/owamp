@@ -60,6 +60,9 @@ struct OWPControlRec{
 	int			server;	/* this record represents server */
 	int			state;	/* current state of connection */
 	OWPSessionMode		mode;
+	OWPKID			kid;
+	OWPKey			key;
+	u_int32_t		challenge[4];
 
 	OWPAddr			remote_addr;
 	OWPAddr			local_addr;
