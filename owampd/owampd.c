@@ -514,8 +514,11 @@ main(int argc, char *argv[])
 
 			case SIGCHLD:
 				while ( (kidpid = waitpid(-1, &stat, 
-							  WNOHANG)) > 0)
+							  WNOHANG)) > 0){
 					free_connections++;
+					fprintf(stderr, 
+						"picked up kid %d\n", kidpid);
+				}
 				sig_received = 0;
 				break;
 			default:
@@ -526,17 +529,17 @@ main(int argc, char *argv[])
 				
 			}
 		}
-
+	AGAIN:
 		nfound = select(maxfd + 1, &mask, NULL, NULL, NULL);
 
 		fprintf(stderr, "DEBUG: select returned with nfound = %d\n", 
 			nfound);
-
+	
 		if (nfound < 0){
 			if (errno == EINTR){
 				fprintf(stderr, 
 				      "DEBUG: select interrupted by signal\n");
-				continue;
+				goto AGAIN;
 			}
 			else {
 				fprintf(stderr, "DEBUG: calling I2ErrLog\n");
