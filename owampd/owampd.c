@@ -35,6 +35,8 @@
 
 #include "owampdP.h"
 
+#define OWP_MAX_CLASSNAME_LEN 64 /* temp plug */
+
 /* Global variable - the total number of allowed Control connections. */
 static int		free_connections;
 static int		sigchld_received = 0;
@@ -54,7 +56,7 @@ static I2OptDescRec	set_options[] = {
 	 * policy config file options.
 	 */
 	{"confdir",1,OWP_CONFDIR,"Configuration directory"},
-	{"id2class",1,"id2class.conf","id2class config filename"},
+	{"ip2class",1,"ip2class.conf","ip2class config filename"},
 	{"class2limits",1,"class2limits.conf","class2limits config filename"},
 	{"passwd",1,"passwd.conf","passwd config filename"},
 
@@ -85,8 +87,8 @@ static	I2Option	get_options[] = {
 	sizeof(opts.confdir)
 	},
 	{
-	"id2class", I2CvtToString, &opts.id2class,
-	sizeof(opts.id2class)
+	"ip2class", I2CvtToString, &opts.ip2class,
+	sizeof(opts.ip2class)
 	},
 	{
 	"class2limits", I2CvtToString, &opts.class2limits,
@@ -114,6 +116,11 @@ static	I2Option	get_options[] = {
 	},
 	{NULL, NULL, NULL,0}
 };
+
+int OWPProcessRequests(OWPControl cntrl) /* temp plug */
+{
+	return 1;
+}
 
 static void
 usage(int od, const char *progname, const char *msg)
@@ -570,7 +577,7 @@ main(int argc, char *argv[])
 	int			od;
 	OWPErrSeverity		out = OWPErrFATAL;
 	policy_data		*policy;
-	char			id2class[MAXPATHLEN],
+	char			ip2class[MAXPATHLEN],
 				class2limits[MAXPATHLEN],
 				passwd[MAXPATHLEN];
 	fd_set			readfds;
@@ -638,32 +645,43 @@ main(int argc, char *argv[])
 	/*
 	 * Setup paths.
 	 */
-	rc = snprintf(id2class,sizeof(id2class),"%s%s%s",opts.confdir,
-						OWD_DIRSEP,opts.id2class);
-	if(rc > (int)sizeof(id2class)){
-		I2ErrLog(errhand, "Invalid path to id2class file.");
+
+	/*
+	  Jeff, - I inserted /owamp/owpcontrib in the format string to make
+	  the program find config files - temporary measure just to test
+	  my policy stuff. 
+	                                             Tolya
+	*/
+
+	rc = snprintf(ip2class,sizeof(ip2class),"%s/owamp/owpcontrib%s%s",opts.confdir,
+						OWD_DIRSEP,opts.ip2class);
+	if(rc > (int)sizeof(ip2class)){
+		I2ErrLog(errhand, "Invalid path to ip2class file.");
 		exit(1);
 	}
 
-	rc = snprintf(class2limits,sizeof(class2limits),"%s%s%s",opts.confdir,
+	rc = snprintf(class2limits,sizeof(class2limits),"%s/owamp/owpcontrib%s%s",opts.confdir,
 						OWD_DIRSEP,opts.class2limits);
 	if(rc > (int)sizeof(class2limits)){
 		I2ErrLog(errhand, "Invalid path to class2limits file.");
 		exit(1);
 	}
 
-	rc = snprintf(passwd,sizeof(passwd),"%s%s%s",opts.confdir,
+	rc = snprintf(passwd,sizeof(passwd),"%s/owamp/owpcontrib%s%s",opts.confdir,
 						OWD_DIRSEP,opts.passwd);
 	if(rc > (int)sizeof(passwd)){
 		I2ErrLog(errhand, "Invalid path to passwd file.");
 		exit(1);
 	}
 
-	policy = PolicyInit(errhand, id2class, class2limits, passwd, &out);
+	policy = PolicyInit(errhand, ip2class, class2limits, passwd, &out);
 	if (out == OWPErrFATAL){
 		I2ErrLog(errhand, "PolicyInit failed. Exiting...");
 		exit(1);
 	};
+
+	printf("DEBUG: policy init ok. Printing out ip2class hash...\n");
+	I2hash_print(policy->ip2class, stdout);
 
 	/*
 	 * Setup the "default_mode".

@@ -40,7 +40,7 @@ typedef struct {
 	I2Boolean	help;
 
 	char		*confdir;
-	char		*id2class;
+	char		*ip2class;
 	char		*class2limits;
 	char		*passwd;
 
