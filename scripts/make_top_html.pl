@@ -42,28 +42,34 @@ STOP
 print '</p>';
 
 foreach my $mtype (@mtypes){
-    my $first_row = [$mtype, @nodes];
-    my $table_str =
-    q/print  table({-border=>1},
-		caption(''),
-		Tr({-align=>'CENTER',-valign=>'TOP'},
-		   [
-		    th($first_row),/;
+    my $first_row = join '', map {th($_)} $mtype, @nodes;
+    print <<"STOP";
+<table border=1>
+<tr align="CENTER" valign="TOP">
+$first_row
+</tr>
+STOP
+
     foreach $recv (@nodes){
 	my $rec_addr = $conf->get_val(NODE=>$recv, TYPE=>$mtype, ATTR=>'ADDR');
 	next unless defined $rec_addr;
 	my @senders_data = map {fetch_sender_data($_, $recv, $mtype)} @nodes;
 
-	$table_str .= "td(['$recv ($rec_addr)', ";
-	$table_str .= join(', ', @senders_data);
-        $table_str .=  "]),\n";
+	print <<"STOP";
+<tr align="CENTER" valign="TOP">
+<td>$recv ($rec_addr)</td>
+STOP
+
+	# This can be customized to allowe for selective coloring of links.
+	my $red = 0;
+
+	foreach my $send_datum (@senders_data) {
+	    my $td = ($red)? 'td bgcolor="red"' : 'td';
+	    print "<$td>$send_datum</td>\n";
+	}
+	print "</tr>\n";
     }
-
-    $table_str .= q/]
-		  )
-	       )/;
-
-    eval $table_str;
+print "</table>\n";
 }
 
 print end_html;
@@ -91,5 +97,5 @@ sub fetch_sender_data {
     my ($median, $med, $ninety_perc) = split / /, $line;
 
     # create a proper link here
-   return "'" . a({href => $rel_wwwdir}, $median) . "'";
+   return a({href => $rel_wwwdir}, $median);
 }
