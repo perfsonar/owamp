@@ -308,6 +308,7 @@ OWPControlOpen(
 	u_int8_t	token[32];
 	u_int8_t	*key=NULL;
 	OWPAcceptType	acceptval;
+	struct timeval	tval;
 
 	*err_ret = OWPErrOK;
 
@@ -319,16 +320,27 @@ OWPControlOpen(
 		goto error;
 	}
 
+	if(gettimeofday(&tval,NULL) != 0){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"gettimeofday():%M");
+		goto error;
+	}
+
 	/*
 	 * Address policy check happens in here.
 	 */
 	if(_OWPClientConnect(cntrl,local_addr,server_addr,err_ret) != 0)
 		goto error;
 
-	if( (rc=_OWPReadServerGreeting(cntrl,&mode_avail,challenge)) < OWPErrOK){
+	if( (rc=_OWPReadServerGreeting(cntrl,&mode_avail,challenge))<OWPErrOK){
 		*err_ret = (OWPErrSeverity)rc;
 		goto error;
 	}
+
+	if(gettimeofday(&cntrl->delay_bound,NULL) != 0){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"gettimeofday():%M");
+		goto error;
+	}
+	tvalsub(&cntrl->delay_bound,&tval);
 
 	/*
 	 * Select mode wanted...

@@ -496,7 +496,9 @@ owp_do_summary(fetch_state_ptr state)
 
 	assert(state); assert(state->fp);
 
-	fprintf(state->fp, "\n--- owping statistics ---\n");
+	fprintf(state->fp, "\n--- owping statistics from %s to %s ---\n",
+		       (state->from)? state->from : "***", 
+		       (state->to)?  state->to : "***");
 	if (state->dup_packets)
 		fprintf(state->fp, 
  "%u packets transmitted, %u packets lost (%.1f%% loss), %u duplicates\n",
@@ -776,8 +778,8 @@ main(
 	owp_policy_data		*policy;
 	OWPContext		ctx;
 	OWPTestSpecPoisson	test_spec;
+	struct timeval		delay_tval;
 	OWPSID			tosid, fromsid;
-	OWPTimeStamp		start_time_rec = {0,0,0,0};
 	OWPPerConnDataRec	conndata;
 	OWPAcceptType		acceptval;
 	OWPErrSeverity		err;
@@ -829,7 +831,7 @@ main(
 		= ping_ctx.opt.identity = ping_ctx.opt.passwd 
 		= ping_ctx.opt.srcaddr = ping_ctx.opt.authmode = NULL;
 	ping_ctx.opt.numPackets = 100;
-	ping_ctx.opt.lossThreshold = 10;
+	ping_ctx.opt.lossThreshold = 0;
 	ping_ctx.opt.percentile = 50.0;
 	ping_ctx.opt.mean_wait = (float)0.1;
 	ping_ctx.opt.padding = 0;
@@ -852,25 +854,25 @@ main(
 		     /* Connection options. */
              case 'A':
 		     if (!(ping_ctx.opt.authmode = strdup(optarg))) {
-			     perror("malloc:");
+			     I2ErrLog(eh,"malloc:%M");
 			     exit(1);
 		     }
                      break;
              case 'S':
 		     if (!(ping_ctx.opt.srcaddr = strdup(optarg))) {
-			     perror("malloc:");
+			     I2ErrLog(eh,"malloc:%M");
 			     exit(1);
 		     }
                      break;
              case 'u':
 		     if (!(ping_ctx.opt.identity = strdup(optarg))) {
-			     perror("malloc:");
+			     I2ErrLog(eh,"malloc:%M");
 			     exit(1);
 		     }
                      break;
 	     case 'k':
 		     if (!(ping_ctx.opt.passwd = strdup(optarg))) {
-			     perror("malloc:");
+			     I2ErrLog(eh,"malloc:%M");
 			     exit(1);
 		     }
                      break;
@@ -878,7 +880,7 @@ main(
 		     /* Test options. */
   	     case 'F':
 		     if (!(ping_ctx.opt.save_from_test = strdup(optarg))) {
-			     perror("malloc:");
+			     I2ErrLog(eh,"malloc:%M");
 			     exit(1);
 		     }     
 		     /* fall through */
@@ -887,14 +889,14 @@ main(
                      break;
 	     case 'T':
 		     if (!(ping_ctx.opt.save_to_test = strdup(optarg))) {
-			     perror("malloc:");
+			     I2ErrLog(eh,"malloc:%M");
 			     exit(1);
 		     }
 		     /* fall through */
              case 't':
 		     ping_ctx.opt.to = True;
                      break;
-               case 'c':
+             case 'c':
 		     ping_ctx.opt.numPackets = strtoul(optarg, &endptr, 10);
 		     if (*endptr != '\0') {
 			     usage(progname, 
@@ -929,11 +931,11 @@ main(
 
 
 		     /* Output options */
-             case 'v':
-		     ping_ctx.opt.records = True;
-                     break;
              case 'V':
 		     ping_ctx.opt.full = True;
+		     /* fall-through */
+             case 'v':
+		     ping_ctx.opt.records = True;
                      break;
              case 'Q':
 		     ping_ctx.opt.quiet = True;
@@ -968,6 +970,12 @@ main(
 	 * Handle 3 possible cases (owping, owfetch, owstats) one by one.
 	 */
 	if (!strcmp(progname, "owping")){
+
+		if((argc < 1) || (argc > 2)){
+			usage(progname, NULL);
+			exit(1);
+		}
+
 		if(!ping_ctx.opt.to && !ping_ctx.opt.from)
 			ping_ctx.opt.to = ping_ctx.opt.from = True;
 
@@ -992,27 +1000,10 @@ main(
 			exit(0);
 		}
 
-		if((argc < 1) || (argc > 2)){
-			usage(progname, NULL);
-			exit(1);
-		}
-
 		owp_set_auth(&ping_ctx, &policy, progname, ctx); 
 
-		/*
-		 * TODO: create a "start" option.
-		 *
-		 * For now, start test two seconds from now.
-		 */
-		if(!OWPGetTimeOfDay(&start_time_rec)){
-			I2ErrLogP(eh,errno,"Unable to get current time:%M");
-			exit(1);
-		}
-		
-		start_time_rec.sec += 2;
 		
 		test_spec.test_type = OWPTestPoisson;
-		test_spec.start_time = start_time_rec;
 		test_spec.npackets = ping_ctx.opt.numPackets;
 		
 		/*
@@ -1024,7 +1015,6 @@ main(
 		/* InvLambda is mean wait time in usec */
 		test_spec.InvLambda 
 			= (double)1000000.0 * ping_ctx.opt.mean_wait;
-		conndata.lossThreshold = ping_ctx.opt.lossThreshold;
 		
 		conndata.pipefd = -1;
 		conndata.policy = policy; /* or NULL ??? */
@@ -1047,8 +1037,42 @@ main(
 			I2ErrLog(eh, "Unable to open control connection.");
 			exit(1);
 		}
+
 		conndata.cntrl = ping_ctx.cntrl;
 		
+		(void)OWPGetDelay(ping_ctx.cntrl,&delay_tval);
+		/*
+		 * Set the loss threshold to 2 seconds longer then the
+		 * rtt delay estimate. 2 is just a guess for a good number
+		 * based upon how impatient a command-line user gets for
+		 * results. For the results to have any statistical relevance
+		 * the lossThreshold should be specified on the command
+		 * line.
+		 *
+		 * TODO:
+		 * (The lossThreshold turns into the "timeout" parameter
+		 * of the actual test request in the next version of the
+		 * protocol.)
+		 */
+		if(!ping_ctx.opt.lossThreshold){
+			ping_ctx.opt.lossThreshold = delay_tval.tv_sec + 2;
+		}
+		conndata.lossThreshold = ping_ctx.opt.lossThreshold;
+
+		/*
+		 * TODO: create a "start" option?
+		 *
+		 * For now, start test ~4 rtt (rounded to seconds + 1 sec)
+		 * from now.
+		 * 2 session requests, 1 startsessions command, 1 later.
+		 */
+		if(!OWPGetTimeOfDay(&test_spec.start_time)){
+			I2ErrLogP(eh,errno,"Unable to get current time:%M");
+			exit(1);
+		}
+		tvaladd(&delay_tval,&delay_tval);
+		tvaladd(&delay_tval,&delay_tval);
+		test_spec.start_time.sec += delay_tval.tv_sec+1;
 
 		/*
 		 * Prepare paths for datafiles. Unlink if not keeping data.
@@ -1111,7 +1135,8 @@ main(
 		/*
 		 * TODO install sig handler for keyboard interupt - to send 
 		 * stop sessions. (Currently SIGINT causes everything to be 
-		 * killed and lost - might be reasonable to keep it that way.)
+		 * killed and lost - might be reasonable to keep it that
+		 * way...)
 		 */
 		if(OWPStopSessionsWait(ping_ctx.cntrl,NULL,&acceptval,&err))
 			exit(1);

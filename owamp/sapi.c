@@ -398,6 +398,7 @@ OWPControlAccept(
 	u_int8_t	rawtoken[32];
 	u_int8_t	token[32];
 	int		rc;
+	struct timeval	tval;
 
 	*err_ret = OWPErrOK;
 
@@ -438,6 +439,12 @@ OWPControlAccept(
 		*err_ret = OWPErrFATAL;
 		goto error;
 	}
+
+	if(gettimeofday(&tval,NULL)!=0){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"gettimeofday():%M");
+		*err_ret = OWPErrFATAL;
+		goto error;
+	}
 	if( (rc = _OWPWriteServerGreeting(cntrl,mode_offered,
 						challenge)) < OWPErrOK){
 		*err_ret = (OWPErrSeverity)rc;
@@ -449,6 +456,12 @@ OWPControlAccept(
 		*err_ret = (OWPErrSeverity)rc;
 		goto error;
 	}
+	if(gettimeofday(&cntrl->delay_bound,NULL)!=0){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"gettimeofday():%M");
+		*err_ret = OWPErrFATAL;
+		goto error;
+	}
+	tvalsub(&cntrl->delay_bound,&tval);
 
 	/* insure that exactly one mode is chosen */
 	if(	(cntrl->mode != OWP_MODE_OPEN) &&

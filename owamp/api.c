@@ -47,12 +47,12 @@ OWPContextInitialize(
 )
 {
 	I2LogImmediateAttr	ia;
-	OWPContext		ctx = malloc(sizeof(OWPContextRec));
+	OWPContext		ctx = calloc(1,sizeof(OWPContextRec));
 
 	if(!ctx){
 		OWPError(NULL,
-			OWPErrFATAL,ENOMEM,":malloc(%d)",
-			sizeof(OWPContextRec));
+			OWPErrFATAL,ENOMEM,":calloc(1,%d):%M",
+						sizeof(OWPContextRec));
 		return NULL;
 	}
 
@@ -60,8 +60,6 @@ OWPContextInitialize(
 		ctx->cfg = *config;
 	else
 		ctx->cfg = def_cfg;
-
-	ctx->cntrl_list = NULL;
 
 	if(!ctx->cfg.eh){
 		ctx->lib_eh = True;
@@ -118,8 +116,7 @@ _OWPAddrAlloc(
 
 	if(!addr){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-			":malloc(%d):%s",sizeof(struct OWPAddrRec),
-			strerror(errno));
+			":calloc(1,%d):%M",sizeof(struct OWPAddrRec));
 		return NULL;
 	}
 
@@ -254,11 +251,11 @@ _OWPCopyAddrRec(
 	const struct addrinfo	*src
 )
 {
-	struct addrinfo	*dst = malloc(sizeof(struct addrinfo));
+	struct addrinfo	*dst = calloc(1,sizeof(struct addrinfo));
 
 	if(!dst){
 		OWPError(ctx,OWPErrFATAL,errno,
-				":malloc(sizeof(struct addrinfo))");
+				":calloc(1,sizeof(struct addrinfo))");
 		return NULL;
 	}
 
@@ -431,9 +428,9 @@ _OWPControlAlloc(
 {
 	OWPControl	cntrl;
 	
-	if( !(cntrl = malloc(sizeof(OWPControlRec)))){
+	if( !(cntrl = calloc(1,sizeof(OWPControlRec)))){
 		OWPError(ctx,OWPErrFATAL,errno,
-				":malloc(%d)",sizeof(OWPControlRec));
+				":calloc(1,%d)",sizeof(OWPControlRec));
 		*err_ret = OWPErrFATAL;
 		return NULL;
 	}
@@ -445,31 +442,15 @@ _OWPControlAlloc(
 
 	cntrl->app_data = app_data;
 
-	cntrl->server = 0;
-	cntrl->state = 0;
-	cntrl->mode = 0;
-
-	memset(cntrl->zero,0,sizeof(cntrl->zero));
-
 	/*
 	 * Init addr fields
 	 */
-	cntrl->remote_addr = cntrl->local_addr = NULL;
 	cntrl->sockfd = -1;
 
 	/*
 	 * Init encryption fields
 	 */
-	cntrl->kid = NULL;
 	memset(cntrl->kid_buffer,'\0',sizeof(cntrl->kid_buffer));
-	memset(cntrl->session_key,0,sizeof(cntrl->session_key));
-	memset(cntrl->readIV,0,sizeof(cntrl->readIV));
-	memset(cntrl->writeIV,0,sizeof(cntrl->writeIV));
-
-	/*
-	 * Init test sessions list.
-	 */
-	cntrl->tests = NULL;
 
 	/*
 	 * Put this control record on the ctx list.
@@ -486,6 +467,33 @@ OWPGetMode(
 	)
 {
 	return cntrl->mode;
+}
+
+/*
+ * Function:	OWPGetDelay
+ *
+ * Description:	Returns a very rough estimate of the upper-bound rtt to
+ * 		the server.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
+struct timeval*
+OWPGetDelay(
+	OWPControl	cntrl,
+	struct timeval	*tval
+	)
+{
+	if(!tval)
+		return NULL;
+	*tval = cntrl->delay_bound;
+
+	return tval;
 }
 
 /*
@@ -554,21 +562,18 @@ _OWPTestSessionAlloc(
 		return NULL;
 	}
 
-	if(!(test = malloc(sizeof(OWPTestSessionRec)))){
+	if(!(test = calloc(1,sizeof(OWPTestSessionRec)))){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"malloc(OWPTestSessionRec):%s",strerror(errno));
+				"calloc(1,OWPTestSessionRec):%M");
 		return NULL;
 	}
 
 	test->cntrl = cntrl;
-	memset(test->sid,0,sizeof(OWPSID));
 	test->sender = sender;
 	test->send_local = send_local;
 	test->receiver = receiver;
 	test->recv_local = recv_local;
-	test->send_end_data = test->recv_end_data = NULL;
 	memcpy(&test->test_spec,test_spec,sizeof(OWPTestSpec));
-	test->next = NULL;
 
 	return test;
 }

@@ -707,6 +707,12 @@ OWPGetMode(
 	OWPControl	cntrl
 	);
 
+extern struct timeval*
+OWPGetDelay(
+	OWPControl	cntrl,
+	struct timeval	*tval
+	);
+
 extern keyInstance*
 OWPGetAESkeyInstance(
 		OWPControl	cntrl,
@@ -828,6 +834,95 @@ OWPHexDecode(
  */
 
 #define	OWPJAN_1970	(unsigned long)0x83aa7e80	/* diffs in epoch*/
+
+#ifndef	tvalclear
+#define	tvalclear(a)	(a)->tv_sec = (a)->tv_usec = 0
+#endif
+#ifndef	tvaladd
+#define tvaladd(a,b)					\
+	do{						\
+		(a)->tv_sec += (b)->tv_sec;		\
+		(a)->tv_usec += (b)->tv_usec;		\
+		if((a)->tv_usec >= 1000000){		\
+			(a)->tv_sec++;			\
+			(a)->tv_usec -= 1000000;	\
+		}					\
+	} while (0)
+#endif
+#ifndef	tvalsub
+#define tvalsub(a,b)					\
+	do{						\
+		(a)->tv_sec -= (b)->tv_sec;		\
+		(a)->tv_usec -= (b)->tv_usec;		\
+		if((a)->tv_usec < 0){			\
+			(a)->tv_sec--;			\
+			(a)->tv_usec += 1000000;	\
+		}					\
+	} while (0)
+#endif
+
+#ifndef	tvalcmp
+#define	tvalcmp(tvp,uvp,cmp)					\
+	(((tvp)->tv_sec == (uvp)->tv_sec) ?			\
+	 	((tvp)->tv_usec cmp (uvp)->tv_usec) :		\
+		((tvp)->tv_sec cmp (uvp)->tv_sec))
+#endif
+
+/* Operations on timespecs */
+#ifndef	timespecclear
+#define timespecclear(tvp)      ((tvp)->tv_sec = (tvp)->tv_nsec = 0)
+#endif
+
+#ifndef	timespecisset
+#define timespecisset(tvp)      ((tvp)->tv_sec || (tvp)->tv_nsec)
+#endif
+
+#ifndef	timespeccmp
+#define timespeccmp(tvp, uvp, cmp)					\
+	(((tvp)->tv_sec == (uvp)->tv_sec) ?				\
+		((tvp)->tv_nsec cmp (uvp)->tv_nsec) :			\
+		((tvp)->tv_sec cmp (uvp)->tv_sec))
+#endif
+
+#ifndef	timespecadd
+#define timespecadd(vvp, uvp)						\
+	do {								\
+		(vvp)->tv_sec += (uvp)->tv_sec;				\
+		(vvp)->tv_nsec += (uvp)->tv_nsec;			\
+		if ((vvp)->tv_nsec >= 1000000000){			\
+			(vvp)->tv_sec++;				\
+			(vvp)->tv_nsec -= 1000000000;			\
+		}							\
+	} while (0)
+#endif
+
+#ifndef timespecsub
+#define timespecsub(vvp, uvp)						\
+	do {								\
+		(vvp)->tv_sec -= (uvp)->tv_sec;				\
+		(vvp)->tv_nsec -= (uvp)->tv_nsec;			\
+		if ((vvp)->tv_nsec < 0) {				\
+			(vvp)->tv_sec--;				\
+			(vvp)->tv_nsec += 1000000000;			\
+		}							\
+	} while (0)
+#endif
+
+#ifndef	timespecdiff
+#define	timespecdiff(vvp,uvp)						\
+	do {								\
+		struct timespec	ts1_,ts2_;				\
+		if(timespeccmp(vvp,uvp,>)){				\
+			ts1_ = *vvp;					\
+			ts2_ = *uvp;					\
+		}else{							\
+			ts1_ = *uvp;					\
+			ts2_ = *vvp;					\
+		}							\
+		timespecsub(&ts1_,&ts2_);				\
+		*vvp = ts1_;						\
+	} while(0)
+#endif
 
 extern OWPTimeStamp *
 OWPCvtTimeval2Timestamp(

@@ -156,6 +156,18 @@ struct OWPControlRec{
 	int			state;	/* current state of connection */
 	OWPSessionMode		mode;
 
+	struct timeval		delay_bound;
+					/* Very rough upper bound estimate of
+					 * rtt.
+					 * this is only used to try and make
+					 * a rough guess as to how long after
+					 * the last packet of a test session
+					 * we can reasonably expect all the
+					 * packets to have been received.
+					 * (Bookkeeping can then start
+					 * without too adversely effecting
+					 * performace of test.)
+					 */
 	/*
 	 * This field is initialized to zero and used for comparisons
 	 * to ensure AES is working.
@@ -548,39 +560,6 @@ OWPDecodeTimeStamp(
 	OWPTimeStamp	*tstamp,
 	u_int32_t	buf[2]
 	);
-
-#ifndef	tvalclear
-#define	tvalclear(a)	(a)->tv_sec = (a)->tv_usec = 0
-#endif
-#ifndef	tvaladd
-#define tvaladd(a,b)					\
-	do{						\
-		(a)->tv_sec += (b)->tv_sec;		\
-		(a)->tv_usec += (b)->tv_usec;		\
-		if((a)->tv_usec >= 1000000){		\
-			(a)->tv_sec++;			\
-			(a)->tv_usec -= 1000000;	\
-		}					\
-	} while (0)
-#endif
-#ifndef	tvalsub
-#define tvalsub(a,b)					\
-	do{						\
-		(a)->tv_sec -= (b)->tv_sec;		\
-		(a)->tv_usec -= (b)->tv_usec;		\
-		if((a)->tv_usec < 0){			\
-			(a)->tv_sec--;			\
-			(a)->tv_usec += 1000000;	\
-		}					\
-	} while (0)
-#endif
-
-#ifndef	tvalcmp
-#define	tvalcmp(tvp,uvp,cmp)					\
-	(((tvp)->tv_sec == (uvp)->tv_sec) ?			\
-	 	((tvp)->tv_usec cmp (uvp)->tv_usec) :		\
-		((tvp)->tv_sec cmp (uvp)->tv_sec))
-#endif
 
 extern void owp_print_sockaddr(FILE *fp, struct sockaddr *sock);
 extern void owp_print_owpaddr(FILE *fp, OWPAddr addr);

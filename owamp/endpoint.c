@@ -43,6 +43,7 @@ typedef struct _DefEndpointRec{
 	OWPSessionMode		mode;
 	keyInstance		*aeskey;
 	u_int32_t		lossThreshold;
+	struct timespec		delay;
 #ifndef	NDEBUG
 	I2Boolean		childwait;
 #endif
@@ -72,14 +73,13 @@ EndpointAlloc(
 	OWPContext	ctx
 	)
 {
-	_DefEndpoint	ep = malloc(sizeof(_DefEndpointRec));
+	_DefEndpoint	ep = calloc(1,sizeof(_DefEndpointRec));
 
 	if(!ep){
 		OWPError(ctx,OWPErrFATAL,errno,"malloc(DefEndpointRec)");
 		return NULL;
 	}
 
-	memset(ep,0,sizeof(*ep));
 	ep->test_spec.test_type = OWPTestUnspecified;
 	ep->sockfd = -1;
 	ep->acceptval = OWP_CNTRL_INVALID;
@@ -96,6 +96,14 @@ EndpointClear(
 	if(!ep)
 		return;
 
+	if(ep->sockfd > -1){
+		close(ep->sockfd);
+		ep->sockfd = -1;
+	}
+	if(ep->datafile){
+		fclose(ep->datafile);
+		ep->datafile = NULL;
+	}
 	if(ep->filepath){
 		free(ep->filepath);
 		ep->filepath = NULL;
@@ -104,17 +112,9 @@ EndpointClear(
 		free(ep->linkpath);
 		ep->linkpath = NULL;
 	}
-	if(ep->datafile){
-		fclose(ep->datafile);
-		ep->datafile = NULL;
-	}
 	if(ep->fbuff){
 		free(ep->fbuff);
 		ep->fbuff = NULL;
-	}
-	if(ep->sockfd > -1){
-		close(ep->sockfd);
-		ep->sockfd = -1;
 	}
 	if(ep->payload){
 		free(ep->payload);
@@ -123,6 +123,15 @@ EndpointClear(
 	if(ep->clr_buffer){
 		free(ep->clr_buffer);
 		ep->clr_buffer = NULL;
+	}
+
+	if(ep->relative_offsets){
+		free(ep->relative_offsets);
+		ep->relative_offsets = NULL;
+	}
+	if(ep->received_packets){
+		free(ep->received_packets);
+		ep->received_packets = NULL;
 	}
 
 	return;
@@ -378,6 +387,9 @@ OWPDefEndpointInit(
 	ep->lossThreshold = cdata->lossThreshold;
 	ep->ctx = ctx;
 	ep->rand_src = ctx->rand_src;
+	OWPGetDelay(cdata->cntrl,(struct timeval*)&ep->delay);
+	ep->delay.tv_nsec *= 1000;
+
 #ifndef	NDEBUG
 	ep->childwait = cdata->childwait;
 #endif
@@ -400,6 +412,7 @@ OWPDefEndpointInit(
 
 	ep->len_payload = OWPTestPayloadSize(ep->mode,
 				ep->test_spec.any.packet_size_padding);
+	if(ep->len_payload < 20) ep->len_payload = 20;
 	ep->payload = malloc(ep->len_payload);
 	ep->clr_buffer = malloc(16);	/* one block - dynamic for alignment */
 
@@ -452,6 +465,15 @@ OWPDefEndpointInit(
 		u_int8_t	*aptr;
 		u_int32_t	tval[2];
 		size_t		size;
+
+		/*
+		 * Array to keep track of "seen" packets.
+		 */
+		if(!(ep->received_packets = calloc(sizeof(u_int8_t),
+						ep->test_spec.any.npackets))){
+			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"calloc():%M");
+			goto error;
+		}
 
 		/*
 		 * Generate a "unique" SID from
@@ -653,46 +675,6 @@ sig_catch(
 
 	return;
 }
-
-/* Operations on timespecs */
-#ifndef	timespecclear
-#define timespecclear(tvp)      ((tvp)->tv_sec = (tvp)->tv_nsec = 0)
-#endif
-
-#ifndef	timespecisset
-#define timespecisset(tvp)      ((tvp)->tv_sec || (tvp)->tv_nsec)
-#endif
-
-#ifndef	timespeccmp
-#define timespeccmp(tvp, uvp, cmp)					\
-	(((tvp)->tv_sec == (uvp)->tv_sec) ?				\
-		((tvp)->tv_nsec cmp (uvp)->tv_nsec) :			\
-		((tvp)->tv_sec cmp (uvp)->tv_sec))
-#endif
-
-#ifndef	timespecadd
-#define timespecadd(vvp, uvp)						\
-	do {								\
-		(vvp)->tv_sec += (uvp)->tv_sec;				\
-		(vvp)->tv_nsec += (uvp)->tv_nsec;			\
-		if ((vvp)->tv_nsec >= 1000000000){			\
-			(vvp)->tv_sec++;				\
-			(vvp)->tv_nsec -= 1000000000;			\
-		}							\
-	} while (0)
-#endif
-
-#ifndef timespecsub
-#define timespecsub(vvp, uvp)						\
-	do {								\
-		(vvp)->tv_sec -= (uvp)->tv_sec;				\
-		(vvp)->tv_nsec -= (uvp)->tv_nsec;			\
-		if ((vvp)->tv_nsec < 0) {				\
-			(vvp)->tv_sec--;				\
-			(vvp)->tv_nsec += 1000000000;			\
-		}							\
-	} while (0)
-#endif
 
 /*
  * Function:	run_sender
@@ -910,17 +892,26 @@ run_receiver(
 		struct timespec	*signal_time
 		)
 {
-	struct timespec	currtime;
-	struct timespec	lasttime;
-	struct timespec	expecttime;
-	u_int32_t	seq_num;
-	u_int32_t	*seq;
-	u_int32_t	*tstamp;
-	u_int32_t	esterror,lasterror=0;
-	int		sync;
-	size_t		lenpath;
-	char		newpath[PATH_MAX];
-	char		newlink[PATH_MAX];
+	struct timespec		currtime;
+	struct timespec		last;
+	struct timespec		final;
+	struct timespec		expecttime;
+	struct timespec		sendtime;
+	struct timespec		tmptime;
+	struct timespec		losstime;
+	struct itimerval	wake;
+	u_int32_t		seq_num;
+	u_int32_t		*seq;
+	u_int32_t		*tstamp;
+	u_int8_t		*zero;
+	int			zero_len;
+	u_int32_t		esterror,lasterror=0;
+	int			sync;
+	size_t			lenpath;
+	char			newpath[PATH_MAX];
+	char			newlink[PATH_MAX];
+	OWPTimeStamp		owptstamp;
+	int			i;
 
 	newpath[0] = newlink[0] = '\0';
 
@@ -931,10 +922,18 @@ run_receiver(
 	seq = (u_int32_t*)ep->payload;
 	switch(ep->mode){
 		case OWP_MODE_OPEN:
+			zero = NULL;
+			zero_len = 0;
+			tstamp = (u_int32_t*)&ep->payload[4];
+			break;
 		case OWP_MODE_ENCRYPTED:
+			zero = &ep->payload[12];
+			zero_len = 4;
 			tstamp = (u_int32_t*)&ep->payload[4];
 			break;
 		case OWP_MODE_AUTHENTICATED:
+			zero = &ep->payload[4];
+			zero_len = 12;
 			tstamp = (u_int32_t*)&ep->payload[16];
 			break;
 		default:
@@ -945,30 +944,132 @@ run_receiver(
 			 */
 			exit(OWP_CNTRL_FAILURE);
 	}
-	lasttime = ep->relative_offsets[ep->test_spec.any.npackets-1];
-	timespecadd(&lasttime, &ep->start);
-	timespecsub(&lasttime, signal_time);
-	lasttime.tv_sec += ep->lossThreshold;
-	lasttime.tv_sec++;
 
-	alarm(lasttime.tv_sec);
+	losstime.tv_sec = ep->lossThreshold;
+	losstime.tv_nsec = 0;
+
+	last = ep->relative_offsets[ep->test_spec.any.npackets-1];
+	timespecadd(&last, &ep->start);
+
+	tvalclear(&wake.it_value);
+	timespecadd((struct timespec*)&wake.it_value,&last);
+	timespecsub((struct timespec*)&wake.it_value,signal_time);
 
 	/*
-	 * TODO: setitimer/alarm for lasttime, w/sighandler to modify sigalrm.
+	 * Delay becomes a threshold value, if we ever get a delay larger
+	 * than this, we need to increase our timer. Make it about one
+	 * second larger than we expect to get.
 	 */
+	ep->delay.tv_sec++;
+
+	timespecadd((struct timespec*)&wake.it_value,&ep->delay);
+	wake.it_value.tv_usec /= 1000;	/* convert nsec to usec	*/
+	/*
+	 * Set the wake timer one second beyond our delay estimate threshold.
+	 * One second padding should be plenty to ensure our process gets
+	 * some processing time between when we estimate the last packet will
+	 * arrive, and when this timer will go off.
+	 */
+	wake.it_value.tv_sec++;
+	tvalclear(&wake.it_interval);
+
+	/*
+	 * Set timer for just past expected end of test. At that time, we
+	 * can determine how much longer we should wait, if any.
+	 */
+	if(setitimer(ITIMER_REAL,&wake,NULL) != 0){
+		OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,"setitimer():%M");
+		goto error;
+	}
+
+	final = last;
+	final.tv_sec += ep->lossThreshold;
 
 	while(1){
+again:
+		/*
+		 * ALARM indicates it is time to declare a packet
+		 * lost, or if there are no remaining lost packets to
+		 * deal with, the test is over.
+		 */
+		if(owp_alrm){
+			owp_alrm = 0;
+
+			if(!GetTimespec(&currtime,&esterror,&sync)){
+				OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+					"Problem retrieving time");
+				goto error;
+			}
+			/*
+			 * Test is over.
+			 */
+			if(timespeccmp(&currtime,&final,>))
+				goto test_over;
+
+			/*
+			 * Set expecttime to a relative offset from the
+			 * start, indicating lossThreshold before currtime.
+			 */
+			expecttime = currtime;
+			timespecsub(&expecttime,&ep->start);
+			expecttime.tv_sec -= ep->lossThreshold;
+
+			/*
+			 * Search backwards for the "latest" missing packet.
+			 * If we ever get further than lossThreshold into
+			 * the past, we can terminate.
+			 * Once we find the "latest" missing packet, set
+			 * an alarm for when we can declare it missing
+			 * and go back to recv loop until that time.
+			 */
+			for(i=ep->test_spec.any.npackets-1;(i>=0);i--){
+
+				if(timespeccmp(&expecttime,
+						&ep->relative_offsets[i],>)){
+					goto test_over;
+				}
+
+				if(ep->received_packets[i]){
+
+					continue;
+				}
+
+				/*
+				 * Compute time when we can declare
+				 * this last unaccounted for packet
+				 * missing.
+				 */
+				expecttime = ep->relative_offsets[i];
+				timespecadd(&expecttime, &ep->start);
+				timespecsub(&expecttime, &currtime);
+				tvalclear(&wake.it_value);
+				timespecadd((struct timespec*)&wake.it_value,
+								&expecttime);
+				/* convert nsec to usec	*/
+				wake.it_value.tv_usec /= 1000;
+				wake.it_value.tv_sec += ep->lossThreshold;
+
+				if(setitimer(ITIMER_REAL,&wake,NULL) != 0){
+					OWPError(ep->ctx,OWPErrFATAL,
+							OWPErrUNKNOWN,
+							"setitimer():%M");
+					goto error;
+				}
+				goto again;
+			}
+			goto test_over;
+		}
 		if(owp_int){
 			goto error;
 		}
-		if(owp_alrm || owp_usr2){
-			break;
+		if(owp_usr2){
+			goto test_over;
 		}
 
 		if(recvfrom(ep->sockfd,ep->payload,ep->len_payload,0,
 				      NULL, NULL) != (ssize_t)ep->len_payload){
 			if(errno == EINTR)
-				continue;
+				goto again;
 			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 							"recvfrom():%M");
 			goto error;
@@ -983,67 +1084,153 @@ run_receiver(
 		if(ep->mode & _OWP_DO_CIPHER){
 			rijndaelDecrypt(ep->aeskey->rk,ep->aeskey->Nr,
 					&ep->payload[0],&ep->payload[0]);
-			/* TODO:validate zero bits? */
+			/*
+			 * Check zero bits to ensure valid encryption.
+			 */
+			for(i=0;i<zero_len;i++)
+				if(zero[i])
+					goto again;
 		}
 
 		seq_num = ntohl(*seq);
 		if(seq_num >= ep->test_spec.any.npackets)
-			continue;
+			goto again;
 
+		/*
+		 * Start the validity tests from Section 5.2 of the spec.
+		 */
+
+		/*
+		 * Set expecttime to the time packet was expected to be sent.
+		 */
 		expecttime = ep->relative_offsets[seq_num];
 		timespecadd(&expecttime, &ep->start);
+
+		/*
+		 * Set sendtime to the time the sender sent the packet.
+		 */
+		OWPDecodeTimeStamp(&owptstamp,tstamp);
+		(void)OWPCvtTimestamp2Timespec(&sendtime,&owptstamp);
+
+		/*
+		 * discard if sent time is not within lossThresh of currtime.
+		 */
+		tmptime = sendtime;
+		timespecdiff(&tmptime,&currtime);
+		if(timespeccmp(&tmptime,&losstime,>))
+			goto again;
+
+		/*
+		 * discard if sent time is not within lossThresh of
+		 * expected sent time.
+		 */
+		tmptime = sendtime;
+		timespecdiff(&tmptime,&expecttime);
+		if(timespeccmp(&tmptime,&losstime,>))
+			goto again;
+
+		/*
+		 * If recv time(currtime) is later than lossThreshold past
+		 * expecttime discard.
+		 */
 		expecttime.tv_sec += ep->lossThreshold;
+		if(timespeccmp(&currtime,&expecttime,>))
+			goto again;
 
-		if(timespeccmp(&currtime,&expecttime,<)){
-			OWPTimeStamp	owptstamp;
+		/*
+		 * Made it through the Section 5.2 gauntlet! Record the
+		 * packet!
+		 */
 
-			/* write sequence number */
-			if(fwrite(seq,sizeof(u_int32_t),1,ep->datafile) != 1){
-				OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-						"fwrite():%M");
-				goto error;
-			}
-			/* write "sent" tstamp */
-			if(fwrite(tstamp,sizeof(u_int32_t),2,ep->datafile)
-									!= 2){
-				OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-						"fwrite():%M");
-				goto error;
-			}
+		ep->received_packets[seq_num] = True;
 
-			/* encode "recv" tstamp */
-			(void)OWPCvtTimespec2Timestamp(&owptstamp,&currtime,
-						       &esterror,&lasterror);
-			lasterror = esterror;
-			owptstamp.sync = sync;
-			OWPEncodeTimeStamp((u_int32_t*)ep->clr_buffer,
-								&owptstamp);
-
-			/* write "recv" tstamp */
-			if(fwrite(ep->clr_buffer,sizeof(u_int32_t),2,
-						ep->datafile) != 2){
-				OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-						"fwrite():%M");
-				goto error;
-			}
-
-			/*
-			 * TODO:
-			 * If we want to short-cut the recvier to try and
-			 * detect a completed session before last+lossThresh.
-			 * We would need to try and detect the "completion"
-			 * here - and would probably have to update some kind
-			 * of data structure if it is not complete...
-			 * Is it worth it?
-			 */
+		/* write sequence number */
+		if(fwrite(seq,sizeof(u_int32_t),1,ep->datafile) != 1){
+			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+					"fwrite():%M");
+			goto error;
 		}
+		/* write "sent" tstamp */
+		if(fwrite(tstamp,sizeof(u_int32_t),2,ep->datafile) != 2){
+			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+						"fwrite():%M");
+			goto error;
+		}
+
+		/* encode "recv" tstamp */
+		(void)OWPCvtTimespec2Timestamp(&owptstamp,&currtime,
+						       &esterror,&lasterror);
+		lasterror = esterror;
+		owptstamp.sync = sync;
+		OWPEncodeTimeStamp((u_int32_t*)ep->clr_buffer,&owptstamp);
+
+		/* write "recv" tstamp */
+		if(fwrite(ep->clr_buffer,sizeof(u_int32_t),2,ep->datafile) !=2){
+			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+						"fwrite():%M");
+			goto error;
+		}
+
+		/*
+		 * Now, check the delay for this packet against our delaythresh
+		 * estimate and increase the estimate if necessary.
+		 */
+		tmptime = currtime;
+		timespecsub(&tmptime,&currtime);
+		if(timespeccmp(&tmptime,&ep->delay,<))
+			goto again;
+
+		/*
+		 * Increase our end-of-test alarm.
+		 */
+		ep->delay = tmptime;
+		ep->delay.tv_sec++;
+
+		tvalclear(&wake.it_value);
+		timespecadd((struct timespec*)&wake.it_value,&last);
+		timespecsub((struct timespec*)&wake.it_value,&currtime);
+		timespecadd((struct timespec*)&wake.it_value,&ep->delay);
+		/* convert nsec to usec	*/
+		wake.it_value.tv_usec /= 1000;
+		wake.it_value.tv_sec++;
+		tvalclear(&wake.it_interval);
+
+		if(setitimer(ITIMER_REAL,&wake,NULL) != 0){
+			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+							"setitimer():%M");
+			goto error;
+		}
+
 	}
+test_over:
 
 	/*
-	 * TODO: Should SIGUSR2 - early termination rename the file? Should
-	 * the session be thought of as complete?
-	 * It currently does/is.
+	 * Flush missing packets.
 	 */
+	/*
+	 * Use payload buffer to record "missing" packets.
+	 */
+	memset(ep->payload,0,20);
+	for(i=0;(unsigned)i<ep->test_spec.any.npackets;i++)
+		if(!ep->received_packets[i]){
+			/* sequence number */
+			*(u_int32_t*)&ep->payload[0] = htonl(i);
+			/* encode presumed sent time */
+			expecttime = ep->relative_offsets[i];
+			timespecadd(&expecttime, &ep->start);
+			(void)OWPCvtTimespec2Timestamp(&owptstamp,&expecttime,
+								NULL,NULL);
+			OWPEncodeTimeStamp((u_int32_t*)&ep->payload[4],
+								&owptstamp);
+
+			/* write the record */
+			if(fwrite(ep->payload,sizeof(u_int8_t),20,ep->datafile)
+									!= 20){
+				OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+						"fwrite():%M");
+				goto error;
+			}
+		}
 
 	/*
 	 * Move file from "SID^OWP_INCOMPLETE_EXT" in-progress test to "SID".
@@ -1051,47 +1238,50 @@ run_receiver(
 	fclose(ep->datafile);
 	ep->datafile = NULL;
 
-	/*
-	 * First create new link for SID in "nodes" hierarchy.
-	 */
-	lenpath = strlen(ep->filepath);
-	strcpy(newpath,ep->filepath);
-	newpath[lenpath-strlen(OWP_INCOMPLETE_EXT)] = '\0'; /* remove the 
-						     extension from the end. */
-	if(link(ep->filepath,newpath) != 0){
-		OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"link():%M");
-		goto error;
-	}
-
-	if(ep->linkpath){
+	if(ep->filepath){
 		/*
-		 * Now add symlink in "sessions" for new SID file.
+		 * First create new link for SID in "nodes" hierarchy.
 		 */
-		lenpath = strlen(ep->linkpath);
-		strcpy(newlink,ep->linkpath);
-		newlink[lenpath-strlen(OWP_INCOMPLETE_EXT)] = '\0'; /* remove the 
-						    extension from the end. */
-		if(symlink(newpath,newlink) != 0){
+		lenpath = strlen(ep->filepath);
+		strcpy(newpath,ep->filepath);
+		newpath[lenpath-strlen(OWP_INCOMPLETE_EXT)] = '\0'; /* remove the 
+						     extension from the end. */
+		if(link(ep->filepath,newpath) != 0){
 			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"symlink():%M");
+					"link():%M");
 			goto error;
 		}
 
-		if((unlink(ep->linkpath) != 0) && (errno != ENOENT)){
+		if(ep->linkpath){
+			/*
+			 * Now add symlink in "sessions" for new SID file.
+			 */
+			lenpath = strlen(ep->linkpath);
+			strcpy(newlink,ep->linkpath);
+			/* remove the extension from the end. */
+			newlink[lenpath-strlen(OWP_INCOMPLETE_EXT)] = '\0';
+			if(symlink(newpath,newlink) != 0){
+				OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+							"symlink():%M");
+				goto error;
+			}
+
+			if((unlink(ep->linkpath) != 0) && (errno != ENOENT)){
+				OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+							"unlink():%M");
+				goto error;
+			}
+		}
+
+		/*
+		 * Now remove old  incomplete  files - this is done in this
+		 * order to ensure no race conditions.
+		 */
+		if((unlink(ep->filepath) != 0) && (errno != ENOENT)){
 			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"unlink():%M");
+								"unlink():%M");
 			goto error;
 		}
-	}
-
-	/*
-	 * Now remove old  incomplete  files - this is done in this order 
-	 * to ensure no race conditions.
-	 */
-	if((unlink(ep->filepath) != 0) && (errno != ENOENT)){
-		OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,"unlink():%M");
-		goto error;
 	}
 
 	exit(OWP_CNTRL_ACCEPT);
