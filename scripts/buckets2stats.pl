@@ -223,8 +223,15 @@ sub plot_resolution {
 	mkpath([$wwwdir], 0, 0755) or die "Could not create dir $wwwdir: $!";
     }
 
+
     my $gnu_dat = "$datadir/$res.dat";
-    open(GNUDAT, ">$gnu_dat") or die "Could not open a gnuplot data file";
+    open(GNUDAT, ">$gnu_dat") or die "Could not open $gnu_dat: $!";
+    autoflush GNUDAT 1;
+    unless (flock(GNUDAT, LOCK_EX)) {
+	warn "Could not flock $gnu_dat: $!";
+	close GNUDAT;
+	return;
+    }
 
     my $init = time();
 
@@ -256,8 +263,6 @@ sub plot_resolution {
 	    next;
 	}
 
-#	die "DEBUG: found sent != 0: $datafile";
-
 	my $lost_perc = sprintf "%.6f", ($lost/$sent)*100;
 
 	# Compute stats for a new data point.
@@ -277,8 +282,6 @@ sub plot_resolution {
 	print GNUDAT join '/', mdHMS($init - 0.5*$age);
 	print GNUDAT ' ', join ' ', 0, 0, 0, 0, 0, "\n";
     }
-
-    close GNUDAT;
 
     my $delays_png = "$wwwdir/$png_file-delays.png";
     my $delays_title = "Delays: Min, Median, and 90th Percentile " .
@@ -317,6 +320,7 @@ set output "$loss_png"
 plot [] [0:100] "$gnu_dat" using 1:5 ps $psize
 STOP
 
+    close GNUDAT;
     warn "plotted files: $delays_png $loss_png" if VERBOSE;
     warn "data file: $gnu_dat" if VERBOSE;
 }
