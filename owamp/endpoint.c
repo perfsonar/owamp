@@ -236,12 +236,12 @@ InitNTP(
 	ntp_conf.modes = 0;
 
 	if(ntp_adjtime(&ntp_conf) < 0){
-		BWLError(ctx,BWLErrFATAL,BWLErrUNKNOWN,"ntp_adjtime(): %M");
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"ntp_adjtime(): %M");
 		return 1;
 	}
 
 	if(ntp_conf.status & STA_UNSYNC){
-		BWLError(ctx,BWLErrFATAL,BWLErrUNKNOWN,"NTP: Status UNSYNC!");
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"NTP: Status UNSYNC!");
 	}
 
 #ifdef	STA_NANO

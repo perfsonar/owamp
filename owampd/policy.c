@@ -1557,7 +1557,7 @@ GetNodeDefault(
 static OWPDPolicyNode
 GetNodeFromUserID(
 	OWPDPolicy	policy,
-	const OWPUserID	userid,			/* MUST BE VALID MEMORY	*/
+	const OWPUserID	userid			/* MUST BE VALID MEMORY	*/
 	)
 {
 	OWPDPidRec	pid;
