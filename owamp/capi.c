@@ -804,7 +804,7 @@ _OWPClientRequestTestReadResponse(
 	int		rc;
 	OWPAcceptType	acceptval;
 	struct sockaddr	*set_addr=NULL;
-	u_int16_t	port_ret=NULL;
+	u_int16_t	port_ret=0;
 	u_int8_t	*sid_ret=NULL;
 
 	if((rc = _OWPWriteTestRequest(cntrl, sender->saddr, receiver->saddr,
