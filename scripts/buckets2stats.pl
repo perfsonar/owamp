@@ -1,4 +1,4 @@
-#!/usr/local/bin/perl -w
+#!/usr/bin/perl -w
 #
 #      $Id$
 
@@ -101,6 +101,8 @@ foreach my $mtype (@mtypes){
 	}
     }
 }
+
+close GNUPLOT;
 
 # This sub creates plots for the given combination of parameters.
 sub plot_resolution {
