@@ -1,6 +1,6 @@
 /*! \file owampd.c */
 
-#include "../libowamp/owampP.h"
+#include "../owamp/owampP.h"
 #include "access.h"
 #include "rijndael-api-fst.h"
 
@@ -29,7 +29,6 @@ hash_ptr ip2class_hash, class2limits_hash, passwd_hash;
 /* Global variable - the total number of allowed Control connections. */
 #define DEFAULT_NUM_CONN 100
 int free_connections = DEFAULT_NUM_CONN;
-
 
 static void
 usage(char *name)

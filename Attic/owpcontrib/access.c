@@ -22,7 +22,7 @@
 **	This file contains the OWAMP access policy functions.
 */
 
-#include "../libowamp/owampP.h"
+#include "../owamp/owampP.h"
 #include "access.h"
 #include "rijndael-api-fst.h"
 
