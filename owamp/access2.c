@@ -24,25 +24,27 @@
 #ifndef OWP_ACCESS2_H
 #define OWP_ACCESS2_H
 
+#include <ctype.h>
 #include <owamp/owamp.h>
-#include "access.h"
+#include "./access.h"
+#include "./tree.h"
 
 /*
 ** This function fills out a datum structure with the given string.
 ** When saving a string, <len> typically should be strlen(bytes) + 1.
 */
-static I2datum*
-raw2datum(const void *bytes, size_t len)
+I2datum*
+owp_raw2datum(const void *bytes, size_t len)
 {
 	I2datum *dat;
 
 	if ( (dat = (void *)malloc(sizeof(*dat))) == NULL){
 		perror("malloc");
-		exit(1);
+		return NULL;
 	}
 	if ( (dat->dptr = (void *)malloc(len)) == NULL) {
 		perror("malloc");
-		exit(1);
+		return NULL;
 	}		
 
 	bcopy(bytes, dat->dptr, len);
@@ -139,58 +141,16 @@ owp_cmp_netmask_match(const I2datum *address, const I2datum *netmask)
 }
 
 /*
-** Constructor function for a new datum struct.
-*/
-static I2datum *
-I2datum_new()
-{
-	I2datum *ret;
-	ret = (void *)malloc(sizeof(*ret));
-	if (!ret) {
-		perror("malloc");
-		exit(1);
-	}
-
-	return ret;
-}
-
-/*
-** Constructor function for a new owp_access_netmask struct.
-*/
-static owp_access_netmask *
-owp_access_netmask_new()
-{
-	owp_access_netmask *ret;
-	ret = (void *)malloc(sizeof(*ret));
-	if (!ret) {
-		perror("malloc");
-		exit(1);
-	}
-	return ret;
-}
-
-/*
-** Constructor function for a new owp_kid_data struct.
-*/
-static owp_kid_data *
-owp_kid_data_new()
-{
-	owp_kid_data *ret;
-	ret = (void *)malloc(sizeof(*ret));
-	if (!ret) {
-		perror("malloc");
-		exit(1);
-	}
-	return ret;
-}
-
-/*
 ** Create a hash key out of a netmask.
 */
 static I2datum *
 owp_netmask2datum(owp_access_netmask *netmask)
 {
-	I2datum *ret = I2datum_new();
+	I2datum *ret = (void *)malloc(sizeof(*ret));
+	if (!ret) {
+		perror("malloc");
+		return NULL;
+	}
 	
 	ret->dptr = (void *)netmask;
 	ret->dsize = sizeof(*netmask);
@@ -207,7 +167,7 @@ owp_netmask2datum(owp_access_netmask *netmask)
 ** (thus eventually keeping the address in the NETWORK byte
 ** order).
 */
-static void
+static int
 owp_netmask2class_store(void *addr, 
 			u_int8_t num_offset, 
 			int family,         /* AF_INET, AF_INET6 */
@@ -217,13 +177,17 @@ owp_netmask2class_store(void *addr,
 	I2datum *key, *val;
 	owp_access_netmask *ptr;
 
-	key = I2datum_new();
-	key->dptr = (void *)owp_access_netmask_new();
-	key->dsize = sizeof(owp_access_netmask);
-
+	key = (void *)malloc(sizeof(*key));
+	if (!key) {
+		perror("malloc");
+		return -1;
+		
+	}
+	key->dptr = (void *)malloc(sizeof(owp_access_netmask));
 	ptr = (owp_access_netmask *)(key->dptr);
 	ptr->offset = num_offset;
 	ptr->af = family;
+	key->dsize = sizeof(owp_access_netmask);
 
 	switch (family) {
 	case AF_INET:
@@ -236,11 +200,12 @@ owp_netmask2class_store(void *addr,
 		       ((struct sockaddr_in6 *)addr)->sin6_addr.s6_addr, 16);
 		break;
 	default:
-		return;
+		return 0;
 		break;
 	}
-	val = raw2datum(class, strlen(class) + 1);
+	val = owp_raw2datum(class, strlen(class) + 1);
 	I2hash_store(id2class_hash, key, val);
+	return 0;
 }
 
 /*
@@ -381,7 +346,7 @@ owp_kid2class(char *kid, int len, policy_data* policy)
 	
 	assert(kid); assert(policy);
 	hash = policy->passwd;
-	key = raw2datum(kid, len);
+	key = owp_raw2datum(kid, len);
 	val = I2hash_fetch(hash, key);
 
 	return val? val->dptr : NULL;
@@ -396,11 +361,15 @@ owp_kid2class(char *kid, int len, policy_data* policy)
 char *
 owp_netmask2class(owp_access_netmask *netmask, policy_data* policy)
 {
-	owp_access_netmask* cur_mask = owp_access_netmask_new();
 	I2datum *key, *val;
 	I2table hash;
 	u_int32_t mask_template  = 0xFFFFFFFF;
 	int offset;
+	owp_access_netmask* cur_mask = (void *)malloc(sizeof(*cur_mask));
+	if (!cur_mask) {
+		perror("malloc");
+		return NULL;
+	}
 
 	assert(netmask); assert(policy);
 	hash = policy->ip2class;
@@ -451,8 +420,7 @@ owp_netmask2class(owp_access_netmask *netmask, policy_data* policy)
 ** (corresponding to 16 bytes of binary data), and <class> is
 ** the usage class.
 */
-
-static void
+static int
 owp_read_passwd_file(OWPContext ctx, const char *passwd_file, I2table hash)
 {
 	char line[MAX_LINE];
@@ -465,7 +433,7 @@ owp_read_passwd_file(OWPContext ctx, const char *passwd_file, I2table hash)
 	if ( (fp = fopen(passwd_file, "r")) == NULL){
 		OWPError(ctx, OWPErrFATAL, errno, 
 			 "FATAL: fopen %s for reading", passwd_file);
-		exit(1);
+		return -1;
 	}
 
 	while ( (fgets(line, sizeof(line), fp)) != NULL) {
@@ -487,7 +455,13 @@ owp_read_passwd_file(OWPContext ctx, const char *passwd_file, I2table hash)
 		if (!secret)
 			continue;
 
-		kid_data = owp_kid_data_new();
+		kid_data = (owp_kid_data *)malloc(sizeof(*kid_data));
+		if (!kid_data) {
+			OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, 
+				 "FATAL: malloc() failed");
+			return -1;
+		}
+
 		strncpy(kid_data->passwd, secret, OWP_HEX_PASSWD_LEN + 1);
 
 		/* truncate if necessary */
@@ -500,26 +474,20 @@ owp_read_passwd_file(OWPContext ctx, const char *passwd_file, I2table hash)
 		kid_data->class[OWP_MAX_CLASS_LEN] = '\0';
 
 		/* Now save the key/class pair in a hash. */
-		key = raw2datum(kid, strlen(kid) + 1);
-		val = raw2datum(kid_data, sizeof(*kid_data));
+		key = owp_raw2datum(kid, strlen(kid) + 1);
+		val = owp_raw2datum(kid_data, sizeof(*kid_data));
 
 		if (I2hash_store(hash, key, val) != 0)
 			continue;
 	}
 
-	if (fclose(fp) < 0)
-		OWPError(ctx, OWPErrWARNING, errno, 
-			 "warning: fclose(%d) failed\n", fp);
-}
+	if (fclose(fp) < 0){
+		OWPError(ctx, OWPErrFATAL, errno, 
+			 "FATAL: fclose(%d) failed\n", fp);
+		return -1;
+	}
 
-/*
-** Read the config file <class2limits> and save the data in the hash
-** for future lookups.
-*/
-static void
-owp_read_class2limits2(OWPContext ctx, const char *class2limits,I2table hash)
-{
-
+	return 0;
 }
 
 /* 
@@ -528,7 +496,6 @@ owp_read_class2limits2(OWPContext ctx, const char *class2limits,I2table hash)
 ** or NULL on error. It expects fulls paths to configuration files 
 ** (to be specified by application).
 */
-
 policy_data *
 PolicyInit(
 	   OWPContext ctx, 
@@ -557,7 +524,6 @@ PolicyInit(
 	}
 
 	ret->class2limits = I2hash_init(ctx, 0, NULL, NULL, NULL);
-
 	if (ret->class2limits == NULL){
 		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN,
 			 "could not init class2limits hash");
@@ -576,20 +542,21 @@ PolicyInit(
 	
 	/* Now read config files and save info in the hashes. */
 	owp_read_ip2class(ctx, ip2class_file, ret->ip2class); 
-	owp_read_class2limits2(ctx, class2limits_file, ret->class2limits);
 	owp_read_passwd_file(ctx, passwd_file, ret->passwd);
+	owp_read_class2limits2(ctx, class2limits_file, ret->class2limits);
 
 	*err_ret = OWPErrOK;
+	assert(ret->ip2class);
 	return ret;
 }
 
 unsigned long
-OWAMPGetBandwidth(OWAMPLimits * lim){
+OWAMPGetBandwidth(owp_lim *lim){
 	return lim->bandwidth;
 }
 
 unsigned long
-OWAMPGetSpace(OWAMPLimits * lim){
+OWAMPGetSpace(owp_lim *lim){
 	return lim->space;
 }
 
