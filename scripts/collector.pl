@@ -385,7 +385,7 @@ sub read_req{
 
 	# read version - ignored for now.
 	$_ = sys_readline(FILEHANDLE=>$fh,TIMEOUT=>$timeout);
-	$_ = "" if !defined $_;
+	die "Socket closed" if !defined $_;
 	die "Invalid request!: $_" if(!(($vers) = /OWP\s+(\d+)/));
 	$md5->add($_);
 
