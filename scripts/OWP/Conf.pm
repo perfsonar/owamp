@@ -89,6 +89,7 @@ my %DEFS = (
 	UPTIME_DB               =>      'uptime.dat',
 	OWPBINDIR		=>	"$FindBin::Bin",
 	CONFDIR			=>	"$Conf::CONFPATH/",
+	SEPARATOR               =>      ',',
 );
 
 # Opts that are boolean.
