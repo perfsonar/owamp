@@ -1042,7 +1042,7 @@ NextConnection:
 			char			fname[PATH_MAX];
 			char			endname[PATH_MAX];
 			char			newpath[PATH_MAX];
-			u_int64_t		arecs,nrecs;
+			u_int32_t		arecs,nrecs;
 			off_t			hlen;
 			OWPSessionHeaderRec	hdr;
 			OWPNum64		localstop;
