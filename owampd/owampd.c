@@ -20,6 +20,9 @@ int class2limits_flag = 0;
 int passwd_flag = 0;
 u_int32_t default_offered_mode = OWP_MODE_OPEN | OWP_MODE_AUTHENTICATED
                            | OWP_MODE_ENCRYPTED;
+int sig_received = 0;
+int sig_name;
+
 /* Global variable - the total number of allowed Control connections. */
 #define DEFAULT_NUM_CONN 100
 int free_connections = DEFAULT_NUM_CONN;
@@ -215,12 +218,17 @@ tcp_listen(OWPContext ctx,
 void
 sig_chld(int signo)
 {
-	pid_t pid;
+	sig_received++;
+	sig_name = signo;
+	return;
+
+	/*	pid_t pid;
 	int stat;
 
 	while ( (pid = waitpid(-1, &stat, WNOHANG)) > 0)
 		free_connections++;
 	return;
+	*/
 }
 
 /*
@@ -336,6 +344,57 @@ ServerMainControl(OWPControl cntrl, OWPErrSeverity* out)
 	}
 }
 
+/* 
+** This function prints out all registered descriptors
+** in a fd_set. It is used for debugging.
+*/
+void
+print_fdset(int max, fd_set *set)
+{
+	int i;
+
+	fprintf(stderr, "Printing fd set: max = %d\n", max);
+	for (i = 0; i <= FD_SETSIZE; i++){
+		if (FD_ISSET(i, set))
+			fprintf(stderr, "fd %d is set\n", i);
+	}
+	fprintf(stderr, "Done printing fd set\n\n");
+}
+
+void
+owampd_check_pipes(int maxfd, fd_set *mask, fd_set* readfds)
+{
+	int fd;
+	for (fd = 0; fd <= maxfd; fd++){
+		if (FD_ISSET(fd, mask)){
+			char buf[1];
+			int n = read(fd, buf, 1);
+			if (n < 0){
+				perror("FATAL: read");
+				exit(1);
+			}
+			
+			FD_CLR(fd, readfds);
+			close(fd);
+			if (n == 0)  /* happens only if child closes */
+				return; /* without writing */
+			
+			
+			
+			if (strncmp(buf, "1", 1) == 0){ /* auth */
+				free_connections++;
+				/*
+				  pid = fd2pid{new_pipe[0]};
+				  is_auth{pid} = 1
+				  
+				*/
+			} 
+		}
+	}
+	
+}
+
+
 int
 main(int argc, char *argv[])
 {
@@ -358,6 +417,9 @@ main(int argc, char *argv[])
 	OWPControl             cntrl; /* XXX - remember to initialize. */
 	I2ErrHandle            eh;
 	I2LogImmediateAttr     ia;
+
+	int junk = 0;
+
 	OWPInitializeConfigRec cfg  = {
 		0, 
 		0,
@@ -432,21 +494,56 @@ main(int argc, char *argv[])
 
 	listenfd = tcp_listen(ctx, NULL, SERV_PORT_STR, &addrlen);
 
+	signal(SIGCHLD, sig_chld);
 	FD_ZERO(&readfds);
 	FD_SET(listenfd, &readfds);
 	maxfd = listenfd;
 
 	while (1) {
-		int nfound, fd;
+		int nfound;
 		fd_set mask = readfds;
 		socklen_t len = addrlen;
-	AGAIN:
+
+		/* check if any signals have occurred */
+		if (sig_received){
+			switch (sig_name) {
+				pid_t kidpid;
+				int stat;
+
+			case SIGCHLD:
+				while ( (kidpid = waitpid(-1, &stat, 
+							  WNOHANG)) > 0)
+					free_connections++;
+				sig_received = 0;
+				break;
+			default:
+				sig_received = 0;
+				fprintf(stderr, 
+					"DEBUG: received unknown signal\n");
+				break;
+				
+			}
+		}
+
 		nfound = select(maxfd + 1, &mask, NULL, NULL, NULL);
+
+		fprintf(stderr, "DEBUG: select returned with nfound = %d\n", 
+			nfound);
+
 		if (nfound < 0){
-			if (errno = EINTR)
-				goto AGAIN;
+			if (errno == EINTR){
+				fprintf(stderr, 
+				      "DEBUG: select interrupted by signal\n");
+				continue;
+			}
 			else {
-				I2ErrLog(eh, "select() failed. Exiting...");
+				fprintf(stderr, "DEBUG: calling I2ErrLog\n");
+
+				/* XXX - I2ErrLog causes core dump */
+			     /* I2ErrLog(eh, "select() failed. Exiting...");*/
+
+				fprintf(stderr, 
+				"DEBUG: FATAL select error. Parent exiting\n");
 				exit(1);
 			}
 		}
@@ -461,7 +558,14 @@ main(int argc, char *argv[])
 			OWPBoolean auth_ok;
 			OWPBoolean again;
 
-			fprintf(stderr, "DEBUG: received new connection\n");
+			FD_CLR(listenfd, &mask);
+
+			if (pipe(new_pipe) < 0){
+				I2ErrLog(eh, "pipe() failed. Exiting...");
+				exit(1);
+			}
+
+			free_connections--;
 
 		ACCEPT:
 			connfd = accept(listenfd, &cliaddr, &len);
@@ -473,13 +577,7 @@ main(int argc, char *argv[])
 					exit(1);
 				}
 			}
-			
-			if (pipe(new_pipe) < 0){
-				I2ErrLog(eh, "pipe() failed. Exiting...");
-				exit(1);
-			}
 
-			free_connections--;
 			pid = fork();
 
 			if (pid < 0){
@@ -489,19 +587,31 @@ main(int argc, char *argv[])
 			
 			if (pid > 0){ /* Parent */
 				FD_SET(new_pipe[0], &readfds);
-				close(new_pipe[1]);
-				
+
+				if (close(new_pipe[1]) < 0){
+					perror("close");
+					exit(1);
+				}
+
+				if (close(connfd) < 0){
+					perror("close");
+					exit(1);
+				}
+
 				if (new_pipe[0] > maxfd)
 					maxfd = new_pipe[0];
 
 				/* fd2pid{new_pipe[0]} = pid */
 
-				/* Go to check the pipes and then continue; */
+				owampd_check_pipes(maxfd, &mask, &readfds);
+				continue; 
 			}
-
-			goto PARENT_CHECK_PIPES;
 			
 			/* Child code */
+			exit(0); /* XXX - remove !!! */
+			fprintf(stderr, "DEBUG: Child begins...\n");
+			fprintf(stderr, "DEBUG: Child exits...\n");
+
 			mode_available = default_offered_mode;
 			close(new_pipe[0]);
 			close(listenfd);
@@ -516,50 +626,31 @@ main(int argc, char *argv[])
 				exit(0);
 			}
 
-			fprintf(stderr, "DEBUG: policy check succeeded\n");
-
 			cntrl = OWPControlAccept(ctx, connfd, mode_available,
 						 policy, &out);
-			if (cntrl == NULL)
-				exit(0);
-			
+
+			if (cntrl == NULL){
+				fprintf(stderr, 
+				  "DEBUG: CntrlAcc == NULL. Child Exiting\n");
+				exit(0);	
+			}
+
+			fprintf(stderr, "DEBUG: child exiting...\n");
+			exit(1); /* XXX - debug */
+		
 			while (again == True) {
 				again = ServerMainControl(cntrl, &out);
 			}
 			
-			/* Child done - exiting.*/
-			exit(0); /* May need more sophisticated decision */
+			exit(0); 
+			/* End of child code */
 
-		} /* FD_ISSET(listenfd) */
+		} /* if (FD_ISSET(listenfd))... */
 		
-		/* In any case, parent checks the pipes here. 
-		   NOTE: may be better to a make a short function
-		   out of it.
-		*/
-	PARENT_CHECK_PIPES:
-		/* blah blah ... */
-		
-		for (fd = 0; fd <= maxfd; fd++){
-			if (FD_ISSET(fd, &mask)){
-				char buf[1];
-				int n = read(fd, buf, 1);
-				close(fd);
-
-				if (n < 0){
-					perror("read");
-				}
-				if (strncmp(buf, "1", 1) == 0){ /* auth */
-					free_connections++;
-					/*
-					  pid = fd2pid{new_pipe[0]};
-					  is_auth{pid} = 1
-
-					*/
-				} 
-			}
-		}
-
+		/* Fall through */
+		owampd_check_pipes(maxfd, &mask, &readfds);
 		continue;
+		
 	}
 	
 	I2hash_close(&policy->ip2class);
