@@ -1043,7 +1043,7 @@ NextConnection:
 			char			endname[PATH_MAX];
 			char			newpath[PATH_MAX];
 			u_int32_t		arecs,nrecs;
-			off_t			hlen;
+			off_t			hlen,fileend;
 			OWPSessionHeaderRec	hdr;
 			OWPNum64		localstop;
 
@@ -1164,8 +1164,17 @@ AGAIN:
 			 */
 			if(parse.begin < hlen)
 				parse.begin = hlen;
+			if(fseeko(p->fp,0,SEEK_END) != 0){
+				I2ErrLog(eh,"fseeko(): %M");
+				exit(1);
+			}
+			if((fileend = ftello(p->fp)) < 0){
+				I2ErrLog(eh,"ftello(): %M");
+				exit(1);
+			}
+
 			if(fseeko(p->fp,parse.begin,SEEK_SET) != 0){
-				I2ErrLog(eh,"fseeko():%M");
+				I2ErrLog(eh,"fseeko(): %M");
 				exit(1);
 			}
 
@@ -1177,6 +1186,13 @@ AGAIN:
 			}
 			else{
 				nrecs = 0;
+			}
+
+			if((nrecs * hdr.rec_size) > (fileend - parse.begin)){
+				I2ErrLog(eh,
+			"Invalid nrecs!: nrecs=%lu,fileend=%llu,begin=%llu",
+					nrecs,fileend,parse.begin);
+				nrecs = (fileend - parse.begin)/hdr.rec_size;
 			}
 
 			/*
