@@ -602,12 +602,13 @@ OWPControlOpen(
 	 */
 	if(kid &&
 		(mode_avail & (OWP_MODE_ENCRYPTED|OWP_MODE_AUTHENTICATED))){
-		if(!_OWPCallGetAESKey(ctx, kid, key_value, err_ret)){
+		if(_OWPCallGetAESKey(ctx, kid, key_value, err_ret)){
+			key = key_value;
+		}
+		else{
 			if(*err_ret != OWPErrOK)
 				goto error;
 		}
-		else
-			key = key_value;
 	}
 	/*
 	 * If no key, then remove auth/crypt modes
