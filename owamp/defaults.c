@@ -20,7 +20,7 @@
 */
 #include <owamp/owamp.h>
 #include <owamp/owampP.h>
-#include <owpcontrib/access.h>
+#include <owamp/access.h>
 #include <owamp/conndata.h>
 
 /*

@@ -30,8 +30,8 @@
 #include <I2util/util.h>
 #include <owamp/owamp.h>
 #include <owamp/conndata.h>
-#include <owpcontrib/unixtime.h>
-#include <owpcontrib/access.h>
+#include <owamp/unixtime.h>
+#include <owamp/access.h>
 
 #include "./owpingP.h"
 #include "./localnode.h"

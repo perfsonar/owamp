@@ -31,7 +31,7 @@ AC_INIT(owamp, 1.0, owamp-bugs@internet2.edu)
 AC_CONFIG_AUX_DIR(config)
 AM_INIT_AUTOMAKE(owamp, 1.0, [no-define])
 AC_CONFIG_SRCDIR(owamp/context.c)
-AM_CONFIG_HEADER(owamp/config.h owpcontrib/access.h)
+AM_CONFIG_HEADER(owamp/config.h owamp/access.h)
 
 TOP_BUILD_DIRS=""
 
@@ -91,19 +91,12 @@ OWPLDFLAGS="-L$OWP_dir"
 OWPLIBS="$OWPLDFLAGS -lowamp"
 OWPLIBDEPS="$OWP_dir/libowamp.a"
 
-OWPCONTRIB_dir='${top_srcdir}/owpcontrib'
-OWPCONTRIBLDFLAGS="-L$OWPCONTRIB_dir"
-OWPCONTRIBLIBS="$OWPCONTRIBLDFLAGS -lowamp_contrib"
-OWPCONTRIBLIBDEPS="$OWPCONTRIB_dir/libowamp_contrib.a"
-
 AC_SUBST(I2UTILINCS)
 AC_SUBST(I2UTILLIBS)
 AC_SUBST(I2UTILLIBDEPS)
 AC_SUBST(OWPINCS)
 AC_SUBST(OWPLIBS)
 AC_SUBST(OWPLIBDEPS)
-AC_SUBST(OWPCONTRIBLIBS)
-AC_SUBST(OWPCONTRIBLIBDEPS)
 
 AC_SUBST(TOP_BUILD_DIRS)
 
@@ -136,6 +129,5 @@ AC_CHECK_FUNCS([memset socket getaddrinfo])
 
 AC_SUBST(ac_aux_dir)
 
-AC_OUTPUT([Makefile owamp/Makefile owpcontrib/Makefile owampd/Makefile \
-	 owping/Makefile],
+AC_OUTPUT([Makefile owamp/Makefile owampd/Makefile owping/Makefile],
 	[test -z "$CONFIG_HEADERS" || echo timestamp > owamp/stamp-h.in])

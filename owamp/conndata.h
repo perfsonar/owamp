@@ -26,7 +26,7 @@
 #ifndef	_OWP_CONNDATA_H
 #define	_OWP_CONNDATA_H
 
-#include <owpcontrib/access.h>
+#include <owamp/access.h>
 
 typedef struct OWPPerConnDataRec{
 	OWPControl		cntrl;

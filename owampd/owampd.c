@@ -31,7 +31,7 @@
 
 #include <owamp/owamp.h>
 #include <owamp/conndata.h>
-#include <owpcontrib/access.h>
+#include <owamp/access.h>
 #include <I2util/util.h>
 
 #include "owampdP.h"
