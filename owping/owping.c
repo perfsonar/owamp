@@ -64,9 +64,9 @@ owp_fetch_to_local(OWPControl cntrl,
 	strcat(datafile, sid_name);
 	strcat(datafile, OWP_INCOMPLETE_EXT);
 
-	fd = open(datafile, O_WRONLY);
+	fd = open(datafile, O_WRONLY | O_CREAT | O_EXCL);
 	if (fd < 0) {
-		I2ErrLog(eh, "FATAL: open():%M");
+		I2ErrLog(eh, "FATAL: open(%s):%M", datafile);
 		return -1;
 	}
 
@@ -97,9 +97,9 @@ owp_fetch_to_local(OWPControl cntrl,
 
  fatal:
 	if (close(fd) < 0)
-		I2ErrLog(eh, "main: close():%M");
+		I2ErrLog(eh, "main: close(%d):%M", fd);
 	if (unlink(datafile) < 0)
-		I2ErrLog(eh, "main: unlink():%M");
+		I2ErrLog(eh, "main: unlink(%s):%M", datafile);
 	return -1;
 }
 
@@ -525,7 +525,6 @@ owp_find_location(rec_list_ptr list, OWPCookedDataRecPtr rec)
 void
 owp_record_out(OWPCookedDataRecPtr rec, fetch_state_ptr state)
 {
-	OWPTimeStamp send, recv;
 	double delay;
 
 	assert(rec);
@@ -542,7 +541,7 @@ owp_record_out(OWPCookedDataRecPtr rec, fetch_state_ptr state)
 			rec->recv.prec);
 		break;
 	case OWP_PING_STYLE:
-		delay = owp_delay(&send, &recv);
+		delay = owp_delay(&rec->send, &rec->recv);
 		fprintf(state->fp, "seq_no=%u delay=%.3f ms\n", rec->seq_no, 
 			delay*THOUSAND);
 		owp_update_stats(state, delay);
@@ -622,16 +621,45 @@ do_rest(void *calldata,
 **     (original ping style: max/avg/min/stdev) at the end.
 */
 int
-do_records_all(int fd, u_int32_t num_rec, int type, FILE *out)
+do_records_all(char *datadir, OWPSID sid, int type, FILE *out)
 {
 	rec_list window;
 	fetch_state state;
-
+	int fd;
+	u_int32_t num_rec;
+	char datafile[PATH_MAX]; /* full path to data file */
+	char sid_name[(sizeof(OWPSID)*2)+1];
+	struct stat     stat_buf;
+	
 	assert(out);
 	assert((type == OWP_MACHINE_READ)
 	       || (type == OWP_PING_STYLE)
 	       || (type == OWP_PING_QUIET));
+	
+	/* Create the path. */
+	strcpy(datafile, datadir);
+	strcat(datafile,OWP_PATH_SEPARATOR);
+	OWPHexEncode(sid_name, sid, sizeof(OWPSID));
+	strcat(datafile, sid_name);
+	
+	if ((fd = open(datafile, O_RDONLY)) < 0) {
+		I2ErrLog(eh, "FATAL: open():%M");
+		return -1;
+	}
 
+	if (fstat(fd, &stat_buf) < 0) {
+		I2ErrLog(eh, "FATAL: open():%M");
+		return -1;
+	}   
+	
+	num_rec = (stat_buf.st_size - 4) / 20;
+	if ((stat_buf.st_size - 4)%20) {
+		I2ErrLog(eh, 
+		       "FATAL: data file %s contains uneven number of records",
+			 datafile);
+		return -1;
+	}
+	
 	list_init(&window);
 	fetch_state_init(&state, out, &window, type);
 
@@ -964,8 +992,20 @@ main(
 	if(OWPStopSessionsWait(ping_ctx.cntrl,NULL,&acceptval,&err) != 0)
 		exit(1);
 
-	/*
-	  TODO - do the Fetch here.
-	*/
+	/* If local sender - fetch data to local disk first. */
+	if (!ping_ctx.receiver_local) {
+		if (owp_fetch_to_local(conndata.cntrl, 
+				       conndata.real_data_dir, sid_ret) < 0) {
+			I2ErrLog(eh, "Failed to fetch records to local disk");
+			exit(1);
+		}
+	}
+
+	if (do_records_all(conndata.real_data_dir, 
+			   sid_ret, OWP_PING_STYLE, stdout) < 0){
+		I2ErrLog(eh, "FATAL: do_records_all: failure processing data");
+		exit(1);
+	}
+
 	exit(0);
 }
