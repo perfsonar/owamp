@@ -117,15 +117,17 @@ to the given \fIlimitclass\fR.)
 .TP
 .I disk
 Maximum amount of disk space to allow a given \fIlimitclass\fR
-to consume. This defines a limit that is used during authorization
-of a given test request. If the estimated file size for a test request
-is larger than the \fIdisk\fR limit, the test request will be denied.
+to consume. This defines a limit that is used during the authorization
+of a given test request (this is a soft limit). If the estimated file size
+for a test request is larger than the \fIdisk\fR limit, the test request will
+be denied.
 Additionally, because a given test can actually consume
 more space than this estimate due to duplicate packets, the \fIdiskfudge\fR
 factor is used upon the completion of a test to decide if the file should
 be kept. If the new file causes the disk space used by a \fIlimitclass\fR
 to be larger than the \fIdisk\fR limit
-multiplied by the \fIdiskfudge\fR factor the file will be deleted.
+multiplied by the \fIdiskfudge\fR factor (this defines the hard limit)
+the file will be deleted.
 .TP
 .I delete_on_fetch
 Indicates that buffered data files should be automatically be deleted

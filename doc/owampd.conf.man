@@ -101,18 +101,19 @@ process receiving \fBSIGTERM\fR or \fBSIGHUP\fR.
 .TP
 .BI diskfudge " diskfudge"
 Fudge factor to use when determining if a buffered owp file should be kept.
-It creates a soft limit for disk usage. The hard limit is determined by
-the limitclass that a connection matches (see the owampd.limits(5) manual
-page) and is applied when a test is requested. If the estimated filesize
-of the test would put the
-limitclass over the disk quota, then the test is denied. However, it is
-possible due to duplicate packets that a test session file may end up larger
+It creates a hard limit for disk usage. The soft limit is determined by
+the \fIlimitclass\fR that a connection matches [see the owampd.limits(5)
+manual page] and is applied when a test is requested. If the estimated
+filesize of the test would put the
+\fIlimitclass\fR over the soft limit, then the test is denied. However, it is
+possible, due to duplicate packets, that a test session file may end up larger
 than this estimate. If that happens, and if the file is successfully saved
-to disk, then upon completion of the test the actual filesize is used to
-update the disk usage in the resource broker process. At this point, the soft
-limit is applied. The soft limit is determined by multiplying the hard limit
-by the \fIdiskfudge\fR. If the final filesize is larger than the
-soft quota then the file is immediately deleted.
+to disk, then, upon completion of the test, the actual filesize is used to
+update the disk usage in the resource broker process. At this point, the hard
+limit is applied. The hard limit is determined by multiplying the soft limit
+by the \fIdiskfudge\fR. If the final filesize causes the disk space
+used by the \fIlimitclass\fR to be larger than the
+quota defined by the hard limit then the file is immediately deleted.
 .RS
 .PP
 A liberal factor
@@ -123,7 +124,7 @@ disk usage is not too vulnerable to replay DOS attacks of the test protocol.)
 .PP
 The valid values for \fIdiskfudge\fR are 1.0-10.0.
 .IP Default:
-1.0 (No soft limit)
+1.0 (hard limit is the same as the soft limit)
 .RE
 .TP
 .BI facility " facility"
@@ -158,17 +159,6 @@ ensures the port number is distinct from the address specification.
 \fIport\fR is 4823.
 .RE
 .TP
-.BI syncfuzz " syncfuzz"
-This value is added to the NTP error estimates to increase the tolorence
-of owampd to incomplete ntp configurations. If not enough ntp peers are
-specified, NTP can not accurately determine the time error. This option
-is specified as a floating point number in seconds. For example, to indicate
-that the system is synchronized to one second, you could specify this option as 1.0.
-.RS
-.IP Default:
-0.0 (NTP error estimates are used as is.)
-.RE
-.TP
 .BI user " user"
 Specifies the uid the \fBowampd\fR process should run as. \fIuser\fR
 can be specified using a valid user name on the system or by using -uid.
@@ -185,11 +175,8 @@ Current directory
 If this option is present, it directs the \fBowampd\fR process to
 generate more verbose messages to syslog.
 .SH SEE ALSO
-owping(1), owampd(8), owampd.limits(5), owampd.keys(5),
-and the \%http://e2epi.internet2.edu/bwctl/ web site.
-.PP
-For details on \fBIperf\fR, see the \%http://dast.nlanr.net/Projects/Iperf/
-web site.
+owping(1), owampd(8), owampd.limits(5), owampd.keys(5), aespasswd(1),
+and the \%http://e2epi.internet2.edu/owamp/ web site.
 .SH ACKNOWLEDGMENTS
 This material is based in part on work supported by the National Science
 Foundation (NSF) under Grant No. ANI-0314723. Any opinions, findings and
