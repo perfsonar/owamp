@@ -571,6 +571,9 @@ OWPControlOpen(
 		goto error;
 	}
 
+        /*
+         * TODO: enumerate reason for rejection
+         */
 	if(acceptval != OWP_CNTRL_ACCEPT){
 		OWPError(cntrl->ctx,OWPErrINFO,OWPErrPOLICY,
 							"Server denied access");
@@ -866,6 +869,9 @@ _OWPClientRequestTestReadResponse(
 	if(acceptval == OWP_CNTRL_ACCEPT)
 		return 0;
 
+        /*
+         * TODO: enumerate failure reasons
+         */
 	OWPError(cntrl->ctx,OWPErrINFO,OWPErrPOLICY,"Server denied test");
 
 	*err_ret = OWPErrOK;
@@ -1308,6 +1314,14 @@ error:
             case OWP_CNTRL_UNSUPPORTED:
 		OWPError(cntrl->ctx,*err_ret,OWPErrUNKNOWN,
                         "Test type unsupported");
+                break;
+            case OWP_CNTRL_UNAVAILABLE_PERM:
+                OWPError(cntrl->ctx,*err_ret,OWPErrPOLICY,
+                        "Test denied: resources unavailable");
+                break;
+            case OWP_CNTRL_UNAVAILABLE_TEMP:
+                OWPError(cntrl->ctx,*err_ret,OWPErrPOLICY,
+                        "Test denied: resource temporarily unavailable");
                 break;
             case OWP_CNTRL_FAILURE:
             default:

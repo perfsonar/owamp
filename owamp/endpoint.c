@@ -256,23 +256,23 @@ _OWPEndpointInit(
         OWPErrSeverity	*err_ret
         )
 {
-    struct sockaddr_storage	sbuff;
-    socklen_t		sbuff_len=sizeof(sbuff);
-    OWPEndpoint		ep;
-    OWPPacketSizeT		tpsize;
-    int			sbuf_size;
-    int			sopt;
-    socklen_t		opt_size;
-    u_int64_t		i;
-    OWPTimeStamp		tstamp;
-    u_int16_t		port=0;
-    u_int16_t		p;
-    u_int16_t		range;
-    OWPPortRange		portrange=NULL;
-    int			saveerr=0;
+    struct sockaddr_storage sbuff;
+    socklen_t		    sbuff_len=sizeof(sbuff);
+    OWPEndpoint		    ep;
+    OWPPacketSizeT          tpsize;
+    int			    sbuf_size;
+    int			    sopt;
+    socklen_t		    opt_size;
+    u_int64_t		    i;
+    OWPTimeStamp            tstamp;
+    u_int16_t		    port=0;
+    u_int16_t		    p;
+    u_int16_t		    range;
+    OWPPortRange            portrange=NULL;
+    int			    saveerr=0;
 
     *err_ret = OWPErrFATAL;
-    *aval = OWP_CNTRL_FAILURE;
+    *aval = OWP_CNTRL_UNAVAILABLE_TEMP;
 
     if( !(ep=EndpointAlloc(cntrl)))
         return False;
@@ -289,6 +289,7 @@ _OWPEndpointInit(
     if((OWPPacketSizeT)sbuf_size != tpsize){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
                 "Packet size overflow - invalid padding");
+        *aval = OWP_CNTRL_FAILURE;
         goto error;
     }
 
@@ -339,6 +340,7 @@ _OWPEndpointInit(
         default:
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
                 "Invalid address family for test");
+        *aval = OWP_CNTRL_UNSUPPORTED;
         goto error;
     }
 
@@ -365,6 +367,7 @@ _OWPEndpointInit(
         if(portrange->high < portrange->low){
             OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
                     "Invalid port range specified");
+            *aval = OWP_CNTRL_FAILURE;
             goto error;
         }
 
@@ -391,6 +394,7 @@ _OWPEndpointInit(
             default:
             OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
                     "Invalid address family for test");
+            *aval = OWP_CNTRL_UNSUPPORTED;
             goto error;
         }
 
@@ -404,8 +408,10 @@ _OWPEndpointInit(
          * loop and report failure. (Or if the error is not EADDRINUSE
          * this is a permenent failure.)
          */
-        if(!portrange || (errno != EADDRINUSE))
+        if(!portrange || (errno != EADDRINUSE)){
+            *aval = OWP_CNTRL_FAILURE;
             goto bind_fail;
+        }
 
         /*
          * compute next port to try.
@@ -624,6 +630,7 @@ success:
             default:
                 OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
                         "Invalid address family for test");
+                *aval = OWP_CNTRL_UNSUPPORTED;
                 goto error;
         }
     }
@@ -691,6 +698,7 @@ success:
             default:
                 OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
                         "Invalid address family for test");
+                *aval = OWP_CNTRL_UNSUPPORTED;
                 goto error;
         }
 

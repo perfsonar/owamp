@@ -685,16 +685,9 @@ OWPProcessTestRequest(
 	 */
 	if((rc = _OWPReadTestRequest(cntrl,intr,&tsession,&acceptval)) !=
 								OWPErrOK){
-		switch(acceptval){
-			case OWP_CNTRL_INVALID:
-				 return OWPErrFATAL;
-			case OWP_CNTRL_FAILURE:
-			case OWP_CNTRL_UNSUPPORTED:
-				return OWPErrWARNING;
-			default:
-				/* NOTREACHED */
-				abort();
-		}
+            if(acceptval < 0)
+                return OWPErrFATAL;
+            return OWPErrWARNING;
 	}
 
 	assert(tsession);

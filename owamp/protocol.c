@@ -246,6 +246,10 @@ GetAcceptType(
 			return OWP_CNTRL_FAILURE;
 		case OWP_CNTRL_UNSUPPORTED:
 			return OWP_CNTRL_UNSUPPORTED;
+		case OWP_CNTRL_UNAVAILABLE_PERM:
+			return OWP_CNTRL_UNAVAILABLE_PERM;
+		case OWP_CNTRL_UNAVAILABLE_TEMP:
+			return OWP_CNTRL_UNAVAILABLE_TEMP;
 		default:
 			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
 					"GetAcceptType:Invalid val %u",val);
