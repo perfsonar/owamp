@@ -1,3 +1,23 @@
+/*
+**      $Id$
+*/
+/************************************************************************
+*									*
+*			     Copyright (C)  2002			*
+*				Internet2				*
+*			     All Rights Reserved			*
+*									*
+************************************************************************/
+/*
+**	File:		io.c
+**
+**	Author:		Anatoly Karp
+**
+**	Date:		Wed Apr  24 10:42:12  2002
+**
+**	Description:	This file contains the private functions to
+**			to facilitate IO that the library needs to do.
+*/
 #include <owampP.h>
 
 /*
