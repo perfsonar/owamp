@@ -30,6 +30,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <syslog.h>
 
 #include <I2util/util.h>
 #include <owamp/owamp.h>
@@ -60,6 +61,7 @@ typedef struct state {
 
 #define OWP_CMP(a,b) ((a) < (b))? -1 : (((a) == (b))? 0 : 1)
 #define OWP_MIN(a,b) ((a) < (b))? (a) : (b)
+#define OWP_MAX(a,b) ((a) < (b))? (b) : (a)
 
 /*
 ** The function returns -1. 0 or 1 if the first record's sequence
@@ -205,10 +207,15 @@ main(int argc, char *argv[])
 	u_int32_t *counts;
 	double delay, min;
 	u_int8_t worst_prec_bits = 64;
+	u_int8_t best_prec_bits = 0;
+
+	I2ErrLogSyslogAttr	syslogattr;
+	int fac;
 	
 	char     *progname;
 	int num_buckets, ch, verbose = 0;
 	I2LogImmediateAttr	ia;
+
 	u_int8_t out_hdrlen = sizeof(magic) + sizeof(version) 
 		+ sizeof(prec) + sizeof(out_hdrlen) + sizeof(sent) 
 		+ sizeof(lost) + sizeof(dup) + sizeof(min);
@@ -219,11 +226,53 @@ main(int argc, char *argv[])
 	ia.line_info = (I2NAME | I2MSG);
 	ia.fp = stderr;
 	progname = (progname = strrchr(argv[0], '/')) ? ++progname : *argv;
+
+	syslogattr.ident = progname;
+	syslogattr.logopt = LOG_PID;
+	syslogattr.facility = LOG_USER;
+	syslogattr.priority = LOG_ERR;
+	syslogattr.line_info = I2MSG;
+#ifndef	NDEBUG
+	syslogattr.line_info |= I2FILE | I2LINE;
+#endif
+
+	while ((ch = getopt(argc, argv, "hp:v")) != -1)
+		switch (ch) {
+			/* Connection options. */
+		case 'p':
+			prec = (u_int8_t)atoi(optarg);
+			break;
+		case 'v':
+			verbose = 1;
+			break;
+		case 'e':
+			if((fac = I2ErrLogSyslogFacility(optarg)) == -1){
+				fprintf(stderr,
+				"Invalid -e: Syslog facility \"%s\" unknown\n",
+					optarg);
+				exit(1);
+			}
+			syslogattr.facility = fac;
+			break;
+		case 'r':
+			syslogattr.logopt |= LOG_PERROR;
+			break;
+		case 'h':
+		case '?':
+		default:
+			usage();
+		}
+
+	argc -= optind;
+	argv += optind;
+
 	/*
 	* Start an error logging session for reporing errors to the
 	* standard error
 	*/
-	eh = I2ErrOpen(progname, I2ErrLogImmediate, &ia, NULL, NULL);
+
+	eh = I2ErrOpen(progname, I2ErrLogSyslog, &syslogattr, NULL, NULL);
+
 	if(! eh) {
 		fprintf(stderr, "%s : Couldn't init error module\n", progname);
 		exit(1);
@@ -234,25 +283,6 @@ main(int argc, char *argv[])
 		I2ErrLog(eh,"Unable to initialize OWP library.");
 		exit(1);
 	}
-
-
-	while ((ch = getopt(argc, argv, "hp:v")) != -1)
-             switch (ch) {
-		     /* Connection options. */
-             case 'p':
-		     prec = (u_int8_t)atoi(optarg);
-		     break;
-	     case 'v':
-		     verbose = 1;
-		     break;
-	     case 'h':
-             case '?':
-             default:
-                     usage();
-	     }
-
-	argc -= optind;
-	argv += optind;
 
 	if (argc != 2)
 		usage();
@@ -321,7 +351,9 @@ main(int argc, char *argv[])
 	for (i = 0; i < num_rec; i++) {
 		int bucket;
 		u_int8_t prec_bits = OWPGetPrecBits(&s.records[i]);
-
+#ifdef LATER
+		u_int32_t min_bits, max_bits;
+#endif
 #ifdef DIGEST_DEBUG
 		fprintf(stderr, "DEBUG: packet %d has prec_bits = %u\n",
 			i, prec_bits);
@@ -330,17 +362,17 @@ main(int argc, char *argv[])
 
 		if (verbose)
 			printf("prec = %u\n", prec);
-		if (prec_bits < prec){
-			fprintf(stderr, "prec=%u, real_prec=%u\n",
-				prec, prec_bits);
-			continue;
-		}
 
 		if (s.records[i].seq_no == last_seqno) {
 			dup++;
 			continue;
 		}
-
+#ifdef LATER
+		max_bits = OWP_MAX(s.records[i].send.prec,
+				   s.records[i].recv.prec);
+		min_bits = OWP_MIN(s.records[i].send.prec,
+				   s.records[i].recv.prec);
+#endif
 		sent++;
 		last_seqno = s.records[i].seq_no;
 
@@ -355,6 +387,8 @@ main(int argc, char *argv[])
 		
 		if (prec_bits < worst_prec_bits)
 			worst_prec_bits = prec_bits;
+		if (prec_bits > best_prec_bits)
+			best_prec_bits = prec_bits;
 #ifdef DIGEST_DEBUG
 		fprintf(stderr, "DEBUG: worst = %u\n", worst_prec_bits);
 #endif
@@ -377,6 +411,10 @@ main(int argc, char *argv[])
 	   precision. Meaning of the first 3 fields is fixed for all 
 	   header versions.
 	*/
+	if (sent == 0) {
+		I2ErrLog(eh,"all packets discarded - session had maximum prec_bits == %u", best_prec_bits);
+	}
+
 	if ((fwrite(magic, 1, sizeof(magic), out) < 1) 
 	    || (fwrite(&version, sizeof(version), 1, out) < 1)
 	    || (fwrite(&out_hdrlen, sizeof(out_hdrlen), 1, out) < 1)
