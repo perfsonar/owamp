@@ -101,7 +101,8 @@ my @nodes = $conf->must_get_val(ATTR=>'MESHNODES');
 #
 # Initialize digesting info
 #
-my @reslist = sort $conf->must_get_val(ATTR=>'DIGESTRESLIST');
+sub numerically { $a <=> $b; }
+my @reslist = sort numerically $conf->must_get_val(ATTR=>'DIGESTRESLIST');
 my $digestcmd = $conf->must_get_val(ATTR=>'OWPBinDir');
 $digestcmd .= "/";
 $digestcmd .= $conf->must_get_val(ATTR=>'digestcmd');
@@ -148,11 +149,11 @@ foreach $mtype (@mtypes){
 							TYPE=>$mtype,
 							ATTR=>'ADDR')));
 			push @{$nodeupdate{$send}},
-				"$datadir/$mtype/$raddr/$saddr";
+				"$datadir/$mtype/$recv/$send";
 
 			foreach $res (@reslist){
 				push @dirlist,
-					"$datadir/$mtype/$raddr/$saddr/$res";
+					"$datadir/$mtype/$recv/$send/$res";
 			}
 		}
 	}

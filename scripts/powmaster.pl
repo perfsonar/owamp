@@ -156,7 +156,7 @@ foreach $mtype (@mtypes){
 		next if(!($oaddr=$conf->get_val(NODE=>$node,
 						TYPE=>$mtype,
 						ATTR=>'ADDR')));
-		push @dirlist, "$mtype/$myaddr/$oaddr";
+		push @dirlist, "$mtype/$me/$node";
 		my $upaddr = $conf->must_get_val(NODE=>$node,
 						ATTR=>'UPTIMESENDTOADDR');
 		my $upport = $conf->must_get_val(NODE=>$node,
@@ -882,7 +882,7 @@ sub powstream{
 						ATTR=>'OWPSESSIONDURATION'));
 	push @cmd, ("-s", $val) if($val = $conf->get_val(MESH=>$mtype,
 						ATTR=>'OWPPACKETSIZE'));
-	push @cmd, ("-d","$mtype/$myaddr/$oaddr",$oaddr);
+	push @cmd, ("-d","$mtype/$me/$node",$oaddr);
 
 	my $cmd = join " ", @cmd;
 	warn "Executing: $cmd" if(defined($debug));
