@@ -33,7 +33,7 @@ use constant VERSION_SIZE => 1;
 use constant HDRSIZE_SIZE => 1;
 
 use constant NUM_LOW => 50000;
-use constant NUM_MID  => 1000;
+use constant NUM_MID  => 10000;
 use constant NUM_HIGH => 49900;
 use constant MAX_BUCKET => (NUM_LOW + NUM_MID + NUM_HIGH - 1);
 use constant MAGIC => 'OwDigest';
@@ -89,7 +89,7 @@ sub merge {
 	$total_lost += $lost;
 	$total_dup += $dup;
 
-	$min /= THOUSAND; # convert from usec to ms
+#	$min /= THOUSAND; # convert from usec to ms
 
 	# Compute the number of non-empty buckets (== records in the file).
 	my @stat = stat FH;
