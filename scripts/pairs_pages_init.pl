@@ -7,6 +7,8 @@ use strict;
 # This script generates static html pages for all individual
 # links in all active meshes.
 
+# usage: pairs_pages_init.pl
+
 use constant DEBUG => 1;
 use constant VERBOSE => 1;
 
