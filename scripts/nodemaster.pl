@@ -1,4 +1,4 @@
-#!/usr/local/bin/perl -lw
+#!/usr/local/bin/perl -w
 
 # File: nodemaster.pl
 # Author: Anatoly Karp, Internet2 2002
@@ -15,15 +15,25 @@
 
 use strict;
 use constant DEBUG => 1;
+use constant JAN_1970 => 0x83aa7e80; # offset in seconds
+use Math::BigInt;
+use IO::Socket::INET;
 
 ### Start of configuration section. Change these values as appropriate.
+
+# NOTE: you have to run h2ph to be able to make use
+# of syscall facility (fix path below if needed)
+push @INC, '/usr/local/lib/perl5/site_perl/5.6.1/mach/sys';
+require 'syscall.ph';
 
 my $local_md5_path = '/sbin/md5';           # path to local md5 program
 my $remote_md5_path = '/usr/bin/md5sum';    # same on the remote host
 my $remote_user = 'karp\@sss.advanced.org'; # argument to scp
+my $remote_host = 'sss.advanced.org';
 my $remote_top = 'datadir';                 # remote dir to place the files
                                             # NOTE: make sure it exists!
 
+my $port = 2345;                            # port to sent updates to
 my $data_suffix = '\.owp';                  # suffix for data files (Perl)
 
 # due to variety of md5 programs, the fields in which the md5 is found
@@ -40,13 +50,40 @@ my $data_suffix = '\.owp';                  # suffix for data files (Perl)
 my $local_md5_field = 3;
 my $remote_md5_field = 0;
 
+my  $interval = 10;                       # number of seconds between updates
+
 ### End of configuration section.
 
 my $dirname = $ARGV[0] || '.';                    # top local directory
 chdir $dirname or die "could not chdir: $!";
 
-# Forever look for new data.
+my $offset_1970 = new Math::BigInt JAN_1970;
+my $scale = new Math::BigInt 2**32;
+
+my $socket = IO::Socket::INET->new("$remote_host:$port")
+	or die "Could not connect to $remote_host:$port : $!";
+
+# Set the timer to go off in 1 second, and every $interval seconds
+# thereafter.  Call &sig_handler when it goes off.
+$SIG{'ALRM'} = 'sig_handler';
+my $value = pack('LLLL', $interval, 0, 1, 0);
+syscall(&SYS_setitimer, 0, $value, 0);
+
+my $got_alarm = 0;
+
 while (1) {
+  if ($got_alarm) {
+    $got_alarm = 0;
+    my $curtime = new Math::BigInt time;
+    $curtime = ($curtime + $offset_1970) * $scale;
+    my $str = "$curtime";
+    $str =~ s/^\+//;
+    print $socket "cur_time = $str\n";
+  }
+
+  next if DEBUG;  # XXX - Eventually remove.
+
+# Look for new data.
   opendir(DIR, '.') || die "can't opendir $dirname: $!";
   my @subdirs = grep {$_ !~ /^\./ && -d $_} readdir(DIR);
   print "found subdirs: @subdirs" if DEBUG;
@@ -131,4 +168,6 @@ sub push_ok {
   }
 }
 
-
+sub sig_handler {
+  $got_alarm = 1;
+}
