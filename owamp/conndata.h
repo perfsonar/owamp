@@ -38,7 +38,7 @@ typedef struct OWPPerConnDataRec{
 	char                    *real_data_dir;  /* where file is kept    */
 	char                    *link_data_dir;  /* where link is kept    */
 
-	policy_data		*policy;	/* global policy hash */
+	owp_policy_data		*policy;	/* global policy hash */
 	owp_tree_node_ptr	node;		/* node for the connection
 						   class */
 #ifndef	NDEBUG

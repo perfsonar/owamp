@@ -522,7 +522,8 @@ OWPStartSessions(
  *
  * If you do specify a wake time, you are required to poll the status
  * of each local endpoint using OWPTestSessionStatus until it comes back
- * complete.
+ * complete.  (OWPSessionsActive is a simple way to poll all of them - you
+ * know you are done when it returns 0.)
  *
  * Client and Server
  */

@@ -314,7 +314,8 @@ static	I2OptDescRec	set_options[] = {
 	/*
 	 * Control connection specific stuff.
 	 */
-      {"authmode",1,NULL,"Requested modes:[E]ncrypted,[A]uthenticated,[O]pen"},
+	{"authmode",1,NULL,
+			"Requested modes:[E]ncrypted,[A]uthenticated,[O]pen"},
 	{"identity",1,NULL,"ID for shared secret"},
 	{"tmout",1,"30","Max time to wait for control connection reads (sec)"},
 
@@ -323,8 +324,7 @@ static	I2OptDescRec	set_options[] = {
 	 * test setup args
 	 */
 	{"sender", -2, NULL, "IP address/node name of sender [and server]"},
-       {"receiver", -2, NULL, "IP address/node name of receiver [and server]"},
-
+	{"receiver", -2, NULL, "IP address/node name of receiver [and server]"},
 	{"padding", 1, "0", "min size of padding for test packets (octets)"},
 	{"rate", 1, "1.0", "rate of test packets (packets/sec)"},
 	{"numPackets", 1, "10", "number of test packets"},
@@ -700,7 +700,7 @@ main(
 	OWPErrSeverity		err_ret=OWPErrOK;
 	I2LogImmediateAttr	ia;
 	int			od;
-	policy_data		*policy;
+	owp_policy_data		*policy;
 	char			ip2class[MAXPATHLEN],
 				class2limits[MAXPATHLEN],
 				passwd[MAXPATHLEN];
@@ -769,21 +769,6 @@ main(
 	/*
 	 * Setup paths.
 	 */
-	rc = snprintf(ip2class,sizeof(ip2class),"%s%s%s",ping_ctx.opt.confdir,
-			OWP_PATH_SEPARATOR,ping_ctx.opt.ip2class);
-	if(rc > (int)sizeof(ip2class)){
-		I2ErrLog(eh, "Invalid path to ip2class file.");
-		exit(1);
-	}
-
-	rc = snprintf(class2limits,sizeof(class2limits),"%s%s%s",
-			ping_ctx.opt.confdir,OWP_PATH_SEPARATOR,
-			ping_ctx.opt.class2limits);
-	if(rc > (int)sizeof(class2limits)){
-		I2ErrLog(eh, "Invalid path to class2limits file.");
-		exit(1);
-	}
-
 	rc = snprintf(passwd,sizeof(passwd),"%s%s%s",ping_ctx.opt.confdir,
 			OWP_PATH_SEPARATOR,ping_ctx.opt.passwd);
 	if(rc > (int)sizeof(passwd)){
@@ -791,7 +776,7 @@ main(
 		exit(1);
 	}
 
-	policy = PolicyInit(ctx, ip2class, class2limits, passwd, &err_ret);
+	policy = OWPPolicyInit(ctx, NULL, NULL, passwd, &err_ret);
 	if (err_ret == OWPErrFATAL){
 		I2ErrLog(eh, "PolicyInit failed. Exiting...");
 		exit(1);

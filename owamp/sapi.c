@@ -22,8 +22,13 @@
  *	This file contains the api functions typically called from an
  *	owamp server application.
  */
-#include "./owampP.h"
-#include "./conndata.h"
+#include <owamp/owampP.h>
+/*
+ * TODO: conndata shouldn't be accessed here - need to take the
+ * conndata out of FetchSession and create an endpoint_open_session_file
+ * function that returns the fd.
+ */
+#include <owamp/conndata.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 
@@ -1130,7 +1135,6 @@ OWPProcessRetrieveSession(
 	*/
 
 	/* Construct the base pathname */
-	assert(cntrl);
 	datadir = ((OWPPerConnData)(cntrl->app_data))->datadir;
 	assert(datadir);
 

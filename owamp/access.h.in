@@ -91,7 +91,7 @@ typedef struct {
 	I2table class2node;
 	I2table passwd;
 	owp_tree_node_ptr root; /* Root class of the tree hierarchy. */
-} policy_data;
+} owp_policy_data;
 
 typedef struct owp_access_id {
 	u_int32_t addr4;
@@ -138,10 +138,10 @@ owp_tree_iterate_df(owp_tree_node_ptr root, owp_node_func func, void *data);
 extern void owp_print_node(owp_tree_node_ptr node, void *data);
 
 extern char *ipaddr2class(u_int32_t ip, I2table ip2class_hash);
-extern char *owp_kid2passwd(const char *kid, int len, policy_data* policy);
-extern char *owp_kid2class(const char *kid, int len, policy_data* policy);
+extern char *owp_kid2passwd(const char *kid, int len, owp_policy_data* policy);
+extern char *owp_kid2class(const char *kid, int len, owp_policy_data* policy);
 
-extern char *owp_sockaddr2class(struct sockaddr *addr, policy_data* policy);
+extern char *owp_sockaddr2class(struct sockaddr *addr, owp_policy_data* policy);
 extern void owp_print_ip2class_binding(const struct I2binding *p, FILE* fp);
 extern void owp_print_strnet(owp_access_netmask *ptr, FILE* fp);
 extern void owp_print_netmask(const I2datum *key, FILE* fp);
@@ -163,11 +163,14 @@ extern unsigned long OWAMPGetSpace(owp_lim* lim);
 extern unsigned long OWAMPGetNumSessions(owp_lim* lim);
 extern I2datum* owp_raw2datum(const void *bytes, size_t len);
 extern void owp_datum_free(I2datum *datum);
-extern int owp_read_class2limits2(OWPContext ctx, const char *class2limits, \
-		       policy_data* policy);
+extern int owp_read_class2limits2(
+	OWPContext ctx,
+	const char *class2limits,
+	owp_policy_data* policy
+	);
 
-extern policy_data
-*PolicyInit(
+extern owp_policy_data
+*OWPPolicyInit(
 	OWPContext	ctx,
 	char		*ip2class_file,
 	char		*class2limits_file,

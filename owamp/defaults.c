@@ -20,7 +20,7 @@
 */
 #include <owamp/owamp.h>
 #include <owamp/owampP.h>
-#include <owpcontrb-att/access.h>
+#include <owamp/access.h>
 #include <owamp/conndata.h>
 
 
@@ -37,7 +37,7 @@ owp_get_aes_key(void *app_data,
 		OWPErrSeverity	*err_ret)
 {
 	int i;
-	policy_data* policy = ((OWPPerConnDataRec *)app_data)->policy;
+	owp_policy_data* policy = ((OWPPerConnDataRec *)app_data)->policy;
 
 	/* First fetch 32-byte hex-encoded key. */
 	char* secr = owp_kid2passwd(kid, strlen(kid) + 1, policy);
@@ -129,15 +129,16 @@ make_data_dir(
 */
 OWPBoolean
 owp_check_control(
-		void *          app_data,        /* policy data         */
-		OWPSessionMode	mode,	         /* requested mode      */
-		const char	*kid,	         /* key identity       	*/
-		struct sockaddr	*local_sa_addr,	 /* local addr or NULL	*/
-		struct sockaddr	*remote_sa_addr, /* remote addr		*/
-		OWPErrSeverity	*err_ret	 /* error - return     	*/
+	void *          app_data,        /* policy data         */
+	OWPSessionMode	mode,	         /* requested mode      */
+	const char	*kid,	         /* key identity       	*/
+	struct sockaddr	*local_sa_addr __attribute__((unused)),
+					/* local addr or NULL	*/
+	struct sockaddr	*remote_sa_addr, /* remote addr		*/
+	OWPErrSeverity	*err_ret	 /* error - return     	*/
 )
 {
-	policy_data* policy;
+	owp_policy_data* policy;
 	char *class;
 	owp_tree_node_ptr node;
 	OWPPerConnDataRec *conndata = (OWPPerConnDataRec *)app_data;
@@ -155,7 +156,7 @@ owp_check_control(
 	if (mode & _OWP_DO_CIPHER) { /* Look up class of the KID. */
 		if (!kid)  /* Paranoia */
 			return False;
-		class = owp_kid2class(kid, strlen(class) + 1, policy);
+		class = owp_kid2class(kid, strlen(kid) + 1, policy);
 	} else {
 		if (!remote_sa_addr)
 			return False;
@@ -211,20 +212,20 @@ OWPBoolean
 owp_check_test(
 	void		*app_data,
 	OWPSessionMode	mode,
-	const char	*kid,
+	const char	*kid	__attribute__((unused)),
 	OWPBoolean	local_sender,
-	struct sockaddr	*local_sa_addr,
-	struct sockaddr	*remote_sa_addr,
+	struct sockaddr	*local_sa_addr	__attribute__((unused)),
+	struct sockaddr	*remote_sa_addr	__attribute__((unused)),
 	OWPTestSpec	*test_spec,
 	OWPErrSeverity	*err_ret
 )
 {
-	u_int64_t packets_per_sec, total_octets, octets_on_disk, bw;
-	u_int32_t octs_per_pack;
+	u_int64_t total_octets, octets_on_disk, bw;
 	OWPTestSpecPoisson *poisson_test;
-	policy_data* policy = ((OWPPerConnDataRec *)app_data)->policy;
 	owp_tree_node_ptr node = ((OWPPerConnDataRec *)app_data)->node;
-	
+
+	*err_ret = OWPErrOK;
+
 	switch (test_spec->test_type) {
 	case OWPTestPoisson:
 		poisson_test = (OWPTestSpecPoisson *)test_spec;

@@ -400,7 +400,7 @@ NewConnection(
 	OWPAddr		listenaddr,
 	int		*maxfd,
 	fd_set		*readfds,
-	policy_data     *policy
+	owp_policy_data	*policy
 	)
 {
 	int			connfd;
@@ -605,7 +605,7 @@ main(int argc, char *argv[])
 	I2LogImmediateAttr	ia;
 	int			od;
 	OWPErrSeverity		out = OWPErrFATAL;
-	policy_data		*policy;
+	owp_policy_data		*policy;
 	char			ip2class[MAXPATHLEN],
 				class2limits[MAXPATHLEN],
 				passwd[MAXPATHLEN];
@@ -703,7 +703,7 @@ main(int argc, char *argv[])
 		exit(1);
 	}
 
-	policy = PolicyInit(ctx, ip2class, class2limits, passwd, &out);
+	policy = OWPPolicyInit(ctx, ip2class, class2limits, passwd, &out);
 	if (out != OWPErrOK){
 		I2ErrLog(errhand, "PolicyInit failed. Exiting...");
 		exit(1);

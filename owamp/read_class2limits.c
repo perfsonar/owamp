@@ -171,7 +171,10 @@ owp_buf_print(FILE *fp, owp_chunk_buf_ptr buf)
 **          OWP_EOF if end of file is encountered
 */
 static int
-owp_skip_separators(OWPContext ctx, FILE *fp)
+owp_skip_separators(
+		OWPContext	ctx __attribute__((unused)),
+		FILE		*fp
+		)
 {
 	int c;
 	int newline = 1;           /* State variables. */
@@ -222,7 +225,8 @@ owp_skip_separators(OWPContext ctx, FILE *fp)
 **          OWP_ERR on error (intended to be fatal)
 */
 static int
-owp_skip_whitespace(OWPContext ctx, 
+owp_skip_whitespace(
+		OWPContext	ctx __attribute__((unused)),
 		    FILE *fp, 
 		    int *newline, 
 		    unsigned int *line_num)
@@ -564,7 +568,7 @@ owp_get_description(OWPContext ctx,
 int
 owp_read_class2limits2(OWPContext ctx, 
 		       const char *class2limits, 
-		       policy_data* policy)
+		       owp_policy_data* policy)
 {
 	FILE* fp;
 	unsigned int t, line_num = 1;
