@@ -28,21 +28,25 @@
 <!--									-->
 </head>
 <body>
+
 <center>
 <h1>
 OWAMP Version 1.6e <font color="#FF0000">(beta)</font></h1></center>
+
 <center>(An implementation of the <b>One-Way</b> <b>A</b>ctive <b>M</b>easurement
 <b>P</b>rotocol)
 <br><a href="http://e2epi.internet2.edu/owamp/">http://e2epi.internet2.edu/owamp/</a></center>
+
 <center>
 <h5>
 $Date$</h5></center>
 <b>OWAMP</b> is a command line client application and a policy daemon used
 to determine one way latencies between hosts. It is an implementation of
-the <b><i>OWAMP</i></b> protocol that is currently going through the standardization
-process within <a href="http://www.ietf.org/">IETF</a>. (When referring to the protocol within this document,
-"<i>OWAMP</i>" will be in italicized. In all other instances, "OWAMP" will
-be referring to this implementation.)
+the <b><i>OWAMP</i></b> protocol (<a href="http://www.internet2.edu/~shalunov/ippm/draft-ietf-ippm-owdp-08.txt">http://www.internet2.edu/~shalunov/ippm/draft-ietf-ippm-owdp-08.txt</a>)
+that is currently going through the standardization process within <a href="http://www.ietf.org/">IETF</a>.
+(When referring to the protocol within this document, "<i>OWAMP</i>" will
+be in italicized. In all other instances, "OWAMP" will be referring to
+this implementation.)
 <p>With roundtrip-based measurements, it is hard to isolate the direction
 in which congestion is experienced. One-way measurements solve this problem
 and make the direction of congestion immediately apparent. Since traffic
@@ -61,9 +65,9 @@ decreasing areas of congestion where possible.
 to timestamp packets with typical errors that are substantially smaller
 than the delays seen on real non-LAN networks. This makes it possible for
 one-way measurements to be collected across a broad mesh of network paths.
-In addition, the open source nature of OWAMP makes it possible for
-one-way metrics to become as common as are round-trip metrics (from
-tools like <font size="2" face="Courier New, Courier, mono">ping</font>).
+In addition, the open source nature of OWAMP makes it possible for one-way
+metrics to become as common as are round-trip metrics (from tools like
+<font face="Courier New, Courier, mono"><font size=-1>ping</font></font>).
 <p>The <i>OWAMP</i> protocol also simplifies the analysis of measurement
 results – explicit send and receive timestamps for every measurement packet
 make analysis more straightforward because one does not need to assume
@@ -90,29 +94,30 @@ a packet as soon as a response to the previous packet arrives, but can
 send on any predetermined schedule (including immediately after the last
 packet was sent).
 <p>OWAMP has been designed to be deployable on as many systems as possible.
-Just as it is possible to <font size="2" face="Courier New, Courier, mono">ping</font> most hosts on the network today, widespread
-deployment of OWAMP would make it possible to conduct more accurate measurement
-sessions.
+Just as it is possible to <font face="Courier New, Courier, mono"><font size=-1>ping</font></font>
+most hosts on the network today, widespread deployment of OWAMP would make
+it possible to conduct more accurate measurement sessions.
 <p>The OWAMP development team recognizes that network measurement systems
 become more unwieldy as their size grows. When a full-mesh measurement
 architecture is used, the amount of disk space and network capacity used
 by the system will grow as the square of the number of measurement nodes.
-While nothing can be done to alleviate this problem, OWAMP was designed not
-to introduce any <em>new</em> scalability problems.
-It allows the user to conduct only those measurement sessions desired, and
-to retain as much (or as little) data as desired. OWAMP also does not dictate
-a choice of site(s) where measurement results are stored: it is possible
-to have all data stored at a central site or to store data at each receiver
-and fetch it as needed.
+While nothing can be done to alleviate this problem, OWAMP was designed
+not to introduce any <i>new</i> scalability problems. It allows the user
+to conduct only those measurement sessions desired, and to retain as much
+(or as little) data as desired. OWAMP also does not dictate a choice of
+site(s) where measurement results are stored: it is possible to have all
+data stored at a central site or to store data at each receiver and fetch
+it as needed.
 <p>The <b>owping</b> client is used to request a measurement session. The
-<b>owping</b> parameters allow the user to select the send schedule,
-direction of the test (and peer), as well as the packet size. The <b>owping</b>
-application contacts an <b>owampd</b> process on the peer system to request
-the specific one-way measurement session. <b>owampd</b> is responsible
-for implementing the policy restrictions imposed by the system administrator
-on that system. A more detailed description of the OWAMP architecture is
-available on the
-<a href="details.html">details page</a>.
+<b>owping</b>
+parameters allow the user to select the send schedule, direction of the
+test (and peer), as well as the packet size. The <b>owping</b> application
+contacts an <b>owampd</b> process on the peer system to request the specific
+one-way measurement session. <b>owampd</b> is responsible for implementing
+the policy restrictions imposed by the system administrator on that system.
+A more detailed description of the OWAMP architecture is available on the
+<a href="details.html">details
+page</a>.
 <p><b>owampd</b> allows a system administrator to configure any given host
 as an <i>OWAMP</i> test endpoint. Specific policy limits can be applied
 to specific users, and individual tests are coordinated so they will not
@@ -125,43 +130,56 @@ can be found in the
 <a href="owampd.limits.man.html">owampd.limits(8)</a>
 manual page.)
 <h3>
+
 <hr WIDTH="100%">Features</h3>
+
 <ul>
 <li>
 Full IPv6 support. No options needed. If the target of a test is specified
 by a DNS hostname, and that name has both an IPv4 and an IPv6 address defined,
 the <b>owping</b> command line application prefers the IPv6 address.</li>
+
 <li>
 Configurable send schedule and packet sizes as requested by the client.</li>
+
 <li>
 Resource protection as defined by the policy controls implemented in <b>owampd</b>.</li>
 </ul>
+
 <h3>
+
 <hr WIDTH="100%">Requirements</h3>
+
 <ul>
 <li>
 OWAMP requires a synchronized clock for measurements to be meaningful.
 But, more importantly, the clock needs to be stable. If the system clock
 is stepped during an OWAMP session, the results can be misleading. OWAMP
-requires that NTP be running to synchronize the system clock. NTP must be setup correctly on the system for NTP to calculate a reasonable estimate
+requires that NTP be running to synchronize the system clock. NTP must
+be setup correctly on the system for NTP to calculate a reasonable estimate
 of the time error and for it to stabilize the clock. NTP<b> <font color="#FF0000">MUST</font></b><font color="#000000">
 be configured with no fewer than 4 clocks for this purpose. (See <a href="details.html#NTP">details.html</a>
 for more specific information on configuring NTP.)</font></li>
+
 <li>
 Additionally,
 <i>OWAMP</i> uses NTP-specific system calls to fetch time
 and time error estimates from the system kernel, so the kernel must support
 these interfaces. (All modern UNIX systems support them.)</li>
+
 <li>
 <b>gnumake</b> may be required for the build process (see
 <a href="#Build">Building
 the Application</a>).</li>
 </ul>
+
 <h3>
+
 <hr WIDTH="100%">Supported Systems</h3>
-OWAMP has been tested most extensively on FreeBSD 4.7 and Linux
-2.4.20, but most recent versions of UNIX should work.
+OWAMP has been tested most extensively on FreeBSD 4.7 and Linux 2.4.20,
+but most recent versions of UNIX should work.
 <h3>
+
 <hr WIDTH="100%"><a NAME="Build"></a>Building the Application</h3>
 The OWAMP software uses the <i>gnu autoconf</i> tools to configure the
 build process. OWAMP is distributed with a pre-built <b>configure</b> script
@@ -180,10 +198,9 @@ of configurable options.
 % make
 % make install</pre>
 </blockquote>
-<p>
-Please report any build problems to 
-<a href="mailto:owamp-users@internet2.edu">owamp-users@internet2.edu</a>.</p>
+Please report any build problems to <a href="mailto:owamp-users@internet2.edu">owamp-users@internet2.edu</a>.
 <h3>
+
 <hr WIDTH="100%">Configuring owampd</h3>
 The basic procedure to configure <b>owampd</b> is to create an
 <a href="owampd.conf.man.html">owampd.conf</a>
@@ -196,8 +213,7 @@ the <b>-c</b> option to <b>owampd</b>.. The recommended directory is <i>/inst/ro
 of these files in the <i>owamp-$VERS/conf&nbsp;</i> subdirectory of the
 distribution.
 <p><b>owampd.conf:</b>
-<br>
-Used to configure basic operation of the daemon, such as server listening
+<br>Used to configure basic operation of the daemon, such as server listening
 port and error logging. For a detailed description of the options available,
 see the <a href="owampd.conf.man.html">owampd.conf(8)</a> manual page.
 <p><b>owampd.limits:</b>
@@ -215,51 +231,52 @@ mapped to a class by the <b>owampd.limits</b> file. For a more detailed
 description, see the <a href="owampd.keys.man.html">owampd.keys(5)</a>
 manual page.
 <h3>
+
 <hr WIDTH="100%">Running <i>owampd</i></h3>
 The normal command-line to start the daemon is:
 <blockquote>
 <pre>&nbsp;% owampd -c /inst/root/etc</pre>
 </blockquote>
-<p>It is possible to run the daemon without a config file directory if enough
-command line options are specified, but it is easier to use a config file.</p>
-<p>To see all the available options:</p>
+It is possible to run the daemon without a config file directory if enough
+command line options are specified, but it is easier to use a config file.
+<p>To see all the available options:
 <blockquote>
 <pre>&nbsp;% owampd -h</pre>
 </blockquote>
-<p>More details on running the daemon, as well as a complete description of
-the command line options, are available from the
-  <a href="owampd.man.html">owampd(8)</a>
+More details on running the daemon, as well as a complete description of
+the command line options, are available from the <a href="owampd.man.html">owampd(8)</a>
 manual page.
-</p>
-
 <h3>
+
 <hr WIDTH="100%">Running <i>owping</i></h3>
 The basic command line for the client is:
 <blockquote>
 <pre>% owping [options] targethost</pre>
 </blockquote>
-<p>This will run a 10-second session in each direction, concurrently at a rate
-of 10 packets per second.</p>
+This will run a 10-second session in each direction, concurrently at a
+rate of 10 packets per second.
 <p>To see a list of available options:
 <blockquote>
 <pre>% owping -h</pre>
 </blockquote>
-<p>More details on running the client application, with a complete description
-of all command-line options, are available from the
-  <a href="owping.man.html">owping(1)</a>
+More details on running the client application, with a complete description
+of all command-line options, are available from the <a href="owping.man.html">owping(1)</a>
 manual page.
-</p>
 <h3>
+
 <hr WIDTH="100%">Mailing Lists</h3>
 There are two email lists to support this software:
 <dl>
 <dt>
 <b>owamp-users</b></dt>
+
 <dd>
 A general discussion list for users to discuss problems. It is expected
 that bug reports will be sent here.</dd>
+
 <dt>
 <b>owamp-announce</b></dt>
+
 <dd>
 This list will be used to announce new versions or significant developments
 with regard to the software.</dd>
@@ -267,6 +284,7 @@ with regard to the software.</dd>
 Information about these lists, including links to subscribe, is at
 <a href="https://mail.internet2.edu/wws/lists/engineering">https://mail.internet2.edu/wws/lists/engineering</a>.
 <h3>
+
 <hr WIDTH="100%">Authors</h3>
 Jeff Boote
 <br><a href="mailto:boote@internet2.edu">boote@internet2.edu</a>
@@ -274,5 +292,6 @@ Jeff Boote
 <p>Anatoly Karp
 <pre>
 <hr WIDTH="100%">$Id$</pre>
+
 </body>
 </html>
