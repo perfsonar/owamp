@@ -95,13 +95,13 @@ sub daemonize{
 	$umask = $args{'UMASK'} if(defined $args{'UMASK'});
 
 	if(defined $args{'PIDFILE'}){
-		$fh = new FileHandle $args{'PIDFILE'}, O_CREAT|O_RDWR;
+		$fh = new FileHandle $args{'PIDFILE'}, O_CREAT|O_RDWR|O_TRUNC;
 		unless($fh && flock($fh,LOCK_EX|LOCK_NB)){
 			die "Unable to lock pid file $args{'PIDFILE'}: $!";
 		}
 		$_ = <$fh>;
-		my ($pid) = /(\d+)/;
-		if(defined $pid){
+		if(defined $_){
+			my ($pid) = /(\d+)/;
 			chomp $pid;
 			die "$FindBin::Script:$pid still running..."
 				if(kill(0,$pid));
