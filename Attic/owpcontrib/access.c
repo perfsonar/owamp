@@ -1,4 +1,28 @@
-#include "../libowamp/owampP.h" 
+/*! \file access.c */
+/*
+**      $Id$
+*/
+/************************************************************************
+*									*
+*			     Copyright (C)  2002			*
+*				Internet2				*
+*			     All Rights Reserved			*
+*									*
+************************************************************************/
+/*
+**	File:		access.c
+**
+**	Author:		Jeff W. Boote
+**			Anatoly Karp
+**
+**	Date:		Wed Mar 20 11:10:33  2002
+**
+**	Description:	
+**	This file contains the OWAMP access policy functions.
+**	
+*/
+
+#include "../libowamp/owampP.h"
 #include "access.h"
 #include "rijndael-api-fst.h"
 
@@ -64,17 +88,17 @@ OWAMPGetNumSessions(OWAMPLimits * lim){
 	return lim->num_sessions;
 }
 
-void
+static void
 OWAMPSetBandwidth(OWAMPLimits * lim, u_int32_t bw){
 	lim->bandwidth = bw;
 }
 
-u_int32_t
+static u_int32_t
 OWAMPSetSpace(OWAMPLimits * lim, u_int32_t space){
 	lim->space = space;
 }
 
-u_int32_t
+static u_int32_t
 OWAMPSetNumSessions(OWAMPLimits * lim, u_int32_t ns){
 	lim->num_sessions = ns;
 }
@@ -126,7 +150,7 @@ owamp_denumberize(unsigned long addr)
 ** to be used as a database key.
 */
 
-datum *
+static datum *
 subnet2datum(u_int32_t address, u_int8_t offset)
 {
 	datum *ret;
@@ -146,7 +170,7 @@ subnet2datum(u_int32_t address, u_int8_t offset)
 ** is valid. Returns 1 if yes, and 0 otherwise.
 */
 
-int
+static int
 is_valid_network(u_int32_t addr, u_int8_t offset)
 {
 	u_int32_t off_mask;
@@ -161,7 +185,7 @@ is_valid_network(u_int32_t addr, u_int8_t offset)
 	return (addr & off_mask)? 0 : 1; 
 }
 
-/*
+/*!
 ** This function takes a string of the form <address/netmask>
 ** where address is a dot-separated IP address, and netmask
 ** is a mask offset. It fills in the location pointed to by dst 
@@ -170,7 +194,7 @@ is_valid_network(u_int32_t addr, u_int8_t offset)
 ** It returns 0 on success, and -1 on failure.
 */
 
-int
+static int
 owamp_parse_mask(const char *text, u_int32_t *addr, u_int8_t *off)
 {
 	
@@ -219,7 +243,7 @@ owamp_parse_mask(const char *text, u_int32_t *addr, u_int8_t *off)
 ** This function fills out a datum structure with the given string.
 */
 
-datum*
+static datum*
 str2datum(const char *bytes)
 {
 	datum *dat;
@@ -283,14 +307,17 @@ hash_close(hash_ptr hash)
 	dbm_close(hash);
 }
 
-/* 
-** This function reads the configuration file given by the path ip2class, 
-** processes it and saves the results in Berkeley DB file, with the
-** same base name, and extension ".db". The database can be printed by the
-** companion function print_hash(). This function should typically only
-** be called once, outside of any application - to initialize the database.
-*/
+/*!
+** This function reads the configuration file given by the path <ip2class>, 
+** processes it and saves the results in <hash>. The format of the file
+** is as follows: lines of the form 
 
+** <network_address/offset> <class>
+
+** where <network_address> is a dot-separated ASCII network address,
+** <offset> is a CIDR style offset (integer from 0 to 32), and <class>
+** is the (ASCII) name of the corresponding user class.
+*/
 void
 owamp_read_ip2class(const char *ip2class, hash_ptr hash)
 {
@@ -345,8 +372,14 @@ owamp_read_ip2class(const char *ip2class, hash_ptr hash)
 	return;
 }
 
-/*
-** Password file format: lines of the form <KID> <shared_secret>
+/*!
+** This function reads the file given by the path <passwd_file>,
+** parses it and saves results in <hash>. <password file> contains
+** the mapping from KIDs to OWAMP shared secrets. Its format is the
+** following: lines of the form 
+
+** <KID> <shared_secret>
+
 ** where <KID> is an ASCII string of length at most 16,
 ** and <shared_secret> is a sequence of hex digits of length 32
 ** (corresponding to 16 bytes of binary data).
@@ -431,11 +464,21 @@ ipaddr2class(u_int32_t ip)
 	return DEFAULT_OPEN_CLASS;
 }
 
-/* 
-** This function reads the configuration file given by the path ip2class, 
-** processes it and saves the results in Berkeley DB file, with the
-** same base name, and extension ".db". The database can be printed by the
-** companion function print_ip2class().
+/*! 
+** This function reads the configuration file given by the path <ip2class>, 
+** parses it and saves the results in <hash>. The format of <ip2class> is:
+** lines of the form
+
+** <class_name> [<param1>=<value1>] [<param2>=<value2>] ...
+
+** where <class_name> is a user class name, each <param> is
+** one of the following: "test_sessions", "bandwidth" or "space".
+** Each <value> is a non-negative integer. 
+
+** For each class, "num_sessions" is the maximal number of Test sessions
+** that a single Control session is allowed to run altogether. 
+** Moreover, "bandwidth" (bytes/sec) and "space" (bytes) limit 
+** the resource consumption of each individual Test session.
 */
 
 void
@@ -499,6 +542,16 @@ owamp_read_class2limits(const char *class2limits, hash_ptr hash)
 	}
 }
 
+/*!
+** This function runs an initial policy check on the remote host.
+** Based only on the remote IP number, it determines if the client
+** is a member of BANNED_CLASS. Additional diagnostics can be
+** returned via err_ret.
+** 
+** Return values: 0 if the client is a member of BANNED_CLASS,
+**                1 otherwise.
+*/
+
 OWPBoolean
 owamp_first_check(void *app_data,
 		       struct sockaddr *local,
@@ -528,7 +581,7 @@ owamp_first_check(void *app_data,
 	}
 }
 
-int
+static int
 tcp_listen(const char *host, const char *serv, socklen_t *addrlenp)
 {
 	int listenfd, n;
