@@ -105,6 +105,12 @@ typedef struct owp_kid_data {
 	char class[OWP_MAX_CLASS_LEN + 1];
 } owp_kid_data;
 
+#define OWP_OK            0
+#define OWP_ERR           1
+#define OWP_EOF           2
+#define OWP_LAST          3
+#define OWP_END_DESCR     4
+
 extern owp_tree_node_ptr owp_class2node(char *class, I2table hash);
 extern char *ipaddr2class(u_int32_t ip, I2table ip2class_hash);
 extern char *owp_kid2passwd(const char *kid, int len, policy_data* policy);
@@ -130,8 +136,10 @@ extern unsigned long OWAMPGetBandwidth(owp_lim* lim);
 extern unsigned long OWAMPGetSpace(owp_lim* lim);
 extern unsigned long OWAMPGetNumSessions(owp_lim* lim);
 extern I2datum* owp_raw2datum(const void *bytes, size_t len);
+extern void owp_datum_free(I2datum *datum);
 extern int owp_read_class2limits2(OWPContext ctx, const char *class2limits, \
 		       policy_data* policy);
+
 extern policy_data
 *PolicyInit(
 	OWPContext	ctx,
@@ -140,5 +148,21 @@ extern policy_data
 	char		*passwd_file,
 	OWPErrSeverity	*err_ret
 );
+
+/* chunk_buf functions and data structures */
+typedef struct owp_chunk_buf {
+	char *data;             /* data */
+	char *cur;              /* current location to be written */
+	size_t alloc_size;      /* amount of memory allocated for data,
+				   ignoring the sentinel */
+	char *sentinel;         /* this location keeps the final '\0' and
+				   cannot be overwritten */
+} owp_chunk_buf, *owp_chunk_buf_ptr;
+
+extern int owp_buf_init(owp_chunk_buf_ptr bufptr, size_t len);
+void owp_buf_reset(owp_chunk_buf_ptr bufptr);
+extern void owp_buf_free(owp_chunk_buf_ptr buf);
+extern int owp_symbol_save(OWPContext ctx, owp_chunk_buf_ptr buf, int c);
+extern void owp_buf_print(FILE *fp, owp_chunk_buf_ptr buf);
 
 #endif	/* _owamp_contrib_h_ */

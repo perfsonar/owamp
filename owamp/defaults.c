@@ -110,6 +110,7 @@ owp_check_control(
 		fprintf(stderr, "DEBUG: no class for the connection\n");
 		goto error;
 	}
+	fprintf(stderr, "DEBUG: class = %s\n", class);
 
 	node = owp_class2node(class, policy->class2node);
 	if (!node)  /* Internal error - every class must have a node. */
@@ -167,6 +168,8 @@ owp_check_test(
 		bw = (total_octets*1000000)/poisson_test->InvLambda;
 		total_octets *= poisson_test->npackets;
 		octets_on_disk = (u_int64_t)20 * poisson_test->npackets;
+		
+		fprintf(stderr, "DEBUG: request parsed ok\n");
 
 		/* fetch class limits and check restrictions */
 		if (bw > node->limits.values[OWP_LIM_BANDWIDTH])

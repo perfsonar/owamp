@@ -53,20 +53,11 @@ owp_tree_node_new()
 	return ret;
 }
 
-typedef struct owp_chunk_buf {
-	char *data;             /* data */
-	char *cur;              /* current location to be written */
-	size_t alloc_size;      /* amount of memory allocated for data,
-				   ignoring the sentinel */
-	char *sentinel;         /* this location keeps the final '\0' and
-				   cannot be overwritten */
-} owp_chunk_buf, *owp_chunk_buf_ptr;
-
 /*
 ** Initialize a dynamically allocated buffer for reading variable
 ** length fields. 
 */
-static int
+int
 owp_buf_init(owp_chunk_buf_ptr bufptr, size_t len)
 {
 	assert(bufptr);
@@ -87,7 +78,7 @@ owp_buf_init(owp_chunk_buf_ptr bufptr, size_t len)
 /*
 ** Empty the contents of the data buffer.
 */
-static void
+void
 owp_buf_reset(owp_chunk_buf_ptr bufptr)
 {
 	assert(bufptr);
@@ -96,14 +87,14 @@ owp_buf_reset(owp_chunk_buf_ptr bufptr)
 	*(bufptr->cur) = '\0';
 }
 
-static void 
+void 
 owp_buf_free(owp_chunk_buf_ptr buf)
 {
 	assert(buf); assert(buf->data);
 	free(buf->data);
 }
 
-static int
+int
 owp_symbol_save(OWPContext ctx, owp_chunk_buf_ptr buf, int c)
 {
 	if (buf->cur == buf->sentinel) { /* reallocate memory */
@@ -129,27 +120,15 @@ owp_symbol_save(OWPContext ctx, owp_chunk_buf_ptr buf, int c)
 /*
 ** Print out contents of the buffer.
 */
-static void
-owp_buf_print(owp_chunk_buf_ptr buf)
+void
+owp_buf_print(FILE *fp, owp_chunk_buf_ptr buf)
+
 {
 	assert(buf);
 	assert(buf->data);
-	printf("%s\n", buf->data);
+	assert(fp);
+	fprintf(fp, "%s\n", buf->data);
 }
-
-#if 0
-I2datum *
-owp_node2datum(owp_tree_node_ptr node)
-{
-	
-}
-#endif
-
-#define OWP_OK            0
-#define OWP_ERR           1
-#define OWP_EOF           2
-#define OWP_LAST          3
-#define OWP_END_DESCR     4
 
 /*
 ** Skip blank lines. This function is assumed to only be called
@@ -244,7 +223,7 @@ owp_skip_whitespace(OWPContext ctx,
 
 
 /*
-** Classname must consist of alhanumerics only, with the first 
+** Classname must consist of alphanumerics only, with the first 
 ** character being an alpha.
 */
 static int
@@ -310,12 +289,6 @@ owp_str2num(char *str, owp_lim_t *val)
 		case 'Z':
 			mult = 1000000000000000000000ULL;          /* 1e21 */
 			break;
-#if 0
-		case 'y':
-		case 'Y':
-			mult = 1000000000000000000000000ULL;       /* 1e24 */
-			break;
-#endif
 		default:
 			return -1;
 			/* UNREACHED */
@@ -350,10 +323,9 @@ owp_tree_node_ptr
 owp_class2node(char *class, I2table hash)
 {
 	I2datum *key, *val;
-
-	key->dptr = class;
-	key->dsize = strlen(class) + 1;
+	key = owp_raw2datum(class, strlen(class) + 1);
 	val = I2hash_fetch(hash, key);
+	owp_datum_free(key);
 	return val? (owp_tree_node_ptr)(val->dptr) : NULL;
 }
 
@@ -375,7 +347,6 @@ owp_class2node(char *class, I2table hash)
 static int
 owp_get_description(OWPContext ctx, 
 		    FILE *fp, 
-		    owp_tree_node_ptr new_node,
 		    owp_tree_node_ptr *root,  /* NULL if hasn't been set yet */
 		    unsigned int *line_num,
 		    I2table class2node
@@ -388,9 +359,14 @@ owp_get_description(OWPContext ctx,
 	I2datum *key, *val;
 	int newline = 1; /* set if the last character was '\n' */
 	int parent_set = 0;
+	owp_tree_node_ptr new_node = owp_tree_node_new();
+	if (!new_node) {
+		OWPError(ctx, OWPErrFATAL, errno, 
+		       "FATAL: owp_tree_node_new: could not allocate memory"); 
+		return -1;
+	}
 
 	assert(class2node);
-
 	for (i = 0; i < 6; i++)
 		value_set[i] = 0;
 
@@ -413,7 +389,8 @@ owp_get_description(OWPContext ctx,
 		OWPError(ctx, OWPErrFATAL, errno, "FATAL: fgetc() error"); 
 		goto syntax_err;
 	}
-	if ((! owp_is_valid_classname(buf.data)) 
+
+	if ((! owp_is_valid_classname(buf.data))
 	    || (owp_class2node(buf.data, class2node)))
 		goto syntax_err;
 	if (!(new_node->data = strdup(buf.data))) {
@@ -549,39 +526,37 @@ owp_read_class2limits2(OWPContext ctx,
 		       policy_data* policy)
 {
 	FILE* fp;
-	int t;
-	unsigned int line_num = 1;
+	unsigned int t, line_num = 1;
 	I2table class2node_hash = policy->class2node;
-	owp_tree_node_ptr cur_node, root = NULL;
+	owp_tree_node_ptr root = NULL;
+
 	fp = fopen(class2limits, "r");
 	if (!fp) {
 		OWPError(ctx, OWPErrFATAL, errno, 
 			 "FATAL: fopen %s for reading", class2limits);
 		return -1;
 	}
-	while (1) {
-		cur_node = owp_tree_node_new(); /* XXX: err-check */
-		t = owp_get_description(ctx, fp, cur_node, &root, &line_num,
-					class2node_hash);
+	while ((t = owp_get_description(ctx, fp, &root, &line_num, 
+					class2node_hash)) != OWP_EOF) {
 		switch (t) {
 		case OWP_OK:
 			continue;
-		case OWP_EOF:
-			goto final;
-			/* UNREACHED */
 		case OWP_ERR:
 			return -1;
 			/* UNREACHED */
 		default:
 			/* XXX: Internal error. */
-			break;
+			OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
+				 "FATAL: internal error - aborting");
+			return -1;
+			/* UNREACHED */
 		}
 
 	}
- final:
+#ifndef VERBOSE
 	printf("DEBUG: owp_read_class2limits2: printing classnode hash:\n");
 	I2hash_print(class2node_hash, stdout);
+#endif
 	return 0;
 }
-
 #endif
