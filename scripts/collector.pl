@@ -84,6 +84,7 @@ my $conf = new OWP::Conf(%defaults);
 #
 my $datadir = $conf->must_get_val(ATTR=>'CentralDataDir');
 
+my $facility = $conf->must_get_val(ATTR=>'SyslogFacility');
 #
 # Send current running process a signal.
 #
@@ -687,10 +688,10 @@ sub do_req{
 
 		my(@res) = @reslist;
 		my($res) = shift @res;
-		if(system($digestcmd,$req{'FNAME'},
-				"${dir}/${res}/${base}${digestsuffix}") != 0){
-			unlink $req{'FNAME'};
-			die "Unable to digest raw session data";
+		if(system($digestcmd, "-e", $facility, $req{'FNAME'},
+			  "${dir}/${res}/${base}${digestsuffix}") != 0){
+		    unlink $req{'FNAME'};
+		    die "Unable to digest raw session data";
 		}
 
 		if(!$archive->add(FILE=>$req{'FNAME'})){
@@ -839,7 +840,7 @@ REQ_LOOP:
 		die "\$@ = $@" if($@);
 		last if(vec($eout,$fh->fileno,1));
 		last if(!vec($rout,$fh->fileno,1));
-		
+
 		undef %req;
 		%req = read_req($fh,$md5);
 		last if($die);
