@@ -1,6 +1,5 @@
 #include "access.h"
 
-
 void
 test_ip2class()
 {
