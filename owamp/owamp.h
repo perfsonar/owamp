@@ -77,12 +77,12 @@ typedef enum {
 
 #define	OWP_ERR_MAXSTRING	(1024)
 
-typedef int		OWPBoolean;
-typedef u_int32_t	OWPSID[4];
-typedef u_int32_t	OWPSequence;
-typedef char		OWPKID[8];
-typedef u_int8_t	OWPKey[16];
-typedef u_int32_t	OWPSessionMode;
+typedef int	OWPBoolean;
+typedef u8	OWPSID[16];
+typedef u8	OWPSequence[4];
+typedef char	OWPKID[8];
+typedef u8	OWPKey[16];
+typedef u8	OWPSessionMode[4];
 
 
 typedef struct OWPTimeStampRec{
@@ -93,8 +93,8 @@ typedef struct OWPTimeStampRec{
 } OWPTimeStamp;
 
 typedef enum {
-	OWPUnspecifiedTest,	/* invalid value	*/
-	OWPPoissonTest
+	OWPTestUnspecified,	/* invalid value	*/
+	OWPTestPoisson
 } OWPTestType;
 
 typedef struct{
@@ -116,6 +116,7 @@ typedef struct{
 	u_int32_t	padding[4];
 } OWPTestSpec;
 
+typedef struct OWPEndpointRec *OWPEndpoint;
 struct OWPEndpointRec{
 	OWPBoolean	receiver;	/* true if endpoint recv */
 
@@ -125,7 +126,11 @@ struct OWPEndpointRec{
 	OWPSID		sid;
 };
 
-typedef struct OWPEndpointRec *OWPEndpoint;
+typedef enum {
+	OWPEndpointInvalid,	/* invalid value	*/
+	OWPEndpointReciever,
+	OWPEndpointSender
+} OWPEndpointType;
 
 /*
  * The following types are used to initialize the library.
@@ -167,6 +172,10 @@ typedef OWPBoolean	(*OWPGetAESKeyFunc)(
  *
  * If local_sa_addr is NULL - then it is not being specified.
  * remote_sa_addr MUST be set.
+ *
+ * err_ret should be used to indicate a problem with the policy system - not
+ * to indicate a negative response to this function. (However, err_ret can
+ * be assumed to be "OK" if a positive response comes back from the function.)
  */
 typedef OWPBoolean (*OWPCheckAddrPolicy)(
 	void		*app_data,
@@ -372,8 +381,11 @@ OWPAddrFree(
  * 	If successful - even marginally - a valid OWPclient handle
  * 	is returned. If unsuccessful, NULL is returned.
  *
- * 	local_addr can only be set using OWPAddrByNode or OWPAddrByAddrInfo
- * 	server_addr can use any of the OWPAddrBy* functions.
+ * local_addr can only be set using OWPAddrByNode or OWPAddrByAddrInfo
+ * server_addr can use any of the OWPAddrBy* functions.
+ *
+ * Once an OWPAddr record is passed into this function - it is
+ * automatically free'd and should not be referenced again in any way.
  */
 extern OWPControl
 OWPControlOpen(
@@ -386,37 +398,28 @@ OWPControlOpen(
 );
 
 /*
- * This function is used to configure the address specification
- * for either one of the sender or receiver endpoints prior to
- * requesting that endpoint be configured by the "other" end.
+ * This function is used to define an endpoint for a test session.
+ * send_or_recv defines if it is a send or recv endpoint. If server_request
+ * is True - then the server is asked to configure the endpoint - otherwise
+ * it will be up to the current process to configure the endpoint using
+ * the endpoint func's defined in the ctx record.
+ *
+ * Once an OWPAddr record is passed into this function - it is
+ * automatically free'd and should not be referenced again in any way.
  */
 extern OWPEndpoint
-OWPConfigureRequestEndpoint(
+OWPDefineEndpoint(
 	OWPAddr		addr,
-	OWPErrSeverity	*err_ret
-);
-
-/*
- * This function is used to configure a reciever on this host
- */
-extern OWPEndpoint
-OWPCreateRecvEndpoint(
-	OWPAddr		addr,
-	OWPErrSeverity	*err_ret
-);
-
-/*
- * This function is used to configure a sender on this host
- */
-extern OWPEndpoint
-OWPCreateSendEndpoint(
-	OWPAddr		addr,
-	OWPErrSeverity	*err_ret
+	OWPEndType	send_or_recv,
+	OWPBoolean	server_request
 );
 
 /*
  * Request a test session - if err_ret is OWPErrOK - then the function
  * returns a valid SID for the session.
+ *
+ * Once an EWPEndpoint record has been passed into this function, it
+ * is automatically free'd. It should not be referenced again in any way.
  */
 extern OWPBoolean
 OWPRequestTestSession(

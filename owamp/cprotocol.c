@@ -9,7 +9,7 @@
 *									*
 ************************************************************************/
 /*
-**	File:		protocol.c
+**	File:		cprotocol.c
 **
 **	Author:		Jeff W. Boote
 **			Anatoly Karp
@@ -17,7 +17,8 @@
 **	Date:		Tue Apr  2 10:42:12  2002
 **
 **	Description:	This file contains the private functions that
-**			actually speak the owamp protocol directly.
+**			speak the owamp protocol directly from the
+**			client point of view.
 **			(i.e. read and write the data and save it
 **			to structures for the rest of the api to deal
 **			with.)
@@ -39,7 +40,7 @@
  * 	returns 0 on success - non-0 on failure.
  */
 int
-_OWPReadServerGreeting(
+_OWPClientReadServerGreeting(
 	OWPControl	cntrl,		/* cntrl state structure	*/
 	u_int32_t	*mode,		/* modes available - returned	*/
 	OWPErrSeverity	*err_ret	/* error - returned		*/
@@ -52,7 +53,7 @@ _OWPReadServerGreeting(
 }
 
 /*
- * Function: _OWPInitClientEncryptionValues
+ * Function: _OWPClientInitEncryptionValues
  *
  * Description:
  * 	Given the cntrl->mode setting, and the cntrl->challenge this function
@@ -61,9 +62,32 @@ _OWPReadServerGreeting(
  * 	returns 0 on success - non-0 on failure.
  */
 int
-_OWPInitClientEncryptionValues(
+_OWPClientInitEncryptionValues(
 	OWPControl	cntrl,		/* cntrl state structure	*/
 	OWPErrSeverity	*err_ret	/* error - returned		*/
+)
+{
+	*err_ret = OWPErrOK;
+
+	return 0;
+}
+
+/*
+ * Function:	_OWPClientRequestModeReadResponse
+ *
+ * Description:	
+ * 		Called to requst the control communication mode. To do this
+ * 		the client sends a token (challenge from server concatenated
+ * 		with a client chosen session key) and the client-IV if needed
+ * 		by the mode chosen. This function returns after it reads
+ * 		the server response.
+ *
+ * Returns:	
+ */
+int
+_OWPClientRequestModeReadResponse(
+	OWPControl	cntrl,
+	OWPErrSeverity	*err_ret
 )
 {
 	*err_ret = OWPErrOK;

@@ -52,11 +52,14 @@
  * Data structures
  */
 typedef struct OWPContextRec OWPContextRec;
+typedef struct OWPAddrRec OWPAddrRec;
+typedef struct OWPControlRec OWPControlRec;
+
 struct OWPContextRec{
 	OWPInitializeConfigRec	cfg;
+	OWPControlRec		*cntrl_list;
 };
 
-typedef struct OWPAddrRec OWPAddrRec;
 struct OWPAddrRec{
 	OWPContext	ctx;
 
@@ -73,7 +76,6 @@ struct OWPAddrRec{
 	int		fd;
 };
 
-typedef struct OWPControlRec OWPControlRec;
 struct OWPControlRec{
 	/*
 	 * Application configuration information.
@@ -99,10 +101,10 @@ struct OWPControlRec{
 	 */
 	OWPKID			kid;
 	OWPKey			key;
-	unsigned char		challenge[16];
-	unsigned char		session_key[16];
-	unsigned char           readIV[16];
-	unsigned char           writeIV[16];
+	u8			challenge[16];
+	u8			session_key[16];
+	u8			readIV[16];
+	u8			writeIV[16];
 
 	struct OWPControlRec	*next;
 };

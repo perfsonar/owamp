@@ -54,6 +54,8 @@ OWPContextInitialize(
 	else
 		ctx->cfg = def_cfg;
 
+	ctx->cntrl_list = NULL;
+
 	return ctx;
 }
 
@@ -155,7 +157,7 @@ OWPAddrByNode(
 	return addr;
 }
 
-struct addrinfo*
+static struct addrinfo*
 _OWPCopyAddrRec(
 	OWPContext		ctx,
 	const struct addrinfo	*src
@@ -251,40 +253,12 @@ OWPAddrBySockFD(
 	return addr;
 }
 
-OWPControl
-_OWPControlAlloc(
-	OWPContext		ctx,
-	OWPErrSeverity		*err_ret
-)
-{
-	OWPControl	cntrl;
-	
-	if( !(cntrl = malloc(sizeof(OWPControlRec)))){
-		OWPErrorLine(ctx,OWPLine,OWPErrFATAL,errno,
-				":malloc(%d)",sizeof(OWPControlRec));
-		*err_ret = OWPErrFATAL;
-		return NULL;
-	}
-
-	cntrl->ctx = ctx;
-
-	cntrl->server = 0;
-	cntrl->state = 0;
-	cntrl->mode = 0;
-	/*
-	 * TODO: Need to init more var's...
-	 */
-	cntrl->next = NULL;
-
-	return cntrl;
-}
-
 /*
  * This function just ensure's that there is a valid addr_info pointer in
  * the addr OWPAddr pointer.
  * Returns OWPErrOK on success.
  */
-OWPErrSeverity
+static OWPErrSeverity
 _OWPAddrInfo(
 	OWPContext	ctx,
 	OWPAddr		addr
@@ -322,7 +296,7 @@ _OWPAddrInfo(
 	return OWPErrOK;
 }
 
-void
+static void
 _OWPClientBind(
 	OWPControl	cntrl,
 	int		fd,
@@ -332,6 +306,7 @@ _OWPClientBind(
 )
 {
 	struct addrinfo	*ai;
+	OWPErrSeverity	local_err=OWPErrOK;
 
 	if(local_addr->fd > -1){
 		OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
@@ -353,8 +328,18 @@ _OWPClientBind(
 			continue;
 		if(ai->ai_protocol != remote_addrinfo->ai_protocol)
 			continue;
+		if(!_OWPCallCheckAddrPolicy(cntrl->ctx,ai->ai_addr,
+				&server_addr->saddr,&local_err)){
+			if(local_err != OWPErrOK){
+				*err_ret = local_err;
+				return;
+			}
+			continue;
+		}
 
-		if(bind(fd,ai->ai_addr,ai->ai_addrlen) == 0)
+		if(bind(fd,ai->ai_addr,ai->ai_addrlen) == 0){
+			local_addr->saddr = *ai->ai_addr;
+			local_addr->saddr_set = True;
 			return;
 		OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,errno,
 							"bind(,,):%m");
@@ -362,13 +347,19 @@ _OWPClientBind(
 		return;
 	}
 
+	/*
+	 * This should probably be a silent failure, since it is called
+	 * from a loop looking for valid addr combinations...
+	 */
+#if	NOT
 	OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,errno,
 						"Invalid local addr spec's");
+#endif
 	*err_ret = OWPErrFATAL;
 	return;
 }
 
-int
+static int
 _OWPClientConnect(
 	OWPControl	cntrl,
 	OWPAddr		local_addr,
@@ -386,10 +377,9 @@ _OWPClientConnect(
 
 	if(server_addr->fd > -1){
 		cntrl->remote_addr = server_addr;
+		cntrl->sockfd = server_addr->fd;
 
-		/* XXX - Tolya
-		return _OWPClientSetSock(cntrl,err_ret);
-		*/
+		return 0;
 	}
 
 	if(!server_addr->ai){
@@ -418,23 +408,44 @@ _OWPClientConnect(
 	}
 
 	for(ai=server_addr->ai;ai;ai->ai_next){
-		OWPErrSeverity	addr_ok;
+		OWPErrSeverity	addr_ok=OWPErrOK;
 
 		fd = socket(ai->ai_family,ai->ai_socktype,ai->ai_protocol);
 		if(fd < 0)
 			continue;
 
 		if(local_addr){
-			addr_ok = OWPErrOK;
-			_OWPClientBind(cntrl,fd,local_addr,ai,&addr_ok);
-			if(addr_ok != OWPErrOK)
+			/*
+			 * ClientBind will check Addr policy for possible
+			 * combinations before binding.
+			 */
+			if(!_OWPClientBind(cntrl,fd,local_addr,ai,&addr_ok)){
+				if(addr_ok != OWPErrOK){
+					*err_ret = addr_ok;
+					return -1;
+				}
 				goto next;
+			}
+			/*
+			 * local_addr bound ok - fall through to connect.
+			 */
 		}
-
-		_OWPCallCheckAddrPolicy(cntrl->ctx,local_addr,ai->ai_addr,
-				&addr_ok);
-		if(addr_ok != OWPErrOK)
-			goto next;
+		else{
+			/*
+			 * Verify address is ok to talk to in policy.
+			 */
+			if(!_OWPCallCheckAddrPolicy(cntrl->ctx,NULL,
+						&server_addr->saddr,&addr_ok)){
+				if(addr_ok != OWPErrOK){
+					*err_ret = addr_ok;
+					return -1;
+				}
+				goto next;
+			}
+			/*
+			 * Policy ok - fall through to connect.
+			 */
+		}
 
 		/*
 		 * TODO:Add timeout (non-block connect, then select...)
@@ -442,11 +453,11 @@ _OWPClientConnect(
 		if(connect(fd,ai->ai_addr,ai->ai_addrlen) == 0){
 			server_addr->fd = fd;
 			server_addr->saddr = *ai->ai_addr;
+			server_addr->saddr_set = True;
 			cntrl->remote_addr = server_addr;
+			cntrl->sockfd = fd;
 
-			/* XXX - Tolya
-			   return _OWPClientSetSock(cntrl,local_addr,err_ret);
-			*/
+			return 0;
 		}
 
 next:
@@ -463,6 +474,97 @@ next:
 	return -1;
 }
 
+static OWPControl
+_OWPControlAlloc(
+	OWPContext		ctx,
+	OWPErrSeverity		*err_ret
+)
+{
+	OWPControl	cntrl;
+	
+	if( !(cntrl = malloc(sizeof(OWPControlRec)))){
+		OWPErrorLine(ctx,OWPLine,OWPErrFATAL,errno,
+				":malloc(%d)",sizeof(OWPControlRec));
+		*err_ret = OWPErrFATAL;
+		return NULL;
+	}
+
+	/*
+	 * Init state fields
+	 */
+	cntrl->ctx = ctx;
+
+	cntrl->server = 0;
+	cntrl->state = 0;
+	cntrl->mode = 0;
+
+	/*
+	 * Init addr fields
+	 */
+	cntrl->remote_addr = cntrl->local_addr = NULL;
+	cntrl->sockfd = -1;
+
+	/*
+	 * Init encryption fields
+	 */
+	memset(&cntrl->kid,0,sizeof(OWPKID));
+	memset(&cntrl->key,0,sizeof(OWPKey));
+	memset(cntrl->challenge,0,sizeof(cntrl->challenge));
+	memset(cntrl->session_key,0,sizeof(cntrl->session_key));
+	memset(cntrl->readIV,0,sizeof(cntrl->readIV));
+	memset(cntrl->writeIV,0,sizeof(cntrl->writeIV));
+
+	/*
+	 * Put this control record on the ctx list.
+	 */
+	cntrl->next = ctx->cntrl_list;
+	ctx->cntrl_list = cntrl;
+
+	return cntrl;
+}
+
+static void
+_OWPControlFree(OWPControl cntrl)
+{
+	OWPControl	*list = &cntrl->ctx->cntrl_list;
+
+	/*
+	 * TODO: remove all test sessions if necessary - send stop session
+	 * if needed.
+	 */
+
+	/*
+	 * Remove cntrl from ctx list.
+	 */
+	while(*list && (*list != cntrl))
+		list = &(*list)->next;
+	if(*list == cntrl)
+		*list = cntrl->next;
+
+	/*
+	 * this function will close the control socket if it is open.
+	 */
+	OWPAddrFree(cntrl->remote_addr);
+	OWPAddrFree(cntrl->local_addr);
+
+	free(cntrl);
+
+	return;
+}
+
+/*
+ * Function:	OWPControlOpen
+ *
+ * Description:	
+ * 		Opens a connection to an owamp server. Returns after complete
+ * 		control connection setup is complete. This means that encrytion
+ * 		has been intialized, and the client is authenticated to the
+ * 		server if that is necessary. However, the client has not
+ * 		verified the server at this point.
+ *
+ * Returns:	
+ * Side Effect:	
+ */
 OWPControl
 OWPControlOpen(
 	OWPContext	ctx,		/* control context	*/
@@ -492,12 +594,10 @@ OWPControlOpen(
 		return NULL;
 	}
 
-	/* XXX - Tolya
 	if(_OWPClientReadServerGreeting(cntrl,&mode_avail,err_ret) != 0){
 		_OWPControlFree(cntrl);
 		return NULL;
 	}
-	*/
 
 	/*
 	 * Select mode wanted...
@@ -510,7 +610,7 @@ OWPControlOpen(
 		(mode_avail & (OWP_MODE_ENCRYPTED|OWP_MODE_AUTHENTICATED))){
 		if(!_OWPCallGetAESKey(ctx,kid,&key_value,err_ret)){
 			if(*err_ret != OWPErrOK){
-				OWPControlFree(cntrl);
+				_OWPControlFree(cntrl);
 				return NULL;
 			}
 		}
@@ -540,25 +640,6 @@ OWPControlOpen(
 	}
 
 	/*
-	 * cntrl->mode MUST be set before calling this!
-	 */
-	if(_OWPInitClientEncryptionValues(cntrl,err_ret)!=0){
-		_OWPControlFree(cntrl);
-		return NULL;
-	}
-
-	/*
-	 * This function validates the kid/key with the other party.
-	 */
-
-	/* XXX - Tolya
-	if(_OWPClientRequestModeReadResponse(cntrl,&mode_avail,err_ret) != 0){
-		_OWPControlFree(cntrl);
-		return NULL;
-	}
-	*/
-
-	/*
 	 * Now determine if client side is willing to actually talk control
 	 * given the kid/addr combinations.
 	 */
@@ -569,21 +650,57 @@ OWPControlOpen(
 	}
 
 	/*
-	 * TODO: Not done...
+	 * cntrl->mode MUST be set before calling this!
+	 * This function simply prepares the token from a generated
+	 * session key and the challenge from the server. It also generates
+	 * the ClientIV for encryption.
 	 */
+	if(_OWPClientInitEncryptionValues(cntrl,err_ret)!=0){
+		_OWPControlFree(cntrl);
+		return NULL;
+	}
+
+	/*
+	 * This function requests the cntrl->mode communication from the
+	 * server, and validates the kid/key with the server. If the
+	 * server accepts this, it will return 0 - otherwise it will
+	 * return with an error.
+	 */
+	if(_OWPClientRequestModeReadResponse(cntrl,err_ret) != 0){
+		_OWPControlFree(cntrl);
+		return NULL;
+	}
+
+	return cntrl;
 }
 
-_OWPControlFree(OWPControl cntrl)
+/*
+ * Function:	OWPDefineEndpoint
+ *
+ * Description:	
+ * 		Used to define an endpoint for a test session.
+ *
+ * In Args:	
+ * 	send_or_recv	defines if endpoint is a send or recv endpoint
+ * 	server_request	if True server is asked to configure the endpoint
+ * 			otherwise it will be up to the current process to
+ * 			configure the endpoint using the endpoint func's
+ * 			defined in the ctx record.
+ *
+ * Returns:	
+ * Side Effect:	
+ */
+OWPEndpoint
+OWPDefineEndpoint(
+	OWPAddr		addr,
+	OWPEndpointType	send_or_recv,
+	OWPBoolean	server_request
+)
 {
-	return;
+
 }
 
-OWPControlFree(OWPControl cntrl)
-{
-	return;
-}
-
-
+#if	NOT
 /*
 ** This function sets WriteIV to the contents of the buffer ptr (16 bytes).
 */
@@ -610,3 +727,4 @@ OWPSetSessionKey(OWPControl ctrl, char* ptr)
 {
 	bcopy(ptr, ctrl->session_key, 16);
 }
+#endif

@@ -23,8 +23,7 @@ libowamp_a_SOURCES	= api.c context.c error.c owampP.h protocol.c io.c \
 			rijndael-alg-fst.c rijndael-alg-fst.h \
 			rijndael-api-fst.c rijndael-api-fst.h
 
-#TESTS			= test-hash
-#noinst_PROGRAMS		= test-hash
-#
-#test_hash_SOURCES	= rijndael-alg-fst.c rijndael-alg-fst.h \
-#			rijndael-api-fst.c rijndael-api-fst.h test-hash.c
+# Need to rewrite this test slightly before making it a build test...
+#TESTS			= rijndael-test-fst
+#noinst_PROGRAMS		= rijndael-test-fst
+#test_hash_SOURCES	= rijndael-test-fst.c
