@@ -211,7 +211,7 @@ _OWPCallEndpointInit(
 OWPBoolean
 _OWPCallEndpointInitHook(
 	OWPControl	cntrl,
-	void		*end_data_ret,
+	void		*end_data,
 	OWPAddr		remoteaddr,
 	OWPSID		sid,
 	OWPErrSeverity	*err_ret
@@ -239,7 +239,7 @@ _OWPCallEndpointInitHook(
 		def_app_data = cntrl->ctx;
 	}
 
-	return (*initH_func)(def_app_data,end_data_ret,remoteaddr,sid,err_ret);
+	return (*initH_func)(def_app_data,end_data,remoteaddr,sid,err_ret);
 }
 
 /*

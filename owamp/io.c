@@ -29,7 +29,7 @@
 
 /*
  * TODO: Add timeout values for read's and write's. We don't want to wait
- * as long as kernel defaults - timeout specified in the context is.
+ * as long as kernel defaults - timeout is specified in the context.
  */
 
 ssize_t				       /* Read "n" bytes from a descriptor. */
@@ -225,7 +225,7 @@ _OWPSendBlocks(OWPControl cntrl, char* buf, int num_blocks)
 int
 _OWPReceiveBlocks(OWPControl cntrl, char* buf, int num_blocks)
 {
-	size_t n;
+	ssize_t n;
 
 	if (! (cntrl->mode & _OWP_DO_CIPHER)){
 		n = _OWPReadn(cntrl->sockfd, buf, num_blocks*RIJNDAEL_BLOCK_SIZE);

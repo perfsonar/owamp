@@ -31,7 +31,7 @@
  */
 typedef struct _DefEndpointRec{
 	pid_t			child;
-	OWPPoissonTestSpec	test_spec;
+	OWPTestSpecPoisson	test_spec;
 	OWPSID			sid;
 	int			sockfd;
 	int			filefd;
@@ -118,6 +118,9 @@ OWPDefEndpointInit(
 		 */
 	}
 
+	*(_DefEndpoint*)end_data_ret = ep;
+
+	return True;
 }
 
 /*
@@ -147,4 +150,5 @@ OWPDefEndpointInitHook(
 	 * fork child/ save pid for signals to "stop"
 	 */
 
+	return True;
 }

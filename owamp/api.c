@@ -399,10 +399,8 @@ _OWPClientConnect(
 	struct addrinfo	*ai=NULL;
 	char		*tstr;
 
-	if((!server_addr) &&
-		!(server_addr = OWPAddrByNode(cntrl->ctx,"localhost"))){
+	if(!server_addr)
 		goto error;
-	}
 
 	/*
 	 * Easy case - application provided socket directly.
@@ -646,6 +644,11 @@ OWPControlOpen(
 
 	if( !(cntrl = _OWPControlAlloc(ctx,err_ret)))
 		goto error;
+
+	if((!server_addr) &&
+		!(server_addr = OWPAddrByNode(cntrl->ctx,"localhost"))){
+		goto error;
+	}
 
 	if(_OWPClientConnect(cntrl,local_addr,server_addr,err_ret) != 0)
 		goto error;
@@ -939,6 +942,16 @@ OWPRequestTestSession(
 		goto error;
 	}
 
+	if((!receiver) &&
+		!(receiver = OWPAddrByNode(cntrl->ctx,"localhost"))){
+		goto error;
+	}
+
+	if((!sender) &&
+		!(sender = OWPAddrByNode(cntrl->ctx,"localhost"))){
+		goto error;
+	}
+
 	/*
 	 * Get addrinfo for address spec's so we can choose between
 	 * the different address possiblities in the next step. (These
@@ -1072,6 +1085,12 @@ foundaddr:
 		}else{
 			/*
 			 * Otherwise create sender: check policy,then init.
+			 *
+			 * btw - this is a VERY strange situation - the
+			 * client is setting up a test session without
+			 * making a request to the server...
+			 *
+			 * Should almost just return an error here...
 			 */
 			if(!_OWPCallCheckTestPolicy(cntrl,True,sender->saddr,
 					receiver->saddr,test_spec,err_ret)){

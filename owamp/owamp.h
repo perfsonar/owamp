@@ -122,7 +122,7 @@ typedef struct{
 	u_int32_t	typeP;
 	u_int32_t	packet_size_padding;
 	u_int32_t	InvLambda;
-} OWPPoissonTestSpec;
+} OWPTestSpecPoisson;
 
 typedef struct{
 	OWPTestType	test_type;

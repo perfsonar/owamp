@@ -27,6 +27,8 @@
 **			architecture dependant things in this file.
 */
 #include <owampP.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
 
 /*
  * Function: _OWPReadServerGreeting
@@ -147,8 +149,76 @@ _OWPClientRequestModeReadResponse(
  * Description:	
  * 		Called to requst a specific test. Returns accept value.
  *
+ * 		The format of a TestRequest message is as follows:
  *
- * Returns:	
+ * 	   0                   1                   2                   3
+ * 	   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	00|      1        |IPVN-S | IPVN-R| Conf-Sender   | Conf-Receiver |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	04|                        Sender Address                         |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	08|              Sender Address (cont.) or Unused                 |
+ *	12|                                                               |
+ *	16|                                                               |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	20|                        Receiver Address                       |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	24|              Receiver Address (cont.) or Unused               |
+ *	28|                                                               |
+ *	32|                                                               |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	36|          Sender Port          |         Receiver Port         |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	40|                                                               |
+ *	44|                        SID (16 octets)                        |
+ *	48|                                                               |
+ *	52|                                                               |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	56|                          Inv-Lambda                           |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	60|                            Packets                            |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	64|                          Padding Length                       |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	68|                            Start Time                         |
+ *	72|                                                               |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	76|                         Type-P Descriptor                     |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	80|                                                               |
+ *	84|                      Zero Padding (16 octets)                 |
+ *	88|                                                               |
+ *	92|                                                               |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *
+ * 		The format of an Accept-Session messages is as follows:
+ *
+ * 	   0                   1                   2                   3
+ * 	   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	00|    Accept     |  Unused       |            Port               |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	04|                                                               |
+ *	08|                        SID (16 octets)                        |
+ *	12|                                                               |
+ *	16|                                                               |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	20|                                                               |
+ *	24|                      Zero Padding (12 octets)                 |
+ *	28|                                                               |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *
+ *	 Returns:	negative number on error,
+ *	 		value of "Accept" from server otherwise.
+ *
+ *	 		if server_conf_sender && !server_conf_receiver
+ *	 			sets sender->saddr_in[6]->sin[6]_port
+ *	 		if server_conf_receiver && !server_conf_sender
+ *	 			sets receiver->saddr_in[6]->sin[6]_port
+ *
+ * 			if server_conf_receiver
+ *	 			sets sid
  */
 int
 _OWPClientRequestTestReadResponse(
@@ -162,6 +232,132 @@ _OWPClientRequestTestReadResponse(
 	OWPErrSeverity	*err_ret
 )
 {
+	unsigned char		zero[16] = {0};
+	unsigned char		buf[96];
+	unsigned char		version;
+	OWPTestSpecPoisson	*ptest;
+	struct sockaddr_in6	*saddr6;
+	struct sockaddr_in	*saddr4;
+	int			accept;
 
-	return 0;
+	/*
+	 * Figure out what style of addresses we are using.
+	 */
+	switch (sender->saddr->sa_family){
+		case AF_INET:
+			version = 4;
+			break;
+		case AF_INET6:
+			version = 6;
+			break;
+		default:
+			OWPError(cntrl->ctx,OWPErrWARNING,OWPErrINVALID,
+					"Invalid IP Address Family");
+			return -1;
+	}
+
+	if(test_spec->test_type != OWPTestPoisson){
+		OWPError(cntrl->ctx,OWPErrWARNING,OWPErrINVALID,
+				"Invalid test distribution function");
+		return -1;
+	}
+	ptest = (OWPTestSpecPoisson*)test_spec;
+
+	*(u_int8_t*)&buf[0] = 1;	/* Request-Session message # */
+	*(u_int8_t*)&buf[1] = (version<<4) | version;
+	*(u_int8_t*)&buf[2] = (server_conf_sender)?1:0;
+	*(u_int8_t*)&buf[3] = (server_conf_receiver)?1:0;
+
+	switch(version){
+		case 6:
+			/* sender address  and port */
+			saddr6 = (struct sockaddr_in6*)sender->saddr;
+			memcpy(&buf[4],saddr6->sin6_addr.s6_addr,16);
+			*(u_int16_t*)&buf[36] = saddr6->sin6_port;
+
+			/* receiver address and port  */
+			saddr6 = (struct sockaddr_in6*)receiver->saddr;
+			memcpy(&buf[20],saddr6->sin6_addr.s6_addr,16);
+			*(u_int16_t*)&buf[38] = saddr6->sin6_port;
+
+			break;
+		case 4:
+			/* sender address and port  */
+			saddr4 = (struct sockaddr_in*)sender->saddr;
+			*(u_int32_t*)&buf[4] = saddr4->sin_addr.s_addr;
+			*(u_int16_t*)&buf[36] = saddr4->sin_port;
+
+			/* receiver address and port  */
+			saddr4 = (struct sockaddr_in*)receiver->saddr;
+			*(u_int32_t*)&buf[20] = saddr4->sin_addr.s_addr;
+			*(u_int16_t*)&buf[38] = saddr4->sin_port;
+
+			break;
+	}
+
+	memcpy(&buf[40],sid,16);
+	*(u_int32_t*)&buf[56] = htonl(ptest->InvLambda);
+	*(u_int32_t*)&buf[60] = htonl(ptest->npackets);
+	*(u_int32_t*)&buf[64] = htonl(ptest->packet_size_padding);
+
+	/*
+	 * timestamp...
+	 */
+	OWPEncodeTimeStamp(&buf[68],&ptest->start_time);
+
+	*(u_int32_t*)&buf[76] = htonl(ptest->typeP);
+
+	memset(&buf[80],0,16);
+
+	/*
+	 * Now - send the request!
+	 */
+	if(_OWPSendBlocks(cntrl,buf,6) != 0)
+		return -1;
+	
+	/*
+	 * Get the servers response.
+	 */
+	if(_OWPReceiveBlocks(cntrl,buf,2) != 0)
+		return -1;
+
+	/*
+	 * Check zero padding first.
+	 */
+	if(memcmp(&buf[20],zero,12)){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+				"Invalid Accept-Session message received");
+		return -1;
+	}
+
+	accept = *(u_int8_t*)&buf[0];
+
+	switch(version){
+		case 6:
+			if(server_conf_sender && server_conf_receiver)
+				break;
+			if(server_conf_sender)
+				saddr6 = (struct sockaddr_in6*)sender->saddr;
+			else
+				saddr6 = (struct sockaddr_in6*)receiver->saddr;
+			saddr6->sin6_port = *(u_int16_t*)&buf[2];
+
+			break;
+		case 4:
+			if(server_conf_sender && server_conf_receiver)
+				break;
+			if(server_conf_sender)
+				saddr4 = (struct sockaddr_in*)sender->saddr;
+			else
+				saddr4 = (struct sockaddr_in*)receiver->saddr;
+			saddr4->sin_port = *(u_int16_t*)&buf[2];
+
+			break;
+	}
+
+	if(server_conf_receiver)
+		memcpy(sid,&buf[4],16);
+
+	return accept;
 }
+

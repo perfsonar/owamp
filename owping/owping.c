@@ -58,6 +58,7 @@ OWPingErrFunc(
 #endif
 
 	I2ErrLogP(pctx->eh,etype,errmsg);
+	fflush(stderr);
 
 	return 0;
 }
@@ -179,6 +180,8 @@ static void	usage(int od, const char *progname, const char *msg)
 	return;
 }
 
+static I2ErrHandle		eh;
+
 static void
 FailSession(
 	OWPControl	control_handle
@@ -187,6 +190,8 @@ FailSession(
 	/*
 	 * Session denied - report error, close connection, and exit.
 	 */
+	I2ErrLog(eh, "Session Failed!");
+	fflush(stderr);
 
 	/* TODO: determine "reason" for denial and report */
 	(void)OWPControlClose(ping_ctx.cntrl);
@@ -204,12 +209,11 @@ main(
 ) {
 	char			*progname;
 	OWPErrSeverity		err_ret=OWPErrOK;
-	I2ErrHandle		eh;
 	I2LogImmediateAttr	ia;
 	int			od;
 	OWPContext		ctx;
 	I2table			local_addr_table;
-	OWPPoissonTestSpec	test_spec;
+	OWPTestSpecPoisson	test_spec;
 	OWPSID			sid_ret;
 	OWPTimeStamp		start_time_rec={0};
 
@@ -402,12 +406,8 @@ main(
 	 * Open connection to owampd.
 	 */
 	if( !(ping_ctx.cntrl = OWPControlOpen(ctx,
-			ping_ctx.local_addr?
-				OWPAddrByNode(ctx,ping_ctx.local_addr):
-				NULL,
-			ping_ctx.remote_addr?
-				OWPAddrByNode(ctx,ping_ctx.remote_addr):
-				OWPAddrByNode(ctx,"localhost"),
+			OWPAddrByNode(ctx,ping_ctx.local_addr),
+			OWPAddrByNode(ctx,ping_ctx.remote_addr),
 			ping_ctx.auth_mode,
 			ping_ctx.opt.identity,
 			&err_ret))){

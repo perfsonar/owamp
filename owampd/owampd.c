@@ -591,11 +591,13 @@ main(int argc, char *argv[])
 			
 			/* Child code */
 
+#if	NOT
 			/* XXX - Remove. for debugging only */
 			if (freopen("child.err", "w", stderr) < 0){
 				perror("reopen");
 				exit(1);
 			}
+#endif
 
 			if (close(new_pipe[0]) < 0){
 				perror("close");
@@ -625,8 +627,10 @@ main(int argc, char *argv[])
 				exit(0);	
 			}
 
+#if	NOT
 			fprintf(stderr, "DEBUG: child exiting...\n");
 			exit(1); /* XXX - debug */
+#endif
 		
 			while (again == True) {
 				again = ServerMainControl(cntrl, &out);

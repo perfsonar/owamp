@@ -47,7 +47,7 @@
 #include <sys/time.h>
 #include <sys/socket.h>
 
-#include <owamp.h>
+#include <owamp/owamp.h>
 #include "rijndael-api-fst.h"
 
 #define	_OWP_ERR_MAXSTRING	1024
@@ -330,5 +330,21 @@ _OWPCallEndpointInitHook(
 
 extern OWPContext
 OWPGetContext(OWPControl cntrl);
+
+/*
+ * time.c
+ */
+
+extern void
+OWPEncodeTimeStamp(
+	OWPByte		buf[8],
+	OWPTimeStamp	*tstamp
+	);
+
+extern void
+OWPDecodeTimeStamp(
+	OWPTimeStamp	*tstamp,
+	OWPByte		buf[8]
+	);
 
 #endif	/* OWAMPP_H */
