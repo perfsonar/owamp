@@ -138,7 +138,7 @@ EndpointFree(
 /*
  * buff must be at least (nbytes*2) +1 long or memory will be over-run.
  */
-static void
+void
 hexencode(
 	char		*buff,
 	u_int8_t	*bytes,
