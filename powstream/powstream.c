@@ -637,6 +637,12 @@ WriteSubSessionLost(
 
 		rec.seq_no = i;
 		rec.send.owptime = parse->seen[i].sendtime;
+		rec.send.sync = 0;
+		rec.send.multiplier = 1;
+		rec.send.scale = 64;
+
+		rec.recv = parse->missing;	/* for error est */
+		rec.recv.owptime = OWPULongToNum64(0);
 
 		if(OWPWriteDataRecord(parse->ctx,parse->fp,&rec) != 0){
 			return -1;
@@ -1262,8 +1268,17 @@ AGAIN:
 			}
 			/* Else - time's up! Get to work.	*/
 
+
+			/* Fetch hdr for sub session */
+
 			arecs = OWPReadDataHeader(ctx,p->fp,&hlen,&hdr);
 			parse.hdr = &hdr;
+
+			/* Fetch time error estimate for missing packets */
+			if(!(OWPGetTimeOfDay(ctx,&parse.missing))){
+				I2ErrLog(eh,"OWPGetTimeOfDay(): %M");
+				exit(1);
+			}
 
 			/*
 			 * Modify hdr for subsession.
@@ -1299,17 +1314,6 @@ AGAIN:
 			}
 			else{
 				nrecs = 0;
-			}
-
-			/*
-			 * TODO: Remove this if, and all refs to fileend
-			 * if strange short read is figured out.
-			 */
-			if((nrecs * hdr.rec_size) > (fileend - parse.begin)){
-				I2ErrLog(eh,
-			"Invalid nrecs!: nrecs=%lu,fileend=%llu,begin=%llu",
-					nrecs,fileend,parse.begin);
-				nrecs = (fileend - parse.begin)/hdr.rec_size;
 			}
 
 			/*

@@ -121,6 +121,7 @@ struct pow_parse_rec{
 	off_t			next;
 	pow_seen		seen;
 	OWPSessionHeader	hdr;
+	OWPTimeStamp		missing;/* used to hold err est		*/
 	FILE			*sfp;	/* summary file			*/
 	I2Table			buckets;
 	u_int32_t		*bucketvals;

@@ -1116,9 +1116,10 @@ typedef struct OWPSessionHeaderRec{
 ** Applications use this type to manipulate individual timestamp data records.
 */
 typedef struct OWPDataRec {
-	u_int32_t    seq_no;
-	OWPTimeStamp send;
-	OWPTimeStamp recv;
+	u_int32_t	seq_no;
+	OWPTimeStamp	send;
+	OWPTimeStamp	recv;
+	u_int8_t	ttl;
 } OWPDataRec;
 
 /*
@@ -1319,6 +1320,7 @@ OWPGetTimeStampError(
 
 extern OWPTimeStamp *
 OWPGetTimeOfDay(
+	OWPContext	ctx,
 	OWPTimeStamp	*tstamp
 );
 

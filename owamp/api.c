@@ -650,7 +650,7 @@ _OWPCreateSID(
 
 	memcpy(&tsession->sid[0],aptr,4);
 
-	(void)OWPGetTimeOfDay(&tstamp);
+	(void)OWPGetTimeOfDay(tsession->cntrl->ctx,&tstamp);
 	_OWPEncodeTimeStamp(&tsession->sid[4],&tstamp);
 
 	if(I2RandomBytes(tsession->cntrl->ctx->rand_src,&tsession->sid[12],4)
@@ -2078,12 +2078,16 @@ OWPParseRecords(
 	int		rc;
 
 	/*
-	 * Someday this function may need to deal with multiple datafile
-	 * versions. Currently it only supports 0 and 2. (both of which
-	 * require the same 24 octet data records.)
+	 * This function is used to abstract away the different requirements
+	 * of different versions of the owd data files.
+	 * Currently it supports 0 and 2, (both of which
+	 * require the same 24 octet data records) and 3.
 	 */
-	if((file_version != 0) && (file_version != 2)){
-		OWPError(ctx,OWPErrFATAL,EINVAL,
+	switch(file_version){
+		case 0: case 2: case 3:
+			break;
+		default:
+			OWPError(ctx,OWPErrFATAL,EINVAL,
 				"OWPParseRecords: Invalid file version (%d)",
 				file_version);
 		return OWPErrFATAL;
@@ -2102,7 +2106,7 @@ OWPParseRecords(
 			}
 			return OWPErrFATAL;
 		}
-		if(!_OWPDecodeDataRecord(&rec,rbuf)){
+		if(!_OWPDecodeDataRecord(file_version,&rec,rbuf)){
 			errno = EFTYPE;
 			OWPError(ctx,OWPErrFATAL,errno,
 				"OWPParseRecords: Invalid Data Record: %M");

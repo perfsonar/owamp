@@ -56,17 +56,24 @@
 #define _OWP_MAX_MSG_BLK_LEN		_OWP_TEST_REQUEST_BLK_LEN
 #define _OWP_MAX_MSG	(_OWP_MAX_MSG_BLK_LEN*_OWP_RIJNDAEL_BLOCK_SIZE)
 #define _OWP_TEST_REQUEST_PREAMBLE_SIZE	(_OWP_TEST_REQUEST_BLK_LEN*_OWP_RIJNDAEL_BLOCK_SIZE)
-#define	_OWP_TESTREC_SIZE	24
+#define	_OWP_TESTRECV2_SIZE	24
+#define	_OWP_TESTREC_SIZE	25
 
 /*
- * The FETCH buffer is the smallest multiple of both the _OWP_TS_REC_SIZE
+ * The FETCH buffer is the smallest multiple of both the _OWP_TESTREC_SIZE
  * and the _OWP_RIJNDAEL_BLOCK_SIZE. The following must be true:
  * _OWP_FETCH_AES_BLOCKS * _OWP_RIJNDAEL_BLOCK_SIZE == _OWP_FETCH_BUFFSIZE
  * _OWP_FETCH_TESTREC_BLOCKS * _OWP_TESTREC_SIZE == _OWP_FETCH_BUFFSIZE
  */
-#define _OWP_FETCH_BUFFSIZE		48
-#define _OWP_FETCH_AES_BLOCKS		3
-#define _OWP_FETCH_TESTREC_BLOCKS	2
+#define _OWP_FETCHV2_BUFFSIZE		48
+#define _OWP_FETCHV2_AES_BLOCKS		3
+#define _OWP_FETCHV2_TESTREC_BLOCKS	2
+#define _OWP_FETCHV3_BUFFSIZE		400
+#define _OWP_FETCHV3_AES_BLOCKS		25
+#define _OWP_FETCHV3_TESTREC_BLOCKS	16
+#define _OWP_FETCH_BUFFSIZE		_OWP_FETCHV3_BUFFSIZE
+#define _OWP_FETCH_AES_BLOCKS		_OWP_FETCHV3_AES_BLOCKS
+#define _OWP_FETCH_TESTREC_BLOCKS	_OWP_FETCHV3_TESTREC_BLOCKS
 
 #if (_OWP_FETCH_BUFFSIZE != (_OWP_RIJNDAEL_BLOCK_SIZE * _OWP_FETCH_AES_BLOCKS))
 #error "Fetch Buffer is mis-sized for AES block size!"
@@ -545,14 +552,16 @@ _OWPReadTestRequest(
 
 extern OWPBoolean
 _OWPEncodeDataRecord(
-	u_int8_t	buf[24],
+	u_int8_t	buf[_OWP_TESTREC_SIZE],
 	OWPDataRec	*rec
 	);
 
 extern OWPBoolean
 _OWPDecodeDataRecord(
+	u_int32_t	file_version,
 	OWPDataRec	*rec,
-	u_int8_t	buf[24]
+	/* V0,V2 == [_OWP_TESTRECV2_SIZE], V3 == [_OWP_TESTREC_SIZE] */
+	u_int8_t	*buf
 	);
 
 extern OWPErrSeverity
@@ -767,6 +776,15 @@ extern int
 _OWPInitNTP(
 	OWPContext	ctx
 	);
+
+struct timespec *
+_OWPGetTimespec(
+	OWPContext	ctx,
+	struct timespec	*ts,
+	u_int32_t	*esterr,
+	int		*sync
+	       );
+
 /*
  * En/DecodeTimeStamp functions do not assume any alignment requirements
  * for buf. (Most functions in protocol.c assume u_int32_t alignment.)

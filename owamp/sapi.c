@@ -987,6 +987,11 @@ DoDataRecords(
 			}
 			dstate->inbuf = 0;
 		}
+		else if(dstate->inbuf > _OWP_FETCH_TESTREC_BLOCKS){
+			dstate->err = OWPErrFATAL;
+			_OWPFailControlSession(cntrl,OWPErrFATAL);
+			return -1;
+		}
 	}
 
 	return 0;
@@ -1050,10 +1055,10 @@ OWPProcessFetchSession(
 	}
 
 	/*
-	 * Only version 2 files can be used to produce valid v5 Fetch
+	 * Only version 3 files are supported for "fetch session"
 	 * response messages.
 	 */
-	if(ver < 2){
+	if(ver != 3){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
 		"OWPProcessFetchSession(\"%s\"): Invalid file version: %d",
 			fname,ver);

@@ -2171,7 +2171,7 @@ _OWPReadFetchRecordsHeader(
 }
 
 /*
- * 	DataRecord format:
+ * 	DataRecord V2 format:
  *
  * 	size: 24 octets
  *
@@ -2191,12 +2191,35 @@ _OWPReadFetchRecordsHeader(
  *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *
  */
+/*
+ * 	DataRecord V3 format:
+ *
+ * 	size: 25 octets
+ *
+ * 	   0                   1                   2                   3
+ * 	   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	00|                          Seq Number                           |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	04|                         Send Timestamp                        |
+ *	08|                                                               |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	12|      Send Error Estimate      |                               |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+                               +
+ *	16|                       Receive Timestamp                       |
+ *	  +                               +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	20|                               |    Receive Error Estimate     |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	24|       TTL       |
+ *	  +-+-+-+-+-+-+-+-+-+
+ *
+ */
 
 /*
  * Function:	_OWPEncodeDataRecord
  *
  * Description:	
- * 	This function is used to encode the 24 octet "packet record" from
+ * 	This function is used to encode the 25 octet "packet record" from
  * 	the values in the given OWPDataRec. It returns false if the
  * 	timestamp err estimates are invalid values.
  *
@@ -2210,29 +2233,27 @@ _OWPReadFetchRecordsHeader(
  */
 OWPBoolean
 _OWPEncodeDataRecord(
-	u_int8_t	buf[24],
+	u_int8_t	buf[25],
 	OWPDataRec	*rec
 	)
 {
 	u_int32_t	nlbuf;
 
-	memset(buf,0,24);
+	memset(buf,0,25);
 	nlbuf = htonl(rec->seq_no);
 	memcpy(&buf[0],&nlbuf,4);
 
 	_OWPEncodeTimeStamp(&buf[4],&rec->send);
-	_OWPEncodeTimeStamp(&buf[14],&rec->recv);
-	if(OWPIsLostRecord(rec)){
-		return True;
-	}
-
 	if(!_OWPEncodeTimeStampErrEstimate(&buf[12],&rec->send)){
 		return False;
 	}
 
+	_OWPEncodeTimeStamp(&buf[14],&rec->recv);
 	if(!_OWPEncodeTimeStampErrEstimate(&buf[22],&rec->recv)){
 		return False;
 	}
+
+	buf[24] = rec->ttl;
 
 	return True;
 }
@@ -2255,8 +2276,9 @@ _OWPEncodeDataRecord(
  */
 OWPBoolean
 _OWPDecodeDataRecord(
+	u_int32_t	file_version,
 	OWPDataRec	*rec,
-	u_int8_t	buf[24]
+	u_int8_t	*buf
 	)
 {
 	/*
@@ -2267,16 +2289,25 @@ _OWPDecodeDataRecord(
 	rec->seq_no = ntohl(rec->seq_no);
 
 	_OWPDecodeTimeStamp(&rec->send,&buf[4]);
-	_OWPDecodeTimeStamp(&rec->recv,&buf[14]);
-	if(OWPIsLostRecord(rec)){
-		return True;
-	}
-
 	if(!_OWPDecodeTimeStampErrEstimate(&rec->send,&buf[12])){
 		return False;
 	}
+
+	_OWPDecodeTimeStamp(&rec->recv,&buf[14]);
 	if(!_OWPDecodeTimeStampErrEstimate(&rec->recv,&buf[22])){
 		return False;
+	}
+
+	switch(file_version){
+		case 0:
+		case 2:
+			rec->ttl = 255;
+			break;
+		case 3:
+			rec->ttl = buf[24];
+			break;
+		default:
+			return False;
 	}
 
 	return True;

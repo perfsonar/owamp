@@ -25,7 +25,6 @@
 #include <signal.h>
 #include <netinet/in.h>
 #include <assert.h>
-#include <sys/timex.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
@@ -188,87 +187,6 @@ reopen_datafile(
 	}
 
 	return fp;
-}
-
-static struct timespec *
-GetTimespec(
-		struct timespec		*ts,
-		u_int32_t		*esterr,
-		int			*sync
-		)
-{
-	struct timeval	tod;
-	struct timex	ntp_conf;
-	long		sec;
-
-	ntp_conf.modes = 0;
-
-	if(gettimeofday(&tod,NULL) != 0)
-		return NULL;
-
-	if(ntp_adjtime(&ntp_conf) < 0)
-		return NULL;
-
-	/* assign localtime */
-	ts->tv_sec = tod.tv_sec;
-	ts->tv_nsec = tod.tv_usec * 1000;	/* convert to nsecs */
-
-	/*
-	 * Apply ntp "offset"
-	 */
-#ifdef	STA_NANO
-	sec = 1000000000;
-#else
-	sec = 1000000;
-#endif
-	/*
-	 * Convert negative offsets to positive ones by decreasing
-	 * the ts->tv_sec.
-	 */
-	while(ntp_conf.offset < 0){
-		ts->tv_sec--;
-		ntp_conf.offset += sec;
-	}
-
-	/*
-	 * Make sure the "offset" is less than 1 second
-	 */
-	while(ntp_conf.offset >= sec){
-		ts->tv_sec++;
-		ntp_conf.offset -= sec;
-	}
-
-#ifndef	STA_NANO
-	ntp_conf.offset *= 1000;
-#endif
-	ts->tv_nsec += ntp_conf.offset;
-	if(ts->tv_nsec >= 1000000000){
-		ts->tv_sec++;
-		ts->tv_nsec -= 1000000000;
-	}
-
-	/*
-	 * Check sync flag
-	 */
-	if(ntp_conf.status & STA_UNSYNC)
-		*sync = 0;
-	else
-		*sync = 1;
-
-	/*
-	 * Set estimated error
-	 */
-	*esterr = (u_int32_t)ntp_conf.esterror;
-	assert((long)*esterr == ntp_conf.esterror);
-
-	/*
-	 * Error estimate should never be 0, but I've seen ntp do it!
-	 */
-	if(!*esterr){
-		*esterr = 1;
-	}
-
-	return ts;
 }
 
 /*
@@ -665,6 +583,19 @@ success:
 			}
 		}
 
+		/*
+		 * draft-ietf-ippm-owdp-08.txt adds TTL to the data that
+		 * is stored by the receiver. Use IP_RECVTTL to indicate
+		 * interest in receiving TTL ancillary data.
+		 */
+		sopt = 1;
+		if(setsockopt(ep->sockfd,IPPROTO_IP,IP_RECVTTL,
+					(void*)&sopt,sizeof(sopt)) < 0){
+			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+					"setsockopt(IP_RECVTTL=1): %M",);
+			goto error;
+		}
+
 	}
 	else{
 		/*
@@ -689,6 +620,19 @@ success:
 						sopt);
 				goto error;
 			}
+		}
+
+		/*
+		 * draft-ietf-ippm-owdp-08.txt adds TTL to the data that
+		 * is stored by the receiver. The sender should set TTL
+		 * to 255 to make this useful.
+		 */
+		sopt = 255;
+		if(setsockopt(ep->sockfd,IPPROTO_IP,IP_TTL,
+					(void*)&sopt,sizeof(sopt)) < 0){
+			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+					"setsockopt(IP_TTL=255): %M",);
+			goto error;
 		}
 
 		/*
@@ -932,7 +876,7 @@ AGAIN:
 			exit(OWP_CNTRL_ACCEPT);
 		}
 
-		if(!GetTimespec(&currtime,&esterror,&sync)){
+		if(!_OWPGetTimespec(ep->cntrl->ctx,&currtime,&esterror,&sync)){
 			OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 				"Problem retrieving time");
 			exit(OWP_CNTRL_FAILURE);
@@ -1050,7 +994,7 @@ AGAIN:
 					ep->tsession->test_spec.loss_timeout)+1;
 
 	while(!owp_usr2 && !owp_int){
-		if(!GetTimespec(&currtime,&esterror,&sync)){
+		if(!_OWPGetTimespec(ep->cntrl->ctx,&currtime,&esterror,&sync)){
 			OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 					"Problem retrieving time");
 			exit(OWP_CNTRL_FAILURE);
@@ -1217,6 +1161,70 @@ get_node(
 	return (OWPLostPacket)v.dptr;
 }
 
+static ssize_t
+recvfromttl(
+		OWPContext	ctx,
+		int		sockfd,
+		void		*buf,
+		size_t		buf_len,
+		struct sockaddr	*peer,
+		socklen_t	*peer_len,
+		u_int8_t	&ttl
+	   )
+{
+	struct msghdr	msg;
+	struct iovec	iov[1];
+	ssize_t		rc;
+	struct cmsghdr	*cmdmsgptr;
+	union {
+		struct cmsghdr	cm;
+		char		control[CMSG_SPACE(sizeof(u_int8_t))];
+	} cmdmsgdata;
+
+	*ttl = 255;	/* initialize to default value */
+
+	iov[0].iov_base = ptr;
+	iov[0].iov_len = buf_len;
+
+	memset(&msg,0,sizeof(msg));
+	msg.msg_name = peer;
+	msg.msg_namelen = *peer_len;
+	msg.msg_iov = iov;
+	msg.msg_iovlen = 1;
+	msg.msg_control = cmdmsgdata;
+	msg.msg_controllen = sizeof(cmdmsgdata.control);
+	msg.msg_flags = 0;
+
+	if((rc = recvmsg(sockfd,&msg,0)) < 0){
+		return rc;
+	}
+
+	*peer_len = msg.msg_namelen;
+
+	if((msg.msg_controllen < sizeof(struct cmsghdr)) ||
+			(msg.msg_flags && MSG_CTRNC)){
+		return rc;
+	}
+
+	for(cmdmsgptr = CMSG_FIRSTHDR(&msg);
+			(cmdmsgptr);
+			cmdmsgptr = CMSG_NXTHDR(&msg,cmdmsgptr)){
+		if(cmdmsgptr->cmsg_level == IPPROTO_IP &&
+				cmdmsgptr->cmsg_type == IP_RECVTTL){
+			memcpy(ttl,CMSG_DATA(cmdmsgptr),sizeof(u_int8_t));
+			continue;
+		}
+
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+	"recvfromttl: Unknown ancillary data, len = %d, level = %d, type = %d",
+				cmptr->cmsg_len, cmptr->cmsg_level,
+				cmptr->cmsg_type);
+		return -rc;
+	}
+
+	return rc;
+}
+		
 static void
 run_receiver(
 		OWPEndpoint	ep,
@@ -1239,7 +1247,6 @@ run_receiver(
 	u_int8_t		recvbuf[10];
 	u_int32_t		esterror,lasterror=0;
 	int			sync;
-	OWPTimeStamp		sendstamp,recvstamp;
 	OWPTimeStamp		expecttime;
 	OWPSessionHeaderRec	hdr;
 	u_int8_t		lostrec[_OWP_TESTREC_SIZE];
@@ -1247,6 +1254,7 @@ run_receiver(
 	int			owp_intr;
 	u_int32_t		npackets;
 	u_int32_t		finished = _OWP_SESSION_FIN_NORMAL;
+	OWPDataRec		datarec;
 
 	/*
 	 * Prepare the file header - had to wait until now so we could
@@ -1405,12 +1413,13 @@ again:
 
 		peer_addr_len = sizeof(peer_addr);
 		memset(&peer_addr,0,sizeof(peer_addr));
-		if(recvfrom(ep->sockfd,ep->payload,ep->len_payload,0,
-				(struct sockaddr*)&peer_addr,
-				&peer_addr_len) != (ssize_t)ep->len_payload){
+		if(recvfromttl(ep->cntrl->ctx,ep->sockfd,
+				ep->payload,ep->len_payload,
+				(struct sockaddr*)&peer_addr,&peer_addr_len,
+				&datarec.ttl) != (ssize_t)ep->len_payload){
 			if(errno != EINTR){
 				OWPError(ep->cntrl->ctx,OWPErrFATAL,
-						OWPErrUNKNOWN,"recvfrom(): %M");
+					OWPErrUNKNOWN,"recvfromttl(): %M");
 				goto error;
 			}
 			owp_intr = 1;
@@ -1423,11 +1432,20 @@ again:
 		/*
 		 * Fetch time before ANYTHING else to minimize time errors.
 		 */
-		if(!GetTimespec(&currtime,&esterror,&sync)){
+		if(!_OWPGetTimespec(ep->cntrl->ctx,&currtime,&esterror,&sync)){
 			OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 				"Problem retrieving time");
 			goto error;
 		}
+
+		/*
+		 * Save that time as a timestamp
+		 */
+		(void)OWPTimespecToTimestamp(&datarec.recv,&currtime,
+						       &esterror,&lasterror);
+		lasterror = esterror;
+		datarec.recv.sync = sync;
+
 
 		/*
 		 * TODO: v6 If owp_usr2 - get the last seq number from other
@@ -1471,26 +1489,32 @@ again:
 			 * queue.)
 			 */
 			if(!ep->begin->hit && (ep->begin->seq < npackets)){
-				/* encode seq number */
-				*(u_int32_t*)&lostrec[0] =
-						htonl(ep->begin->seq);
-				/* encode presumed sent time */
-				sendstamp.owptime = OWPNum64Add(
+				/*
+				 * set fields in datarec for missing packet
+				 * record.
+				 */
+				/* seq no */
+				datarec.seq_no = ep->begin->seq;
+				/* presumed sent time */
+				datarec.send.owptime = OWPNum64Add(
 					ep->tsession->test_spec.start_time,
 					ep->begin->relative);
-				_OWPEncodeTimeStamp(&lostrec[4],&sendstamp);
+				datarec.send.sync = 0;
+				datarec.send.multiplier = 1;
+				datarec.send.scale = 64;
 
-				/*
-				 * Error estimates for "missing" packets is just
-				 * a string of zeros, so don't encode anything
-				 * to the error portion of the packet buffer.
-				 */
-				/* write the record */
-				if(fwrite(lostrec,sizeof(u_int8_t),
-					_OWP_TESTREC_SIZE,ep->datafile) !=
-							_OWP_TESTREC_SIZE){
+				/* special value recv time */
+				datarec.recv.owptime = OWPULongToNum64(0);
+
+				/* recv error was set above... */
+
+				datarec.ttl = 255;
+
+				if(OWPWriteDataRecord(ep->cntrl->ctx,
+						ep->datafile,&datarec) != 0){
 					OWPError(ep->cntrl->ctx,OWPErrFATAL,
-						OWPErrUNKNOWN,"fwrite(): %M");
+						OWPErrUNKNOWN,
+						"OWPWriteDataRecord()");
 					goto error;
 				}
 			}
@@ -1594,20 +1618,20 @@ again:
 			 }
 		}
 
-		seq_num = ntohl(*seq);
-		if(seq_num >= ep->tsession->test_spec.npackets)
+		datarec.seq_num = ntohl(*seq);
+		if(datarec.seq_num >= ep->tsession->test_spec.npackets)
 			goto error;
 		/*
 		 * If it is no-longer in the buffer, than we ignore
 		 * it.
 		 */
-		if(seq_num < ep->begin->seq)
+		if(datarec.seq_num < ep->begin->seq)
 			goto again;
 
 		/*
 		 * What time did we expect the sender to send the packet?
 		 */
-		if(!(node = get_node(ep,seq_num))){
+		if(!(node = get_node(ep,datarec.seq_num))){
 			goto error;
 		}
 		(void)OWPTimespecToTimestamp(&expecttime,&node->absolute,
@@ -1615,25 +1639,17 @@ again:
 		/*
 		 * What time did sender send this packet?
 		 */
-		_OWPDecodeTimeStamp(&sendstamp,tstamp);
-		if(!_OWPDecodeTimeStampErrEstimate(&sendstamp,tstamperr)){
+		_OWPDecodeTimeStamp(&datarec.send,tstamp);
+		if(!_OWPDecodeTimeStampErrEstimate(&datarec.send,tstamperr)){
 			goto again;
 		}
-
-		/*
-		 * What time did we recv it?
-		 */
-		(void)OWPTimespecToTimestamp(&recvstamp,&currtime,
-						       &esterror,&lasterror);
-		lasterror = esterror;
-		recvstamp.sync = sync;
 
 		/*
 		 * Encode the recv time to buffer right away to catch
 		 * problems with the esterror.
 		 */
-		_OWPEncodeTimeStamp(&recvbuf[0],&recvstamp);
-		if(!_OWPEncodeTimeStampErrEstimate(&recvbuf[8],&recvstamp)){
+		_OWPEncodeTimeStamp(&recvbuf[0],&datarec.recv);
+		if(!_OWPEncodeTimeStampErrEstimate(&recvbuf[8],&datarec.recv)){
 			OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 				"Invalid recv timestamp!");
 			goto error;
@@ -1651,7 +1667,7 @@ again:
 		 * Send timestamp is more than timeout in past or future.
 		 * (i.e. send/recv differ by more than "timeout")
 		 */
-		if(OWPNum64Diff(sendstamp.owptime,recvstamp.owptime) >
+		if(OWPNum64Diff(datarec.send.owptime,datarec.recv.owptime) >
 					ep->tsession->test_spec.loss_timeout){
 			goto again;
 		}
@@ -1661,7 +1677,7 @@ again:
 		 * Send timestamp differs by more than "timeout" from
 		 * "scheduled" send time.
 		 */
-		if(OWPNum64Diff(sendstamp.owptime,expecttime.owptime) >
+		if(OWPNum64Diff(datarec.send.owptime,expecttime.owptime) >
 					ep->tsession->test_spec.loss_timeout){
 			goto again;
 		}
@@ -1671,23 +1687,10 @@ again:
 		 */
 		node->hit = True;
 
-		/* write sequence number */
-		if(fwrite(seq,sizeof(u_int32_t),1,ep->datafile) != 1){
+		if(OWPWriteDataRecord(ep->cntrl->ctx,ep->datafile,
+					&datarec) != 0){
 			OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"fwrite(): %M");
-			goto error;
-		}
-		/* write "sent" tstamp straight from buffer */
-		if(fwrite(tstamp,sizeof(u_int8_t),10,ep->datafile) != 10){
-			OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"fwrite(): %M");
-			goto error;
-		}
-
-		/* write "recv" tstamp */
-		if(fwrite(recvbuf,sizeof(u_int8_t),10,ep->datafile) != 10){
-			OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"fwrite(): %M");
+						"OWPWriteDataRecord()");
 			goto error;
 		}
 	}
@@ -1944,7 +1947,7 @@ parenterr:
 			exit(OWP_CNTRL_FAILURE);
 		}
 
-		if(!GetTimespec(&currtime,&esterror,&sync)){
+		if(!_OWPGetTimespec(ctx,&currtime,&esterror,&sync)){
 			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
 					"Unable to fetch current time...");
 			exit(OWP_CNTRL_FAILURE);
