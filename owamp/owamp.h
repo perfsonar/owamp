@@ -35,7 +35,6 @@
 #define	True	(!False)
 #endif
 
-#include <owamp/arithm128.h>
 #include <owamp/arithm64.h>
 
 #define	OWP_MODE_UNDEFINED		(0)
