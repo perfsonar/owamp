@@ -27,6 +27,9 @@
 #include <string.h>
 #include <assert.h>
 #include <errno.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
 
 #include <owamp/owamp.h>
 #include "./access.h"
