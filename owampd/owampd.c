@@ -371,6 +371,7 @@ main(int argc, char *argv[])
 	exit(0);
 
 	while (1) {
+		OWPBoolean ok;
 		socklen_t len = addrlen;
 
 		if ( (connfd = accept(listenfd, &cliaddr, &addrlen)) < 0){
@@ -401,24 +402,30 @@ main(int argc, char *argv[])
 			exit(1);
 		}
 		
-		if (pid == 0){ /* child */
-			cntrl = OWPControlAccept(ctx, connfd, &app_data, &out);
-						 
-			if (cntrl == NULL){
-				close(connfd);
-				exit(0);
-			}
-			
-			/* 
-			   Now start working with the valid OWPControl handle. 
-			   ...
-			   ...
-			   ...
-			*/
-		} else { /* parent */
+		if (pid > 0) { /* parent */
 			close(connfd);
 			continue;
 		}
+		
+		/* child */
+		cntrl = OWPControlAccept(ctx, connfd, &app_data, &out);
+		
+		if (cntrl == NULL){
+			close(connfd);
+			exit(0);
+		}
+		
+		while (ok == True) {
+			ok = ServerControlMain(cntrl);
+		}
+		
+		/* 
+		   Now start working with the valid OWPControl handle. 
+		   ...
+		   ...
+		   ...
+		*/
+		
 	}
 	
 	I2hash_close(&app_data.ip2class);
