@@ -304,6 +304,15 @@ get_ip2class_line(OWPContext ctx, FILE *fp, policy_data *policy)
 	}
 	if ((c = fgetc(fp)) == EOF)
 		goto got_eof;
+	if (c == '#') { /* comment - skip till next line */
+		while ((c = fgetc(fp)) != EOF) {
+			if (c == '\n') {
+				linenum++;
+				return OWP_OK;
+			}
+		}
+		goto got_eof;
+	}
 
 	if (isspace(c) || (c == '#')) { /* Expect empty line - else error*/
 		while (c != '\n') {
@@ -318,14 +327,19 @@ get_ip2class_line(OWPContext ctx, FILE *fp, policy_data *policy)
 		}
 		new_line = 1; /* Shouldn't be necessary but just in case. */
 		linenum++;
+		owp_buf_free(&buf);
 		return OWP_OK;
 	}
 
 	/* Else expect a word - but remember to save the first char.*/
 	if (owp_symbol_save(ctx, &buf, c) < 0)
 		goto save_err;
-	if (owp_getword(ctx, fp, &buf) == OWP_ERR)
+	if (owp_getword(ctx, fp, &buf) == OWP_ERR) {
+		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
+   "FATAL: get_ip2class_line: reading file %s: physical read error in line %u",
+			 filename, linenum);
 		return OWP_ERR;
+	}
 
 	if (new_line) {
 		err_linenum = linenum - 1;
@@ -358,6 +372,9 @@ get_ip2class_line(OWPContext ctx, FILE *fp, policy_data *policy)
 			break;
 	}
 
+	owp_buf_print(stderr, &buf);
+	fprintf(stderr, "%u\n", linenum);
+
 	owp_buf_reset(&buf);
 	if (owp_symbol_save(ctx, &buf, c) < 0) {
 		free(netmask);
@@ -365,8 +382,10 @@ get_ip2class_line(OWPContext ctx, FILE *fp, policy_data *policy)
 	}
 	if (owp_getword(ctx, fp, &buf) == OWP_ERR) {
 		free(netmask);
+		owp_buf_free(&buf);
 		return OWP_ERR;
 	}
+
 
 	err_linenum = (!new_line)? linenum : (linenum - 1); 
 	if (!new_line) { /* Skip white-space till next newline */
@@ -398,10 +417,13 @@ get_ip2class_line(OWPContext ctx, FILE *fp, policy_data *policy)
 		goto malloc_err;
 	}
 
+	owp_buf_print(stderr, &buf);
+
 	if (!class_has_limits(class, policy)){
 		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
 			 "FATAL: class %s has not been assigned limits",
 			 class); 
+		owp_buf_free(&buf);
 		return OWP_ERR;
 	}
 
@@ -431,6 +453,7 @@ get_ip2class_line(OWPContext ctx, FILE *fp, policy_data *policy)
 			free(class); free(netmask);
 			OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN,
 			      "FATAL: %s: line %lu: unknown protocol family");
+			owp_buf_free(&buf);
 			return OWP_ERR;
 			/* UNREACHED */
 		}
@@ -494,47 +517,54 @@ get_ip2class_line(OWPContext ctx, FILE *fp, policy_data *policy)
 
 	free(netmask);
 	free(class);
+	owp_buf_free(&buf);
+
 	return OWP_OK;
 
  bad_family:
 	free(netmask); free(class);
 	OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN,
 		 "FATAL: %s: line %lu: bad protocol family.",
-		 filename, linenum);
+		 filename, err_linenum);
+	owp_buf_free(&buf);
 	return OWP_ERR;
 
  bad_mask:
+	owp_buf_free(&buf);
 	free(netmask); free(class);
 OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN,
 		 "FATAL: %s: line %lu: bad netmask.",
-		 filename, linenum);
+		 filename, err_linenum);
 	return OWP_ERR;
 
  malloc_err:
+	owp_buf_free(&buf);
 	OWPError(ctx, OWPErrFATAL, errno, 
 		 "FATAL: get_ip2class_line: reading file %s: malloc failed",
 		 filename);
 	return OWP_ERR;
 
  syntax_err:
+	owp_buf_free(&buf);
 	OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
 	  "FATAL: get_ip2class_line: reading file %s: syntax error in line %u",
 		 filename, err_linenum);
 	return OWP_ERR;
 
  save_err:
+	owp_buf_free(&buf);
 	OWPError(ctx, OWPErrFATAL, errno,
 		 "FATAL: error saving char in a buffer");
 	return OWP_ERR;
 	
  got_eof:
+	owp_buf_free(&buf);
 	if (ferror(fp)) {
 		OWPError(ctx, OWPErrFATAL, errno,
 			 "FATAL: reading error");
 		return OWP_ERR;
 	}
 	return OWP_EOF;
-	
 }
 
 /*
