@@ -28,23 +28,29 @@ use constant NUM_INTERVALS => 10; # max number of intervals in liveness updates
 use constant TMP_SECRET => 'abcdefgh12345678';
 use constant SERVER_PORT => 2345;
 
+my $conf = new OWP::Conf;
+
 # separator of fields in update messages and database values
-my $update_sep = '_';
+my $update_sep =  $conf->must_get_val(ATTR => 'SEPARATOR'); # '_';
 
 # $top_dir contains the hierarchy of receiver directories
-my $top_dir = '/home/karp/projects/owamp/datadep';
+my $top_dir = $conf->must_get_val(ATTR => 'CENTRALDATADIR');
+# '/home/karp/projects/owamp/datadep';
 
 # path to the 'owdigest' executable.
-my $digest_path = '/home/karp/projects/owamp/owdigest/owdigest';
+my $digest_path = $conf->must_get_val(ATTR => 'OWPBINDIR');
+# '/home/karp/projects/owamp/owdigest/owdigest';
 
 # this is the file containing the secret to hash timestamps with.
-my $passwd_file = '/home/karp/projects/owamp/etc/owampd.passwd';
+my $passwd_file = "$conf->must_get_val(ATTR => 'OWPBINDIR')/owampd.passwd";
+# '/home/karp/projects/owamp/etc/owampd.passwd';
 
 # this is a log file with liveness reports from nodes
 my $log_file = "$top_dir/liveness.dat";
 
 # mesh types to watch for - will be set as: $conf->get_val(ATTR=>'MESHTYPES');
-my @meshtypes = qw(v4 v6);
+my @meshtypes = $conf->must_get_val(ATTR => 'MESHTYPES');
+# qw(v4 v6);
 
 # XXX - see also sub definition of getattr at the end - remove it and
 # replace its invocation with $conf->get_val !!!
@@ -186,7 +192,7 @@ sub update_node {
 		    if (contains($start, $end, $intervals[$i])) {
 			warn "file $fullpath invalid: archiving\n"
 				if VERBOSE;
-			unlink $fullpath or 
+			unlink $fullpath or
 				warn "Could not unlink $fullpath: $!";
 			next FILE;
 		    }
