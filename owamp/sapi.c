@@ -50,8 +50,7 @@ AddrByWildcard(
 
 	if( (ai_err = getaddrinfo(NULL,OWP_CONTROL_SERVICE_NAME,&hints,&ai)!=0)
 								|| !ai){
-		OWPError(ctx,OWPErrFATAL,errno,"getaddrinfo():%s",
-							strerror(errno));
+		OWPError(ctx,OWPErrFATAL,errno,"getaddrinfo():%M");
 		return NULL;
 	}
 
@@ -719,12 +718,18 @@ OWPProcessTestRequest(
 	recvport = (u_int16_t *)((u_int8_t*)RecvAddr->saddr + offset);
 
 	if( !(tsession = _OWPTestSessionAlloc(cntrl,SendAddr,conf_sender,
-					RecvAddr,conf_receiver,&tspec)))
+					RecvAddr,conf_receiver,&tspec))){
+		err_ret = OWPErrWARNING;
+		acceptval = OWP_CNTRL_FAILURE;
 		goto error;
+	}
 
 	if(conf_receiver){
-		if(_OWPCreateSID(tsession) != 0)
+		if(_OWPCreateSID(tsession) != 0){
+			err_ret = OWPErrWARNING;
+			acceptval = OWP_CNTRL_FAILURE;
 			goto error;
+		}
 	}else{
 		memcpy(tsession->sid,sid,sizeof(sid));
 	}
@@ -734,8 +739,11 @@ OWPProcessTestRequest(
 	 * them to compute the schedule.
 	 */
 
-	if(_OWPTestSessionCreateSchedule(tsession) != 0)
+	if(_OWPTestSessionCreateSchedule(tsession) != 0){
+		err_ret = OWPErrWARNING;
+		acceptval = OWP_CNTRL_FAILURE;
 		goto error;
+	}
 
 	/*
 	 * if conf_receiver - open port and get SID.
@@ -756,6 +764,8 @@ OWPProcessTestRequest(
 		/* receiver first (sid comes from there) */
 		if(!_OWPCallEndpointInit(cntrl,tsession,tsession->receiver,NULL,
 					&tsession->recv_end_data,&err_ret)){
+			err_ret = OWPErrWARNING;
+			acceptval = OWP_CNTRL_FAILURE;
 			goto error;
 		}
 	}
@@ -780,10 +790,14 @@ OWPProcessTestRequest(
 		}
 		if(!_OWPCallEndpointInit(cntrl,tsession,tsession->sender,NULL,
 					&tsession->send_end_data,&err_ret)){
+			err_ret = OWPErrWARNING;
+			acceptval = OWP_CNTRL_FAILURE;
 			goto error;
 		}
 		if(!_OWPCallEndpointInitHook(cntrl,tsession,
 					&tsession->send_end_data,&err_ret)){
+			err_ret = OWPErrWARNING;
+			acceptval = OWP_CNTRL_FAILURE;
 			goto error;
 		}
 		port = *sendport;
@@ -792,6 +806,8 @@ OWPProcessTestRequest(
 	if(conf_receiver){
 		if(!_OWPCallEndpointInitHook(cntrl,tsession,
 					&tsession->recv_end_data,&err_ret)){
+			err_ret = OWPErrWARNING;
+			acceptval = OWP_CNTRL_FAILURE;
 			goto error;
 		}
 		port = *recvport;
@@ -800,7 +816,7 @@ OWPProcessTestRequest(
 	if( (rc = _OWPWriteTestAccept(cntrl,OWP_CNTRL_ACCEPT,
 				      port,tsession->sid)) < OWPErrOK){
 		err_ret = (OWPErrSeverity)rc;
-		goto error;
+		goto done;
 	}
 
 	/*
@@ -819,6 +835,7 @@ error:
 	if(err_ret >= OWPErrWARNING)
 		(void)_OWPWriteTestAccept(cntrl,acceptval,0,NULL);
 
+done:
 	if(tsession)
 		_OWPTestSessionFree(tsession,OWP_CNTRL_FAILURE);
 	else{

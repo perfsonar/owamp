@@ -366,7 +366,7 @@ _OWPEndpointInit(
 	if(InitNTP(ctx) != 0){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
 				"Unable to initialize clock interface.");
-		exit(OWP_CNTRL_FAILURE);
+		return OWPErrFATAL;
 	}
 
 	if( !(ep=EndpointAlloc(ctx)))
@@ -399,7 +399,7 @@ _OWPEndpointInit(
 
 	if(!(ep->relative_offsets = malloc(sizeof(struct timespec) *
 					tsession->test_spec.any.npackets))){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"malloc():%M");
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"malloc(): %M");
 		goto error;
 	}
 
@@ -410,7 +410,7 @@ _OWPEndpointInit(
 	ep->clr_buffer = malloc(16);	/* one block - dynamic for alignment */
 
 	if(!ep->payload || !ep->clr_buffer){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"malloc():%M");
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"malloc(): %M");
 		goto error;
 	}
 
@@ -421,7 +421,7 @@ _OWPEndpointInit(
 	ep->sockfd = socket(localaddr->saddr->sa_family,localaddr->so_type,
 						localaddr->so_protocol);
 	if(ep->sockfd<0){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"socket():%M");
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"socket(): %M");
 		goto error;
 	}
 
@@ -430,7 +430,7 @@ _OWPEndpointInit(
 	 */
 	if(bind(ep->sockfd,localaddr->saddr,localaddr->saddrlen) != 0){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-						"bind call failed:():%M");
+						"bind call failed: %M");
 		goto error;
 	}
 
@@ -439,7 +439,7 @@ _OWPEndpointInit(
 	 */
 	memset(&sbuff,0,sizeof(sbuff));
 	if(getsockname(ep->sockfd,(void*)&sbuff,&sbuff_len) != 0){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"getsockname():%M");
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"getsockname(): %M");
 		goto error;
 	}
 
@@ -461,7 +461,7 @@ _OWPEndpointInit(
 		 */
 		if(!(ep->received_packets = calloc(sizeof(u_int8_t),
 						ep->test_spec.any.npackets))){
-			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"calloc():%M");
+			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"calloc(): %M");
 			goto error;
 		}
 
@@ -473,7 +473,7 @@ _OWPEndpointInit(
 
 		if(!ep->datafile){
 			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"Unable to open session file:%M");
+					"Unable to open session file: %M");
 			goto error;
 		}
 
@@ -503,7 +503,7 @@ _OWPEndpointInit(
 		if(getsockopt(ep->sockfd,SOL_SOCKET,SO_RCVBUF,
 					(void*)&sopt,&opt_size) < 0){
 			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"getsockopt(RCVBUF):%M");
+				"getsockopt(RCVBUF): %M");
 			goto error;
 		}
 
@@ -512,7 +512,7 @@ _OWPEndpointInit(
 			if(setsockopt(ep->sockfd,SOL_SOCKET,SO_RCVBUF,
 				 (void*)&sopt,sizeof(sopt)) < 0){
 				OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"setsockopt(RCVBUF=%d):%M",sopt);
+					"setsockopt(RCVBUF=%d): %M",sopt);
 				goto error;
 			}
 		}
@@ -528,7 +528,7 @@ _OWPEndpointInit(
 		if(getsockopt(ep->sockfd,SOL_SOCKET,SO_SNDBUF,
 					(void*)&sopt,&opt_size) < 0){
 			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"getsockopt(SNDBUF):%M");
+				"getsockopt(SNDBUF): %M");
 			goto error;
 		}
 
@@ -537,7 +537,7 @@ _OWPEndpointInit(
 			if(setsockopt(ep->sockfd,SOL_SOCKET,SO_SNDBUF,
 				 (void*)&sopt,sizeof(sopt)) < 0){
 				OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-						"setsockopt(RCVBUF=%d):%M",
+						"setsockopt(RCVBUF=%d): %M",
 						sopt);
 				goto error;
 			}
@@ -551,10 +551,10 @@ _OWPEndpointInit(
 
 error:
 	if(ep->filepath && (unlink(ep->filepath) != 0) && (errno != ENOENT)){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"unlink():%M");
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"unlink(): %M");
 	}
 	if(ep->linkpath && (unlink(ep->linkpath) != 0) && (errno != ENOENT)){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"unlink():%M");
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"unlink(): %M");
 	}
 	EndpointFree(ep);
 	return OWPErrFATAL;
@@ -1194,7 +1194,9 @@ _OWPEndpointInitHook(
 			(sigaction(SIGINT,&act,&intact) != 0) ||
 			(sigaction(SIGALRM,&act,&alrmact) != 0)){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"sigaction():%M");
-		exit(OWP_CNTRL_FAILURE);
+		EndpointFree(ep);
+		*end_data = NULL;
+		return OWPErrFATAL;
 	}
 
 	/*
@@ -1210,7 +1212,9 @@ _OWPEndpointInitHook(
 	/* fetch current handler */
 	if(sigaction(SIGCHLD,NULL,&chldact) != 0){
 		OWPError(ctx,OWPErrWARNING,OWPErrUNKNOWN,"sigaction():%M");
-		return OWPErrWARNING;
+		EndpointFree(ep);
+		*end_data = NULL;
+		return OWPErrFATAL;
 	}
 	/* if there is currently no handler - set one. */
 	if(chldact.sa_handler == SIG_DFL){
@@ -1218,7 +1222,9 @@ _OWPEndpointInitHook(
 		if(sigaction(SIGCHLD,&chldact,NULL) != 0){
 			OWPError(ctx,OWPErrWARNING,OWPErrUNKNOWN,
 					"sigaction(DFL) failed:%M");
-			return OWPErrWARNING;
+			EndpointFree(ep);
+			*end_data = NULL;
+			return OWPErrFATAL;
 		}
 	}
 	/* now make sure SIGCHLD won't be masked. */
@@ -1237,6 +1243,7 @@ _OWPEndpointInitHook(
 
 	if(ep->child > 0){
 		/* parent */
+		int			childstatus;
 
 		/*
 		 * Reset parent's sig handlers.
@@ -1247,14 +1254,26 @@ _OWPEndpointInitHook(
 				(sigaction(SIGALRM,&alrmact,NULL) != 0)){
 			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
 							"sigaction():%M");
-			exit(OWP_CNTRL_FAILURE);
+			kill(ep->child,SIGINT);
+			ep->wopts &= ~WNOHANG;
+			while((waitpid(ep->child,&childstatus,ep->wopts) < 0)
+					&& (errno == EINTR));
+			EndpointFree(ep);
+			*end_data = NULL;
+			return OWPErrFATAL;
 		}
 	
 		/* reset sig_mask to the old one (-SIGCHLD)	*/
 		if(sigprocmask(SIG_SETMASK,&osigs,NULL) != 0){
 			OWPError(ctx,OWPErrWARNING,OWPErrUNKNOWN,
 							"sigprocmask():%M");
-			return OWPErrWARNING;
+			kill(ep->child,SIGINT);
+			ep->wopts &= ~WNOHANG;
+			while((waitpid(ep->child,&childstatus,ep->wopts) < 0)
+					&& (errno == EINTR));
+			EndpointFree(ep);
+			*end_data = NULL;
+			return OWPErrFATAL;
 		}
 
 
