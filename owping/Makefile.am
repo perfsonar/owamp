@@ -21,5 +21,5 @@
 INCLUDES	= $(I2UTILINCS)
 
 bin_PROGRAMS	= owping
-owping_SOURCES	= owping.c
+owping_SOURCES	= owping.c localaddr.c localaddr.h
 owping_LDADD	= $(I2UTILLIBS)
