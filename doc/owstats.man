@@ -1,6 +1,7 @@
 '\"t
 ." The first line of this file must contain the '"[e][r][t][v] line
 ." to tell man to run the appropriate filter "t" for table.
+." vim: set filetype=nroff :
 ."
 ."	$Id$
 ."
