@@ -18,5 +18,6 @@
 #
 #	Description:	toplevel build for owamp project
 #
-SUBDIRS = @TOP_BUILD_DIRS@ . owamp owampd owping owdigest powstream
+SUBDIRS = @TOP_BUILD_DIRS@ . owamp owampd owping owdigest powstream scripts
 include_HEADERS = owamp/owamp.h
+
