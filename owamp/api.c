@@ -652,7 +652,7 @@ OWPStopSessions(
 		)
 {
 	OWPErrSeverity	err,err2=OWPErrOK;
-	u_int8_t	msgtype;
+	int		msgtype;
 	OWPAcceptType	aval=OWP_CNTRL_ACCEPT;
 
 	if(!cntrl){
@@ -690,6 +690,8 @@ OWPStopSessions(
 	}
 
 	err = _OWPReadStopSessions(cntrl,&aval);
+
+	cntrl->state &= ~_OWPStateTest;
 
 	if(acceptval)
 		*acceptval = aval;
@@ -824,7 +826,7 @@ OWPStopSessionsWait(
 	fd_set		readfds;
 	fd_set		exceptfds;
 	int		rc;
-	u_int8_t	msgtype;
+	int		msgtype;
 	OWPErrSeverity	err2=OWPErrOK;
 	OWPAcceptType	aval=OWP_CNTRL_ACCEPT;
 
@@ -923,6 +925,7 @@ AGAIN:
 	}
 
 	err2 = _OWPWriteStopSessions(cntrl,aval);
+	cntrl->state &= ~_OWPStateTest;
 
 	*err_ret = MIN(*err_ret, err2);
 	return 0;

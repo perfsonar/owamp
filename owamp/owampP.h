@@ -344,7 +344,7 @@ _OWPReadServerOK(
 	OWPAcceptType	*acceptval	/* ret	*/
 	);
 
-extern u_int8_t
+extern int
 OWPReadRequestType(
 	OWPControl	cntrl
 	);

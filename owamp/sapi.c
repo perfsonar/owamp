@@ -847,44 +847,6 @@ OWPProcessStartSessions(
 	return err2;
 }
 
-OWPErrSeverity
-OWPProcessStopSessions(
-	OWPControl	cntrl
-	)
-{
-	int		rc;
-	OWPTestSession	tsession;
-	OWPAcceptType	acceptval;
-	OWPErrSeverity	err,err2=OWPErrOK;
-
-	if( (rc = _OWPReadStopSessions(cntrl,&acceptval)) < OWPErrOK)
-		return _OWPFailControlSession(cntrl,rc);
-
-	for(tsession = cntrl->tests;tsession;tsession = tsession->next){
-		if(tsession->recv_end_data){
-			_OWPCallEndpointStop(tsession,&tsession->recv_end_data,
-					acceptval,&err);
-			err2 = MIN(err,err2);
-		}
-		if(tsession->send_end_data){
-			_OWPCallEndpointStop(tsession,&tsession->send_end_data,
-					acceptval,&err);
-			err2 = MIN(err,err2);
-		}
-	}
-
-	if(err2 < OWPErrWARNING)
-		acceptval = OWP_CNTRL_FAILURE;
-	else
-		acceptval = OWP_CNTRL_ACCEPT;
-
-	if( (rc = _OWPWriteStopSessions(cntrl,acceptval)) < OWPErrOK)
-		return _OWPFailControlSession(cntrl,rc);
-
-
-	return err2;
-}
-
 /*
 ** Read records from the given descriptor and send it to the OWPControl socket.
 */
@@ -1258,7 +1220,7 @@ OWPProcessRequests(
 		)
 {
 	OWPErrSeverity	rc;
-	u_int8_t	msgtype;
+	int		msgtype;
 
 	while((msgtype = OWPReadRequestType(cntrl)) > 0){
 		switch (msgtype){

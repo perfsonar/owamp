@@ -326,7 +326,7 @@ _OWPReadServerOK(
  * It is also called by the client side from OWPStopSessionsWait and
  * OWPStopSessions
  */
-u_int8_t
+int
 OWPReadRequestType(
 	OWPControl	cntrl
 	)
@@ -337,7 +337,7 @@ OWPReadRequestType(
 	if(!_OWPStateIsRequest(cntrl) || _OWPStateIsReading(cntrl)){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
 				"OWPReadRequestType:called in wrong state.");
-		return 0;
+		return -OWPErrFATAL;
 	}
 
 	/* Read one block so we can peek at the message type */
@@ -355,7 +355,7 @@ OWPReadRequestType(
 		cntrl->state = _OWPStateInvalid;
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
 			"OWPReadRequestType:Invalid request from client.");
-		return 0;
+		return -OWPErrFATAL;
 	}
 
 	switch(msgtype){
@@ -376,7 +376,9 @@ OWPReadRequestType(
 			break;
 		default:
 			cntrl->state = _OWPStateInvalid;
-			return 0;
+			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+				"OWPReadRequestType:Unknown msg:%d",msgtype);
+			return -OWPErrFATAL;
 	}
 
 	return msgtype;

@@ -926,7 +926,7 @@ main(
 	/* If local sender - fetch data to local disk first. */
 	if (!ping_ctx.receiver_local) {
 		if (acceptval == 1) {
-			I2ErrLog(eh, "Server refused to send data.");
+			I2ErrLog(eh, "Test session failed.");
 			exit(0);
 		}
 		
