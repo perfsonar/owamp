@@ -158,7 +158,7 @@ foreach my $mtype (@mtypes){
 		my $init = time();
 
 		my $got_data = 0;
-		my ($worst_median_delay, $worst_loss) = (0.0, 0.0);
+		my ($worst_median_delay, $worst_loss) = (-100.0, 0.0);
 		foreach my $file (@all) {
 		    my $ofile = $file;
 		    next unless $file =~ s/$digest_suffix$//;
