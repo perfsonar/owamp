@@ -20,6 +20,8 @@
  *
  * 		Find local addresses and put them in a hash.
  */
+#include <stdio.h>
+#include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
@@ -47,19 +49,19 @@ is_local_node(
 	int		socktype
 	)
 {
-	struct addrinfo hints = {
-		0,			/* ai_flags	*/
-		PF_UNSPEC,		/* ai_family	*/
-		socktype,		/* ai_socktype	*/
-		0};
+	struct addrinfo hints;
 	struct addrinfo	*ai_ret = NULL, *ai = NULL;
 	I2Boolean	val=False;
 
 	if(!nodename)
 		return True;
 
-	if(socktype)
+	if(socktype){
+		memset(&hints,0,sizeof(struct addrinfo));
+		hints.ai_family = PF_UNSPEC;
+		hints.ai_socktype = socktype;
 		ai = &hints;
+	}
 
 	if( (getaddrinfo(nodename,NULL,ai,&ai_ret) != 0))
 		return False;

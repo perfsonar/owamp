@@ -195,61 +195,51 @@ _OWPSendBlocks(
 	int		num_blocks
 	)
 {
-	ssize_t n;
+	u_int8_t	msg[_OWP_MAX_MSG];
+	u_int8_t	*mptr;
+	ssize_t		n;
 
-	if (! (cntrl->mode & _OWP_DO_CIPHER)){
-		n = OWPWriten(cntrl->sockfd, buf,
-					num_blocks*_OWP_RIJNDAEL_BLOCK_SIZE);
-		if (n < 0){
-			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,
-					OWPErrUNKNOWN,"OWPWriten failed:(%s)",
-					strerror(errno));
-			return -1;
-		} 
-		return 0;
-	} else {
-		u_int8_t	msg[_OWP_MAX_MSG];
+	if (cntrl->mode & _OWP_DO_CIPHER){
 		_OWPEncryptBlocks(cntrl, buf, num_blocks, msg);
-		n = OWPWriten(cntrl->sockfd, msg,
-					num_blocks*_OWP_RIJNDAEL_BLOCK_SIZE);
-		if (n < 0){
-			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,
-					OWPErrUNKNOWN,"OWPWriten failed:(%s)",
-					strerror(errno));
-			return -1;
-		} 
-		return 0;
+		mptr = msg;
 	}
+	else
+		mptr = buf;
+
+	n = OWPWriten(cntrl->sockfd,mptr,num_blocks*_OWP_RIJNDAEL_BLOCK_SIZE);
+	if (n < 0){
+		OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
+				"OWPWriten failed:(%s)",strerror(errno));
+		return -1;
+	} 
+
+	return num_blocks;
 }
 
 int
 _OWPReceiveBlocks(OWPControl cntrl, u_int8_t *buf, int num_blocks)
 {
-	ssize_t n;
+	ssize_t		n;
+	u_int8_t	msg[_OWP_MAX_MSG];
+	u_int8_t	*mptr;
 
-	if (! (cntrl->mode & _OWP_DO_CIPHER)){
-		n = OWPReadn(cntrl->sockfd, buf,
-					num_blocks*_OWP_RIJNDAEL_BLOCK_SIZE);
-		if (n < 0){
-			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,
-					OWPErrUNKNOWN,"OWPReadn failed:(%s)",
-					strerror(errno));
-			return -1;
-		} 
-		return 0;
-	} else {
-		u_int8_t	msg[_OWP_MAX_MSG];
-		n = OWPReadn(cntrl->sockfd, msg,
-					num_blocks*_OWP_RIJNDAEL_BLOCK_SIZE);
-		if (n < 0){
-			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,
-					OWPErrUNKNOWN,"OWPReadn failed:(%s)",
-					strerror(errno));
-			return -1;
-		} 
+	if (cntrl->mode & _OWP_DO_CIPHER)
+		mptr = msg;
+	else
+		mptr = buf;
+
+	n = OWPReadn(cntrl->sockfd,buf,num_blocks*_OWP_RIJNDAEL_BLOCK_SIZE);
+	if (n < 0){
+		OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
+				"OWPReadn failed:(%s)",strerror(errno));
+		return -1;
+	} 
+	num_blocks = n/_OWP_RIJNDAEL_BLOCK_SIZE;
+
+	if (cntrl->mode & _OWP_DO_CIPHER)
 		_OWPDecryptBlocks(cntrl, msg, num_blocks, buf);
-		return 0;
-	}	
+
+	return num_blocks;
 }
 
 /*

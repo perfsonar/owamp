@@ -80,6 +80,21 @@ typedef enum {
 	OWPErrUNKNOWN
 } OWPErrType;
 
+/*
+ * Valid values for "accept" - this will be added to for the purpose of
+ * enumerating the reasons for rejecting a session, or early termination
+ * of a test session.
+ *
+ * TODO:Get the additional "accept" values added to the spec.
+ */
+typedef enum{
+	OWP_CNTRL_INVALID=-1,
+	OWP_CNTRL_ACCEPT=0x0,
+	OWP_CNTRL_REJECT=0x1,
+	OWP_CNTRL_FAILURE=0x2,
+	OWP_CNTRL_UNSUPPORTED=0x4
+} OWPAcceptType;
+
 typedef u_int32_t	OWPBoolean;
 typedef u_int8_t	OWPSID[16];
 typedef u_int8_t	OWPSequence[4];
@@ -155,27 +170,6 @@ typedef OWPBoolean	(*OWPGetAESKeyFunc)(
 );
 
 /*
- * If set, this function will be called from OWPControlOpen before the actual
- * connection is tried. This will allow the policy to determine if it
- * is willing to even speak "control" to that IP. (In the reference
- * implementation this just checks if the remote_addr is in the "forbidden"
- * class - and denies that. All other addresses are allowed at this point.)
- *
- * If local_sa_addr is NULL - then it is not being specified.
- * remote_sa_addr MUST be set.
- *
- * err_ret should be used to indicate a problem with the policy system - not
- * to indicate a negative response to this function. (However, err_ret can
- * be assumed to be "OK" if a positive response comes back from the function.)
- */
-typedef OWPBoolean (*OWPCheckAddrPolicy)(
-	void		*app_data,
-	struct sockaddr	*local_sa_addr,
-	struct sockaddr	*remote_sa_addr,
-	OWPErrSeverity	*err_ret
-);
-
-/*
  * This function will be called from OWPControlOpen and OWPServerAccept
  * to determine if the control connection should be accepted.
  * It is called after connecting, and after determining the kid.
@@ -221,50 +215,48 @@ typedef OWPBoolean (*OWPCheckTestPolicyFunc)(
  * structure.
  * If "recv" - (send == False) then also allocate and return sid.
  */
-typedef OWPBoolean (*OWPEndpointInitFunc)(
+typedef OWPErrSeverity (*OWPEndpointInitFunc)(
 	void		*app_data,
 	void		**end_data_ret,
 	OWPBoolean	send,
 	OWPAddr		localaddr,
 	OWPTestSpec	*test_spec,
-	OWPSID		sid_ret,	/* only used if !send */
-	OWPErrSeverity	*err_ret
+	OWPSID		sid_ret		/* only used if !send */
 );
 
 /*
  * Given remote_addr/port (can "connect" to remote addr now)
  * return OK
+ * set the sid (if this is a recv - MUST be the same as came from Initfunc)
  */
-typedef OWPBoolean (*OWPEndpointInitHookFunc)(
+typedef OWPErrSeverity (*OWPEndpointInitHookFunc)(
 	void		*app_data,
 	void		*end_data,
 	OWPAddr		remoteaddr,
-	OWPSID		sid,
-	OWPErrSeverity	*err_ret
+	OWPSID		sid
 );
 
 /*
  * Given start session
  */
-typedef void (*OWPEndpointStart)(
+typedef OWPErrSeverity (*OWPEndpointStartFunc)(
 	void		*app_data,
-	void		*end_data,
-	OWPErrSeverity	*err_ret
+	void		*end_data
 );
 
 /*
  * Given stop session
  */
-typedef void (*OWPEndpointStop)(
+typedef OWPErrSeverity (*OWPEndpointStopFunc)(
 	void		*app_data,
 	void		*end_data,
-	OWPErrSeverity	*err_ret
+	OWPAcceptType	aval
 );
 
 /*
  * Given retrieve session
  */
-typedef void (*OWPRetrieveSessionData)(
+typedef void (*OWPRetrieveSessionDataFunc)(
 	void		*app_data,
 	OWPSID		sid,
 	OWPErrSeverity	*err_ret
@@ -288,13 +280,12 @@ typedef struct {
 	void				*app_data;
 	OWPErrFunc			err_func;
 	OWPGetAESKeyFunc		get_aes_key_func;
-	OWPCheckAddrPolicy		check_addr_func;
 	OWPCheckControlPolicyFunc	check_control_func;
 	OWPCheckTestPolicyFunc		check_test_func;
 	OWPEndpointInitFunc		endpoint_init_func;
 	OWPEndpointInitHookFunc		endpoint_init_hook_func;
-	OWPEndpointStart		endpoint_start_func;
-	OWPEndpointStop			endpoint_stop_func;
+	OWPEndpointStartFunc		endpoint_start_func;
+	OWPEndpointStopFunc		endpoint_stop_func;
 	OWPGetTimeStampFunc		get_timestamp_func;
 } OWPInitializeConfigRec, *OWPInitializeConfig;
 
@@ -572,34 +563,37 @@ OWPControlAccept(
 	OWPErrSeverity	*err_ret	/* err - return			*/
 		 );
 
-/* Determine the type of the newly received request. */
-extern u_int8_t
-OWPGetType(OWPControl cntrl);
 
-#define OWP_TEST_REJECT 1
-/* The next four functions parse each of their repective message types */
-extern int
-OWPParseTestRequest(
-		    OWPControl cntrl, 
-		    OWPAddr server, 
-		    OWPAddr receiver,
-		    OWPBoolean *conf_sender,
-		    OWPBoolean *conf_receiver,
-		    OWPTestSpec *test_spec,
-		    OWPSID sid
-		    );
+extern OWPErrSeverity
+OWPProcessTestRequest(
+	OWPControl	cntrl
+		);
 
-extern int
-OWPParseTestStart(OWPControl cntrl);
+extern OWPErrSeverity
+OWPProcessStartSessions(
+	OWPControl	cntrl
+	);
 
-extern int
-OWPParseTestStop(OWPControl cntrl);
+extern OWPErrSeverity
+OWPProcessStopSessions(
+	OWPControl	cntrl
+	);
 
-extern int
-OWPParseTestRetrieve(OWPControl cntrl);
+extern OWPErrSeverity
+OWPProcessRetrieveSession(
+	OWPControl	cntrl
+	);
 
-extern int
-OWPServerReadRequest(OWPControl cntrl, char *buf);
+/*
+ * TODO: Add timeout so ProcessRequests can break out if no request
+ * comes in some configurable fixed time. (Necessary to have the server
+ * process exit when test sessions are done, if the client doesn't send
+ * the StopSessions.)
+ */
+extern OWPErrSeverity
+OWPProcessRequests(
+	OWPControl	cntrl
+		);
 
 /*
 ** Fetch context field of OWPControl structure.
@@ -613,20 +607,5 @@ extern OWPSessionMode
 OWPGetMode(
 	OWPControl	cntrl
 	);
-
-/* 
-** This function does the first policy check on the server. 
-*/
-/*
- * TODO: Tolya - is this supposed to be here? Is this something old?
- */
-extern OWPBoolean
-OWPServerCheckAddrPolicy(OWPContext ctx, 
-			 struct sockaddr *addr, 
-			 OWPErrSeverity *err_ret
-			 );
-
-void
-OWPServerAcceptSession(OWPControl cntrl, int code);
 
 #endif	/* OWAMP_H */

@@ -212,8 +212,8 @@ struct OWPTestSessionRec{
 	OWPSID				sid;
 	OWPAddr				sender;
 	OWPAddr				receiver;
-	OWPBoolean			server_conf_sender;
-	OWPBoolean			server_conf_receiver;
+	OWPBoolean			send_local;
+	OWPBoolean			recv_local;
 	void				*send_end_data;
 	void				*recv_end_data;
 	OWPTestSpec			test_spec;
@@ -249,9 +249,10 @@ _OWPTestSessionAlloc(
 	OWPTestSpec	*test_spec
 	);
 
-extern void
+extern OWPErrSeverity
 _OWPTestSessionFree(
-	OWPTestSession	tsession
+	OWPTestSession	tsession,
+	OWPAcceptType	aval
 	);
 
 /*
@@ -318,18 +319,6 @@ OWPDecryptToken(
 /*
  * protocol.c
  */
-/*
- * Valid values for "accept" - this will be added to for the purpose of
- * enumerating the reasons for rejection.
- *
- * TODO:Get the additional "accept" values added to the spec.
- */
-typedef enum{
-	_OWP_CNTRL_INVALID=-1,
-	_OWP_CNTRL_ACCEPT=0x0,
-	_OWP_CNTRL_REJECT=0x1,
-	_OWP_CNTRL_SERVER_FAILURE=0x2
-} OWPAcceptType;
 
 extern int
 _OWPWriteServerGreeting(
@@ -482,14 +471,6 @@ _OWPCallGetAESKey(
 );
 
 extern OWPBoolean
-_OWPCallCheckAddrPolicy(
-	OWPContext	ctx,		/* library context	*/
-	struct sockaddr	*local_sa_addr,	/* local addr or NULL	*/
-	struct sockaddr	*remote_sa_addr,/* remote addr		*/
-	OWPErrSeverity	*err_ret	/* error - return	*/
-);
-
-extern OWPBoolean
 _OWPCallCheckControlPolicy(
 	OWPContext	ctx,		/* library context		*/
 	OWPSessionMode	mode,		/* requested mode       	*/
@@ -529,8 +510,35 @@ _OWPCallEndpointInitHook(
 	OWPErrSeverity  *err_ret
 );
 
+extern OWPBoolean
+_OWPCallEndpointStart(
+	OWPTestSession	tsession,
+	void		*end_data,
+	OWPErrSeverity	*err_ret
+	);
+
+extern OWPBoolean
+_OWPCallEndpointStop(
+	OWPTestSession	tsession,
+	void		*end_data,
+	OWPAcceptType	aval,
+	OWPErrSeverity	*err_ret
+	);
+
 extern OWPContext
 OWPGetContext(OWPControl cntrl);
+
+/*
+ * error.c
+ */
+extern OWPErrSeverity
+_OWPFailControlSession(
+	OWPControl	cntrl,
+	OWPErrSeverity	err,
+	OWPErrType	etype,
+	char		*fmt,
+	...
+	);
 
 /*
  * time.c

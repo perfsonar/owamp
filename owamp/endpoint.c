@@ -61,15 +61,14 @@ EndpointAlloc(
  * If this is a recv endpoint, it is also responsible for allocating a
  * session id.
  */
-OWPBoolean
+OWPErrSeverity
 OWPDefEndpointInit(
 	void		*app_data,
 	void		**end_data_ret,
 	OWPBoolean	send,
 	OWPAddr		localaddr,
 	OWPTestSpec	*test_spec,
-	OWPSID		sid,
-	OWPErrSeverity	*err_ret
+	OWPSID		sid
 )
 {
 	OWPContext		ctx = (OWPContext)app_data;
@@ -77,10 +76,8 @@ OWPDefEndpointInit(
 	struct sockaddr_in6	*addr_in6;
 	_DefEndpoint		ep=EndpointAlloc(ctx);
 
-	if(!ep){
-		*err_ret = OWPErrFATAL;
-		return False;
-	}
+	if(!ep)
+		return OWPErrFATAL;
 
 	/*
 	 * TODO:socket/bind
@@ -102,8 +99,7 @@ OWPDefEndpointInit(
 	else{
 		OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
 					"EndpointInit:Invalid address family");
-		*err_ret = OWPErrFATAL;
-		return False;
+		return OWPErrFATAL;
 	}
 
 	if(!send){
@@ -120,7 +116,7 @@ OWPDefEndpointInit(
 
 	*(_DefEndpoint*)end_data_ret = ep;
 
-	return True;
+	return OWPErrOK;
 }
 
 /*
@@ -129,13 +125,12 @@ OWPDefEndpointInit(
  * If this is a recv endpoint, it is also responsible for allocating a
  * session id.
  */
-OWPBoolean
+OWPErrSeverity
 OWPDefEndpointInitHook(
 	void		*app_data,
 	void		*end_data,
 	OWPAddr		remoteaddr,
-	OWPSID		sid,
-	OWPErrSeverity	*err_ret
+	OWPSID		sid
 )
 {
 	OWPContext		ctx = (OWPContext)app_data;
@@ -150,5 +145,24 @@ OWPDefEndpointInitHook(
 	 * fork child/ save pid for signals to "stop"
 	 */
 
-	return True;
+	return OWPErrOK;
+}
+
+OWPErrSeverity
+OWPDefEndpointStart(
+	void	*app_data,
+	void	*end_data
+	)
+{
+	return OWPErrOK;
+}
+
+OWPErrSeverity
+OWPDefEndpointStop(
+	void		*app_data,
+	void		*end_data,
+	OWPAcceptType	aval
+	)
+{
+	return OWPErrOK;
 }

@@ -27,24 +27,35 @@
  * If this is a recv endpoint, it is also responsible for allocating a
  * session id.
  */
-extern OWPBoolean
+extern OWPErrSeverity
 OWPDefEndpointInit(
 	void		*app_data,
 	void		**end_data_ret,
 	OWPBoolean	send,
 	OWPAddr		localaddr,
 	OWPTestSpec	*test_spec,
-	OWPSID		sid_ret,
-	OWPErrSeverity	*err_ret
+	OWPSID		sid_ret
 );
 
-extern OWPBoolean
+extern OWPErrSeverity
 OWPDefEndpointInitHook(
 	void		*app_data,
 	void		*end_data,
 	OWPAddr		remoteaddr,
-	OWPSID		sid,
-	OWPErrSeverity	*err_ret
+	OWPSID		sid
 );
+
+extern OWPErrSeverity
+OWPDefEndpointStart(
+	void	*app_data,
+	void	*end_data
+	);
+
+extern OWPErrSeverity
+OWPDefEndpointStop(
+	void		*app_data,
+	void		*end_data,
+	OWPAcceptType	aval
+	);
 
 #endif	/*	_OWAMP_ENDPOINT_H	*/

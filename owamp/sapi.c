@@ -242,9 +242,7 @@ OpenSocket(
 			break;
 		}
 
-		if(close(addr->fd) < 0)
-			OWPError(addr->ctx,OWPErrWARNING,errno,"close():%s",
-							strerror(errno));
+		while((close(addr->fd) < 0) && (errno == EINTR));
 		addr->fd = -1;
 	}
 
@@ -417,37 +415,8 @@ OWPControlAccept(
 	if(!AddrSetSockName(cntrl->local_addr,err_ret))
 		goto error;
 
-
-	/*
-	 * Check address policy.
-	 *
-	 * TODO: OWPErrINFO is being used for "logging" informatino.
-	 * we may want to make a specific "log" level for OWPErrSeverity
-	 * eventually...
-	 */
-	if(!_OWPCallCheckAddrPolicy(ctx,cntrl->local_addr->saddr,
-					cntrl->remote_addr->saddr,err_ret)){
-		if(*err_ret > OWPErrWARNING){
-			OWPError(ctx,OWPErrINFO,OWPErrPOLICY,
-			"Connect request to (%s:%s) denied from (%s:%s)",
-				cntrl->local_addr->node,cntrl->local_addr->port,
-				cntrl->remote_addr->node,
-				cntrl->remote_addr->port);
-			/*
-			 * send mode of 0 to client, and then close.
-			 */
-			rc = _OWPWriteServerGreeting(cntrl,0,challenge);
-			if(rc < 0)
-				*err_ret = (OWPErrSeverity)rc;
-			goto error;
-		}
-		else
-			OWPErrorLine(ctx,OWPLine,*err_ret,OWPErrUNKNOWN,
-						"Policy function failed.");
-		goto error;
-	}
 	OWPError(ctx,OWPErrINFO,OWPErrPOLICY,
-			"Connect request to (%s:%s) accepted from (%s:%s)",
+			"Connection to (%s:%s) from (%s:%s)",
 				cntrl->local_addr->node,cntrl->local_addr->port,
 				cntrl->remote_addr->node,
 				cntrl->remote_addr->port);
@@ -481,7 +450,7 @@ OWPControlAccept(
 				cntrl->local_addr->node,cntrl->local_addr->port,
 				cntrl->remote_addr->node,
 				cntrl->remote_addr->port,cntrl->mode);
-		if( (rc = _OWPWriteServerOK(cntrl, _OWP_CNTRL_REJECT)) < 0)
+		if( (rc = _OWPWriteServerOK(cntrl, OWP_CNTRL_REJECT)) < 0)
 			*err_ret = (OWPErrSeverity)rc;
 		goto error;
 	}
@@ -496,10 +465,10 @@ OWPControlAccept(
 				OWPError(cntrl->ctx,OWPErrINFO,OWPErrPOLICY,
 					"Unknown kid (%s)",cntrl->kid_buffer);
 				(void)_OWPWriteServerOK(cntrl,
-							_OWP_CNTRL_REJECT);
+							OWP_CNTRL_REJECT);
 			}else{
 				(void)_OWPWriteServerOK(cntrl,
-						_OWP_CNTRL_SERVER_FAILURE);
+						OWP_CNTRL_FAILURE);
 			}
 			goto error;
 		}
@@ -509,7 +478,7 @@ OWPControlAccept(
 					OWPErrUNKNOWN,
 					"Encryption state problem?!?!");
 			(void)_OWPWriteServerOK(cntrl,
-						_OWP_CNTRL_SERVER_FAILURE);
+						OWP_CNTRL_FAILURE);
 			*err_ret = OWPErrFATAL;
 			goto error;
 		}
@@ -521,7 +490,7 @@ OWPControlAccept(
 				cntrl->local_addr->node,cntrl->local_addr->port,
 				cntrl->remote_addr->node,
 				cntrl->remote_addr->port);
-			(void)_OWPWriteServerOK(cntrl,_OWP_CNTRL_REJECT);
+			(void)_OWPWriteServerOK(cntrl,OWP_CNTRL_REJECT);
 			goto error;
 		}
 		
@@ -544,13 +513,13 @@ OWPControlAccept(
 			/*
 			 * send mode of 0 to client, and then close.
 			 */
-			(void)_OWPWriteServerOK(cntrl,_OWP_CNTRL_REJECT);
+			(void)_OWPWriteServerOK(cntrl,OWP_CNTRL_REJECT);
 		}
 		else{
 			OWPErrorLine(ctx,OWPLine,*err_ret,OWPErrUNKNOWN,
 						"Policy function failed.");
 			(void)_OWPWriteServerOK(cntrl,
-						_OWP_CNTRL_SERVER_FAILURE);
+						OWP_CNTRL_FAILURE);
 		}
 		goto error;
 	}
@@ -558,7 +527,7 @@ OWPControlAccept(
 	/*
 	 * Made it through the gauntlet - accept the control session!
 	 */
-	if( (rc = _OWPWriteServerOK(cntrl,_OWP_CNTRL_ACCEPT)) < OWPErrOK){
+	if( (rc = _OWPWriteServerOK(cntrl,OWP_CNTRL_ACCEPT)) < OWPErrOK){
 		*err_ret = (OWPErrSeverity)rc;
 		goto error;
 	}
@@ -574,4 +543,405 @@ OWPControlAccept(
 error:
 	OWPControlClose(cntrl);
 	return NULL;
+}
+
+static OWPAddr
+AddrBySAddrRef(
+	OWPContext	ctx,
+	struct sockaddr	*saddr,
+	socklen_t	saddrlen
+	)
+{
+	OWPAddr		addr;
+	struct addrinfo	*ai=NULL;
+
+	if(!saddr){
+		OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
+				"AddrBySAddrRef:Invalid saddr");
+		return NULL;
+	}
+
+	if(!(addr = _OWPAddrAlloc(ctx)))
+		return NULL;
+
+	if(!(ai = malloc(sizeof(struct addrinfo)))){
+		OWPErrorLine(addr->ctx,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
+				"malloc():%s",strerror(errno));
+		(void)OWPAddrFree(addr);
+		return NULL;
+	}
+
+	ai->ai_flags = 0;
+	ai->ai_family = saddr->sa_family;
+	ai->ai_socktype = SOCK_DGRAM;
+	ai->ai_protocol = IPPROTO_IP;	/* reasonable default.	*/
+	ai->ai_addrlen = saddrlen;
+	ai->ai_canonname = NULL;
+	ai->ai_addr = saddr;
+	ai->ai_next = NULL;
+
+	addr->ai = ai;
+	addr->ai_free = True;
+	addr->saddr = saddr;
+	addr->saddrlen = saddrlen;
+
+	if(getnameinfo(addr->saddr,addr->saddrlen,
+				addr->node,sizeof(addr->node),
+				addr->port,sizeof(addr->port),
+				NI_NUMERICHOST | NI_NUMERICSERV) != 0){
+		strncpy(addr->node,"unknown",sizeof(addr->node));
+		strncpy(addr->port,"unknown",sizeof(addr->port));
+	}
+	addr->node_set = True;
+	addr->port_set = True;
+
+	return addr;
+}
+
+OWPErrSeverity
+OWPProcessTestRequest(
+	OWPControl	cntrl
+		)
+{
+	socklen_t	addrlen = SOCK_MAXADDRLEN;
+	struct sockaddr	*sendaddr;
+	struct sockaddr	*recvaddr;
+	OWPAddr		SendAddr=NULL;
+	OWPAddr		RecvAddr=NULL;
+	int		af_family;
+	u_int8_t	ipvn;
+	OWPBoolean	conf_sender;
+	OWPBoolean	conf_receiver;
+	OWPSID		sid;
+	OWPTestSpec	tspec;
+	OWPTestSession	tsession = NULL;
+	OWPErrSeverity	err_ret=OWPErrOK;
+	u_int16_t	*sendport;
+	u_int16_t	*recvport;
+	u_int16_t	port;
+	int		rc;
+	OWPAcceptType	acceptval = OWP_CNTRL_FAILURE;
+
+	/*
+	 * Use dynamic memory to ensure memory alignment will work for
+	 * all sockaddr types.
+	 */
+	sendaddr = malloc(addrlen);
+	recvaddr = malloc(addrlen);
+	if(!sendaddr || !recvaddr){
+		OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
+				"malloc():%s",strerror(errno));
+		goto error;
+	}
+
+	if( (rc = _OWPReadTestRequest(cntrl,sendaddr,recvaddr,&addrlen,
+			&ipvn,&conf_sender,&conf_receiver,sid,&tspec)) < 0){
+		err_ret = (OWPErrSeverity)rc;
+		goto error;
+	}
+
+	switch (ipvn){
+		struct sockaddr_in	*saddr4;
+#ifdef	AF_INET6
+		struct sockaddr_in6	*saddr6;
+
+		case '6':
+			af_family = AF_INET6;
+			saddr6 = (struct sockaddr_in6*)sendaddr;
+			sendport = &saddr6->sin6_port;
+			saddr6 = (struct sockaddr_in6*)recvaddr;
+			recvport = &saddr6->sin6_port;
+			break;
+#endif
+		case '4':
+			af_family = AF_INET;
+			saddr4 = (struct sockaddr_in*)sendaddr;
+			sendport = &saddr4->sin_port;
+			saddr4 = (struct sockaddr_in*)recvaddr;
+			recvport = &saddr4->sin_port;
+			break;
+		default:
+			af_family = AF_UNSPEC;
+			break;
+	}
+
+	if((af_family == AF_UNSPEC) || (sendaddr->sa_family != af_family)
+			|| (recvaddr->sa_family != af_family)){
+		OWPError(cntrl->ctx,OWPErrINFO,OWPErrPOLICY,
+				"Test Denied:unsupported ipvn %d",ipvn);
+		err_ret = OWPErrINFO;
+		acceptval = OWP_CNTRL_UNSUPPORTED;
+		goto error;
+	}
+
+	SendAddr = AddrBySAddrRef(cntrl->ctx,sendaddr,addrlen);
+	RecvAddr = AddrBySAddrRef(cntrl->ctx,recvaddr,addrlen);
+	if( !(tsession = _OWPTestSessionAlloc(cntrl,SendAddr,conf_sender,
+					RecvAddr,conf_receiver,&tspec)))
+		goto error;
+
+	/*
+	 * if conf_receiver - open port and get SID.
+	 */
+	if(conf_receiver){
+		if(!_OWPCallCheckTestPolicy(cntrl,False,recvaddr,sendaddr,
+						&tspec,&err_ret)){
+			if(err_ret < OWPErrOK)
+				goto error;
+			OWPError(cntrl->ctx,OWPErrINFO,OWPErrPOLICY,
+							"Test not allowed");
+			acceptval = OWP_CNTRL_REJECT;
+			err_ret = OWPErrINFO;
+			goto error;
+		}
+		/* receiver first (sid comes from there) */
+		if(!_OWPCallEndpointInit(cntrl,&tsession->recv_end_data,
+				False,tsession->receiver,&tsession->test_spec,
+				tsession->sid,&err_ret)){
+			goto error;
+		}
+	}else{
+		/* if !conf_receiver, sid comes from TestRequest message */
+		memcpy(tsession->sid,sid,sizeof(sid));
+	}
+
+
+	if(conf_sender){
+		/*
+		 * TODO: Check for a local sender being used for DOS?
+		 *  -or can we rely on TestPolicy function?
+		 *
+		 * if(!conf_receiver && (receiver_address != control_address))
+		 * 	deny test
+		 */
+		if(!_OWPCallCheckTestPolicy(cntrl,True,sendaddr,
+						recvaddr,&tspec,&err_ret)){
+			if(err_ret < OWPErrOK)
+				goto error;
+			OWPError(cntrl->ctx,OWPErrINFO,OWPErrPOLICY,
+							"Test not allowed");
+			acceptval = OWP_CNTRL_REJECT;
+			err_ret = OWPErrINFO;
+			goto error;
+		}
+		if(!_OWPCallEndpointInit(cntrl, &tsession->send_end_data,
+					True,tsession->sender,
+					&tsession->test_spec,
+					tsession->sid,&err_ret)){
+			goto error;
+		}
+		if(!_OWPCallEndpointInitHook(cntrl,tsession->send_end_data,
+						tsession->receiver,
+						tsession->sid,&err_ret)){
+			goto error;
+		}
+		port = *sendport;
+	}
+
+	if(conf_receiver){
+		if(!_OWPCallEndpointInitHook(cntrl,
+					tsession->recv_end_data,
+					tsession->sender,
+					tsession->sid,&err_ret)){
+			goto error;
+		}
+		port = *recvport;
+	}
+
+	if( (rc = _OWPWriteTestAccept(cntrl,OWP_CNTRL_ACCEPT,
+						port,tsession->sid)) < 0){
+		err_ret = (OWPErrSeverity)rc;
+		goto error;
+	}
+
+	/*
+	 * Add tsession to list of tests managed by this control connection.
+	 */
+	tsession->next = cntrl->tests;
+	cntrl->tests = tsession;
+
+	return OWPErrOK;
+
+error:
+	/*
+	 * If it is a non-fatal error, communication should continue, so
+	 * send negative accept.
+	 */
+	if(err_ret >= OWPErrWARNING)
+		(void)_OWPWriteTestAccept(cntrl,acceptval,0,NULL);
+
+	if(tsession)
+		_OWPTestSessionFree(tsession,OWP_CNTRL_FAILURE);
+	else{
+		if(SendAddr)
+			OWPAddrFree(SendAddr);
+		else
+			free(sendaddr);
+		if(RecvAddr)
+			OWPAddrFree(RecvAddr);
+		else
+			free(recvaddr);
+	}
+	return err_ret;
+}
+
+OWPErrSeverity
+OWPProcessStartSessions(
+	OWPControl	cntrl
+	)
+{
+	int		rc;
+	OWPTestSession	tsession;
+	OWPErrSeverity	err,err2=OWPErrOK;
+
+	if( (rc = _OWPReadStartSessions(cntrl)) < 0)
+		return _OWPFailControlSession(cntrl,(OWPErrSeverity)rc,
+							OWPErrUNKNOWN,NULL);
+
+	if( (rc = _OWPWriteControlAck(cntrl,OWP_CNTRL_ACCEPT)) < 0)
+		return _OWPFailControlSession(cntrl,(OWPErrSeverity)rc,
+							OWPErrUNKNOWN,NULL);
+
+	for(tsession = cntrl->tests;tsession;tsession = tsession->next){
+		if(tsession->recv_end_data){
+			if(!_OWPCallEndpointStart(tsession,
+						tsession->recv_end_data,&err)){
+				(void)_OWPWriteStopSessions(cntrl,
+							    OWP_CNTRL_FAILURE);
+				return _OWPFailControlSession(cntrl,err,
+							OWPErrUNKNOWN,NULL);
+			}
+			err2 = MIN(err,err2);
+		}
+		if(tsession->send_end_data){
+			if(!_OWPCallEndpointStart(tsession,
+						tsession->send_end_data,&err)){
+				(void)_OWPWriteStopSessions(cntrl,
+							    OWP_CNTRL_FAILURE);
+				return _OWPFailControlSession(cntrl,err,
+							OWPErrUNKNOWN,NULL);
+			}
+			err2 = MIN(err,err2);
+		}
+	}
+
+	return err2;
+}
+
+OWPErrSeverity
+OWPProcessStopSessions(
+	OWPControl	cntrl
+	)
+{
+	int		rc;
+	OWPTestSession	tsession;
+	OWPAcceptType	acceptval;
+	OWPErrSeverity	err,err2=OWPErrOK;
+
+	if( (rc = _OWPReadStopSessions(cntrl,&acceptval)) < 0)
+		return _OWPFailControlSession(cntrl,(OWPErrSeverity)rc,
+							OWPErrUNKNOWN,NULL);
+
+	for(tsession = cntrl->tests;tsession;tsession = tsession->next){
+		if(tsession->recv_end_data){
+			_OWPCallEndpointStop(tsession,tsession->recv_end_data,
+					acceptval,&err);
+			err2 = MIN(err,err2);
+		}
+		if(tsession->send_end_data){
+			_OWPCallEndpointStop(tsession,tsession->send_end_data,
+					acceptval,&err);
+			err2 = MIN(err,err2);
+		}
+	}
+
+	if(err2 < OWPErrWARNING)
+		acceptval = OWP_CNTRL_FAILURE;
+	else
+		acceptval = OWP_CNTRL_ACCEPT;
+
+	if( (rc = _OWPWriteStopSessions(cntrl,acceptval)) < 0)
+		return _OWPFailControlSession(cntrl,(OWPErrSeverity)rc,
+							OWPErrUNKNOWN,NULL);
+
+
+	return err2;
+}
+
+OWPErrSeverity
+OWPProcessRetrieveSession(
+	OWPControl	cntrl
+	)
+{
+	int		rc;
+	OWPSID		sid;
+	u_int32_t	begin;
+	u_int32_t	end;
+
+	if( (rc = _OWPReadRetrieveSession(cntrl,&begin,&end,sid)) < 0)
+		return _OWPFailControlSession(cntrl,(OWPErrSeverity)rc,
+							OWPErrUNKNOWN,NULL);
+
+	/*
+	 * TODO: setup something to actually retrieve the data.
+	 * for now just return negative.
+	err = _OWPCallRetrieveSession(cntrl,begin,end,sid);
+	 */
+
+	if( (rc = _OWPWriteControlAck(cntrl,OWP_CNTRL_UNSUPPORTED)) < 0)
+		return _OWPFailControlSession(cntrl,(OWPErrSeverity)rc,
+							OWPErrUNKNOWN,NULL);
+
+	return OWPErrOK;
+}
+
+/*
+ * TODO: Add timeout so ProcessRequests can break out if no request
+ * comes in some configurable fixed time. (Necessary to have the server
+ * process exit when test sessions are done, if the client doesn't send
+ * the StopSessions.)
+ */
+OWPErrSeverity
+OWPProcessRequests(
+	OWPControl	cntrl
+		)
+{
+	OWPErrSeverity	rc;
+	int		msgtype;
+
+	while((msgtype = OWPReadRequestType(cntrl)) > 0){
+
+		switch (msgtype){
+				/* TestRequest */
+			case '1':
+				rc = OWPProcessTestRequest(cntrl);
+				break;
+			case '2':
+				rc = OWPProcessStartSessions(cntrl);
+				break;
+			case '3':
+				rc = OWPProcessStopSessions(cntrl);
+				break;
+			case '4':
+				rc = OWPProcessRetrieveSession(cntrl);
+				break;
+			default:
+				OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+		"Invalid msgtype (%d) returned from OWPReadRequesttype",
+					msgtype);
+				rc = OWPErrFATAL;
+		}
+
+		if(rc > OWPErrFATAL)
+			continue;
+		return rc;
+	}
+
+	/*
+	 * Normal socket close
+	 */
+	if(msgtype == 0)
+		return OWPErrOK;
+
+	return OWPErrFATAL;
 }

@@ -42,7 +42,7 @@ static	ow_ping_trec	ping_ctx;
 static int
 OWPingErrFunc(
 	void		*app_data,
-	OWPErrSeverity	severity,
+	OWPErrSeverity	severity	__attribute__((unused)),
 	OWPErrType	etype,
 	const char	*errmsg
 )
@@ -66,9 +66,9 @@ OWPingErrFunc(
 /*
  * Library initialization structure;
  */
-static	OWPInitializeConfigRec	OWPCfg = {
+static	OWPInitializeConfigRec	OWPCfg = {{
 	/* tm_out.tv_sec		*/	0,
-	/* tm_out.tv_usec		*/	0,
+	/* tm_out.tv_usec		*/	0},
 	/* app_data			*/	(void*)&ping_ctx,
 	/* err_func			*/	OWPingErrFunc,
 	/* get_aes_key			*/	NULL,
@@ -114,7 +114,7 @@ static	I2OptDescRec	set_options[] = {
 	 * Recv specific args.
 	 */
 	{"lossThreshold", 1, "600", "elapsed time when recv declares packet lost (sec)"},
-	{NULL}
+	{NULL,0,NULL,NULL}
 };
 
 /*
@@ -166,7 +166,7 @@ static  I2Option  get_options[] = {
 	"lossThreshold", I2CvtToUInt, &ping_ctx.opt.lossThreshold,
 	sizeof(ping_ctx.opt.lossThreshold)
 	},
-	{NULL}
+	{NULL,NULL,NULL,0}
 };
 
 static void	usage(int od, const char *progname, const char *msg)
@@ -184,7 +184,7 @@ static I2ErrHandle		eh;
 
 static void
 FailSession(
-	OWPControl	control_handle
+	OWPControl	control_handle	__attribute__((unused))
 	   )
 {
 	/*
@@ -203,6 +203,7 @@ FailSession(
  */
 #define	MAX_PADDING_SIZE	65000
 
+int
 main(
 	int	argc,
 	char	**argv
@@ -212,10 +213,9 @@ main(
 	I2LogImmediateAttr	ia;
 	int			od;
 	OWPContext		ctx;
-	I2table			local_addr_table;
 	OWPTestSpecPoisson	test_spec;
 	OWPSID			sid_ret;
-	OWPTimeStamp		start_time_rec={0};
+	OWPTimeStamp		start_time_rec={0,0,0,0};
 
 	ia.line_info = (I2NAME | I2MSG);
 	ia.fp = stderr;

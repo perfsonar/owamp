@@ -56,14 +56,17 @@ _OWPError(
 
 void
 OWPError(
-	OWPContext		ctx,
+	OWPContext	ctx,
 	OWPErrSeverity	severity,
-	OWPErrType		etype,
-	const char		*fmt,
+	OWPErrType	etype,
+	const char	*fmt,
 	...
 )
 {
 	va_list		args;
+
+	if(!fmt)
+		return;
 
 	va_start(args,fmt);
 	_OWPError(ctx,severity,etype,fmt,args);
@@ -88,11 +91,34 @@ OWPErrorLine(
 	char		buff[_OWP_ERR_MAXSTRING];
 
 	rc = snprintf(buff,sizeof(buff),"%s(%d):",file,line);
-	strncat(buff,fmt,sizeof(buff)-rc);
+	if(fmt)
+		strncat(buff,fmt,sizeof(buff)-rc);
 
 	va_start(args,fmt);
 	_OWPError(ctx,severity,etype,buff,args);
 	va_end(args);
 
 	return;
+}
+
+OWPErrSeverity
+_OWPFailControlSession(
+	OWPControl	cntrl,
+	OWPErrSeverity	err,
+	OWPErrType	etype,
+	char		*fmt,
+	...
+		)
+{
+	va_list		args;
+
+	if(fmt){
+		va_start(args,fmt);
+		_OWPError(cntrl->ctx,err,etype,fmt,args);
+		va_end(args);
+	}
+
+	cntrl->state = _OWPStateInvalid;
+
+	return err;
 }

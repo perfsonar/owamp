@@ -117,11 +117,6 @@ static	I2Option	get_options[] = {
 	{NULL, NULL, NULL,0}
 };
 
-int OWPProcessRequests(OWPControl cntrl) /* temp plug */
-{
-	return 1;
-}
-
 static void
 usage(int od, const char *progname, const char *msg)
 {
@@ -347,22 +342,24 @@ CheckFD(
 		ssize_t	n;
 
 		n = sizeof(cstate->authmode);
-		if(OWPReadn(cstate->fd,&cstate->authmode,n) < n){
+		if(OWPReadn(cstate->fd,&cstate->authmode,n) != n){
 			OWPErrorLine(cstate->ctx,OWPLine,OWPErrWARNING,
 					OWPErrUNKNOWN,
 					"read error:(%s)",strerror(errno));
 			CloseChldFD(cstate,arg->readfds);
 			(void)kill(cstate->pid,SIGKILL);
 		}
+		/* TODO: validate authmode received. */
 	}
 	else{
-		/* read child request for resources */
+		/* TODO:read child request for resources */
 	}
 
 	return True;
 }
+
 /*
- * mask contains the fd_set of fd's that are currently readable, readfds is
+ * avail contains the fd_set of fd's that are currently readable, readfds is
  * the set of all fd's that the server needs to pay attention to.
  * maxfd is the largest of those.
  */
@@ -599,7 +596,6 @@ main(int argc, char *argv[])
 		NULL,
 		NULL,
 		NULL,
-		NULL,
 		NULL
 	};
 
@@ -646,28 +642,21 @@ main(int argc, char *argv[])
 	 * Setup paths.
 	 */
 
-	/*
-	  Jeff, - I inserted /owamp/owpcontrib in the format string to make
-	  the program find config files - temporary measure just to test
-	  my policy stuff. 
-	                                             Tolya
-	*/
-
-	rc = snprintf(ip2class,sizeof(ip2class),"%s/owamp/owpcontrib%s%s",opts.confdir,
+	rc = snprintf(ip2class,sizeof(ip2class),"%s%s%s",opts.confdir,
 						OWD_DIRSEP,opts.ip2class);
 	if(rc > (int)sizeof(ip2class)){
 		I2ErrLog(errhand, "Invalid path to ip2class file.");
 		exit(1);
 	}
 
-	rc = snprintf(class2limits,sizeof(class2limits),"%s/owamp/owpcontrib%s%s",opts.confdir,
+	rc = snprintf(class2limits,sizeof(class2limits),"%s%s%s",opts.confdir,
 						OWD_DIRSEP,opts.class2limits);
 	if(rc > (int)sizeof(class2limits)){
 		I2ErrLog(errhand, "Invalid path to class2limits file.");
 		exit(1);
 	}
 
-	rc = snprintf(passwd,sizeof(passwd),"%s/owamp/owpcontrib%s%s",opts.confdir,
+	rc = snprintf(passwd,sizeof(passwd),"%s%s%s",opts.confdir,
 						OWD_DIRSEP,opts.passwd);
 	if(rc > (int)sizeof(passwd)){
 		I2ErrLog(errhand, "Invalid path to passwd file.");

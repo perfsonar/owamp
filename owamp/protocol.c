@@ -225,14 +225,14 @@ GetAcceptType(
 	)
 {
 	switch(val){
-		case _OWP_CNTRL_ACCEPT:
-			return _OWP_CNTRL_ACCEPT;
-		case _OWP_CNTRL_REJECT:
-			return _OWP_CNTRL_REJECT;
+		case OWP_CNTRL_ACCEPT:
+			return OWP_CNTRL_ACCEPT;
+		case OWP_CNTRL_REJECT:
+			return OWP_CNTRL_REJECT;
 		default:
 			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
 							"GetAcceptType");
-			return _OWP_CNTRL_INVALID;
+			return OWP_CNTRL_INVALID;
 	}
 }
 
@@ -274,7 +274,7 @@ _OWPWriteServerOK(
 	memset(&buf[0],0,15);
 	*(u_int8_t *)&buf[15] = code & 0x0ff;
 	memcpy(&buf[16],cntrl->writeIV,16);
-	if(_OWPSendBlocks(cntrl, buf, 2) != 0)
+	if(_OWPSendBlocks(cntrl, buf, 2) != 2)
 		return OWPErrFATAL;
 
 	cntrl->state = _OWPStateRequest;
@@ -303,7 +303,7 @@ _OWPReadServerOK(
 	}
 
 	*acceptval = GetAcceptType(cntrl,buf[15]);
-	if(*acceptval == _OWP_CNTRL_INVALID){
+	if(*acceptval == OWP_CNTRL_INVALID){
 		cntrl->state = _OWPStateInvalid;
 		return OWPErrFATAL;
 	}
@@ -325,7 +325,8 @@ OWPReadRequestType(
 	OWPControl	cntrl
 	)
 {
-	int	msgtype;
+	u_int8_t	msgtype;
+	int		n;
 
 	if(!_OWPStateIsRequest(cntrl) || _OWPStateIsReading(cntrl)){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
@@ -334,15 +335,17 @@ OWPReadRequestType(
 	}
 
 	/* Read one block so we can peek at the message type */
-	if (_OWPReceiveBlocks(cntrl, (u_int8_t*)cntrl->msg, 1) != 0)
-		return 0;	
+	if((n = _OWPReceiveBlocks(cntrl, (u_int8_t*)cntrl->msg, 1)) != 1)
+		return n;	
 
 	msgtype = *(u_int8_t*)cntrl->msg;
 
 	/*
-	 * Not all types of requests are allowed during a test.
+	 * StopSessions(3) message is only allowed during active tests,
+	 * and it is the only message allowed during active tests.
 	 */
-	if(_OWPStateIs(_OWPStateTest,cntrl) && (msgtype < 3)){
+	if((_OWPStateIs(_OWPStateTest,cntrl) && (msgtype != 3)) ||
+			(_OWPStateIs(_OWPStateTest,cntrl) && (msgtype == 3))){
 		cntrl->state = _OWPStateInvalid;
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
 			"OWPReadRequestType:Invalid request from client.");
@@ -370,7 +373,7 @@ OWPReadRequestType(
 			return 0;
 	}
 
-	return *(u_int8_t *)(cntrl->msg);
+	return msgtype;
 }
 
 /*
@@ -538,7 +541,7 @@ _OWPWriteTestRequest(
 	/*
 	 * Now - send the request!
 	 */
-	if(_OWPSendBlocks(cntrl,buf,6) != 0){
+	if(_OWPSendBlocks(cntrl,buf,6) != 6){
 		cntrl->state = _OWPStateInvalid;
 		return OWPErrFATAL;
 	}
@@ -574,7 +577,8 @@ _OWPReadTestRequest(
 	 * Already read the first block - read the rest for this message
 	 * type.
 	 */
-	if(_OWPReceiveBlocks(cntrl,&buf[16],_OWP_TEST_REQUEST_BLK_LEN-1) != 0){
+	if(_OWPReceiveBlocks(cntrl,&buf[16],_OWP_TEST_REQUEST_BLK_LEN-1) != 
+			(_OWP_TEST_REQUEST_BLK_LEN-1)){
 		cntrl->state = _OWPStateInvalid;
 		return OWPErrFATAL;
 	}
@@ -603,7 +607,7 @@ _OWPReadTestRequest(
 			break;
 		default:
 			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-			"_OWPReadTestRequest:Invalid Conf-Sender (%d)",buf[1]);
+			"_OWPReadTestRequest:Invalid Conf-Sender (%d)",buf[2]);
 			cntrl->state = _OWPStateInvalid;
 			return OWPErrFATAL;
 	}
@@ -616,7 +620,15 @@ _OWPReadTestRequest(
 			break;
 		default:
 			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-			"_OWPReadTestRequest:Invalid Conf-Sender (%d)",buf[1]);
+			"_OWPReadTestRequest:Invalid Conf-Receiver (%d)",
+					buf[3]);
+			cntrl->state = _OWPStateInvalid;
+			return OWPErrFATAL;
+	}
+
+	if(!*server_conf_sender && !*server_conf_receiver){
+			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+			"_OWPReadTestRequest:Invalid null request");
 			cntrl->state = _OWPStateInvalid;
 			return OWPErrFATAL;
 	}
@@ -637,11 +649,13 @@ _OWPReadTestRequest(
 
 			/* sender address  and port */
 			saddr6 = (struct sockaddr_in6*)sender;
+			saddr6->sin6_family = AF_INET6;
 			memcpy(saddr6->sin6_addr.s6_addr,&buf[4],16);
 			saddr6->sin6_port = *(u_int16_t*)&buf[36];
 
 			/* receiver address and port  */
 			saddr6 = (struct sockaddr_in6*)receiver;
+			saddr6->sin6_family = AF_INET6;
 			memcpy(saddr6->sin6_addr.s6_addr,&buf[20],16);
 			saddr6->sin6_port = *(u_int16_t*)&buf[38];
 
@@ -659,13 +673,15 @@ _OWPReadTestRequest(
 
 			/* sender address and port  */
 			saddr4 = (struct sockaddr_in*)sender;
-			*(u_int32_t*)&buf[4] = saddr4->sin_addr.s_addr;
-			*(u_int16_t*)&buf[36] = saddr4->sin_port;
+			saddr4->sin_family = AF_INET;
+			saddr4->sin_addr.s_addr = *(u_int32_t*)&buf[4];
+			saddr4->sin_port = *(u_int16_t*)&buf[36];
 
 			/* receiver address and port  */
 			saddr4 = (struct sockaddr_in*)receiver;
-			*(u_int32_t*)&buf[20] = saddr4->sin_addr.s_addr;
-			*(u_int16_t*)&buf[38] = saddr4->sin_port;
+			saddr4->sin_family = AF_INET;
+			saddr4->sin_addr.s_addr = *(u_int32_t*)&buf[20];
+			saddr4->sin_port = *(u_int16_t*)&buf[38];
 
 			break;
 		default:
@@ -746,7 +762,7 @@ _OWPWriteTestAccept(
 		memcpy(&buf[4],sid,16);
 	memset(&buf[20],0,12);
 
-	if(_OWPSendBlocks(cntrl,buf,3) != 0){
+	if(_OWPSendBlocks(cntrl,buf,3) != 3){
 		cntrl->state = _OWPStateInvalid;
 		return OWPErrFATAL;
 	}
@@ -775,7 +791,7 @@ _OWPReadTestAccept(
 	/*
 	 * Get the servers response.
 	 */
-	if(_OWPReceiveBlocks(cntrl,buf,2) != 0){
+	if(_OWPReceiveBlocks(cntrl,buf,2) != 2){
 		cntrl->state = _OWPStateInvalid;
 		return OWPErrFATAL;
 	}
@@ -791,7 +807,7 @@ _OWPReadTestAccept(
 	}
 
 	*acceptval = GetAcceptType(cntrl,buf[0]);
-	if(*acceptval == _OWP_CNTRL_INVALID){
+	if(*acceptval == OWP_CNTRL_INVALID){
 		cntrl->state = _OWPStateInvalid;
 		return OWPErrFATAL;
 	}
@@ -848,7 +864,7 @@ _OWPWriteStartSessions(
 #endif
 	memset(&buf[16],0,16);	/* Zero padding */
 
-	if(_OWPSendBlocks(cntrl,buf,2) != 0){
+	if(_OWPSendBlocks(cntrl,buf,2) != 2){
 		cntrl->state = _OWPStateInvalid;
 		return OWPErrFATAL;
 	}
@@ -874,7 +890,8 @@ _OWPReadStartSessions(
 	 * Already read the first block - read the rest for this message
 	 * type.
 	 */
-	if(_OWPReceiveBlocks(cntrl,&buf[16],_OWP_STOP_SESSIONS_BLK_LEN-1) != 0){
+	if(_OWPReceiveBlocks(cntrl,&buf[16],_OWP_STOP_SESSIONS_BLK_LEN-1) !=
+					(_OWP_STOP_SESSIONS_BLK_LEN-1) ){
 		cntrl->state = _OWPStateInvalid;
 		return OWPErrFATAL;
 	}
@@ -946,7 +963,7 @@ _OWPWriteStopSessions(
 #endif
 	memset(&buf[16],0,16);	/* Zero padding */
 
-	if(_OWPSendBlocks(cntrl,buf,_OWP_STOP_SESSIONS_BLK_LEN) != 0)
+	if(_OWPSendBlocks(cntrl,buf,2) != 2)
 		return OWPErrFATAL;
 	return OWPErrOK;
 }
@@ -970,7 +987,8 @@ _OWPReadStopSessions(
 	 * Already read the first block - read the rest for this message
 	 * type.
 	 */
-	if(_OWPReceiveBlocks(cntrl,&buf[16],_OWP_STOP_SESSIONS_BLK_LEN-1) != 0){
+	if(_OWPReceiveBlocks(cntrl,&buf[16],_OWP_STOP_SESSIONS_BLK_LEN-1) !=
+				(_OWP_STOP_SESSIONS_BLK_LEN-1)){
 		cntrl->state = _OWPStateInvalid;
 		return OWPErrFATAL;
 	}
@@ -982,7 +1000,7 @@ _OWPReadStopSessions(
 		return OWPErrFATAL;
 	}
 	*acceptval = GetAcceptType(cntrl,buf[0]);
-	if(*acceptval == _OWP_CNTRL_INVALID){
+	if(*acceptval == OWP_CNTRL_INVALID){
 		cntrl->state = _OWPStateInvalid;
 		return OWPErrFATAL;
 	}
@@ -1054,7 +1072,7 @@ _OWPWriteRetrieveSession(
 	memcpy(&buf[16],sid,16);
 	memset(&buf[32],0,16);	/* Zero padding */
 
-	if(_OWPSendBlocks(cntrl,buf,_OWP_RETRIEVE_SESSION_BLK_LEN) != 0)
+	if(_OWPSendBlocks(cntrl,buf,3) != 3)
 		return OWPErrFATAL;
 	return OWPErrOK;
 }
@@ -1080,7 +1098,7 @@ _OWPReadRetrieveSession(
 	 * type.
 	 */
 	if(_OWPReceiveBlocks(cntrl,&buf[16],_OWP_RETRIEVE_SESSION_BLK_LEN-1)
-									!= 0){
+					!= (_OWP_RETRIEVE_SESSION_BLK_LEN-1)){
 		cntrl->state = _OWPStateInvalid;
 		return OWPErrFATAL;
 	}
@@ -1153,7 +1171,7 @@ _OWPWriteControlAck(
 #endif
 	memset(&buf[16],0,16);	/* Zero padding */
 
-	if(_OWPSendBlocks(cntrl,buf,_OWP_CONTROL_ACK_BLK_LEN) != 0)
+	if(_OWPSendBlocks(cntrl,buf,2) != 2)
 		return OWPErrFATAL;
 
 	cntrl->state &= ~_OWPStateControlAck;
@@ -1178,7 +1196,8 @@ _OWPReadControlAck(
 	 * Already read the first block - read the rest for this message
 	 * type.
 	 */
-	if(_OWPReceiveBlocks(cntrl,&buf[16],_OWP_CONTROL_ACK_BLK_LEN-1) != 0){
+	if(_OWPReceiveBlocks(cntrl,&buf[16],_OWP_CONTROL_ACK_BLK_LEN-1) != 
+					(_OWP_CONTROL_ACK_BLK_LEN-1)){
 		cntrl->state = _OWPStateInvalid;
 		return OWPErrFATAL;
 	}
@@ -1190,7 +1209,7 @@ _OWPReadControlAck(
 		return OWPErrFATAL;
 	}
 	*acceptval = GetAcceptType(cntrl,buf[0]);
-	if(*acceptval == _OWP_CNTRL_INVALID){
+	if(*acceptval == OWP_CNTRL_INVALID){
 		cntrl->state = _OWPStateInvalid;
 		return OWPErrFATAL;
 	}

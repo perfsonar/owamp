@@ -31,7 +31,6 @@ static OWPInitializeConfigRec	def_cfg = {
 	/* app_data			*/	NULL,
 	/* err_func			*/	NULL,
 	/* get_aes_key			*/	NULL,
-	/* check_addr_func		*/	NULL,
 	/* check_control_func		*/	NULL,
 	/* check_test_func		*/	NULL,
 	/* endpoint_init_func		*/	NULL,
@@ -83,8 +82,9 @@ _OWPAddrAlloc(
 	OWPAddr	addr = malloc(sizeof(struct OWPAddrRec));
 
 	if(!addr){
-		OWPErrorLine(ctx,OWPLine,OWPErrFATAL,errno,
-				":malloc(%d)",sizeof(struct OWPAddrRec));
+		OWPErrorLine(ctx,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
+			":malloc(%d):%s",sizeof(struct OWPAddrRec),
+			strerror(errno));
 		return NULL;
 	}
 
@@ -485,26 +485,32 @@ OWPTestSession
 _OWPTestSessionAlloc(
 	OWPControl	cntrl,
 	OWPAddr		sender,
-	OWPBoolean	server_conf_sender,
+	OWPBoolean	send_local,
 	OWPAddr		receiver,
-	OWPBoolean	server_conf_receiver,
+	OWPBoolean	recv_local,
 	OWPTestSpec	*test_spec
 )
 {
-	OWPTestSession	test = malloc(sizeof(OWPTestSessionRec));
+	OWPTestSession	test;
 
-	if(!test){
-		OWPError(cntrl->ctx,OWPErrFATAL,errno,
-						"malloc(OWPTestSessionRec)");
+	if(!sender || ! receiver){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+				"_OWPTestSessionAlloc:Invalid Addr arg");
+		return NULL;
+	}
+
+	if(!(test = malloc(sizeof(OWPTestSessionRec)))){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+				"malloc(OWPTestSessionRec):%s",strerror(errno));
 		return NULL;
 	}
 
 	test->cntrl = cntrl;
 	memset(test->sid,0,sizeof(OWPSID));
 	test->sender = sender;
-	test->server_conf_sender = server_conf_sender;
+	test->send_local = send_local;
 	test->receiver = receiver;
-	test->server_conf_receiver = server_conf_receiver;
+	test->recv_local = recv_local;
 	test->send_end_data = test->recv_end_data = NULL;
 	memcpy(&test->test_spec,test_spec,sizeof(OWPTestSpec));
 	test->next = NULL;
@@ -512,16 +518,69 @@ _OWPTestSessionAlloc(
 	return test;
 }
 
-void
+OWPErrSeverity
 _OWPTestSessionFree(
-	OWPTestSession	tsession
+	OWPTestSession	tsession,
+	OWPAcceptType	aval
 )
 {
+	OWPTestSession	*sptr;
+	OWPErrSeverity	err,err2;
+
+	if(!tsession)
+		return OWPErrOK;
+
 	/*
-	 * TODO: call stop on the endpoints.
+	 * remove this tsession from the cntrl->tests lists.
 	 */
-	/*
-	 * TODO: remove this tsession from the cntrl->tests lists.
-	 */
+	for(sptr = &tsession->cntrl->tests;*sptr;sptr = &(*sptr)->next)
+		if(*sptr == tsession){
+			*sptr = tsession->next;
+			break;
+		}
+
+	if(tsession->recv_end_data)
+		(void)_OWPCallEndpointStop(tsession,tsession->recv_end_data,
+					   aval,&err);
+	if(tsession->send_end_data)
+		(void)_OWPCallEndpointStop(tsession,tsession->send_end_data,
+					   aval,&err2);
+
+	OWPAddrFree(tsession->sender);
+	OWPAddrFree(tsession->receiver);
 	free(tsession);
+
+	return MIN(err,err2);
+}
+
+OWPErrSeverity
+OWPInitiateStopTestSessions(
+	OWPControl	cntrl,
+	OWPAcceptType	*acceptval	/* in/out	*/
+		)
+{
+	OWPErrSeverity	err,err2=OWPErrOK;
+
+	if(!cntrl){
+		OWPError(NULL,OWPErrFATAL,OWPErrINVALID,
+		"OWPStopTestSessions called with invalid cntrl record");
+		return OWPErrFATAL;
+	}
+
+	while(cntrl->tests){
+		err = _OWPTestSessionFree(cntrl->tests,*acceptval);
+		err2 = MIN(err,err2);
+	}
+
+	/*
+	 * If acceptval would have been "success", but stopping of local
+	 * endpoints failed, report failure instead and return error.
+	 * (The endpoint_stop_func should have reported the error.)
+	 */
+	if(!*acceptval && (err2 < OWPErrWARNING))
+		*acceptval = OWP_CNTRL_FAILURE;
+
+	err = (OWPErrSeverity)_OWPWriteStopSessions(cntrl,*acceptval);
+
+	return MIN(err,err2);
 }

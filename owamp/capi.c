@@ -40,7 +40,6 @@ _OWPClientBind(
 )
 {
 	struct addrinfo	*ai;
-	OWPErrSeverity	local_err=OWPErrOK;
 
 	if(local_addr->fd > -1){
 		OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
@@ -86,14 +85,6 @@ _OWPClientBind(
 			continue;
 		if(ai->ai_socktype != remote_addrinfo->ai_socktype)
 			continue;
-		if(!_OWPCallCheckAddrPolicy(cntrl->ctx,ai->ai_addr,
-				remote_addrinfo->ai_addr,&local_err)){
-			if(local_err != OWPErrOK){
-				*err_ret = local_err;
-				return False;
-			}
-			continue;
-		}
 
 		if(bind(fd,ai->ai_addr,ai->ai_addrlen) == 0){
 			local_addr->saddr = ai->ai_addr;
@@ -157,6 +148,55 @@ SetClientAddrInfo(
 	return True;
 }
 
+/*
+ * -1: error
+ *  0: success
+ *  1: keep trying
+ */
+static int
+TryAddr(
+	OWPControl	cntrl,
+	struct addrinfo	*ai,
+	OWPAddr		local_addr,
+	OWPAddr		server_addr
+	)
+{
+	OWPErrSeverity	addr_ok=OWPErrOK;
+	int		fd;
+
+	fd = socket(ai->ai_family,ai->ai_socktype,ai->ai_protocol);
+	if(fd < 0)
+		return 1;
+
+	if(local_addr){
+		if(!_OWPClientBind(cntrl,fd,local_addr,ai,&addr_ok)){
+			if(addr_ok != OWPErrOK){
+				return -1;
+			}
+			goto cleanup;
+		}
+	}
+
+	/*
+	 * Call connect - if it succeeds, return else try again.
+	 */
+	if(_OWPConnect(fd,ai->ai_addr,ai->ai_addrlen,&cntrl->ctx->cfg.tm_out)
+									== 0){
+		server_addr->fd = fd;
+		server_addr->saddr = ai->ai_addr;
+		server_addr->saddrlen = ai->ai_addrlen;
+		cntrl->remote_addr = server_addr;
+		cntrl->local_addr = local_addr;
+		cntrl->sockfd = fd;
+
+		return 0;
+	}
+
+cleanup:
+	while((close(fd) < 0) && (errno == EINTR));
+	return 1;
+}
+
 static int
 _OWPClientConnect(
 	OWPControl	cntrl,
@@ -165,7 +205,7 @@ _OWPClientConnect(
 	OWPErrSeverity	*err_ret
 )
 {
-	int		fd=-1;
+	int		rc;
 	struct addrinfo	*ai=NULL;
 	char		*tstr;
 
@@ -193,132 +233,26 @@ _OWPClientConnect(
 	 */
 #ifdef	AF_INET6
 	for(ai=server_addr->ai;ai;ai=ai->ai_next){
-		OWPErrSeverity	addr_ok=OWPErrOK;
 
 		if(ai->ai_family != AF_INET6) continue;
 
-		fd = socket(ai->ai_family,ai->ai_socktype,ai->ai_protocol);
-		if(fd < 0)
-			continue;
-
-		if(local_addr){
-			/*
-			 * ClientBind will check Addr policy for possible
-			 * combinations before binding.
-			 */
-			if(!_OWPClientBind(cntrl,fd,local_addr,ai,&addr_ok)){
-				if(addr_ok != OWPErrOK){
-					goto error;
-				}
-				goto nextv6;
-			}
-			/*
-			 * local_addr bound ok - fall through to connect.
-			 */
-		}
-		else{
-			/*
-			 * Verify address is ok to talk to in policy.
-			 */
-			if(!_OWPCallCheckAddrPolicy(cntrl->ctx,NULL,
-						server_addr->saddr,&addr_ok)){
-				if(addr_ok != OWPErrOK){
-					goto error;
-				}
-				goto nextv6;
-			}
-			/*
-			 * Policy ok - fall through to connect.
-			 */
-		}
-
-		/*
-		 * Call connect - if it succeeds, return else try again.
-		 */
-		if(_OWPConnect(fd,ai->ai_addr,ai->ai_addrlen,
-						&cntrl->ctx->cfg.tm_out) == 0){
-			server_addr->fd = fd;
-			server_addr->saddr = ai->ai_addr;
-			server_addr->saddrlen = ai->ai_addrlen;
-			cntrl->remote_addr = server_addr;
-			cntrl->local_addr = local_addr;
-			cntrl->sockfd = fd;
-
+		if( (rc = TryAddr(cntrl,ai,local_addr,server_addr)) == 0)
 			return 0;
-		}
-
-nextv6:
-		if(close(fd) !=0){
-			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrWARNING,
-						errno,":close(%d)",fd);
-			*err_ret = OWPErrWARNING;
-		}
+		if(rc < 0)
+			goto error;
 	}
 #endif
 	/*
 	 * Now try IPv4 addresses.
 	 */
 	for(ai=server_addr->ai;ai;ai=ai->ai_next){
-		OWPErrSeverity	addr_ok=OWPErrOK;
 
 		if(ai->ai_family != AF_INET) continue;
 
-		fd = socket(ai->ai_family,ai->ai_socktype,ai->ai_protocol);
-		if(fd < 0)
-			continue;
-
-		if(local_addr){
-			/*
-			 * ClientBind will check Addr policy for possible
-			 * combinations before binding.
-			 */
-			if(!_OWPClientBind(cntrl,fd,local_addr,ai,&addr_ok)){
-				if(addr_ok != OWPErrOK){
-					goto error;
-				}
-				goto nextv4;
-			}
-			/*
-			 * local_addr bound ok - fall through to connect.
-			 */
-		}
-		else{
-			/*
-			 * Verify address is ok to talk to in policy.
-			 */
-			if(!_OWPCallCheckAddrPolicy(cntrl->ctx,NULL,
-						server_addr->saddr,&addr_ok)){
-				if(addr_ok != OWPErrOK){
-					goto error;
-				}
-				goto nextv4;
-			}
-			/*
-			 * Policy ok - fall through to connect.
-			 */
-		}
-
-		/*
-		 * Call connect - if it succeeds, return else try again.
-		 */
-		if(_OWPConnect(fd,ai->ai_addr,ai->ai_addrlen,
-						&cntrl->ctx->cfg.tm_out) == 0){
-			server_addr->fd = fd;
-			server_addr->saddr = ai->ai_addr;
-			server_addr->saddrlen = ai->ai_addrlen;
-			cntrl->remote_addr = server_addr;
-			cntrl->local_addr = local_addr;
-			cntrl->sockfd = fd;
-
+		if( (rc = TryAddr(cntrl,ai,local_addr,server_addr)) == 0)
 			return 0;
-		}
-
-nextv4:
-		if(close(fd) !=0){
-			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrWARNING,
-						errno,":close(%d)",fd);
-			*err_ret = OWPErrWARNING;
-		}
+		if(rc < 0)
+			goto error;
 	}
 
 	if(server_addr->node_set)
@@ -476,7 +410,7 @@ OWPControlOpen(
 		goto error;
 	}
 
-	if(acceptval != _OWP_CNTRL_ACCEPT){
+	if(acceptval != OWP_CNTRL_ACCEPT){
 		OWPError(cntrl->ctx,OWPErrINFO,OWPErrPOLICY,
 							"Server denied access");
 		goto denied;
@@ -660,6 +594,7 @@ _OWPClientRequestTestReadResponse(
 			struct sockaddr_in	*saddr4;
 #ifdef	AF_INET6
 			struct sockaddr_in6	*saddr6;
+
 			case AF_INET6:
 				saddr6 = (struct sockaddr_in6*)set_addr;
 				port_ret = &saddr6->sin6_port;
@@ -685,7 +620,7 @@ _OWPClientRequestTestReadResponse(
 		return -1;
 	}
 
-	if(acceptval == _OWP_CNTRL_ACCEPT)
+	if(acceptval == OWP_CNTRL_ACCEPT)
 		return 0;
 
 	/*
@@ -709,8 +644,6 @@ OWPRequestTestSession(
 {
 	struct addrinfo		*rai=NULL;
 	struct addrinfo		*sai=NULL;
-	void			*send_endpoint = NULL;
-	void			*recv_endpoint = NULL;
 	OWPTestSession		tsession = NULL;
 
 	*err_ret = OWPErrOK;
@@ -789,8 +722,8 @@ foundaddr:
 	 * Create a structure to store the stuff we need to keep for
 	 * later calls.
 	 */
-	if( !(tsession = _OWPTestSessionAlloc(cntrl,sender,server_conf_sender,
-				receiver,server_conf_receiver,test_spec)))
+	if( !(tsession = _OWPTestSessionAlloc(cntrl,sender,!server_conf_sender,
+				receiver,!server_conf_receiver,test_spec)))
 		goto error;
 
 	/*
@@ -906,27 +839,99 @@ foundaddr:
 	return True;
 
 error:
-	if(send_endpoint){
-		/* TODO: stop send endpoint */
+	if(tsession)
+		_OWPTestSessionFree(tsession,OWP_CNTRL_FAILURE);
+	else{
+		/*
+		 * If tsession exists - the addr's will be free'd as part
+		 * of it - otherwise, do it here.
+		 */
+		OWPAddrFree(receiver);
+		OWPAddrFree(sender);
 	}
-	if(recv_endpoint){
-		/* TODO: stop recv endpoint */
-	}
-	_OWPTestSessionFree(tsession);
-	OWPAddrFree(receiver);
-	OWPAddrFree(sender);
+
 	return False;
 }
 
-/*
- * TODO: write this.
- */
 OWPErrSeverity
 OWPStartTestSessions(
 	OWPControl	cntrl
 )
 {
-	OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-			"OWPStartTestSessions:Unimplemented...");
-	return OWPErrFATAL;
+	int		rc;
+	OWPErrSeverity	err,err2=OWPErrOK;
+	OWPTestSession	tsession;
+	OWPAcceptType	acceptval;
+
+	if(!cntrl){
+		OWPError(NULL,OWPErrFATAL,OWPErrINVALID,
+		"OWPStartTestSessions called with invalid cntrl record");
+		return OWPErrFATAL;
+	}
+
+	if((rc = _OWPWriteStartSessions(cntrl)) < 0)
+		return _OWPFailControlSession(cntrl,(OWPErrSeverity)rc,
+				OWPErrUNKNOWN,NULL);
+
+	/*
+	 * Small optimization... - start local receivers while waiting for
+	 * the server to respond. (should not start senders - don't want
+	 * to send packets unless control-ack comes back positive.)
+	 */
+	for(tsession = cntrl->tests;tsession;tsession = tsession->next)
+		if(tsession->recv_end_data){
+			if(!_OWPCallEndpointStart(tsession,
+						tsession->recv_end_data,&err))
+				return _OWPFailControlSession(cntrl,err,
+							OWPErrUNKNOWN,NULL);
+			err2 = MIN(err,err2);
+		}
+
+	if(((rc = _OWPReadControlAck(cntrl,&acceptval)) < 0) ||
+					(acceptval != OWP_CNTRL_ACCEPT))
+		return _OWPFailControlSession(cntrl,(OWPErrSeverity)rc,
+							OWPErrUNKNOWN,NULL);
+
+	for(tsession = cntrl->tests;tsession;tsession = tsession->next)
+		if(tsession->send_end_data){
+			if(!_OWPCallEndpointStart(tsession,
+						tsession->send_end_data,&err))
+				return _OWPFailControlSession(cntrl,err,
+							OWPErrUNKNOWN,NULL);
+			err2 = MIN(err,err2);
+		}
+
+	return err2;
+}
+
+OWPErrSeverity
+OWPStopTestSessions(
+	OWPControl	cntrl,
+	OWPAcceptType	acceptval
+		)
+{
+	OWPErrSeverity	err,err2=OWPErrOK;
+
+	if(!cntrl){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+		"OWPStopTestSessions called with invalid cntrl record");
+		return OWPErrFATAL;
+	}
+
+	while(cntrl->tests){
+		err = _OWPTestSessionFree(cntrl->tests,acceptval);
+		err2 = MIN(err,err2);
+	}
+
+	/*
+	 * If acceptval would have been "success", but stopping of local
+	 * endpoints failed, report failure instead and return error.
+	 * (The endpoint_stop_func should have reported the error.)
+	 */
+	if(!acceptval && (err2 < OWPErrWARNING))
+		acceptval = OWP_CNTRL_FAILURE;
+
+	err = (OWPErrSeverity)_OWPWriteStopSessions(cntrl,acceptval);
+
+	return MIN(err,err2);
 }
