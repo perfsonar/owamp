@@ -90,21 +90,25 @@ is_valid_netmask6(struct sockaddr_in6 *addr, u_int8_t num_offset)
 
 	nbytes = num_offset/8;
 	nbits = num_offset%8;
-	ptr = (addr->sin6_addr.s6_addr) + nbytes;
-
 	if (nbits){     /* The last (8-nbits) bits must be zero. */
-		if (*ptr++ & (((u_int8_t)1 << (8 - nbits)) - 1))
+		if (addr->sin6_addr.s6_addr[nbytes++] 
+		    & (((u_int8_t)1 << (8 - nbits)) - 1)) {
+			fprintf(stderr, "found bad mask: *ptr = %u\n", *ptr);
 			return 0;
-		nbytes++;
+		}
 	}
 	
 	/* Make sure all subsequent bytes are zero. */
-	for (i = 0; i < 16 - nbytes; i++) {
-		if (*ptr++) 
-			return 0;
-	}
+       for (i = nbytes; i < 16; i++) {
+	       if (addr->sin6_addr.s6_addr[nbytes]) {
+		       fprintf(stderr, "found bad mask: *ptr[%d] = %u\n", 
+			       nbytes, ptr[nbytes]);
 
-	return 1;
+		       return 0;
+	       }
+       }
+
+       return 1;
 }
 
 /*
@@ -509,7 +513,8 @@ get_ip2class_line(OWPContext ctx, FILE *fp, owp_policy_data *policy)
 			goto bad_mask;
 		/* If this is a ::0/0 mask - set the flag. */
 		if (
-		    (!strcmp(nodename, "::0") 
+		    (!strcmp(nodename, "::0")
+		     || (!strcmp(nodename, "::")) 
 		     || !strcmp(nodename, "0::0"))
 		    && !num_offset
 		    )
@@ -949,7 +954,7 @@ OWPPolicyInit(
 
 		if((owp_read_class2limits2(ctx, class2limits_file, ret) ==
 								OWP_ERR) ||
-			(owp_read_ip2class(ctx, ip2class_file, ret) == OWP_ERR))
+			(owp_read_ip2class(ctx,ip2class_file, ret) == OWP_ERR))
 			goto error;
 	}
 
