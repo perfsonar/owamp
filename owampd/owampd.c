@@ -2,6 +2,7 @@
 
 #include <owamp/owamp.h>
 #include <access.h>
+#include <I2util/util.h>
 
 #define LISTENQ 5
 #define SERV_PORT_STR "5555"
@@ -10,9 +11,16 @@
 #define DEFAULT_CLASS_TO_LIMITS_FILE 	"class2limits.conf" 
 #define DEFAULT_PASSWD_FILE 		"owamp_secrets.conf"
 
+#define OWP_CTRL_REQUEST_SESSION 1
+#define OWP_CTRL_START_SESSION 2
+#define OWP_CTRL_STOP_SESSION 3
+#define OWP_CTRL_RETRIEVE_SESSION 4
+
 int ip2class_flag = 0;
 int class2limits_flag = 0;
 int passwd_flag = 0;
+u_int32_t default_offered_mode = OWP_MODE_OPEN | OWP_MODE_AUTHENTICATED
+                           | OWP_MODE_ENCRYPTED;
 
 const char *DefaultIPtoClassFile = DEFAULT_IP_TO_CLASS_FILE;
 char *IPtoClassFile = NULL;
@@ -21,7 +29,6 @@ char *ClassToLimitsFile = NULL;
 const char *DefaultPasswdFile = DEFAULT_PASSWD_FILE;
 char *PasswdFile = NULL;
 
-u_int32_t DefaultMode = OWP_MODE_OPEN;
 
 /* Global variable - the total number of allowed Control connections. */
 #define DEFAULT_NUM_CONN 100
@@ -74,6 +81,19 @@ owamp_first_check(void *app_data,
 		return False;
 		break;
 	}
+}
+
+OWPBoolean 
+check_control(
+	      OWPContext      ctx,
+	      OWPSessionMode mode_req,
+	      const char*         kid,
+	      struct sockaddr *local,
+	      struct sockaddr *remote,
+	      OWPErrSeverity  *err_ret
+)
+{
+	return True;
 }
 
 static int
@@ -200,33 +220,33 @@ owampd_err_func(
 int
 main(int argc, char *argv[])
 {
-	policy_data* policy;
-	char ctrl_msg[MAX_MSG];
-	I2datum * dat;
-	char class[128];
-	char err_msg[128];
-	int listenfd, connfd;
-	char buff[MAX_LINE];
+	policy_data*           policy;
+	int                    listenfd, connfd;
 	char ip2class[MAXPATHLEN],class2limits[MAXPATHLEN],passwd[MAXPATHLEN];
-	struct sockaddr cliaddr;
-	socklen_t addrlen;
-	char path[MAXPATHLEN]; /* various config files */
-	extern char *optarg;
-	extern int optind;
-	int c;
-	char* port = NULL;
-	char *host = NULL; 
-	pid_t pid; 
-	OWPErrSeverity out;
-	OWPContext ctx;
-	OWPControl cntrl; /* XXX - remember to initialize. */
+	struct sockaddr        cliaddr;
+	socklen_t              addrlen;
+	extern char            *optarg;
+	extern int             optind;
+	char*                  progname;
+	int                    c;
+	char*                  port = NULL;
+	char*                  host = NULL; 
+	pid_t                  pid; 
+	OWPErrSeverity         out;
+	OWPContext             ctx;
+	OWPControl             cntrl; /* XXX - remember to initialize. */
+	I2ErrHandle            eh;
+	I2LogImmediateAttr     ia;
 	OWPInitializeConfigRec cfg  = {
 		0, 
 		0,
-		NULL,
 		owampd_err_func, 
 		NULL,
-		owamp_first_check,
+		/* owamp_first_check, */
+		NULL,
+		/* check_control, */
+		NULL,
+		NULL,
 		NULL,
 		NULL,
 		NULL,
@@ -234,10 +254,20 @@ main(int argc, char *argv[])
 		NULL,
 		NULL
 	};
-	
-	fprintf(stderr, "DEBUG: OWP_CONFDIR = %s\n",OWP_CONFDIR);
-	exit(0);
-	
+
+	ia.line_info = (I2NAME | I2MSG);
+	ia.fp = stderr;
+
+	/*
+	* Start an error loggin session for reporing errors to the
+	* standard error
+	*/
+	eh = I2ErrOpen(progname, I2ErrLogImmediate, &ia, NULL, NULL);
+	if(! eh) {
+		fprintf(stderr, "%s : Couldn't init error module\n", progname);
+		exit(1);
+	}
+
 	/* Parse command line options. */
 	while ((c = getopt(argc, argv, "f:a:p:n:h")) != -1) {
 		switch (c) {
@@ -276,34 +306,35 @@ main(int argc, char *argv[])
 	if (!PasswdFile)
 		PasswdFile = strdup(DefaultPasswdFile);
 
+	policy = PolicyInit(eh, ip2class, class2limits, passwd, &out);
+	if (out == OWPErrFATAL){
+		fprintf(stderr, "PolicyInit failed. Exiting...");
+		exit(1);
+	};
+	
+	cfg.app_data = (void *)policy;
 	ctx = OWPContextInitialize(&cfg);
-	policy = PolicyInit(ctx, ip2class, class2limits, passwd, &out);
-	/* 
-	   XXX - can't think of a better place to put it, but it doesn't
-	   belong here. 
-	*/
-	openlog("owampd", LOG_PID | LOG_NDELAY | LOG_PERROR, LOG_DAEMON);
 
 	/* XXX - remove eventually. */
 	fprintf(stderr, "DEBUG: exiting...\n");
 	exit(0);
 
 	while (1) {
-		OWPBoolean ok;
+		char buf[MAX_MSG];
+		OWPBoolean again = True;
 		socklen_t len = addrlen;
 
 		if ( (connfd = accept(listenfd, &cliaddr, &addrlen)) < 0){
 			if (errno == EINTR)
 				continue;
 			else {
-				OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
-					 "accept error");
+				perror("accept()");
 				exit(1);
 			}
 		}
 
-		if (OWPAddrCheck(ctx, policy, NULL, 
-				 &cliaddr, ctrl_msg, &out)==False){
+		if (OWPServerCheckAddrPolicy(ctx, NULL, &cliaddr, &out)
+		    == False){
 			do_ban(connfd);     /* access denied */
 			continue;
 		}
@@ -316,7 +347,7 @@ main(int argc, char *argv[])
 		free_connections--;
 
 		if ( (pid = fork()) < 0){
-			OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, "fork");
+			perror("fork");
 			exit(1);
 		}
 		
@@ -326,15 +357,89 @@ main(int argc, char *argv[])
 		}
 		
 		/* child */
-		cntrl = OWPControlAccept(ctx, connfd, policy, &out);
+		cntrl = OWPControlAccept(ctx, connfd, default_offered_mode,
+					 policy, &out);
 		
 		if (cntrl == NULL){
 			close(connfd);
 			exit(0);
 		}
 		
-		while (ok == True) {
-			ok = OWPServerControlMain(cntrl, &out);
+		while (again == True) {
+			pid_t pidlet;
+			u_int8_t msg_type;
+			if ( OWPGetRequestType(cntrl, &msg_type) < 0){
+				clean_up();
+				exit(0);
+			}
+			
+			switch (msg_type) {
+			case OWP_CTRL_REQUEST_SESSION:
+				/* XXX fill in!
+				if (ParseRest(cntrl) < 0){
+					rude_close();
+					clean_up();
+					again = False;
+					continue;
+				}
+				*/
+				if (_OWPCallCheckTestPolicy(cntrl, 0, NULL,
+				     NULL, NULL, NULL, &out) == False){
+					/*
+					polite_close();
+					clean_up();
+					*/
+					again = False;
+					continue;
+				}
+				/*
+				prepare_for fork();  
+				data for kid,
+				sig_handlers etc
+				*/
+
+				pidlet = fork();
+				switch (pidlet) {
+				case -1:
+					/* loud_complain(); */
+					exit(1);
+					break;
+
+				case 0: /* child */
+					/*
+					do_descriptors();
+					OWPDoTest();
+					clean_up(0);
+					*/
+					exit(0);
+					break;
+
+				default: /* parent */
+					/* bond_with(pidlet); */
+					/* XXX 
+					   - work this out
+					*/
+					continue;
+					break;
+				}
+			
+			case OWP_CTRL_START_SESSION:
+				OWPServerProcessTestStart(cntrl, buf);
+				break;
+			case OWP_CTRL_STOP_SESSION:
+				OWPServerProcessTestStop(cntrl, buf);
+				break;
+			case OWP_CTRL_RETRIEVE_SESSION:
+				OWPServerProcessSessionRetrieve(cntrl, buf);
+				break;
+			default:
+				return False; /* bad message type */
+				break;
+			}
+			
+			/*
+			  again = OWPServerControlMain(cntrl, &out);
+			*/
 		}
 		
 		/* 

@@ -796,22 +796,17 @@ OWPStartTestSessions(
 OWPControl
 OWPControlAccept(
 		 OWPContext     ctx,       /* control context               */
+		 u_int32_t      mode_offered,/* advertised server mode      */
 		 int            connfd,    /* connected socket              */
 		 void*          app_data,  /* policy                        */
 		 OWPErrSeverity *err_ret   /* err - return                  */
 )
 {
-#if	TODO
-/*
- * Tolya - I commented this out because default_offered_mode is undefined
- * and I am trying to get my stuff to compile...
- */
-	u_int32_t mode_offered = default_offered_mode;
 	u_int32_t mode_requested;
  
-	OWPByte *key = NULL;
 	char buf[MAX_MSG]; /* used to send and receive messages */
 	char token[32];
+	char *class;
 	OWPControl cntrl;
 	*err_ret = OWPErrOK;
 	if ( !(cntrl = _OWPControlAlloc(ctx, err_ret)))
@@ -824,19 +819,93 @@ OWPControlAccept(
 
 	/* Compose Server greeting. */
 	memset(buf, 0, sizeof(buf));
-	*(int32_t *)(buf + 12) = htonl(default_offered_mode);
+	*(int32_t *)(buf + 12) = htonl(mode_offered);
 
-	/* generate 16 random bytes and save them away. */
+	/* generate 16 random bytes of challenge and save them away. */
 	random_bytes(cntrl->challenge, 16);
 	memcpy(buf + 16, cntrl->challenge, 16); /* the last 16 bytes */
 	
 	if (_OWPSendBlocks(cntrl, buf, 2) < 0)
 		return NULL;
 
-	_OWPReadClientGreeting(cntrl, err_ret);
+	if (readn(cntrl->sockfd, buf, 60) != 60){
+		return NULL;
+	}
 
+	mode_requested = ntohl(*(u_int32_t *)buf);
+	
+	/* insure that exactly one is chosen */
+	if ( !(mode_requested == OWP_MODE_OPEN 
+	       | mode_requested == OWP_MODE_AUTHENTICATED
+	       | mode_requested == OWP_MODE_ENCRYPTED ))
+		{
+			*err_ret = OWPErrFATAL;
+			return cntrl;
+				}
+
+	if (mode_requested & ~mode_offered){ /* can't provide requested mode */
+		_OWPServerOK(cntrl, CTRL_REJECT);
+		return NULL;
+	}
+	
+	if (mode_requested & (OWP_MODE_AUTHENTICATED|OWP_MODE_ENCRYPTED)){
+		OWPByte binKey[16];
+
+		memcpy(cntrl->kid, buf + 4, 8); /* Save 8 bytes of kid */
+
+		if(!_OWPCallGetAESKey(cntrl->ctx, buf + 4, binKey, err_ret)){
+			if(*err_ret != OWPErrOK){
+				*err_ret = OWPErrFATAL;
+				return NULL;
+			}
+		}
+
+
+		if (OWPDecryptToken(binKey, buf + 12, token) < 0)
+			return NULL;
+
+		/* Decrypted challenge is in the first 16 bytes */
+		if (memcmp(cntrl->challenge, token, 16) != 0){
+			_OWPServerOK(cntrl, CTRL_REJECT);
+			return NULL;
+		}
+
+		/* XXX - Authentication ok - determine usage class now. 
+		   BUT: libowamp doesn't know about policy!!!
+		   Must make use of hook function here.
+		if (class = (GetClass(cntrl->kid)) == NULL)
+			class = OWP_MODE_AUTHENTICATED;
+		
+		if ((GetMode(class) & mode_requested) == 0){
+			_OWPServerOK(cntrl, CTRL_REJECT);
+			return NULL;
+		}
+		*/
+			
+		random_bytes(cntrl->writeIV, 16);
+
+		/* Save 16 bytes of session key and 16 bytes of client IV*/
+		memcpy(cntrl->session_key, token + 16, 16);
+		memcpy(cntrl->readIV, buf + 44, 16);
+		_OWPMakeKey(cntrl, cntrl->session_key); 
+	} else { /* mode_req == OPEN */
+		/* XXX - Authentication ok - determine usage class now. 
+		   BUT: libowamp doesn't know about policy!!!
+		   Must make use of hook function here.
+		if (class = (GetClass(cntrl->remote)) == NULL)
+			class = OWP_OPEN;
+
+		if ((GetMode(class) & mode_requested) == 0){
+			_OWPServerOK(cntrl, CTRL_REJECT);
+			return NULL;
+		}
+		*/
+	}
+
+	/* Apparently everything is ok. Accept the Control session. */
+	cntrl->mode = mode_requested;
+	_OWPServerOK(cntrl, CTRL_ACCEPT);
 	return cntrl;
-#endif
 }
 
 /*

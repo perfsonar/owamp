@@ -23,10 +23,9 @@
 **			to structures for the rest of the api to deal
 **			with.)
 **
-**			The idea is to basically keep all network ordering
-**			architecture dependant things in this file.
 */
 #include <owampP.h>
+extern u_int32_t default_offered_mode;
 
 void
 _OWPServerOK(OWPControl ctrl, u_int8_t code);
@@ -57,13 +56,14 @@ _OWPSendServerGreeting(
 	return 0;
 }
 
+/* XXX - Being phased out */
 int
 _OWPReadClientGreeting(
 		       OWPControl cntrl, 
 		       OWPErrSeverity *err_ret
 		       )
 {
-	u_int32_t mode_offered = cntrl->mode;
+	u_int32_t mode_offered; /* = default_offered_mode; */
 	u_int32_t mode_requested; 
 	OWPByte *key = NULL;
 	char buf[MAX_MSG];
@@ -156,27 +156,129 @@ _OWPServerOK(OWPControl cntrl, u_int8_t code)
 ** They all assume the the first (16-byte) block of the 
 ** request has been read and saved in <msg>. Subsequent calls to 
 ** _OWPReceiveBlocks will start from the second block of the message.
+** Note: ProcessTestRequest code may be moved to application
+** level (by using a hook if necessary) since it calls fork()
+** to spawn off Test sessions.
 */
 
-void
+int
 OWPServerProcessTestRequest(OWPControl cntrl, char *msg)
 {
+	u_int8_t s_version, r_version; 
+	OWPPoissonTestSpec test_spec;
+	int conf_sender, conf_receiver;
+	char rest[MAX_MSG];
+	int i;
+
+	u_int8_t* offset = (u_int8_t *)msg + 1;
+
+	s_version = (*offset) >> 4;
+	r_version = (*offset) & 0x10;
+
+	/*	void *local, *remote;  */
+
+	if ((s_version != 4) || (s_version != 6) || (s_version != r_version)){
+		OWPError(cntrl->ctx, OWPErrWARNING, OWPErrUNKNOWN,
+			 "OWPServerProcessTestRequest: bad IP version(s)");
+		return -1;
+	}
+
+	switch (s_version) {
+	case 4:
+		if (r_version != 4){
+			OWPError(cntrl->ctx, OWPErrWARNING, OWPErrUNKNOWN,
+			     "OWPServerProcessTestRequest: bad IP version(s)");
+			return -1;	
+		}
+		/*
+		  ...
+		*/
+		offset++;
+		conf_sender = *(u_int8_t *)offset++;
+		conf_receiver = *(u_int8_t *)offset++;
+
+		/* XXX - remember byte-ordering !!! */
+		/* send_address = get_addr4(offset, 4);  */
+
+		/* 
+		   Now we need to read the rest of the message
+		   before doing any further parsing. 
+		*/
+		if (_OWPReceiveBlocks(cntrl, rest, 9) < 0){
+			OWPError(cntrl->ctx, OWPErrWARNING, OWPErrUNKNOWN,
+			    "OWPServerProcessTestRequest: _OWPReceiveBlocks");
+			return -1;
+		}
+
+		/* quickly make sure the last 16 bytes are 0 */
+		for (i = 0; i < 4; i++){
+			if ( *((u_int32_t *)rest + 128 + 4*i) )
+				return -1;
+		}
+
+		/*
+		offset = (u_int8_t *)rest + 4;
+		
+		recv_address = get_u32(offset); 
+		offset += 16;
+
+		send_port = get_u16(offset);
+		offset += 2;
+
+		recv_port = get_u16(offset);
+		offset += 2;
+		
+		get_sid(offset, sid);
+		offset += 16;
+
+		inv_lambda = get_u32(offset);
+		offset += 4;
+
+		packets = get_u32(offset);
+		offset += 4;
+
+		pad_length = get_u32(offset);
+		offset += 4;
+
+		get_start_time(offset, start_time);
+		offset += 8;
+
+		pd = get_u32(offset);
+		*/
+		break;
+	case 6:
+		if (r_version != 6){
+			OWPError(cntrl->ctx, OWPErrWARNING, OWPErrUNKNOWN,
+			 "OWPServerProcessTestRequest: bad IP version(s)");
+			return -1;
+		}
+		/*
+		  ...
+		*/
+		break;
+	default:
+		OWPError(cntrl->ctx, OWPErrWARNING, OWPErrUNKNOWN,
+			 "OWPServerProcessTestRequest: bad IP version(s)");
+		return -1;	
+	}
+
+	
 	
 }
  
-void
+int
 OWPServerProcessTestStart(OWPControl cntrl, char *msg)
 {
 	
 }
 
-void
+int
 OWPServerProcessTestStop(OWPControl cntrl, char *msg)
 {
 	
 }
 
-void
+int
 OWPServerProcessSessionRetrieve(OWPControl cntrl, char *msg)
 {
 	
@@ -188,7 +290,7 @@ OWPServerProcessSessionRetrieve(OWPControl cntrl, char *msg)
 #define OWP_CTRL_RETRIEVE_SESSION 4
 
 /*
-** This function is called one the Control connection has been
+** This function is called once the Control connection has been
 ** accepted. It reads and processes a single Control message.
 */
 
@@ -225,3 +327,55 @@ OWPServerControlMain(OWPControl cntrl, OWPErrSeverity *err_ret)
 	return True;
 }
 
+int
+OWPGetControlMessageType(OWPControl cntrl, u_int8_t* msg_type)
+{
+	char msg[MAX_MSG];
+
+	/* Read one block so we can peek at the message type */
+	if (_OWPReceiveBlocks(cntrl, msg, 1) < 0)
+		return -1;
+
+	*msg_type = *(u_int8_t *)msg;
+	return 0;
+}
+
+/*
+** This function reads the first (16-byte) block of the
+** Control request and places the request type into *msg_type.
+** It returns 0 on success, and -1 on failure.
+*/
+
+int
+OWPGetRequestType(OWPControl cntrl, int* msg_type)
+{
+	char buf[MAX_MSG];
+	if (readn(cntrl->sockfd, buf, 60) != 60){
+		close(cntrl->sockfd);
+		return -1;
+	}
+
+	*msg_type = ntohl(*(u_int32_t *)buf);
+	return 0;
+}
+
+/*
+** This function reads KID, Token and ClientIV of the Client greeting.
+** and saves them in relevant fields of cntrl structure. It returns
+** 0 on success, and -1 on failure.
+*/
+
+int
+ParseRest(OWPControl cntrl)
+{
+	
+}
+
+OWPBoolean
+OWPServerCheckAddrPolicy(OWPContext ctx, 
+			 struct sockadddr *addr, 
+			 OWPErrSeverity *err_ret
+			 )
+{
+	return _OWPCallCheckAddrPolicy(ctx, NULL, addr, err_ret);
+}

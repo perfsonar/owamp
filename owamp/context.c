@@ -100,7 +100,7 @@ _OWPCallCheckAddrPolicy(
 OWPBoolean
 _OWPCallCheckControlPolicy(
 	OWPContext	ctx,		/* library context		*/
-	OWPSessionMode	*mode,		/* reqested mode (in/out)	*/
+	OWPSessionMode	mode,		/* requested mode       	*/
 	const char	*kid,		/* key identity			*/
 	struct sockaddr	*local_sa_addr,	/* local addr or NULL		*/
 	struct sockaddr	*remote_sa_addr,/* remote addr			*/

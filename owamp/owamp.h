@@ -42,7 +42,6 @@
 #define	MAXHOSTNAMELEN	64
 #endif
 
-
 #define	OWP_MODE_UNDEFINED		(0)
 #define	OWP_MODE_OPEN			(01)
 #define	OWP_MODE_AUTHENTICATED		(02)
@@ -50,6 +49,9 @@
 
 #define CTRL_ACCEPT 0
 #define CTRL_REJECT 1
+
+/* Default mode offered by the server */
+#define OWP_DEFAULT_OFFERED_MODE 	(OWP_MODE_OPEN|OWP_MODE_AUTHENTICATED|OWP_MODE_ENCRYPTED)
 
 /* Maximum message length in Control Protocol */
 #define MAX_MSG 60 /* XXX - currently 56 but KID to be extended by 4 bytes */
@@ -509,6 +511,7 @@ OWPSendStopSessions(
 extern OWPControl
 OWPControlAccept(
 		 OWPContext     ctx,       /* control context               */
+		 u_int32_t      mode_offered,/* advertised server mode      */
 		 int            connfd,    /* connected socket              */
 		 void           *app_data, /* policy                        */
 		 OWPErrSeverity *err_ret   /* err - return                  */
