@@ -89,6 +89,32 @@
 #define MAX(a,b) ((a>b)?a:b)
 #endif
 
+#ifndef OWP_TSTAMPCHARS
+#define OWP_TSTAMPCHARS  20
+#endif
+
+/*
+ * The ascii decimal encoding of the 64 bit timestamps takes this many
+ * chars. Log(2^64)
+ *
+ * fmt indicates 0 padding, 20 significant digits.
+ */
+#ifndef OWP_TSTAMPFMT 
+#define OWP_TSTAMPFMT  "%020llu"
+#endif
+
+#ifndef OWP_TSTAMPCHARS
+#define OWP_TSTAMPCHARS  20
+#endif
+
+/*
+ * Char used between start_end.owp files.
+ */
+#ifndef OWP_NAME_SEP
+#define OWP_NAME_SEP    "_"
+#endif
+
+
 #include <owamp/rijndael-api-fst.h>
 #include <I2util/util.h>
 

@@ -22,20 +22,6 @@
 #define	_powstreamp_h_
 
 /*
- * The ascii decimal encoding of the 64 bit timestamps takes this many
- * chars. Log(2^64)
- *
- * fmt indicates 0 padding, 20 significant digits.
- */
-#define	TSTAMPCHARS	20
-#define	TSTAMPFMT	"%020llu"
-
-/*
- * Char used between start_end.owp files.
- */
-#define	OWP_NAME_SEP	"_"
-
-/*
  * Bound of the RTT in seconds. This application needs an estimate of how
  * long it takes to request a test session. It uses this estimate to make
  * sure that it has enough time to make the test requests before those

@@ -349,7 +349,7 @@ main(
 	 * exceed PATH_MAX even with the nul byte.
 	 * Also set file_offset and ext_offset to the lengths needed.
 	 */
-	ch = 2*TSTAMPCHARS + strlen(OWP_NAME_SEP) +
+	ch = 2*OWP_TSTAMPCHARS + strlen(OWP_NAME_SEP) +
 		MAX(strlen(OWP_FILE_EXT),strlen(OWP_INCOMPLETE_EXT));
 	assert((ch+1)<PATH_MAX);
 	if(appctx.opt.savedir){
@@ -364,7 +364,7 @@ main(
 		dirpath[0] = '\0';
 
 	file_offset = strlen(dirpath);
-	ext_offset = file_offset + TSTAMPCHARS;
+	ext_offset = file_offset + OWP_TSTAMPCHARS;
 
 	owp_set_auth(&appctx, &policy, progname, ctx); 
 
@@ -607,7 +607,7 @@ NextConnection:
 				char	endname[PATH_MAX];
 				char	newpath[PATH_MAX];
 
-				sprintf(endname,TSTAMPFMT,tst->end);
+				sprintf(endname,OWP_TSTAMPFMT,tst->end);
 				strcpy(newpath,tst->fname);
 				sprintf(&newpath[ext_offset],"%s%s%s",
 					OWP_NAME_SEP,endname,OWP_FILE_EXT);
@@ -713,7 +713,7 @@ NextConnection:
 			tst = &p->sessions[s];
 
 			tst->fname = tst->fname_mem;
-			sprintf(&tst->fname[file_offset],TSTAMPFMT,cnum);
+			sprintf(&tst->fname[file_offset],OWP_TSTAMPFMT,cnum);
 			strcpy(&tst->fname[ext_offset],OWP_INCOMPLETE_EXT);
 
 			if(!(tst->fp = fopen(tst->fname,"wb+"))){

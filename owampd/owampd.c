@@ -590,14 +590,24 @@ main(int argc, char *argv[])
 	owp_policy_data		*policy;
 	char			ip2class[MAXPATHLEN],
 				class2limits[MAXPATHLEN],
-				passwd[MAXPATHLEN];
+		                passwd[MAXPATHLEN],
+                 		pid_file[MAXPATHLEN],
+		                info_file[MAXPATHLEN];
+		
 	fd_set			readfds;
-	int			maxfd;    /* max fd in readfds               */
+	int			maxfd;    /* max fd in readfds */
 	OWPContext		ctx;
 	OWPAddr			listenaddr = NULL;
 	int			listenfd;
 	int			rc;
 	I2datum			data;
+	pid_t                   mypid;
+	struct flock            flk;
+	int                     pid_fd;
+	FILE                    *pid_fp, *info_fp;
+	OWPTimeStamp	        currtime;	
+	OWPnum64	        cnum;
+
 	OWPInitializeConfigRec	cfg  = {
 	/*	tm_out			*/	{0, 
 						0},
@@ -652,6 +662,66 @@ main(int argc, char *argv[])
 	 */
 	cfg.eh = errhand;
 	ctx = OWPContextInitialize(&cfg);
+
+	/*  Get exclusive lock for pid file. */
+	strcpy(pid_file, opts.confdir);
+	strcat(pid_file, OWP_PATH_SEPARATOR);
+	strcat(pid_file, "owampd.pid");
+	if ((pid_fd = open(pid_file, O_RDWR|O_CREAT,
+			   S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH)) < 0) {
+		I2ErrLog(errhand, "open(%s): %M", pid_file);
+		exit(1);
+	}
+	if ((pid_fp = fdopen(pid_fd, "wr")) == NULL) {
+		I2ErrLog(errhand, "fdopen(): %M");
+		exit(1);
+	}
+	flk.l_start = 0;
+        flk.l_len = 0;
+        flk.l_type = F_WRLCK;
+        flk.l_whence = SEEK_SET; 
+        while((rc = fcntl(pid_fd, F_SETLK, &flk)) < 0 && errno == EINTR);
+        if(rc < 0){
+                I2ErrLog(errhand,"Unable to lock file %s:%M", pid_file);
+                exit(1);
+        }
+
+	/* Record pid.  */
+	mypid = getpid();
+	if(!OWPGetTimeOfDay(&currtime)){
+			I2ErrLogP(errhand, errno, "OWPGetTimeOfDay:%M");
+			exit(1);
+	}
+	fprintf(pid_fp, "%lld\n", (long long)mypid);
+	if (fflush(pid_fp) < 0) {
+		I2ErrLogP(errhand, errno, "fflush: %M");
+		exit(1);
+	}
+
+	/* Record the start timestamp in the info file. */
+	strcpy(info_file, opts.confdir);
+	strcat(info_file, OWP_PATH_SEPARATOR);
+	strcat(info_file, "owampd.info");
+	if ((info_fp = fopen(info_file, "w")) == NULL) {
+		I2ErrLog(errhand, "fopen(%s): %M", info_file);
+		exit(1);
+	}
+	cnum = OWPTimeStamp2num64(&currtime);
+	fprintf(info_fp, OWP_TSTAMPFMT, cnum);
+	fprintf(info_fp, "\n");
+	while ((rc = fclose(info_fp)) < 0 && errno == EINTR);
+	if(rc < 0){
+                I2ErrLog(errhand,"fclose():%M");
+                exit(1);
+        }
+
+	/* Now change to read lock */
+	flk.l_type = F_RDLCK;
+	while((rc = fcntl(pid_fd, F_SETLK, &flk)) < 0 && errno == EINTR);
+        if(rc < 0){
+                I2ErrLog(errhand,"Unable to lock file %s:%M", pid_file);
+                exit(1);
+        }
 
 	/*
 	 * Setup paths.
