@@ -55,6 +55,8 @@ is_local_node(
 	struct addrinfo	*ai_ret = NULL, *ai = NULL;
 	I2Boolean	val=False;
 
+	if(!nodename)
+		return True;
 
 	if(socktype)
 		ai = &hints;

@@ -43,31 +43,36 @@ int
 _OWPClientReadServerGreeting(
 	OWPControl	cntrl,		/* cntrl state structure	*/
 	u_int32_t	*mode,		/* modes available - returned	*/
+	OWPByte		*challenge,	/* challenge - returned		*/
 	OWPErrSeverity	*err_ret	/* error - returned		*/
 )
 {
-	mode = 0;
+	char	buf[32];
+
 	*err_ret = OWPErrOK;
 
-	return 0;
-}
+	if(_OWPReadn(cntrl->sockfd,buf,32) != 32){
+		*err_ret = OWPErrFATAL;
+		return 1;
+	}
 
-/*
- * Function: _OWPClientInitEncryptionValues
- *
- * Description:
- * 	Given the cntrl->mode setting, and the cntrl->challenge this function
- * 	creates the clientIV and the session token.
- *
- * 	returns 0 on success - non-0 on failure.
- */
-int
-_OWPClientInitEncryptionValues(
-	OWPControl	cntrl,		/* cntrl state structure	*/
-	OWPErrSeverity	*err_ret	/* error - returned		*/
-)
-{
-	*err_ret = OWPErrOK;
+	/*
+	 * First 12 octets ignored...
+	 * (0-11)
+	 */
+
+	/*
+	 * Next 4 octets represent a 4 byte integer indicating mode.
+	 * (12-15)
+	 */
+	*mode = ntohl(*((u_int32_t *)&buf[12]));
+
+	/*
+	 * Next 16 octets are the challenge - binary byte data so
+	 * no byte reordering is necessary.
+	 * (16-31)
+	 */
+	memcpy(challenge,&buf[16],16);
 
 	return 0;
 }
@@ -87,10 +92,51 @@ _OWPClientInitEncryptionValues(
 int
 _OWPClientRequestModeReadResponse(
 	OWPControl	cntrl,
+	OWPByte		*token,
 	OWPErrSeverity	*err_ret
 )
 {
+	/*
+	 * TODO:Ensure Stas actually changed KID to 8 octets - otherwise this
+	 * buffer is the wrong size!
+	 */
+	char	buf[60];
+	OWPByte	accept_session;
+
 	*err_ret = OWPErrOK;
+
+	*(u_int32_t *)&buf[0] = htonl(cntrl->mode);
+
+	if(cntrl->kid)
+		memcpy(&buf[4],cntrl->kid,8);
+	else
+		random_bytes(&buf[4],8);
+
+	memcpy(&buf[12],token,32);
+	memcpy(&buf[44],cntrl->writeIV,16);
+
+	if(_OWPWriten(cntrl->sockfd,buf,60) != 60){
+		*err_ret = OWPErrFATAL;
+		return -1;
+	}
+
+	/*
+	 * Now - read response...
+	 */
+	if(_OWPReadn(cntrl->sockfd,buf,32) != 32){
+		*err_ret = OWPErrFATAL;
+		return -1;
+	}
+
+	accept_session = *((OWPByte *)&buf[15]);
+
+	if(accept_session){
+		OWPError(cntrl->ctx,OWPErrFATAL,accept_session,
+				"Server denied session:%M");
+		return -1;
+	}
+
+	memcpy(cntrl->readIV,&buf[16],16);
 
 	return 0;
 }

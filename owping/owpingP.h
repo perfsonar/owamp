@@ -21,9 +21,6 @@
 #ifndef	_owpingp_h_
 #define	_owpingp_h_
 
-#include <I2util/util.h>
-#include <owamp/owamp.h>
-
 /*
  * Application "context" structure
  */
@@ -47,7 +44,7 @@ typedef	struct {
 		char		*receiverServ;
 
 		u_int32_t	padding;
-		u_int32_t	lambda;
+		float		rate;
 		u_int32_t	numPackets;
 
 		u_int32_t	lossThreshold;

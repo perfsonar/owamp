@@ -47,7 +47,7 @@
 #include "rijndael-api-fst.h"
 
 #define	_OWP_ERR_MAXSTRING	1024
-#define	_OWP_DO_ENCRYPT		(OWP_MODE_AUTHENTICATED|OWP_MODE_ENCRYPTED)
+#define	_OWP_DO_CIPHER		(OWP_MODE_AUTHENTICATED|OWP_MODE_ENCRYPTED)
 
 /*
  * Data structures
@@ -104,7 +104,6 @@ struct OWPControlRec{
 	char			kid_buffer[9];
 	keyInstance             encrypt_key;
 	keyInstance             decrypt_key;
-	OWPByte			challenge[16];
 	OWPByte			session_key[16];
 	OWPByte			readIV[16];
 	OWPByte			writeIV[16];
@@ -117,5 +116,99 @@ struct OWPTestSessionRec{
 	struct sockaddr			recv_addr;
 	struct OWPTestSessionRec	*next;
 };
+
+/*
+ * io.c prototypes
+ */
+extern ssize_t
+_OWPReadn(
+	int	fd,
+	void	*buff,
+	size_t	n
+	 );
+
+extern ssize_t
+_OWPWriten(
+	int		fd,
+	const void	*buff,
+	size_t		n
+	  );
+
+extern int
+_OWPSendBlocks(
+	OWPControl	cntrl,
+	char		*buf,
+	int		num_blocks
+	      );
+
+extern int
+_OWPReceiveBlocks(
+	OWPControl	cntrl,
+	char		*buf,
+	int		num_blocks
+		);
+
+extern int
+_OWPEncryptBlocks(
+	OWPControl	cntrl,
+	char		*in_buf,
+	int		num_blocks,
+	char		*out_buf
+		);
+
+extern int
+_OWPDecryptBlocks(
+	OWPControl	cntrl,
+	char		*in_buf,
+	int		num_blocks,
+	char		*out_buf
+		);
+
+extern int
+_OWPMakeKey(
+	OWPControl	cntrl,
+	OWPByte		*binKey
+	);
+
+extern int
+OWPEncryptToken(
+	char	*binKey,
+	char	*token_in,
+	char	*token_out
+	);
+
+extern int
+OWPDecryptToken(
+	char	*binKey,
+	char	*token_in,
+	char	*token_out
+	);
+
+/*
+ * random.c
+ */
+extern void
+random_bytes(
+	char	*ptr,
+	int	count
+	);
+
+/*
+ * cprotocol.c
+ */
+extern int
+_OWPClientReadServerGreeting(
+	OWPControl	cntrl,
+	u_int32_t	*mode_avail_ret,
+	OWPByte		*challenge_ret,
+	OWPErrSeverity	*err_ret
+		);
+
+extern int
+_OWPClientRequestModeReadResponse(
+	OWPControl	cntrl,
+	OWPByte		*token,
+	OWPErrSeverity	*err_ret
+);
 
 #endif	/* OWAMPP_H */

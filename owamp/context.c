@@ -148,10 +148,9 @@ _OWPCallCheckTestPolicy(
 	OWPContext ctx;
 	*err_ret = OWPErrOK;
 
-	ctx = OWPGetContext(cntrl);
-	if(!ctx){
+	if(!cntrl){
 		OWPErrorLine(NULL,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
-				"_OWPCallCheckTestPolicy:No Context!");
+				"_OWPCallCheckTestPolicy:No Control record!");
 		*err_ret = OWPErrFATAL;
 		return False;
 	}
@@ -159,11 +158,11 @@ _OWPCallCheckTestPolicy(
 	/*
 	 * Default action is to allow anything.
 	 */
-	if(!ctx->cfg.check_test_func)
+	if(!cntrl->ctx->cfg.check_test_func)
 		return True;
 
-	return (*ctx->cfg.check_test_func)(ctx->cfg.app_data,mode,kid,
-						local,remote,test_spec,err_ret);
+	return (*cntrl->ctx->cfg.check_test_func)(cntrl->ctx->cfg.app_data,
+				mode,kid,local,remote,test_spec,err_ret);
 }
 
 /*

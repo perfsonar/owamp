@@ -26,8 +26,13 @@
 ** count is possible.
 */
 
+/*
+ * TODO: Add timeout values for read's and write's. We don't want to wait
+ * as long as kernel defaults - timeout specified in the context is.
+ */
+
 ssize_t				       /* Read "n" bytes from a descriptor. */
-readn(int fd, void *vptr, size_t n)
+_OWPReadn(int fd, void *vptr, size_t n)
 {
 	size_t	nleft;
 	ssize_t	nread;
@@ -49,10 +54,10 @@ readn(int fd, void *vptr, size_t n)
 	}
 	return(n - nleft);		/* return >= 0 */
 }
-/* end readn */
+/* end _OWPReadn */
 
 ssize_t					/* Write "n" bytes to a descriptor. */
-writen(int fd, const void *vptr, size_t n)
+_OWPWriten(int fd, const void *vptr, size_t n)
 {
 	size_t		nleft;
 	ssize_t		nwritten;
@@ -73,7 +78,7 @@ writen(int fd, const void *vptr, size_t n)
 	}
 	return(n);
 }
-/* end writen */
+/* end _OWPWriten */
 
 /*
 ** This function sends a given number of (16 byte) blocks to the socket,
@@ -95,21 +100,21 @@ _OWPSendBlocks(OWPControl cntrl, char* buf, int num_blocks)
 {
 	size_t n;
 
-	if (! (cntrl->mode && OWP_MODE_ENCRYPTED)){
-		n = writen(cntrl->sockfd, buf, num_blocks*RIJNDAEL_BLOCK_SIZE);
+	if (! (cntrl->mode & _OWP_DO_CIPHER)){
+		n = _OWPWriten(cntrl->sockfd, buf, num_blocks*RIJNDAEL_BLOCK_SIZE);
 		if (n < 0){
 			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,errno,
-				"writen failed");
+				"_OWPWriten failed");
 			return -1;
 		} 
 		return 0;
 	} else {
 		char msg[MAX_MSG];
 		_OWPEncryptBlocks(cntrl, buf, num_blocks, msg);
-		n = writen(cntrl->sockfd, msg, num_blocks*RIJNDAEL_BLOCK_SIZE);
+		n = _OWPWriten(cntrl->sockfd, msg, num_blocks*RIJNDAEL_BLOCK_SIZE);
 		if (n < 0){
 			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,errno,
-				     "writen failed");
+				     "_OWPWriten failed");
 			return -1;
 		} 
 		return 0;
@@ -121,21 +126,21 @@ _OWPReceiveBlocks(OWPControl cntrl, char* buf, int num_blocks)
 {
 	size_t n;
 
-	if (! (cntrl->mode && OWP_MODE_ENCRYPTED)){
-		n = readn(cntrl->sockfd, buf, num_blocks*RIJNDAEL_BLOCK_SIZE);
+	if (! (cntrl->mode & _OWP_DO_CIPHER)){
+		n = _OWPReadn(cntrl->sockfd, buf, num_blocks*RIJNDAEL_BLOCK_SIZE);
 		if (n < 0){
 			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,errno,
-				     "readn failed");
+				     "_OWPReadn failed");
 			return -1;
 		} 
 		return 0;
 	} else {
 		char msg[MAX_MSG];
-		n = readn(cntrl->sockfd, msg, num_blocks*RIJNDAEL_BLOCK_SIZE);
+		n = _OWPReadn(cntrl->sockfd, msg, num_blocks*RIJNDAEL_BLOCK_SIZE);
 		_OWPDecryptBlocks(cntrl, msg, num_blocks, buf);
 		if (n < 0){
 			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,errno,
-				     "readn failed");
+				     "_OWPReadn failed");
 			return -1;
 		} 
 		return 0;
@@ -168,4 +173,61 @@ _OWPDecryptBlocks(OWPControl cntrl, char *buf, int num_blocks, char *out)
 	if (r != num_blocks*16*8)
 		return -1;
 
+}
+
+/*
+** This function sets up the key field of a OWPControl structure,
+** using the binary key located in <binKey>.
+*/
+
+_OWPMakeKey(OWPControl cntrl, OWPByte *binKey)
+{
+	cntrl->encrypt_key.Nr
+		= rijndaelKeySetupEnc(cntrl->encrypt_key.rk, binKey, 128);
+	cntrl->decrypt_key.Nr 
+		= rijndaelKeySetupDec(cntrl->decrypt_key.rk, binKey, 128);
+}
+
+
+/* 
+** The next two functions perform a single encryption/decryption
+** of Token in Control protocol, using a given (binary) key and the IV of 0.
+*/
+
+#define TOKEN_BITS_LEN (2*16*8)
+
+int
+OWPEncryptToken(char *binKey, char *token_in, char *token_out)
+{
+	int r;
+	char IV[16];
+	keyInstance key;
+
+	memset(IV, 0, 16);
+	
+	key.Nr = rijndaelKeySetupEnc(key.rk, binKey, 128);
+	r = blockEncrypt(IV, &key, token_in, TOKEN_BITS_LEN, token_out); 
+			 
+	if (r != TOKEN_BITS_LEN)
+		return -1;
+
+	return 0;
+}
+
+int
+OWPDecryptToken(char *binKey, char *token_in, char *token_out)
+{
+	int r;
+	char IV[16];
+	keyInstance key;
+
+	memset(IV, 0, 16);
+	
+	key.Nr = rijndaelKeySetupDec(key.rk, binKey, 128);
+	r = blockDecrypt(IV, &key, token_in, TOKEN_BITS_LEN, token_out); 
+			 
+	if (r != TOKEN_BITS_LEN)
+		return -1;
+
+	return 0;
 }

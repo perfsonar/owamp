@@ -30,7 +30,7 @@ extern u_int32_t default_offered_mode;
 void
 _OWPServerOK(OWPControl ctrl, u_int8_t code);
 
-#ifdef 0
+#ifdef NOT
 int
 _OWPSendServerGreeting(
 		       OWPControl cntrl,          /* cntrl state structure  */
@@ -71,7 +71,7 @@ _OWPReadClientGreeting(
 	char buf[MAX_MSG];
 	char token[32];
 
-	if (readn(cntrl->sockfd, buf, 60) != 60){
+	if (_OWPReadn(cntrl->sockfd, buf, 60) != 60){
 		close(cntrl->sockfd);
 		return -1;
 	}
@@ -88,7 +88,7 @@ _OWPReadClientGreeting(
 		return -1;
 	}
 	
-	if (mode_requested & OWP_MODE_AUTHENTICATED){
+	if (mode_requested & _OWP_DO_CIPHER){
 		OWPByte binKey[16];
 
 		memcpy(cntrl->kid, buf + 4, 8); /* Save 8 bytes of kid */
@@ -354,7 +354,7 @@ int
 OWPGetRequestType(OWPControl cntrl, int* msg_type)
 {
 	char buf[MAX_MSG];
-	if (readn(cntrl->sockfd, buf, 60) != 60){
+	if (_OWPReadn(cntrl->sockfd, buf, 60) != 60){
 		close(cntrl->sockfd);
 		return -1;
 	}
@@ -377,7 +377,7 @@ ParseRest(OWPControl cntrl)
 
 OWPBoolean
 OWPServerCheckAddrPolicy(OWPContext ctx, 
-			 struct sockadddr *addr, 
+			 struct sockaddr *addr, 
 			 OWPErrSeverity *err_ret
 			 )
 {

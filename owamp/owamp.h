@@ -95,10 +95,10 @@ typedef u_int32_t	OWPSessionMode;
 
 
 typedef struct OWPTimeStampRec{
-	u_int32_t		sec;
-	u_int32_t		frac_sec;
-	OWPBoolean		sync;
-	u_int8_t		prec;
+	unsigned long		sec:32;
+	unsigned long		frac_sec:24;
+	unsigned long		sync:1;
+	unsigned long		prec:6;
 } OWPTimeStamp;
 
 typedef enum {

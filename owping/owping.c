@@ -26,6 +26,11 @@
 #include <string.h>
 #include <ctype.h>
 
+#include <I2util/util.h>
+#include <owamp/owamp.h>
+#include <owpcontrib/unixtime.h>
+#include <owpcontrib/access.h>
+
 #include "./owpingP.h"
 #include "./localnode.h"
 
@@ -101,7 +106,7 @@ static	I2OptDescRec	set_options[] = {
 	{"receiver", -2, NULL, "IP address/node name of receiver [and server]"},
 
 	{"padding", 1, "0", "min size of padding for test packets (octets)"},
-	{"lambda", 1, "1000000", "mean time between test packets (usec)"},
+	{"rate", 1, "1.0", "rate of test packets (packets/sec)"},
 	{"numPackets", 1, "10", "number of test packets"},
 
 	/*
@@ -149,8 +154,8 @@ static  I2Option  get_options[] = {
 	sizeof(ping_ctx.opt.padding)
 	},
         {
-	"lambda", I2CvtToUInt, &ping_ctx.opt.lambda,
-	sizeof(ping_ctx.opt.lambda)
+	"rate", I2CvtToFloat, &ping_ctx.opt.rate,
+	sizeof(ping_ctx.opt.rate)
 	},
         {
 	"numPackets", I2CvtToUInt, &ping_ctx.opt.numPackets,
@@ -188,6 +193,11 @@ FailSession(
 	exit(1);
 }
 
+/*
+ * TODO: Find real max padding sizes based upon size of headers
+ */
+#define	MAX_PADDING_SIZE	65000
+
 main(
 	int	argc,
 	char	**argv
@@ -201,7 +211,7 @@ main(
 	I2table			local_addr_table;
 	OWPPoissonTestSpec	test_spec;
 	OWPSID			sid_ret;
-	OWPTimeStamp		zero_time={0};
+	OWPTimeStamp		start_time_rec={0};
 
 	ia.line_info = (I2NAME | I2MSG);
 	ia.fp = stderr;
@@ -244,6 +254,32 @@ main(
 		usage(od, progname, NULL);
 		exit(0);
 	}
+
+	/*
+	 * This is in reality dependent upon the actual protocol used
+	 * (ipv4/ipv6) - it is also dependent upon the auth mode since
+	 * authentication implies 128bit block sizes.
+	 *
+	 * Here MAX_PADDING_SIZE is just used to thow out obviously bad
+	 * values - however, the socket will have Path MTU discovery
+	 * turned on - and we will not allow any datagrams to be sent
+	 * that are larger than this value. This will be our attempt
+	 * to ensure that we are measuring singleton's in the network, and
+	 * not multiple fragments.
+	 *
+	 * (For IPv4 this means setting IP_PMTUDISC_DO - then any "send"
+	 * with data greater than the current PMTU will cause EMSGSIZE.)
+	 *
+	 * For IPv6 this is a little more complicated because the
+	 * Advanced Socket API is not yet formalized - for the current
+	 * version see: draft-ietf-ipngwg-rfc2292bis - currently in draft 7.
+	 * (Section 11.3 specifies setting IPV6_RECVPATHMTU to get our
+	 * desired behavior. - however, most OS's don't have this option
+	 * yet. If this option is not available, I will use IPV6_USEMTU
+	 * and set it to 1280 - the minimum MTU required by IPv6 (RFC2460)
+	 */
+	if(ping_ctx.opt.padding > MAX_PADDING_SIZE)
+		ping_ctx.opt.padding = MAX_PADDING_SIZE;
 
 	/*
 	 * Verify/decode auth options.
@@ -329,12 +365,18 @@ main(
 	/*
 	 * TODO test_spec and verify options.
 	 */
+	if(!OWPGetTimeOfDay(&start_time_rec)){
+		I2ErrLogP(eh,errno,"Unable to get current time:%M");
+		exit(1);
+	}
+	start_time_rec.sec++;
+
 	test_spec.test_type = OWPTestPoisson;
-	test_spec.start_time = zero_time;
-	test_spec.npackets = 1;
+	test_spec.start_time = start_time_rec;
+	test_spec.npackets = ping_ctx.opt.numPackets;
 	test_spec.typeP = 0;
-	test_spec.packet_size_padding = 0;
-	test_spec.InvLambda = 1;
+	test_spec.packet_size_padding = ping_ctx.opt.padding;
+	test_spec.InvLambda = (double)ping_ctx.opt.rate * 1000000.0;
 
 	/*
 	 * Initialize library with configuration functions.
@@ -349,8 +391,12 @@ main(
 	 * Open connection to owampd.
 	 */
 	if( !(ping_ctx.cntrl = OWPControlOpen(ctx,
-			OWPAddrByNode(ctx,ping_ctx.local_addr),
-			OWPAddrByNode(ctx,ping_ctx.remote_addr),
+			ping_ctx.local_addr?
+				OWPAddrByNode(ctx,ping_ctx.local_addr):
+				NULL,
+			ping_ctx.remote_addr?
+				OWPAddrByNode(ctx,ping_ctx.remote_addr):
+				OWPAddrByNode(ctx,"localhost"),
 			ping_ctx.auth_mode,
 			ping_ctx.opt.identity,
 			&err_ret))){

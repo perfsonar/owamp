@@ -156,6 +156,7 @@ OWPAddrByNode(
 		return NULL;
 
 	strncpy(addr->node,node,MAXHOSTNAMELEN);
+
 	addr->node_set = 1;
 
 	return addr;
@@ -347,16 +348,12 @@ _OWPClientBind(
 			return True;
 		}
 
-		OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,errno,
-							"bind(,,):%m");
-		*err_ret = OWPErrFATAL;
-		return False;
 	}
 
 	/*
 	 * None found.
 	 */
-	*err_ret = OWPErrOK;
+	*err_ret = OWPErrFATAL;
 	return False;
 }
 
@@ -586,9 +583,6 @@ _OWPControlAlloc(
 	 */
 	cntrl->kid = NULL;
 	cntrl->kid_buffer[sizeof(cntrl->kid_buffer)-1] = '\0';
-	memset(&cntrl->encrypt_key,0,sizeof(cntrl->encrypt_key));
-	memset(&cntrl->decrypt_key,0,sizeof(cntrl->decrypt_key));
-	memset(cntrl->challenge,0,sizeof(cntrl->challenge));
 	memset(cntrl->session_key,0,sizeof(cntrl->session_key));
 	memset(cntrl->readIV,0,sizeof(cntrl->readIV));
 	memset(cntrl->writeIV,0,sizeof(cntrl->writeIV));
@@ -662,6 +656,8 @@ OWPControlOpen(
 	OWPControl	cntrl;
 	u_int32_t	mode_avail;
 	OWPByte         key_value[16];
+	OWPByte		challenge[16];
+	OWPByte		token[32];
 	OWPByte         *key=NULL;
 	struct sockaddr	*local=NULL, *remote;
 
@@ -673,7 +669,7 @@ OWPControlOpen(
 	if(_OWPClientConnect(cntrl,local_addr,server_addr,err_ret) != 0)
 		goto error;
 
-	if(_OWPClientReadServerGreeting(cntrl,&mode_avail,err_ret) != 0)
+	if(_OWPClientReadServerGreeting(cntrl,&mode_avail,challenge,err_ret) != 0)
 		goto error;
 
 	/*
@@ -685,7 +681,7 @@ OWPControlOpen(
 	 * retrieve key if needed
 	 */
 	if(kid &&
-		(mode_avail & (OWP_MODE_ENCRYPTED|OWP_MODE_AUTHENTICATED))){
+		(mode_avail & _OWP_DO_CIPHER)){
 		strncpy(cntrl->kid_buffer,kid,sizeof(cntrl->kid_buffer)-1);
 		if(_OWPCallGetAESKey(ctx,cntrl->kid_buffer,key_value,err_ret)){
 			key = key_value;
@@ -699,8 +695,8 @@ OWPControlOpen(
 	/*
 	 * If no key, then remove auth/crypt modes
 	 */
-	if(!key) 
-		mode_avail &= ~(OWP_MODE_ENCRYPTED|OWP_MODE_AUTHENTICATED);
+	if(!key)
+		mode_avail &= ~_OWP_DO_CIPHER;
 
 	/*
 	 * Pick "highest" level mode still available to this server.
@@ -710,29 +706,44 @@ OWPControlOpen(
 						cntrl->kid,&local_addr->saddr,
 						&server_addr->saddr,err_ret)){
 		cntrl->mode = OWP_MODE_ENCRYPTED;
-	}else if((mode_avail & OWP_MODE_AUTHENTICATED) &&
+	}
+	else if((mode_avail & OWP_MODE_AUTHENTICATED) &&
 			_OWPCallCheckControlPolicy(ctx,OWP_MODE_AUTHENTICATED,
 						cntrl->kid,&local_addr->saddr,
 						&server_addr->saddr,err_ret)){
 		cntrl->mode = OWP_MODE_AUTHENTICATED;
-	}else if((mode_avail & OWP_MODE_OPEN) &&
+	}
+	else if((mode_avail & OWP_MODE_OPEN) &&
 			_OWPCallCheckControlPolicy(ctx,OWP_MODE_OPEN,
 						NULL,&local_addr->saddr,
 						&server_addr->saddr,err_ret)){
 		cntrl->mode = OWP_MODE_OPEN;
-	}else{
+	}
+	else{
 		OWPError(ctx,*err_ret,OWPErrPOLICY,"No Common Modes");
 		goto error;
 	}
 
 	/*
-	 * cntrl->mode MUST be set before calling this!
-	 * This function simply prepares the token from a generated
-	 * session key and the challenge from the server. It also generates
-	 * the ClientIV for encryption.
+	 * Initialize all the encryption values as necessary.
 	 */
-	if(_OWPClientInitEncryptionValues(cntrl,err_ret)!=0)
-		goto error;
+	if(cntrl->mode & _OWP_DO_CIPHER){
+		char	buf[32];
+
+		memcpy(buf,challenge,16);
+		random_bytes(cntrl->session_key,16);
+		memcpy(&buf[16],cntrl->session_key,16);
+
+		_OWPMakeKey(cntrl,cntrl->session_key);
+
+
+		if(OWPEncryptToken(key,buf,token) != 0)
+			goto error;
+	}
+	else{
+		random_bytes(token,32);
+	}
+	random_bytes(cntrl->writeIV,32);
 
 	/*
 	 * This function requests the cntrl->mode communication from the
@@ -740,7 +751,7 @@ OWPControlOpen(
 	 * server accepts this, it will return 0 - otherwise it will
 	 * return with an error.
 	 */
-	if(_OWPClientRequestModeReadResponse(cntrl,err_ret) != 0)
+	if(_OWPClientRequestModeReadResponse(cntrl,token,err_ret) != 0)
 		goto error;
 
 	return cntrl;
@@ -829,7 +840,7 @@ OWPControlAccept(
 	if (_OWPSendBlocks(cntrl, buf, 2) < 0)
 		return NULL;
 
-	if (readn(cntrl->sockfd, buf, 60) != 60){
+	if (_OWPReadn(cntrl->sockfd, buf, 60) != 60){
 		return NULL;
 	}
 
@@ -866,7 +877,7 @@ OWPControlAccept(
 			return NULL;
 
 		/* Decrypted challenge is in the first 16 bytes */
-		if (memcmp(cntrl->challenge, token, 16) != 0){
+		if (memcmp(challenge, token, 16) != 0){
 			_OWPServerOK(cntrl, CTRL_REJECT);
 			return NULL;
 		}
@@ -907,61 +918,4 @@ OWPControlAccept(
 	cntrl->mode = mode_requested;
 	_OWPServerOK(cntrl, CTRL_ACCEPT);
 	return cntrl;
-}
-
-/*
-** This function sets up the key field of a OWPControl structure,
-** using the binary key located in <binKey>.
-*/
-
-_OWPMakeKey(OWPControl cntrl, OWPByte *binKey)
-{
-	cntrl->encrypt_key.Nr
-		= rijndaelKeySetupEnc(cntrl->encrypt_key.rk, binKey, 128);
-	cntrl->decrypt_key.Nr 
-		= rijndaelKeySetupDec(cntrl->decrypt_key.rk, binKey, 128);
-}
-
-
-/* 
-** The next two functions perform a single encryption/decryption
-** of Token in Control protocol, using a given (binary) key and the IV of 0.
-*/
-
-#define TOKEN_BITS_LEN (2*16*8)
-
-int
-OWPEncryptToken(char *binKey, char *token_in, char *token_out)
-{
-	int r;
-	char IV[16];
-	keyInstance key;
-
-	memset(IV, 0, 16);
-	
-	key.Nr = rijndaelKeySetupEnc(key.rk, binKey, 128);
-	r = blockEncrypt(IV, &key, token_in, TOKEN_BITS_LEN, token_out); 
-			 
-	if (r != TOKEN_BITS_LEN)
-		return -1;
-
-	return 0;
-}
-
-int
-OWPDecryptToken(char *binKey, char *token_in, char *token_out)
-{
-	int r;
-	char IV[16];
-	keyInstance key;
-
-	memset(IV, 0, 16);
-	
-	key.Nr = rijndaelKeySetupDec(key.rk, binKey, 128);
-	r = blockDecrypt(IV, &key, token_in, TOKEN_BITS_LEN, token_out); 
-			 
-	if (r != TOKEN_BITS_LEN)
-		return -1;
-
-	return 0;
 }
