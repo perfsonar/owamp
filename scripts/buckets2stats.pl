@@ -130,7 +130,6 @@ sub plot_resolution {
     }
 
     my @all = split /\n/, `ls $datadir`;
-#    printlist(@all) if DEBUG;
 
     if (-f $wwwdir) {
 	warn "designated directory $wwwdir is a file! - skipping";
@@ -228,6 +227,11 @@ sub plot_resolution {
 # http://amath.colorado.edu/computing/software/man/gnuplot.html
 
 
+	unless ($sent) {
+	    warn "sent == 0 in $datafile - skipping";
+	    next;
+	}
+
 	my $lost_perc = sprintf "%.6f", ($lost/$sent)*100;
 	# Compute stats for a new data point.
 	my @stats = map {sprintf "%.6f", $_} 
@@ -260,7 +264,6 @@ sub plot_resolution {
     unless ($got_data) {
 	my $fh;
 	warn "no new data found in $datadir - no plot is done";
-#	return;
 	$psize = 0.0;
 	($fh, $dfile) = tempfile(DIR => $datadir, UNLINK => 1);
 
@@ -269,7 +272,6 @@ sub plot_resolution {
 	print $fh join '/', mdHMS($init - 0.5*$age);
 	print $fh ' ', join ' ', 0, 0, 0, 0, 0, "\n";
 	close $fh;
-#	return;
     } else {
 	$psize = 1;
 	$dfile = $gnu_dat;
@@ -278,19 +280,14 @@ sub plot_resolution {
     my $delays_png = "$wwwdir/$png_file-delays.png";
     my $delays_title = "Delays: Min, Median, and 90th Percentile " .
 	    "for the last $period_name sampled at $res_name frequency";
-#    my $delays_title = "Delays: Min, Median, and 90th Percentile " .
-#	    "sampled at $res_name frequency";
     my $loss_png = "$wwwdir/$png_file-loss.png";
     my $loss_title = "Loss percentage " .
 	    "for the last $period_name sampled at $res_name frequency";
-#    my $loss_title = "Loss percentage " .
-#	    "sampled at $res_name frequency";
     my $fmt = $conf->must_get_val(DIGESTRES=>$res, ATTR=>'PLOT_FMT');
     my @tmp = split //, $fmt;
     my $fmt_xlabel = join '/', map {code2unit($_)} @tmp;
 
     $fmt = join ':', map {"%$_"} split //, $fmt;
-#    warn "DEBUG: fmt=$fmt";
 
     print GNUPLOT <<"STOP";
 set terminal png small color
@@ -368,32 +365,13 @@ sub is_younger_than {
     my $bigstart = Math::BigInt->new($start);
     my ($sec, $frac_sec) = $bigstart->brsft(32);
 
-#    warn "DEBUG: sec=$sec, bigstart=$bigstart";
-
     $sec =~ s/^\+//;
 
     my $sec70 = OWP::Utils::time2time_1970($sec);
-#    warn join " ", 'DEBUG: is_younger ', mdHMS($sec70), "\n";
-
-    # time in seconds since Jan 1, 1900
-#    my $current = OWP::Utils::time_1970totime($init);
-
-#    if (DEBUG) {
-#	my $diff = $current - $start;
-#	unless ($diff < $age) {
-#	    warn "DEBUG: diff=$diff, age=$age - skipping $filename";
-#	}
-#    }
-
-#   warn "DEBUG: cur=$current sec=$sec age=$age\n";
-#   warn "cur - sec = ", $current - $sec, "\n";
 
     return $sec if (defined $ARGV[2] && $ARGV[2] eq 'fake');
-#    return ($current - $sec < $age)? $sec : undef;
-    return ($init - $sec70 < $age)? $sec : undef;
 
-#    return undef unless ($current - $sec < $age);
-#    warn "DEBUG: returned $sec from filename $filename";
+    return ($init - $sec70 < $age)? $sec : undef;
 }
 
 sub printlist {
