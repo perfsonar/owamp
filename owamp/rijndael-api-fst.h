@@ -88,8 +88,7 @@ int blockEncrypt(BYTE *binIV, keyInstance *key,
 
 int blockDecrypt(BYTE *binIV, keyInstance *key,
         BYTE *input, int inputLen, BYTE *outBuffer);
-
+/*
 int countermodeEncrypt(keyInstance *key, unsigned long *i, BYTE *outBuffer);
-int countermodeDecrypt(keyInstance *key, BYTE *input, BYTE *outBuffer);
-
+*/
 #endif /* __RIJNDAEL_API_FST_H */

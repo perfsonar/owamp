@@ -32,6 +32,13 @@ typedef struct num_128 {
 	unsigned short digits[NUM_DIGITS];
 } *num_128;
 
+/*
+** This structure is used to represent a 128-bit counter.
+*/
+typedef struct exp_count {
+	unsigned long d[4];
+} exp_count;
+
 /* 
 ** This structure represents 32.24 style time format
 ** (32-bit number of seconds, and 24-bit number of
@@ -57,7 +64,7 @@ struct num_128 num_new(unsigned short a,
  		 unsigned short h
 		 );
 struct num_128 ulong2num(unsigned long a);
-struct num_128 new_random(keyInstance *key,unsigned long *in, BYTE *outBuffer);
+struct num_128 new_random(keyInstance *key, BYTE *outBuffer);
 
 /* Arithmetic operations */
 void num_add(num_128 x, num_128 y, num_128 z);
@@ -70,6 +77,7 @@ void num2timeval(num_128 from, struct timeval *to);
 void timeval2num(struct timeval *from, num_128 to);
 struct num_128 raw2num(unsigned char *raw);
 
+void counter_increment(exp_count *counter);
 /* Debugging and auxilliary functions */
 void num_print(num_128 x);
 unsigned long num2ulong(num_128 x);
@@ -80,6 +88,6 @@ void print_bin(unsigned short n);
 void num_binprint(num_128 x);
 
 /* Generate an exponential deviate using 64-bit binary string as an input. */
-struct num_128 random_exp(keyInstance *key, unsigned long *in);
-#undef T 
+struct num_128 random_exp(keyInstance *key);
+int countermodeEncrypt(keyInstance *key, BYTE *outBuffer);
 #endif

@@ -374,9 +374,9 @@ raw2num(unsigned char *raw)
 
 
 struct num_128
-new_random(keyInstance *key, unsigned long *in, BYTE *outBuffer)
+new_random(keyInstance *key, BYTE *outBuffer)
 {
-	if (countermodeEncrypt(key, in, outBuffer) != 128){
+	if (countermodeEncrypt(key, outBuffer) != 128){
 		fprintf(stderr, "FATAL: counter mode encryption error");
 		exit(1);
 	}
@@ -393,7 +393,7 @@ new_random(keyInstance *key, unsigned long *in, BYTE *outBuffer)
 ** Knuth's v.2 of "Art of Computer Programming" (1998), p.133.
 */
 struct num_128 
-random_exp(keyInstance *key, unsigned long *in)
+random_exp(keyInstance *key)
 {
 	struct num_128 ret;
 	int i, j, k, count;
@@ -402,7 +402,7 @@ random_exp(keyInstance *key, unsigned long *in)
 	struct num_128 U, V; 
 	struct num_128 tmp1, tmp2;   /* structs to hold intermediate results */
 
-	if (countermodeEncrypt(key, in, outBuffer) != 128){
+	if (countermodeEncrypt(key, outBuffer) != 128){
 		fprintf(stderr, "FATAL: counter mode encryption error");
 		exit(1);
 	}
@@ -530,10 +530,10 @@ random_exp(keyInstance *key, unsigned long *in)
 		exit(1);
 	}
 
-	V = new_random(key, in, outBuffer);
+	V = new_random(key, outBuffer);
 	
 	for (i = 2; i <= k; i++){
-		tmp1 = new_random(key, in, outBuffer);
+		tmp1 = new_random(key, outBuffer);
 		if (num_cmp(&tmp1, &V) < 0)
 			V = tmp1;
 	}
@@ -580,4 +580,53 @@ print_bin(unsigned short n)
 		div >>= 1;
 	}
 	fprintf(stderr, "%hu ", tmp);
+}
+
+
+/*
+** This function encrypts an 128-bit counter with a given key.
+*/
+int 
+countermodeEncrypt(keyInstance *key, BYTE *outBuffer) 
+{
+	BYTE input[16];
+	int j;
+	u_long digit; /*  = htonl(*i); */
+	static exp_count i = {0, 0, 0, 0};
+
+	if (key == NULL)
+		return BAD_CIPHER_STATE;
+	
+	if (input == NULL)
+		return 0; /* nothing to do */
+	
+	/* Prepare the block for encryption */
+	memset(input, 0, 16);
+	for (j = 0; j < 4; j++){ /* most significant digits come first */
+		digit = htonl(i.d[3-j]);
+		memcpy(input + 4*j, &digit, 4);
+	}
+		
+	rijndaelEncrypt(key->rk, key->Nr, input, outBuffer);
+
+	/* *i = (*i) + 1; */
+	counter_increment(&i);
+	return 128;
+}
+
+void 
+counter_increment(exp_count *counter)
+{
+	int i;
+	int finished = 0;
+
+	for (i = 0; i < 4; i++){
+		if (++(counter->d[i]) != 0){
+			finished++;
+			break;
+		}
+	}
+
+	if (!finished)
+		counter->d[0] = 1;
 }
