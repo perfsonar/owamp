@@ -88,8 +88,8 @@ _OWPCallCheckControlPolicy(
 	if(!cntrl->ctx->cfg.check_control_func)
 		return True;
 
-	return (*cntrl->ctx->cfg.check_control_func)(cntrl->app_data,mode,kid,
-					local_sa_addr,remote_sa_addr,err_ret);
+	return (*cntrl->ctx->cfg.check_control_func)(cntrl,cntrl->app_data,
+			mode,kid,local_sa_addr,remote_sa_addr,err_ret);
 }
 
 /*

@@ -167,6 +167,7 @@ opendatafile(
 
 	}
 
+	strcpy(path,real_data_dir);
 	strcat(path,OWP_PATH_SEPARATOR);
 	strcat(path,sid_name);
 	strcat(path, OWP_INCOMPLETE_EXT);	/* in-progress	*/
@@ -341,6 +342,8 @@ OWPDefEndpointInit(
 		if(I2RandomBytes(ep->rand_src,&sid[12],4) != 0)
 			goto error;
 
+		OWPHexEncode(sid_name,sid,sizeof(OWPSID));
+
 		/*
 		 * Ensure real_data_dir exists.
 		 */
@@ -351,33 +354,34 @@ OWPDefEndpointInit(
 			goto error;
 		}
 
-		/*
-		 * Ensure link_data_dir exists.
-		 */
-		if((mkdir(cdata->link_data_dir,0755) != 0)&&(errno != EEXIST)){
-			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"Unable to mkdir(%s):%M",ep->linkpath);
-			goto error;
-		}
+		if(cdata->link_data_dir){
+			/*
+			 * Ensure link_data_dir exists.
+			 */
+			if((mkdir(cdata->link_data_dir,0755) != 0) &&
+							(errno != EEXIST)){
+				OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+					"Unable to mkdir(%s):%M",ep->linkpath);
+				goto error;
+			}
 
-		/*
-		 * Now complete the filename for the linkpath.
-		 */
-		if (!(ep->linkpath 
-		      = (char *)malloc(strlen(cdata->link_data_dir)
+			/*
+			 * Now complete the filename for the linkpath.
+			 */
+			if (!(ep->linkpath 
+			      = (char *)malloc(strlen(cdata->link_data_dir)
 				       + OWP_PATH_SEPARATOR_LEN
 				       + sizeof(OWPSID)*2
 				       + strlen(OWP_INCOMPLETE_EXT) + 1))) {
-			OWPError(ctx, OWPErrFATAL, errno,
-				 "FATAL: OWPDefEndpointInit: malloc failed");
-			goto error;
-		}
+				OWPError(ctx,OWPErrFATAL,errno,"malloc():%M");
+				goto error;
+			}
 
-		strcpy(ep->linkpath, cdata->link_data_dir);
-		strcat(ep->linkpath,OWP_PATH_SEPARATOR);
-		OWPHexEncode(sid_name,sid,sizeof(OWPSID));
-		strcat(ep->linkpath,sid_name);
-		strcat(ep->linkpath, OWP_INCOMPLETE_EXT);
+			strcpy(ep->linkpath, cdata->link_data_dir);
+			strcat(ep->linkpath,OWP_PATH_SEPARATOR);
+			strcat(ep->linkpath,sid_name);
+			strcat(ep->linkpath, OWP_INCOMPLETE_EXT);
+		}
 
 		ep->datafile = opendatafile(ctx,cdata->real_data_dir, sid_name,
 					    &ep->filepath);
@@ -387,7 +391,7 @@ OWPDefEndpointInit(
 			goto error;
 		}
 
-		if(symlink(ep->filepath,ep->linkpath) != 0){
+		if(ep->linkpath && (symlink(ep->filepath,ep->linkpath) != 0)){
 			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"symlink():%M");
 			goto error;
 		}
@@ -998,26 +1002,33 @@ run_receiver(
 		goto error;
 	}
 
-	/*
-	 * Now add symlink in "sessions" for new SID file.
-	 */
-	lenpath = strlen(ep->linkpath);
-	strcpy(newlink,ep->linkpath);
-	newlink[lenpath-strlen(OWP_INCOMPLETE_EXT)] = '\0'; /* remove the 
+	if(ep->linkpath){
+		/*
+		 * Now add symlink in "sessions" for new SID file.
+		 */
+		lenpath = strlen(ep->linkpath);
+		strcpy(newlink,ep->linkpath);
+		newlink[lenpath-strlen(OWP_INCOMPLETE_EXT)] = '\0'; /* remove the 
 						    extension from the end. */
-	if(symlink(newpath,newlink) != 0){
-		OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+		if(symlink(newpath,newlink) != 0){
+			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 				"symlink():%M");
-		goto error;
+			goto error;
+		}
+
+		if((unlink(ep->linkpath) != 0) && (errno != ENOENT)){
+			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+					"unlink():%M");
+			goto error;
+		}
 	}
 
 	/*
 	 * Now remove old  incomplete  files - this is done in this order 
 	 * to ensure no race conditions.
 	 */
-	if((unlink(ep->linkpath) != 0) || (unlink(ep->filepath) != 0)){
-		OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"unlink():%M");
+	if((unlink(ep->filepath) != 0) && (errno != ENOENT)){
+		OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,"unlink():%M");
 		goto error;
 	}
 
@@ -1037,7 +1048,7 @@ error:
 		unlink(ep->linkpath);
 	if(ep->filepath)
 		unlink(ep->filepath);
-	exit(1);
+	exit(OWP_CNTRL_FAILURE);
 }
 
 /*

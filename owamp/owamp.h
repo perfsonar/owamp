@@ -250,6 +250,7 @@ typedef OWPBoolean	(*OWPGetAESKeyFunc)(
  * in the function itself.
  */
 typedef OWPBoolean (*OWPCheckControlPolicyFunc)(
+	OWPControl	cntrl,
 	void		*app_data,
 	OWPSessionMode	mode_req,
 	const char	*kid,

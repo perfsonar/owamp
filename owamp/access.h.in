@@ -151,9 +151,18 @@ extern void owp_print_class2node_binding(const struct I2binding *p, FILE* fp);
 extern char *owamp_denumberize(unsigned long addr);
 extern OWPBoolean owp_get_aes_key(void *app_data, const char *kid, \
 	u_int8_t *key_ret, OWPErrSeverity	*err_ret);
-extern OWPBoolean owp_check_control(void *app_data, OWPSessionMode mode, \
-	const char *kid, struct sockaddr *local_sa_addr, \
-	struct sockaddr	*remote_sa_addr, OWPErrSeverity	*err_ret);
+
+extern OWPBoolean
+owp_check_control(
+	OWPControl	cntrl,
+	void		*app_data,
+	OWPSessionMode	mode,
+	const char	*kid,
+	struct sockaddr	*local_sa_addr,
+	struct sockaddr	*remote_sa_addr,
+	OWPErrSeverity	*err_ret
+	);
+
 extern OWPBoolean owp_check_test(void *app_data, OWPSessionMode	mode,
 	const char *kid, OWPBoolean local_sender, 
 	struct sockaddr *local_sa_addr, struct sockaddr	*remote_sa_addr,

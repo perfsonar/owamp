@@ -695,7 +695,7 @@ owp_netmask2class(owp_access_netmask *netmask, owp_policy_data* policy)
 			if(!key)
 				return NULL;
 			val = I2hash_fetch(hash, key);
-			owp_datum_free(key);
+			free(key);
 			if(val)
 				return val->dptr;
 		}
@@ -736,7 +736,7 @@ owp_netmask2class(owp_access_netmask *netmask, owp_policy_data* policy)
 			owp_print_netmask(key, stderr);
 #endif
 			val = I2hash_fetch(hash, key);
-			owp_datum_free(key);
+			free(key);
 			if(val)
 				return val->dptr;
 		}

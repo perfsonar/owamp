@@ -685,9 +685,7 @@ main(
 	I2LogImmediateAttr	ia;
 	int			od;
 	owp_policy_data		*policy;
-	char			ip2class[MAXPATHLEN],
-				class2limits[MAXPATHLEN],
-				passwd[MAXPATHLEN];
+	char			passwd[PATH_MAX];
 	int			rc;
 	OWPContext		ctx;
 	OWPTestSpecPoisson	test_spec;

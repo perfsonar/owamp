@@ -69,54 +69,6 @@ owp_get_aes_key(void *app_data,
 }
 
 
-/*
-** Create a path and directory using base prefix <datadir>
-** and position of <node> in the class policy tree. The path
-** is dynamically allocated. <add_chars> specifies the additional
-** number of chars to be allocated.
-*/
-static char *
-make_data_dir(
-	      char		 *datadir,
-	      owp_tree_node_ptr	 node,
-	      unsigned int	 add_chars
-	      )
-{
-	char		*path;
-	int		len;
-
-	if(node){
-		path = make_data_dir(datadir, node->parent, strlen(node->data) 
-				     + OWP_PATH_SEPARATOR_LEN + add_chars);
-		if(!path)
-			return NULL;
-		strcat(path,OWP_PATH_SEPARATOR);
-		strcat(path,node->data);
-	} 
-	else {
-		len = strlen(datadir) + OWP_PATH_SEPARATOR_LEN
-			+ strlen(OWP_NODES_DIR) + add_chars;
-		if(len > FILENAME_MAX){
-			fprintf(stderr, "Datapath length too long.");
-			return NULL;
-		}
-		path = malloc(len+1);
-		if(!path)
-			return NULL;
-		
-		strcpy(path,datadir);
-		strcat(path,OWP_PATH_SEPARATOR);
-		strcat(path, OWP_NODES_DIR);
-	}
-	
-	if((mkdir(path,0755) != 0) && (errno != EEXIST)){
-		fprintf(stderr,"Unable to mkdir(%s):%s",path,strerror(errno));
-		free(path);
-		return NULL;
-	}
-	return path;
-}
-
 #define OWP_DEFAULTS_DEBUG
 
 /*
@@ -129,6 +81,7 @@ make_data_dir(
 */
 OWPBoolean
 owp_check_control(
+	OWPControl	cntrl,
 	void *          app_data,        /* policy data         */
 	OWPSessionMode	mode,	         /* requested mode      */
 	const char	*kid,	         /* key identity       	*/
@@ -138,15 +91,15 @@ owp_check_control(
 	OWPErrSeverity	*err_ret	 /* error - return     	*/
 )
 {
-	owp_policy_data* policy;
-	char *class;
-	owp_tree_node_ptr node;
-	OWPPerConnDataRec *conndata = (OWPPerConnDataRec *)app_data;
-
-	assert(conndata);
+	char			*class;
+	owp_tree_node_ptr	node;
+	OWPPerConnDataRec	*conndata = (OWPPerConnDataRec *)app_data;
+	owp_policy_data		*policy = conndata->policy;
 
 	*err_ret = OWPErrOK;
-	policy = ((OWPPerConnDataRec *)app_data)->policy;
+
+	conndata->ctx = OWPGetContext(cntrl);
+	conndata->cntrl = cntrl;
 
 	/* 
 	   This implementation assumes that the KID has already
@@ -164,10 +117,12 @@ owp_check_control(
 	}
 
 	if (!class)  /*Internal error - every KID must have a class.*/{
-		fprintf(stderr, "DEBUG: no class for the connection\n");
+		OWPError(conndata->ctx,OWPErrFATAL,OWPErrPOLICY,
+				"no class for the connection");
 		goto error;
 	}
-	fprintf(stderr, "DEBUG: class = %s\n", class);
+	OWPError(conndata->ctx,OWPErrINFO,OWPErrUNKNOWN,
+			"DEBUG: class = %s",class);
 
 	node = owp_class2node(class, policy->class2node);
 	if (!node)  /* Internal error - every class must have a node. */
@@ -180,32 +135,64 @@ owp_check_control(
 
 	conndata->node = node;
 
-	/* 
-	   Set up key data directories.
-	*/
-	if ((conndata->real_data_dir 
-	     = make_data_dir(conndata->datadir, node, 0)) == NULL) {
-		fprintf(stderr, "FATAL: Could not make data path");
-		goto error;
-	}
-	/* 1 for '\0' at the end */
-	if (!(conndata->link_data_dir 
-	      = (char *)malloc(strlen(conndata->datadir) 
-			       + OWP_PATH_SEPARATOR_LEN
-			       + strlen(OWP_SESSIONS_DIR) + 1))) {
-		free(conndata->real_data_dir);
-		fprintf(stderr, "FATAL: malloc failed");
-		goto error;
-	} 
-	strcpy(conndata->link_data_dir, conndata->datadir);
-	strcat(conndata->link_data_dir, OWP_PATH_SEPARATOR);
-	strcat(conndata->link_data_dir, OWP_SESSIONS_DIR);
 
 	return True;
 	
  error:
 	*err_ret = OWPErrFATAL;
 	return False;
+}
+
+/*
+** Create a path and directory using base prefix <datadir>
+** and position of <node> in the class policy tree. The path
+** is placed in the <memory> pointer that is PATH_MAX+1 bytes long.
+** <add_chars> specifies the additional number of chars along the path
+** so the length can be tested to be sure it is <= PATH_MAX.
+*/
+static char *
+make_data_dir(
+		OWPContext		ctx,
+		char			*datadir,
+		owp_tree_node_ptr	node,
+		unsigned int		add_chars,
+		char			*memory
+	      )
+{
+	char		*path;
+	int		len;
+
+	if(node){
+		path = make_data_dir(ctx,datadir,node->parent,
+			strlen(node->data)+OWP_PATH_SEPARATOR_LEN+add_chars,
+			memory);
+		if(!path)
+			return NULL;
+		strcat(path,OWP_PATH_SEPARATOR);
+		strcat(path,node->data);
+	} 
+	else {
+		len = strlen(datadir) + OWP_PATH_SEPARATOR_LEN
+			+ strlen(OWP_NODES_DIR) + add_chars;
+		if(len > PATH_MAX){
+			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+					"Datapath length too long.");
+			return NULL;
+		}
+		path = memory;
+		
+		strcpy(path,datadir);
+		strcat(path,OWP_PATH_SEPARATOR);
+		strcat(path, OWP_NODES_DIR);
+	}
+	
+	if((mkdir(path,0755) != 0) && (errno != EEXIST)){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+				"Unable to mkdir(%s):%M",path);
+		return NULL;
+	}
+
+	return path;
 }
 
 OWPBoolean
@@ -220,11 +207,35 @@ owp_check_test(
 	OWPErrSeverity	*err_ret
 )
 {
-	u_int64_t total_octets, octets_on_disk, bw;
-	OWPTestSpecPoisson *poisson_test;
-	owp_tree_node_ptr node = ((OWPPerConnDataRec *)app_data)->node;
+	u_int64_t		total_octets, octets_on_disk, bw;
+	OWPTestSpecPoisson	*poisson_test;
+	OWPPerConnDataRec	*conndata = (OWPPerConnDataRec *)app_data;
+	owp_tree_node_ptr	node = conndata->node;
 
 	*err_ret = OWPErrOK;
+
+	if(!local_sender && !conndata->real_data_dir &&
+						!conndata->link_data_dir){
+		/* 
+		   Set up key data directories.
+		*/
+		if( !(conndata->real_data_dir 
+			= make_data_dir(conndata->ctx,conndata->datadir,
+				node,0,conndata->real_data_dir_mem))){
+			goto error;
+		}
+
+		/* 1 for '\0' at the end */
+		if((strlen(conndata->datadir)
+			       + OWP_PATH_SEPARATOR_LEN
+			       + strlen(OWP_SESSIONS_DIR) + 1) > PATH_MAX){
+			goto error;
+		} 
+		conndata->link_data_dir = conndata->link_data_dir_mem;
+		strcpy(conndata->link_data_dir, conndata->datadir);
+		strcat(conndata->link_data_dir, OWP_PATH_SEPARATOR);
+		strcat(conndata->link_data_dir, OWP_SESSIONS_DIR);
+	}
 
 	switch (test_spec->test_type) {
 	case OWPTestPoisson:
@@ -247,8 +258,6 @@ owp_check_test(
 		total_octets *= poisson_test->npackets;
 		octets_on_disk = (u_int64_t)20 * poisson_test->npackets;
 		
-		fprintf(stderr, "DEBUG: request parsed ok\n");
-
 		/* fetch class limits and check restrictions */
 		if (bw > node->limits.values[OWP_LIM_BANDWIDTH])
 			return False;
@@ -265,5 +274,8 @@ owp_check_test(
 		/* UNREACHED */
 	}
 
+	return False;
+error:
+	*err_ret = OWPErrFATAL;
 	return False;
 }
