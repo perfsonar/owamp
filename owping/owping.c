@@ -869,10 +869,19 @@ main(
 	 * If no "server" specified, assume same address as send/recv
 	 * address.
 	 */
-	if(!ping_ctx.opt.senderServ && ping_ctx.opt.sender)
-		ping_ctx.opt.senderServ = strdup(ping_ctx.opt.sender);
-	if(!ping_ctx.opt.receiverServ && ping_ctx.opt.receiver)
-		ping_ctx.opt.receiverServ = strdup(ping_ctx.opt.receiver);
+	if((!ping_ctx.opt.senderServ && ping_ctx.opt.sender) &&
+			( !(ping_ctx.opt.senderServ =
+			    			strdup(ping_ctx.opt.sender)))){
+		I2ErrLog(eh,"strdup():%M");
+		exit(1);
+	}
+
+	if((!ping_ctx.opt.receiverServ && ping_ctx.opt.receiver) &&
+			( !(ping_ctx.opt.receiverServ =
+			    		strdup(ping_ctx.opt.receiver)))){
+		I2ErrLog(eh,"strdup():%M");
+		exit(1);
+	}
 
 
 	/*
@@ -888,7 +897,6 @@ main(
 	 * ("same" is fairly simply defined as the same string here - it is
 	 * possible that 2 different names would resolv to the same
 	 * address, but we ignore that complexity here.)
-	 *
 	 */
 	if(!ping_ctx.sender_local && !ping_ctx.receiver_local &&
 		strcmp(ping_ctx.opt.senderServ,ping_ctx.opt.receiverServ)){

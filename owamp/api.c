@@ -833,6 +833,9 @@ OWPStopSessionsWait(
 		return -1;
 	}
 
+	if(acceptval)
+		*acceptval = aval;
+
 	if(wake){
 		if(gettimeofday(&currtime,NULL) != 0){
 			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
