@@ -1255,9 +1255,9 @@ AGAIN:
 			if(OWPParseRecords(ctx,p->fp,nrecs,hdr.version,
 				WriteSubSession,(void*)&parse) != OWPErrOK){
 				I2ErrLog(eh,
-				"WriteSubSession: sub=%d,arecs=%lu,nrecs=%lu,begin=%llu,first=%lu,last=%lu,hlen=%llu: %M",
+				"WriteSubSession: sub=%d,arecs=%lu,nrecs=%lu,begin=%lld,first=%lu,last=%lu,hlen=%llu,fileend=%lld: %M",
 					sub,arecs,nrecs,parse.begin,
-					parse.first,parse.last,hlen);
+					parse.first,parse.last,hlen,fileend);
 				goto error;
 			}
 			/*
