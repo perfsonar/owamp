@@ -181,33 +181,34 @@ FailSession(
 ** Generic state to be maintained by client during Fetch.
 */
 typedef struct fetch_state {
-	FILE*        fp;               /* stream to report records           */
-	OWPDataRec window[OWP_WIN_WIDTH]; /* window of read records    */
-	OWPDataRec last_out; /* last processed record            */
-	int          cur_win_size;     /* number of records in the window    */
-	double       tmin;             /* min delay                          */
-	double       tmax;             /* max delay                          */
-	u_int32_t    num_received;     /* number of good received packets    */
-	u_int32_t    dup_packets;      /* number of duplicate packets        */
-	int          order_disrupted;  /* flag                               */
-	u_int32_t    max_seqno;        /* max sequence number seen           */
-	u_int32_t    *buckets;         /* array of buckets of counts         */
-	char         *from;            /* Endpoints in printable format      */
-	char         *to;
-	u_int32_t    count_out;        /* number of printed packets          */
+	FILE*		fp;		/* stream to report records	*/
+	char		sid_name[sizeof(OWPSID)*2+1];/* hex encoded sid	*/
+	OWPDataRec	window[OWP_WIN_WIDTH]; /* window of read records*/
+	OWPDataRec	last_out;	/* last processed record	*/
+	int		cur_win_size;	/* number of records in the window*/
+	double		tmin;		/* min delay			*/
+	double		tmax;		/* max delay			*/
+	u_int32_t	num_received;	/* number of good received packets*/
+	u_int32_t	dup_packets;	/* number of duplicate packets	*/
+	int		order_disrupted;/* flag				*/
+	u_int32_t	max_seqno;	/* max sequence number seen	*/
+	u_int32_t	*buckets;	/* array of buckets of counts	*/
+	char		*from;		/* Endpoints in printable format*/
+	char		*to;
+	u_int32_t	count_out;	/* number of printed packets	*/
 
 	/*
 	 * Worst error for all packets in test.
 	 */
 	double		errest;
-	int          sync;           /* flag set if never saw unsync packets */
+	int		sync;		/* flag set no unsync packets	*/
 
 	/* N-reodering state variables. */
-	u_int32_t        m[OWP_MAX_N];       /* We have m[j-1] == number of
-						j-reordered packets.         */
-        u_int32_t        ring[OWP_MAX_N];    /* Last sequence numbers seen.  */
-        u_int32_t        r;                  /* Ring pointer for next write. */
-        u_int32_t        l;                  /* Number of seq numbers read.  */
+	u_int32_t	m[OWP_MAX_N];	/* We have m[j-1] == number of
+						j-reordered packets.	*/
+        u_int32_t	ring[OWP_MAX_N];/* Last sequence numbers seen.	*/
+        u_int32_t	r;		/* Ring pointer for next write.	*/
+        u_int32_t	l;		/* Number of seq numbers read.	*/
 
 } fetch_state;
 
@@ -271,10 +272,12 @@ owp_record_out(
 
 	assert(state->fp);
 
-	if (!(state->count_out++ & 31))
-	       fprintf(state->fp,"--- owping test session from %s to %s ---\n",
-		       (state->from)? state->from : "***", 
-		       (state->to)?  state->to : "***");
+	if(!(state->count_out++ % 21)){
+		fprintf(state->fp,"--- owping test session from %s to %s ---\n",
+			(state->from)? state->from : "***", 
+			(state->to)?  state->to : "***");
+		fprintf(state->fp,"SID: %s\n",state->sid_name);
+	}
 
 	delay = OWPDelay(&rec->send, &rec->recv);
 
@@ -513,6 +516,7 @@ owp_do_summary(fetch_state *state)
 	fprintf(state->fp, "\n--- owping statistics from %s to %s ---\n",
 		       (state->from)? state->from : "***", 
 		       (state->to)?  state->to : "***");
+	fprintf(state->fp,"SID: %s\n",state->sid_name);
 	if (state->dup_packets)
 		fprintf(state->fp, 
  "%u packets transmitted, %u packets lost (%.1f%% loss), %u duplicates\n",
@@ -631,6 +635,14 @@ do_records_all(
 	}
 
 	memset(&state,0,sizeof(state));
+
+	/*
+	 * Set sid
+	 */
+	if(hdr.header){
+		I2HexEncode(state.sid_name,hdr.sid,sizeof(OWPSID));
+	}
+
 	/*
 	 * Get pretty names...
 	 */
@@ -1394,7 +1406,7 @@ main(
 
 			sname = *argv++;
 			fname = *argv++;
-			OWPHexDecode(sname, sid, 16);
+			I2HexDecode(sname, sid, 16);
 			if(!(fp = owp_fetch_sid(fname,ping_ctx.cntrl,sid))){
 				I2ErrLog(eh,"Unable to fetch sid(%s)",sname);
 			}

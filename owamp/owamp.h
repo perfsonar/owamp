@@ -1192,25 +1192,6 @@ OWPTestDiskspace(
 		);
 
 /*
- * buff must be at least (nbytes*2) +1 long or memory will be over-run.
- */
-/* IN:bytes - OUT:char's */
-extern void
-OWPHexEncode(
-	char		*buff,
-	u_int8_t	*bytes,
-	unsigned int	nbytes
-	);
-
-/* IN:chars - OUT: bytes (False if chars not hex) */
-extern OWPBoolean
-OWPHexDecode(
-	char		*buff,
-	u_int8_t	*bytes,
-	unsigned int	nbytes
-	);
-
-/*
  * time.c conversion functions.
  */
 

@@ -142,7 +142,7 @@ parsekeys(
 						"Invalid key: wrong length");
 			return -rc;
 		}
-		if(!OWPHexDecode(keystart,tkey,sizeof(tkey))){
+		if(!I2HexDecode(keystart,tkey,sizeof(tkey))){
 			OWPError(policy->ctx,OWPErrFATAL,OWPErrINVALID,
 						"Invalid key: not hex?");
 			return -rc;
@@ -1162,7 +1162,7 @@ verify_datadir(
 			if(((len + (sizeof(OWPSID)*2)) != p->fts_namelen) ||
 					strncmp(&p->fts_name[sizeof(OWPSID)*2],
 						OWP_FILE_EXT,len+1) ||
-					!OWPHexDecode(p->fts_name,tsid,
+					!I2HexDecode(p->fts_name,tsid,
 						sizeof(tsid))){
 				break;
 			}
@@ -2550,7 +2550,7 @@ OWPDOpenFile(
 	/*
 	 * Hex Encode the sid.
 	 */
-	OWPHexEncode(sid_name,sid,sizeof(OWPSID));
+	I2HexEncode(sid_name,sid,sizeof(OWPSID));
 
 	if(tinfo){
 		finfo->node = tinfo->node;
