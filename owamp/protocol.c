@@ -184,7 +184,7 @@ _OWPWriteClientGreeting(
 	memcpy(&buf[20],token,32);
 	memcpy(&buf[52],cntrl->writeIV,16);
 
-	if(OWPWriten(cntrl->sockfd,buf,60) != 60)
+	if(OWPWriten(cntrl->sockfd, buf, 68) != 68)
 		return OWPErrFATAL;
 
 	return OWPErrOK;
