@@ -24,6 +24,21 @@
  * Data structures
  */
 struct OWAMPConnectionRec{
-	int	server;	/* connection represents server */
-	int	state;	/* current state of connection */
+	int			server;	/* connection represents server */
+	int			state;	/* current state of connection */
+	OWAMPSessionMode	mode;
+};
+
+struct OWAMPTestEndpointRec{
+	OWAMPBoolean		endpoint_active;
+	OWAMPBoolean		reciever;
+	pid_t			chld;
+
+	int			af;
+	struct	in_addr		in_addr;
+	struct	in6_addr	in6_addr;
+	u_int16_t		port;
+
+	OWAMPSID		sid;
+	OWAMPTestSpec		test_spec;
 };
