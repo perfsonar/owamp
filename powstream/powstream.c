@@ -69,6 +69,7 @@ static	u_int32_t		sessionTime;
 static	u_int32_t		file_offset,ext_offset;
 static	int			pow_reset = 0;
 static	int			pow_exit = 0;
+static	int			pow_intr = 0;
 static	int			pow_error = SIGCONT;
 static	double			inf_delay;
 static	u_int8_t		aesbuff[16];
@@ -321,9 +322,11 @@ sig_catch(
 		case SIGINT:
 		case SIGTERM:
 			pow_exit++;
+			pow_intr++;
 			break;
 		case SIGHUP:
 			pow_reset++;
+			pow_intr++;
 			break;
 		default:
 			pow_error = signo;
@@ -350,6 +353,7 @@ sig_check()
 	}
 	if(pow_reset){
 		pow_reset = 0;
+		pow_intr = 0;
 		I2ErrLog(eh,"SIGHUP: Re-opening connections.");
 		return 1;
 	}
@@ -406,6 +410,7 @@ SetupSession(
 				continue;
 			}
 		}
+
 
 		if(!(p->cntrl = OWPControlOpen(ctx,
 				OWPAddrByNode(ctx, appctx.opt.srcaddr),
@@ -1029,6 +1034,7 @@ main(
 	ctx = appctx.lib_ctx;
 	parse.ctx = ctx;
 
+
 	owp_set_auth(ctx,progname,&appctx); 
 
 	memset(&pcntrl,0,2*sizeof(pow_cntrl_rec));
@@ -1053,6 +1059,7 @@ main(
 	 */
 	pow_reset = 0;
 	pow_exit = 0;
+	pow_intr = 0;
 	act.sa_handler = SIG_IGN;
 	sigemptyset(&act.sa_mask);
 	act.sa_flags = 0;
@@ -1068,6 +1075,14 @@ main(
 		(sigaction(SIGINT,&act,NULL) != 0) ||
 		(sigaction(SIGHUP,&act,NULL) != 0)){
 		I2ErrLog(eh,"sigaction():%M");
+		exit(1);
+	}
+
+	/*
+	 * Set the retn_on_intr flag.
+	 */
+	if(!OWPContextConfigSet(ctx,OWPInterruptIO,(void*)&pow_intr)){
+		I2ErrLog(eh,"Unable to set Context var: %M");
 		exit(1);
 	}
 

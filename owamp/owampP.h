@@ -227,6 +227,8 @@ struct OWPControlRec{
 	u_int8_t		readIV[16];
 	u_int8_t		writeIV[16];
 
+	int			*retn_on_intr;
+
 	struct OWPControlRec	*next;
 	OWPTestSession		tests;
 };

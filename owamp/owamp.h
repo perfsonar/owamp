@@ -443,6 +443,16 @@ OWPError_(
  */
 
 /*
+ * This type is used to hold a pointer to an integer pointer. That pointer
+ * points at a value that determines if the low/level i/o functions should
+ * return on interrupt. If it is non-zero an interrupt will cause the i/o
+ * routine to fail and return. If it is zero, the low level i/o routine will
+ * ignore the interrupt and restart the i/o.
+ * (this can be used to ignore some signals and return on others.)
+ */
+#define OWPInterruptIO		"OWPInterruptIO"
+
+/*
  * This type is used to define the function that retrieves the shared
  * secret from whatever key-store is in use.
  * It should return True if it is able to fill in the key_ret variable that

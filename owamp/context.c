@@ -321,7 +321,10 @@ _OWPControlAlloc(
 )
 {
 	OWPControl	cntrl;
-	
+
+	/*
+	 * Use calloc to alloc memory so it will be initialized to 0.
+	 */
 	if( !(cntrl = calloc(1,sizeof(OWPControlRec)))){
 		OWPError(ctx,OWPErrFATAL,errno,
 				":calloc(1,%d)",sizeof(OWPControlRec));
@@ -348,6 +351,11 @@ _OWPControlAlloc(
 	 * Init addr fields
 	 */
 	cntrl->sockfd = -1;
+
+	/*
+	 * Init I/O fields
+	 */
+	cntrl->retn_on_intr = (int *)OWPContextConfigGet(ctx,OWPInterruptIO);
 
 	/*
 	 * Init encryption fields
