@@ -589,3 +589,46 @@ OWPInitiateStopTestSessions(
 
 	return MIN(err,err2);
 }
+
+
+#define OWP_UDP_HDR_SIZE     8 /* bytes */
+
+/*
+** Given the protocol family, OWAMP mode and packet padding,
+** compute the size of resulting full IP packet.
+*/
+owp_packsize_t
+owp_ip_packet_size(int af,    /* AF_INET, AF_INET6 */
+                   int mode, 
+		   u_int32_t padding)
+{
+	owp_packsize_t payload_size, header_size;
+
+	switch (af) {
+	case AF_INET:
+		header_size = (owp_packsize_t)20 + OWP_UDP_HDR_SIZE;
+		break;
+	case AF_INET6:
+		header_size = (owp_packsize_t)40 + OWP_UDP_HDR_SIZE;
+		break;
+	default:
+		return 0;
+		/* UNREACHED */
+	}
+
+	switch (mode) {
+	case OWP_MODE_OPEN:
+		payload_size = 12 + padding;
+		break;
+	case OWP_MODE_AUTHENTICATED:
+		payload_size = 24 + padding;
+		break;
+	case OWP_MODE_ENCRYPTED:
+		payload_size = 16 + padding;
+		break;
+	default:
+		return 0;
+		/* UNREACHED */
+	}
+	return payload_size + header_size;
+}

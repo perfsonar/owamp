@@ -613,4 +613,10 @@ OWPGetMode(
 	OWPControl	cntrl
 	);
 
+typedef u_int64_t owp_packsize_t;
+/*
+** Given the protocol family, OWAMP mode and packet padding,
+** compute the size of resulting full IP packet.
+*/
+owp_packsize_t owp_ip_packet_size(int af, int mode, u_int32_t padding);
 #endif	/* OWAMP_H */
