@@ -330,7 +330,7 @@ hash_close(hash_ptr hash)
 */
 
 void
-owamp_read_config(const char *ip2class)
+owamp_read_ip2class(const char *ip2class, hash_ptr hash)
 {
 	char line[MAX_LINE], mask[MAX_LINE], class[MAX_LINE];
 	char err_msg[1024];
@@ -341,14 +341,6 @@ owamp_read_config(const char *ip2class)
 	datum *key, *val;
 	static const char all[] = "all";
 	char tmp[5];
-
-	/* Open the database file for writing. */
-	if ((ip2class_hash = hash_init(ip2class)) == NULL){
-		snprintf(err_msg, sizeof(err_msg),
-			 "hash_init %s.db for writing", ip2class);
-		perror(err_msg);
-		exit(1);
-	}
 
 	if ( (fp = fopen(ip2class, "r")) == NULL){
 		snprintf(err_msg, sizeof(err_msg),"fopen %s for reading", 
@@ -376,9 +368,11 @@ owamp_read_config(const char *ip2class)
 		if ( (val = owamp_datumify(class, strlen(class)+1)) == NULL )
 			continue;
 
-		if (hash_store(ip2class_hash, *key, *val, DBM_REPLACE) != 0)
+		if (hash_store(hash, *key, *val, DBM_REPLACE) != 0)
 			continue;
 	}
+
+	fclose(fp);
 
 	/* In all cases make sure we have a class "all" for the widest mask. */
 	bzero(tmp, 5);
@@ -386,105 +380,12 @@ owamp_read_config(const char *ip2class)
 		goto CLOSE;
 	if ((val = owamp_datumify(all, strlen(all)+1)) == NULL)
 		goto CLOSE;
-	if (hash_store(ip2class_hash, *key, *val, DBM_INSERT) != 0)
+	if (hash_store(hash, *key, *val, DBM_INSERT) != 0)
 		fprintf(stderr, "\nhash_store failed to insert all key\n\n");
  CLOSE:
-	hash_close(ip2class_hash);
 	return;
 }
 
-
-/*
-** This function prints out the database, given by the argument <base>.
-** It is used mostly for debugging.
-*/
-
-void
-owamp_print_hash(char *base)
-{
-	hash_ptr hash;
-	datum key, val;
-
-	hash = hash_init(base);
-	for(key=hash_firstkey(hash);key.dptr != NULL;key = hash_nextkey(hash)){
-		u_int32_t addr;
-		u_int8_t off;
-		char *valptr;
-
-		val = hash_fetch(hash, key);
-		assert(val.dptr);
-
-		valptr = (void *)malloc(val.dsize + 1);
-		bcopy(val.dptr, valptr, val.dsize);
-		valptr[val.dsize] = '\0';
-
-		fprintf(stderr, "the value of key %s/%u is = %s\n",
-	       owamp_denumberize(get_ip_addr(&key)), get_offset(&key), valptr);
-	}
-	hash_close(hash);
-}
-
-/* 
-** This function reads the configuration file given by the path ip2class, 
-** processes it and saves the results in Berkeley DB file, with the
-** same base name, and extension ".db". The database can be printed by the
-** companion function print_hash().
-*/
-
-void
-owamp_read_limits(const char *class2limits)
-{
-	char line[MAX_LINE];
-	char err_msg[1024];
-	char *key, *value, *class, *key_value, *brkt, *brkb;
-	FILE *fp;
-	u_int32_t numval;
-	
-	datum key_dat, val_dat;
-	hash_ptr hash;
-
-	if ( (hash = hash_init(class2limits)) == NULL){
-		snprintf(err_msg, sizeof(err_msg),
-			 "hash_init %s.db for writing", class2limits);
-		perror(err_msg);
-		exit(1);		
-	}
-
-	if ( (fp = fopen(class2limits, "r")) == NULL){
-		snprintf(err_msg, sizeof(err_msg),"fopen %s for reading", 
-			class2limits);
-		perror(err_msg);
-		exit(1);
-	}
-
-	fprintf(stderr, "\n");
-	while ( (fgets(line, sizeof(line), fp)) != NULL) {
-		if (line[0] == '#')
-			continue;
-		line[strlen(line) - 1] = '\0';
-		class = strtok_r(line, " \t", &brkt);
-		if (!class)
-			continue;
-
-		printf("DEBUG: class = %s\n", class);
-		for (key_value=strtok_r(NULL, " \t", &brkt);
-		     key_value;
-		     key_value = strtok_r(NULL, " \t", &brkt))
-			{
-				key = strtok_r(key_value, "=", &brkb);
-				if (!key)  
-					continue; /* inner loop */
-				value = strtok_r(NULL, "=", &brkb);
-				if (!value)
-					continue;
-				numval = strtol(value, NULL, 10); /* XXX */
-		    printf("DEBUG: value for key = %s is %lu\n", key, numval);
-			} 
-		printf("********************************\n");
-		
-	}
-
-}
 
 char *
 ipaddr2class(u_int32_t ip)
@@ -505,11 +406,127 @@ ipaddr2class(u_int32_t ip)
 	return DEFAULT_OPEN_CLASS;
 }
 
-int
-main(int argc, char *argv[])
+void
+test_ip2class()
 {
 	char line[MAX_LINE];
 	u_int32_t ip;
+	while (1){
+		printf("\nEnter a dotted IP address, or 'x' to exit:\n");
+		fgets(line, sizeof(line), stdin);
+		if (line[0] == 'x')
+			break;
+		line[strlen(line)-1] = '\0';
+		
+		if ( (ip = owamp_numberize(line)) == -1){
+			fprintf(stderr,"could not numberize IP = %s\n", line);
+			continue;
+		}
+		printf("the class for ip = %lu is %s\n", ip, ipaddr2class(ip));
+	}
+}
+
+/*
+** This function prints out the hash, given by the argument <hash>.
+** It is used mostly for debugging.
+*/
+
+void
+owamp_print_ip2class(hash_ptr hash)
+{
+	datum key, val;
+
+	for(key=hash_firstkey(hash);key.dptr != NULL;key = hash_nextkey(hash)){
+		val = hash_fetch(hash, key);
+		if (!val.dptr)
+			continue;
+		fprintf(stderr, "the value of key %s/%u is = %s\n",
+	     owamp_denumberize(get_ip_addr(&key)), get_offset(&key), val.dptr);
+	}
+}
+
+void
+print_limits(OWAMPLimits * limits)
+{
+	printf("DEBUG: bw = %lu, space = %lu, num_sessions = %u\n",
+	       OWAMPGetBandwidth(limits),
+	       OWAMPGetSpace(limits),
+	       OWAMPGetNumSessions(limits)
+	       );
+}
+
+/* 
+** This function reads the configuration file given by the path ip2class, 
+** processes it and saves the results in Berkeley DB file, with the
+** same base name, and extension ".db". The database can be printed by the
+** companion function print_ip2class().
+*/
+
+void
+owamp_read_class2limits(const char *class2limits, hash_ptr hash)
+{
+	char line[MAX_LINE];
+	char err_msg[1024];
+	char *key, *value, *class, *key_value, *brkt, *brkb;
+	FILE *fp;
+	u_int32_t numval;
+	
+	datum key_dat, val_dat;
+
+	if ( (fp = fopen(class2limits, "r")) == NULL){
+		snprintf(err_msg, sizeof(err_msg),"fopen %s for reading", 
+			class2limits);
+		perror(err_msg);
+		exit(1);
+	}
+
+	fprintf(stderr, "\n");
+	while ( (fgets(line, sizeof(line), fp)) != NULL) {
+		OWAMPLimits limits;
+		datum key_dat, val_dat;
+
+		if (line[0] == '#')
+			continue;
+		line[strlen(line) - 1] = '\0';
+		class = strtok_r(line, " \t", &brkt);
+		if (!class)
+			continue;
+
+		printf("DEBUG: class = %s\n", class);
+		for (key_value=strtok_r(NULL, " \t", &brkt);
+		     key_value;
+		     key_value = strtok_r(NULL, " \t", &brkt)){
+			key = strtok_r(key_value, "=", &brkb);
+			if (!key)  
+				continue; /* inner loop */
+			value = strtok_r(NULL, "=", &brkb);
+			if (!value)
+				continue;
+			numval = strtol(value, NULL, 10); /* XXX */
+			
+			/* Put the key/val pair in the limits struct */
+			if (strcmp(key, "bandwidth") == 0)
+				OWAMPSetBandwidth(&limits, numval);
+			else if (strcmp(key, "space") == 0)
+				OWAMPSetSpace(&limits, numval);
+			else if (strcmp(key, "num_sessions") == 0)
+				OWAMPSetNumSessions(&limits, numval);
+			printf("DEBUG: key = %s value =  %lu\n", key, numval);
+			} 
+		printf("DEBUG: ********************************\n");
+
+		/* Now save the limits structure in the hash. */
+		key_dat.dptr = (char *)class;
+		key_dat.dsize = strlen(class) + 1;
+		val_dat.dptr = (char *)&limits;
+		val_dat.dsize = sizeof(OWAMPLimits);
+		hash_store(hash, key_dat, val_dat, DBM_REPLACE);
+	}
+}
+
+int
+main(int argc, char *argv[])
+{
 	char key_bytes[5];
 	datum * dat;
 	char class[128];
@@ -522,35 +539,26 @@ main(int argc, char *argv[])
 		ClassToLimitsFile = strdup(DefaultClassToLimitsFile);
 
 	/* Uncomment if wish to read config file. Else will use db on disk */
-	owamp_read_config(IPtoClassFile); 
-	owamp_print_hash(IPtoClassFile); 
 
-	owamp_read_limits(ClassToLimitsFile);
-
+	/* Open the ip2class hash for writing. */
 	if ((ip2class_hash = hash_init(IPtoClassFile)) == NULL){
 		snprintf(err_msg, sizeof(err_msg),
-			 "hash_open %s.db for writing", IPtoClassFile);
+			 "hash_init %s.db for writing", IPtoClassFile);
 		perror(err_msg);
 		exit(1);
 	}
+	owamp_read_ip2class(IPtoClassFile, ip2class_hash); 
+	owamp_print_ip2class(ip2class_hash); 
+	hash_close(ip2class_hash);
 
-#if 0
-	while (1){
-		printf("\nEnter a dotted IP address, or 'x' to exit:\n");
-		fgets(line, sizeof(line), stdin);
-		if (line[0] == 'x')
-			exit(0);
-		line[strlen(line)-1] = '\0';
-		
-		if ( (ip = owamp_numberize(line)) == -1){
-			fprintf(stderr,"could not numberize IP = %s\n", line);
-			exit(0);
-		}
-
-#if 1
-		printf("the class for ip = %lu is %s\n", ip, ipaddr2class(ip));
-#endif	
+	/* Open the class2limits hash for writing. */
+	if ((class2limits_hash = hash_init(ClassToLimitsFile)) == NULL){
+		snprintf(err_msg, sizeof(err_msg),
+			 "hash_init %s.db for writing", IPtoClassFile);
+		perror(err_msg);
+		exit(1);
 	}
-#endif
+	owamp_read_class2limits(ClassToLimitsFile, class2limits_hash);
+
 	exit(0);
 }
