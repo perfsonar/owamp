@@ -55,7 +55,7 @@ latency tests. The client program \fBowping\fR is available to run
 the other side of the test.
 .PP
 Aside from actually running the tests, the main function of \fBowampd\fR
-is to determine which tests are allowed based upon the policy restrictions
+is to determine which tests are allowed, based upon the policy restrictions
 configured by the system administrator.
 .PP
 \fBowampd\fR was designed to be run as a standalone daemon process. It
@@ -99,9 +99,9 @@ Current working directory.
 .BI \-d " datadir"
 Specify the directory that holds the output data files. The data files are
 the result of one-way latency tests where the server is the receiving
-host. The data files are used to buffer the data at least until a client
+host. The data files are used to buffer the data, at least until a client
 downloads the file. Policy restrictions can be used to set how much disk space
-a given connection can use as well as to determine when each file
+a given connection can use, as well as to determine when each file
 is deleted. (See the \fBowampd.limits(5)\fR manual page.)
 .RS
 .IP Default:
@@ -133,8 +133,8 @@ Current working directory
 .BI \-S " nodename:port"
 Specify the address and port on which \fBowampd\fR will listen for requests.
 \fInodename\fR can be specified using a DNS name or using the textual
-representation of the address. It is possible to set the source address
-without setting the \fIport\fR simply by leaving off the ':' and \fIport\fR
+representation of the address. It is possible to set the source address,
+without setting the \fIport\fR, simply by leaving off the ':' and \fIport\fR
 specification. If an IPv6 address is specified, note that the accepted format
 contains \fInodename\fR in square brackets, such as: [fe80::fe9f:62d8]. This
 ensures the port number is distinct from the address specification.
@@ -164,7 +164,7 @@ The \fBowampd\fR daemon requires a very well synchronized and stable clock.
 the system clock. \fBNTP\fR needs to be setup in a more methodical way
 than on most systems for the results to be meaningful. Please see the
 \fBOWAMP\fR web site \%(http://e2epi.internet2.edu/owamp/) for details
-concerning proper configuration of \fBNTP\fR for \fBOWAMP\fR
+concerning proper configuration of \fBNTP\fR for \fBOWAMP\fR.
 .SH FILES
 owampd.pid
 .br
@@ -176,9 +176,9 @@ owampd.keys
 .SH SEE ALSO
 There are more details on configuring the \fBowampd\fR daemon in the
 owampd.conf(5) manual page. Details on configuring the policy
-is in the owampd.limits(5) and owampd.keys(5) manual pages.
+are in the owampd.limits(5) and owampd.keys(5) manual pages.
 Information on the client is in the owping(1) manual page.
-For more of an overview of the full functionality and architecture see
+For more of an overview of the full functionality and architecture, see
 the \%http://e2epi.internet2.edu/owamp/ web site.
 .SH ACKNOWLEDGMENTS
 This material is based in part on work supported by the National Science
