@@ -57,11 +57,29 @@
 ** This structure is used to keep track of usage resources.
 */
 
+typedef u_int64_t owp_lim_t;
+
+/* Masks to encode which parts of limits struct have been set. */
+#define BW_SET     0x1
+#define DISK_SET   0x2
+#define EXPIRY_SET 0x4
+#define DOF_SET    0x8
+#define DOC_SET    0x10
+
+#define OWP_BW_INDEX      0
+#define OWP_SPACE_INDEX   1
+#define OWP_EXPIRY_INDEX  2
+
 typedef struct owamp_limits {
-	u_int32_t bandwidth;   /* bytes/sec                          */
-	u_int32_t space;       /* bytes                              */
-	u_int8_t test_sessions; /* number of concurrent test sessions */
-} OWAMPLimits;
+#if 1 /* Remove later */
+	owp_lim_t bandwidth;   /* bits/sec   */
+	owp_lim_t space;       /* bytes      */
+	owp_lim_t expiry;      /* sec        */
+	int delete_on_fetch;   /* flag       */
+	int delete_on_close;   /* flag       */
+#endif
+	owp_lim_t values[5];   
+} owp_lim;
 
 typedef struct {
 	I2table ip2class;
@@ -72,7 +90,7 @@ typedef struct {
 typedef struct owp_access_id {
 	u_int32_t addr4;
 	u_int8_t  addr6[16];
-	u_int8_t  offset; /* not meaningful for KID */
+	u_int8_t  offset;                       /* not meaningful for KID */
 	char      kid[OWP_KID_LEN + 1];
 	int    type;  /* OWP_IDTYPE_KID, OWP_IDTYPE_IPv4, OWP_IDTYPE_IPv6 */
 } owp_access_id;
@@ -93,11 +111,13 @@ extern char *ipaddr2class(u_int32_t ip, I2table ip2class_hash);
 extern void owp_print_ip2class_binding(const struct I2binding *p, FILE* fp);
 void owp_print_kid2data_binding(const struct I2binding *p, FILE* fp);
 extern void print_class2limits_binding(const struct I2binding *p, FILE* fp);
+extern void owp_print_class2node_binding(const struct I2binding *p, FILE* fp);
 extern char *owamp_denumberize(unsigned long addr);
 
-extern unsigned long OWAMPGetBandwidth(OWAMPLimits * lim);
-extern unsigned long OWAMPGetSpace(OWAMPLimits * lim);
-extern unsigned long OWAMPGetNumSessions(OWAMPLimits * lim);
+extern unsigned long OWAMPGetBandwidth(owp_lim* lim);
+extern unsigned long OWAMPGetSpace(owp_lim* lim);
+extern unsigned long OWAMPGetNumSessions(owp_lim* lim);
+extern I2datum* owp_raw2datum(const void *bytes, size_t len);
 
 extern policy_data
 *PolicyInit(
@@ -107,5 +127,15 @@ extern policy_data
 	char		*passwd_file,
 	OWPErrSeverity	*err_ret
 );
+
+typedef struct owp_tree_node *owp_tree_node_ptr;
+
+typedef struct owp_tree_node {
+	char* data;
+	owp_tree_node_ptr next_sibling;
+	owp_tree_node_ptr first_child;
+	owp_tree_node_ptr parent;
+	owp_lim           limits;
+} owp_tree_node;
 
 #endif	/* _owamp_contrib_h_ */
