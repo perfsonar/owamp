@@ -163,14 +163,20 @@ sub load_line{
 	return 1 if(/^\s*#/); # comments
 	return 1 if(/^\s*$/); # blank lines
 
+	# reset
+	if(($pname) = /^\!(\w+)\s*$/o){
+		$pname =~ tr/a-z/A-Z/;
+		delete ${$href}{$pname} if(!defined($skip));
+		return 1;
+	}
 	# bool
-	if(($pname) = /^(\S+)\s*$/o){
+	if(($pname) = /^(\w+)\s*$/o){
 		$pname =~ tr/a-z/A-Z/;
 		${$href}{$pname} = 1 if(!defined($skip));
 		return 1;
 	}
 	# assignment
-	if((($pname,$_) = /^(\S+)\s+(.*)/o)){
+	if((($pname,$_) = /^(\w+)\s+(.*)/o)){
 		return 1 if(defined($skip));
 		$pname =~ tr/a-z/A-Z/;
 		if(defined($BOOLS{$pname})){

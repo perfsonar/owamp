@@ -106,7 +106,7 @@ print "\nGRID VALUE FETCHING EXAMPLE\n";
 foreach $mtype (@mtypes){
 	foreach $node (@nodes){
 		foreach $adj (@nodes){
-			last if($node eq $adj);	# don't test with self.
+			next if($node eq $adj);	# don't test with self.
 			$naddr = $conf->get_val(NODE=>$node,
 						TYPE=>$mtype,
 						ATTR=>'ADDR');
