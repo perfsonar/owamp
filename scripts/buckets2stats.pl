@@ -44,6 +44,7 @@ use constant TESTING => 0; # XXX - set to 0 eventually
 
 use constant THOUSAND => 1000;
 use constant MILLION => 1000000;
+use constant SCALE => (2.0)**32;
 
 # the first 3 fields (all unsigned bytes) are fixed in all versions of header 
 use constant MAGIC_SIZE => 9;
@@ -92,12 +93,15 @@ my(@mtypes, @nodes, $val, $rec_addr, $send_addr);
 @nodes = $conf->get_val(ATTR=>'MESHNODES');
 my $dataroot = $conf->{'CENTRALDATADIR'};
 my $digest_suffix = $conf->get_val(ATTR=>'DigestSuffix');
-my $summ_period = $conf->get_val(ATTR => 'SUMMARY_PERIOD') || 300;
 
 open(GNUPLOT, "| gnuplot") or die "cannot execute gnuplot";
 autoflush GNUPLOT 1;
 
 my $age = $conf->must_get_val(DIGESTRES => $res, ATTR => 'PLOTPERIOD');
+my $age_param = OWP::Utils::JAN_1970 - $age;
+my $summ_param = OWP::Utils::JAN_1970 -
+	($conf->get_val(ATTR => 'SUMMARY_PERIOD') || 300);
+
 my $res_name = $conf->must_get_val(DIGESTRES => $res, ATTR => 'COMMONRESNAME');
 my $period_name = $conf->must_get_val(DIGESTRES => $res,
 				      ATTR => 'PLOT_PERIOD_NAME');
@@ -163,7 +167,7 @@ foreach my $mtype (@mtypes){
 		    my $ofile = $file;
 		    next unless $file =~ s/$digest_suffix$//;
 
-		    my $sec = is_younger_than($file, $summ_period, $init);
+		    my $sec = is_eligible($file, $summ_param, $init);
 
 		    next unless $sec;
 		    $sec -= OWP::Utils::JAN_1970;
@@ -294,7 +298,7 @@ sub plot_resolution {
 	my $ofile = $file;
 	next unless $file =~ s/$digest_suffix$//;
 
-	my $sec = is_younger_than($file, $age, $init);
+	my $sec = is_eligible($file, $age_param, $init);
 
 	next unless $sec;
 	$sec -= OWP::Utils::JAN_1970;
@@ -487,21 +491,23 @@ sub get_percentile {
 
 # return start time in seconds if the file is younger than a given 
 # number of seconds, and undef otherwise.
-sub is_younger_than {
-    my ($filename, $age, $init) = @_;
+# NOTE: returns true <--> ($init - ($sec - `1970')) < $age
+#                    <--> $init - $sec + `1970' < $age 
+#                    <--> $init - $sec < $age - '1970'
+#                    <--> $sec - $init > '1970' - $age
+sub is_eligible {
+    my ($filename, $param, $init) = @_;
 
     my ($start, $end) = split /_/, $filename;
-    my $bigstart = Math::BigInt->new($start);
-    my ($sec, $frac_sec) = $bigstart->brsft(32);
 
-    $sec =~ s/^\+//;
+    $start += 0.0;
 
-    my $sec70 = OWP::Utils::time2time_1970($sec);
+    my $sec = sprintf "%.0f", $start / SCALE;
 
     return $sec if (defined $ARGV[2] && $ARGV[2] eq 'fake');
-
-    return ($init - $sec70 < $age)? $sec : undef;
+    return ($sec - $init > $age_param)? $sec : undef;
 }
+
 
 sub printlist {
     my $mesg = join " ", @_;
