@@ -21,11 +21,12 @@
  *		the send and recv endpoints of an OWAMP test session.
  */
 #include <stdio.h>
+#include <sys/types.h>
+#include <sys/uio.h>
 #include <unistd.h>
 #include <signal.h>
 #include <netinet/in.h>
 #include <assert.h>
-#include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
@@ -446,7 +447,7 @@ success:
 	 * If we are receiver, sid is valid and we need to open file.
 	 */
 	if(!ep->send){
-		ssize_t		size;
+		size_t		size;
 		struct stat	statbuf;
 		OWPLostPacket	alist;
 
@@ -589,6 +590,7 @@ success:
 		 * is stored by the receiver. Use IP_RECVTTL to indicate
 		 * interest in receiving TTL ancillary data.
 		 */
+#ifdef IP_RECVTTL
 		sopt = 1;
 		if(setsockopt(ep->sockfd,IPPROTO_IP,IP_RECVTTL,
 					(void*)&sopt,sizeof(sopt)) < 0){
@@ -596,6 +598,7 @@ success:
 					"setsockopt(IP_RECVTTL=1): %M");
 			goto error;
 		}
+#endif
 
 	}
 	else{
@@ -632,7 +635,7 @@ success:
 		if(setsockopt(ep->sockfd,IPPROTO_IP,IP_TTL,
 					(void*)&sopt,sizeof(sopt)) < 0){
 			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"setsockopt(IP_TTL=255): %M");
+					"setsockopt(IP_TTL=%d): %M",sopt);
 			goto error;
 		}
 
@@ -1210,7 +1213,7 @@ recvfromttl(
 	for(cmdmsgptr = CMSG_FIRSTHDR(&msg);
 			(cmdmsgptr);
 			cmdmsgptr = CMSG_NXTHDR(&msg,cmdmsgptr)){
-		if(cmdmsgptr->cmsg_level == SOL_IP &&
+		if(cmdmsgptr->cmsg_level == IPPROTO_IP &&
 				cmdmsgptr->cmsg_type == IP_TTL){
 			memcpy(ttl,CMSG_DATA(cmdmsgptr),sizeof(u_int8_t));
 			continue;
