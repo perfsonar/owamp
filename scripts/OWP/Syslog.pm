@@ -53,6 +53,7 @@ sub HandleDieWarn {
 	$SIG{__DIE__} = sub {  ## still dies upon return
 		return if $^S; ## see perldoc -f die perlfunc
 		print $fh @_;
+		die @_;
 	};
 
 	## mark that this object redefined warn/die handlers
