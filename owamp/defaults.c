@@ -20,8 +20,9 @@
 */
 #include <owamp/owamp.h>
 #include <owamp/owampP.h>
-#include <owamp/access.h>
+#include <owpcontrb-att/access.h>
 #include <owamp/conndata.h>
+
 
 /*
 ** Fetch 16-byte binary AES key for a given KID and return it
@@ -67,13 +68,64 @@ owp_get_aes_key(void *app_data,
 	return True;
 }
 
+
+/*
+** Create a path and directory using base prefix <datadir>
+** and position of <node> in the class policy tree. The path
+** is dynamically allocated. <add_chars> specifies the additional
+** number of chars to be allocated.
+*/
+static char *
+make_data_dir(
+	      char		 *datadir,
+	      owp_tree_node_ptr	 node,
+	      unsigned int	 add_chars
+	      )
+{
+	char		*path;
+	int		len;
+
+	if(node){
+		path = make_data_dir(datadir, node->parent, strlen(node->data) 
+				     + OWP_PATH_SEPARATOR_LEN + add_chars);
+		if(!path)
+			return NULL;
+		strcat(path,OWP_PATH_SEPARATOR);
+		strcat(path,node->data);
+	} 
+	else {
+		len = strlen(datadir) + OWP_PATH_SEPARATOR_LEN
+			+ strlen(OWP_NODES_DIR) + add_chars;
+		if(len > FILENAME_MAX){
+			fprintf(stderr, "Datapath length too long.");
+			return NULL;
+		}
+		path = malloc(len+1);
+		if(!path)
+			return NULL;
+		
+		strcpy(path,datadir);
+		strcat(path,OWP_PATH_SEPARATOR);
+		strcat(path, OWP_NODES_DIR);
+	}
+	
+	if((mkdir(path,0755) != 0) && (errno != EEXIST)){
+		fprintf(stderr,"Unable to mkdir(%s):%s",path,strerror(errno));
+		free(path);
+		return NULL;
+	}
+	return path;
+}
+
 #define OWP_DEFAULTS_DEBUG
 
 /*
 ** Returns False if the class of the <remote_sa_addr> has "open_mode_ok"
 ** flag turned OFF, or on error, and True in all other cases. Also
 ** sets up the usage class associated with this Control connection.
-** KID, if valid, takes precedence over the ip address.
+** KID, if valid, takes precedence over the ip address. Finally,
+** set up paths for data directories (both real and symlink). Return
+** True on success, or False on failure.
 */
 OWPBoolean
 owp_check_control(
@@ -88,6 +140,10 @@ owp_check_control(
 	policy_data* policy;
 	char *class;
 	owp_tree_node_ptr node;
+	OWPPerConnDataRec *conndata = (OWPPerConnDataRec *)app_data;
+
+	assert(conndata);
+
 	*err_ret = OWPErrOK;
 	policy = ((OWPPerConnDataRec *)app_data)->policy;
 
@@ -107,14 +163,10 @@ owp_check_control(
 	}
 
 	if (!class)  /*Internal error - every KID must have a class.*/{
-#ifdef	VERBOSE
 		fprintf(stderr, "DEBUG: no class for the connection\n");
-#endif
 		goto error;
 	}
-#ifdef	VERBOSE
 	fprintf(stderr, "DEBUG: class = %s\n", class);
-#endif
 
 	node = owp_class2node(class, policy->class2node);
 	if (!node)  /* Internal error - every class must have a node. */
@@ -125,8 +177,29 @@ owp_check_control(
 	    && !node->limits.values[5])
 		return False;
 
-	((OWPPerConnDataRec *)app_data)->node = node;
-	
+	conndata->node = node;
+
+	/* 
+	   Set up key data directories.
+	*/
+	if ((conndata->real_data_dir 
+	     = make_data_dir(conndata->datadir, node, 0)) == NULL) {
+		fprintf(stderr, "FATAL: Could not make data path");
+		goto error;
+	}
+	/* 1 for '\0' at the end */
+	if (!(conndata->link_data_dir 
+	      = (char *)malloc(strlen(conndata->datadir) 
+			       + OWP_PATH_SEPARATOR_LEN
+			       + strlen(OWP_SESSIONS_DIR) + 1))) {
+		free(conndata->real_data_dir);
+		fprintf(stderr, "FATAL: malloc failed");
+		goto error;
+	} 
+	strcpy(conndata->link_data_dir, conndata->datadir);
+	strcat(conndata->link_data_dir, OWP_PATH_SEPARATOR);
+	strcat(conndata->link_data_dir, OWP_SESSIONS_DIR);
+
 	return True;
 	
  error:
@@ -173,9 +246,7 @@ owp_check_test(
 		total_octets *= poisson_test->npackets;
 		octets_on_disk = (u_int64_t)20 * poisson_test->npackets;
 		
-#ifdef	VERBOSE
 		fprintf(stderr, "DEBUG: request parsed ok\n");
-#endif
 
 		/* fetch class limits and check restrictions */
 		if (bw > node->limits.values[OWP_LIM_BANDWIDTH])
