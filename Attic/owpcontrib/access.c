@@ -865,7 +865,7 @@ main(int argc, char *argv[])
 	int c;
 	char* port = NULL;
 	char *host = NULL; 
-	pid_t pid;
+	pid_t pid; 
 	OWPErrSeverity out;
 	OWPContext ctx;
 	OWPInitializeConfigRec cfg  = {
@@ -983,15 +983,13 @@ main(int argc, char *argv[])
 
 	for ( ; ; ) {
 		len = addrlen;
-#if 1
-		break; /* XXX - remove */
-#endif
 		
 		if ( (connfd = accept(listenfd, cliaddr, &len)) < 0){
 			if (errno == EINTR)
 				continue;
 			else
-				err_sys("accept error");
+				OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
+					 "accept error");
 		}
 		owamp_first_check(NULL, NULL, cliaddr, &out);
 		switch (out) {
@@ -1016,8 +1014,10 @@ main(int argc, char *argv[])
 		}
 		free_connections--;
 
-		if ( (pid = fork()) < 0)
-			sys_quit("fork");
+		if ( (pid = fork()) < 0){
+			OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, "fork");
+			exit(1);
+		}
 
 		if (pid == 0) { /* child */
 			doit(connfd);
@@ -1025,9 +1025,10 @@ main(int argc, char *argv[])
 		}
 
 		/* Parent */
-		Close(connfd);
+		if (close(connfd) < 0)
+			OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, "fork");
 	}
-
+	
 	hash_close(ip2class_hash);
 	hash_close(class2limits_hash);
 	hash_close(passwd_hash);
