@@ -255,20 +255,61 @@ GetTimespec(
 		int			*sync
 		)
 {
-	struct ntptimeval	ntv;
-	int			status;
+	struct timeval	tod;
+	struct timex	ntp_conf;
+	long		sec;
 
-	status = ntp_gettime(&ntv);
+	ntp_conf.modes = 0;
 
-	if(status < 0)
+	if(gettimeofday(&tod,NULL) != 0)
 		return NULL;
-	if(status > 0)
+
+	if(ntp_adjtime(&ntp_conf) < 0)
+		return NULL;
+
+	/* assign localtime */
+	ts->tv_sec = tod.tv_sec;
+	ts->tv_nsec = tod.tv_usec * 1000;	/* convert to nsecs */
+
+	/*
+	 * Apply ntp "offset"
+	 */
+#ifdef	STA_NANO
+	sec = 1000000000;
+#else
+	sec = 1000000;
+#endif
+	if(ntp_conf.offset > 0){
+		while(ntp_conf.offset >= sec){
+			ts->tv_sec++;
+			ntp_conf.offset -= sec;
+		}
+	}
+	else{
+		while(ntp_conf.offset <= -sec){
+			ts->tv_sec--;
+			ntp_conf.offset += sec;
+		}
+	}
+
+#ifndef	STA_NANO
+	ntp_conf.offset *= 1000;
+#endif
+	ts->tv_nsec += ntp_conf.offset;
+
+	/*
+	 * Check sync flag
+	 */
+	if(ntp_conf.status & STA_UNSYNC)
 		*sync = 0;
 	else
 		*sync = 1;
 
-	*esterr = (u_int32_t)ntv.esterror;
-	assert((long)*esterr == ntv.esterror);
+	/*
+	 * Set estimated error
+	 */
+	*esterr = (u_int32_t)ntp_conf.esterror;
+	assert((long)*esterr == ntp_conf.esterror);
 
 	/*
 	 * Error estimate should never be 0, but I've seen ntp do it!
@@ -276,16 +317,6 @@ GetTimespec(
 	if(!*esterr){
 		*esterr = 1;
 	}
-
-#ifdef	STA_NANO
-	*ts = ntv.time;
-#else
-	/*
-	 * convert usec to nsec if not STA_NANO
-	 */
-	*(struct timeval*)ts = ntv.time;
-	ts->tv_nsec *= 1000;
-#endif
 
 	return ts;
 }
