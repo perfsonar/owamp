@@ -64,7 +64,7 @@ my $conf = new OWP::Conf(CONFDIR => "$FindBin::Bin");
 my(@mtypes, @nodes, $val, $rec_addr, $send_addr);
 @mtypes = $conf->get_val(ATTR=>'MESHTYPES');
 @nodes = $conf->get_val(ATTR=>'MESHNODES');
-my $dataroot = $conf->{'CENTRALUPLOADDIR'};
+my $dataroot = $conf->{'CENTRALDATADIR'};
 my $digest_suffix = $conf->get_val(ATTR=>'DigestSuffix');
 
 open(GNUPLOT, "| gnuplot") or die "cannot execute gnuplot";
@@ -91,7 +91,7 @@ foreach my $mtype (@mtypes){
 		close TFILE;
 		chomp $end;
 	    } else {
-		warn "Open Error $dir/$vtimefile: $!";
+		warn "Open Error $dir/$vtimefile: $!" if 0;
 	    }
 
 	    $send_addr = $conf->get_val(NODE=>$sender, TYPE=>$mtype,
@@ -118,7 +118,7 @@ sub plot_resolution {
     }
 
     my @all = split /\n/, `ls $datadir`;
-    printlist(@all) if DEBUG;
+#    printlist(@all) if DEBUG;
 
     if (-f $wwwdir) {
 	warn "designated directory $wwwdir is a file! - skipping";
@@ -216,13 +216,13 @@ sub plot_resolution {
 # http://amath.colorado.edu/computing/software/man/gnuplot.html
 
 
-	my $lost_perc = sprintf "%.3f", ($lost/$sent)*100;
+	my $lost_perc = sprintf "%.6f", ($lost/$sent)*100;
 	# Compute stats for a new data point.
-	my @stats = map {sprintf "%.3f", $_} 
+	my @stats = map {sprintf "%.6f", $_} 
 		(get_percentile(0.5, $sent, \@buckets), $min,
 		 get_percentile(0.9, $sent, \@buckets), $lost_perc);
 
-	print join "\n", "Stats for the file $datafile are:",
+	warn join "\n", "Stats for the file $datafile are:",
 		@stats, '' if DEBUG;
 	print GNUDAT join " ", "$mon/$day/$hour/$minute/$second", @stats, "\n";
 	$got_data = 1;
@@ -243,23 +243,42 @@ sub plot_resolution {
     }
 
     close GNUDAT;
+
+    my ($dfile, $psize);
     unless ($got_data) {
+	my $fh;
 	warn "no new data found in $datadir - no plot is done";
-	return;
+#	return;
+	$psize = 0.0;
+	($fh, $dfile) = tempfile(DIR => $datadir, UNLINK => 1);
+
+	die "DEBUG: datadir=$datadir dfile = $dfile";
+
+	print $fh join '/', mdHMS($init - 0.5*$age);
+	print $fh ' ', join ' ', 0, 0, 0, 0, 0, "\n";
+	close $fh;
+#	return;
+    } else {
+	$psize = 1;
+	$dfile = $gnu_dat;
     }
 
     my $delays_png = "$wwwdir/$png_file-delays.png";
     my $delays_title = "Delays: Min, Median, and 90th Percentile " .
 	    "for the last $period_name sampled at $res_name frequency";
+#    my $delays_title = "Delays: Min, Median, and 90th Percentile " .
+#	    "sampled at $res_name frequency";
     my $loss_png = "$wwwdir/$png_file-loss.png";
     my $loss_title = "Loss percentage " .
 	    "for the last $period_name sampled at $res_name frequency";
+#    my $loss_title = "Loss percentage " .
+#	    "sampled at $res_name frequency";
     my $fmt = $conf->must_get_val(DIGESTRES=>$res, ATTR=>'PLOT_FMT');
     my @tmp = split //, $fmt;
     my $fmt_xlabel = join '/', map {code2unit($_)} @tmp;
 
     $fmt = join ':', map {"%$_"} split //, $fmt;
-    warn "DEBUG: fmt=$fmt";
+#    warn "DEBUG: fmt=$fmt";
 
     print GNUPLOT <<"STOP";
 set terminal png small color
@@ -267,7 +286,7 @@ set xdata time
 set format x \"$fmt\"
 set timefmt "%m/%d/%H/%M/%S"
 STOP
-    unless ($ARGV[2] eq 'fake') {
+    unless (defined $ARGV[2] && $ARGV[2] eq 'fake') {
 	print GNUPLOT "set xrange [\"$xr_start\":\"$xr_end\"]\n";
     }
 
@@ -282,11 +301,11 @@ set xlabel "Time ($fmt_xlabel)"
 set ylabel "Delay (ms)"
 set title \"$delays_title\"
 set output "$delays_png"
-plot "$gnu_dat" using 1:2:3:4 with errorbars ps 1
+plot "$dfile" using 1:2:3:4 with errorbars ps $psize
 set ylabel "Loss (%)"
 set title \"$loss_title\"
 set output "$loss_png"
-plot [] [0:100] "$gnu_dat" using 1:5 ps 2
+plot [] [0:100] "$dfile" using 1:5 ps $psize
 STOP
 
     warn "plotted files: $delays_png $loss_png" if VERBOSE;
@@ -337,19 +356,32 @@ sub is_younger_than {
     my $bigstart = Math::BigInt->new($start);
     my ($sec, $frac_sec) = $bigstart->brsft(32);
 
+#    warn "DEBUG: sec=$sec, bigstart=$bigstart";
+
     $sec =~ s/^\+//;
 
-    my $current = OWP::Utils::time_1970totime($init);
+    my $sec70 = OWP::Utils::time2time_1970($sec);
+#    warn join " ", 'DEBUG: is_younger ', mdHMS($sec70), "\n";
 
-    if (DEBUG) {
-	my $diff = $current - $start;
-	unless ($diff < $age) {
-	    warn "DEBUG: diff=$diff, age=$age - skipping $filename";
-	}
-    }
+    # time in seconds since Jan 1, 1900
+#    my $current = OWP::Utils::time_1970totime($init);
 
-    return $sec if $ARGV[2] eq 'fake';
-    return ($current - $start < $age)? $sec : undef;
+#    if (DEBUG) {
+#	my $diff = $current - $start;
+#	unless ($diff < $age) {
+#	    warn "DEBUG: diff=$diff, age=$age - skipping $filename";
+#	}
+#    }
+
+#   warn "DEBUG: cur=$current sec=$sec age=$age\n";
+#   warn "cur - sec = ", $current - $sec, "\n";
+
+    return $sec if (defined $ARGV[2] && $ARGV[2] eq 'fake');
+#    return ($current - $sec < $age)? $sec : undef;
+    return ($init - $sec70 < $age)? $sec : undef;
+
+#    return undef unless ($current - $sec < $age);
+#    warn "DEBUG: returned $sec from filename $filename";
 }
 
 sub printlist {
@@ -366,7 +398,13 @@ sub code2unit {
 };
 
 sub mdHMS {
-    my ($second, $minute, $hour, $day, $mon, $year, $wday, $yday) 
+    my ($second, $minute, $hour, $day, $mon, $year, $wday, $yday)
 	    = gmtime($_[0]);
+    $mon++;
+#    warn "DEBUG: mdHMS: year=$year";
+
+    my $str = gmtime($_[0]);
+#    warn "DEBUG: mdHMS: $str";
+
     return ($mon, $day, $hour, $minute, $second);
 }
