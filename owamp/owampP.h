@@ -276,6 +276,7 @@ typedef struct OWPEndpointRec{
 	OWPBoolean		send;
 	int			sockfd;
 	OWPAddr			remoteaddr;
+	OWPAddr			localaddr;
 
 	char			fname[PATH_MAX];
 	FILE			*userfile;	/* from _OWPOpenFile */

@@ -589,17 +589,41 @@ success:
 		 * draft-ietf-ippm-owdp-08.txt adds TTL to the data that
 		 * is stored by the receiver. Use IP_RECVTTL to indicate
 		 * interest in receiving TTL ancillary data.
+		 * TODO: Determine correct sockopt for IPV6!
 		 */
-#ifdef IP_RECVTTL
-		sopt = 1;
-		if(setsockopt(ep->sockfd,IPPROTO_IP,IP_RECVTTL,
+		switch(localaddr->saddr->sa_family){
+#ifdef	AF_INET6
+			case AF_INET6:
+#ifdef IPV6_RECVHOPLIMIT
+				sopt = 1;
+				if(setsockopt(ep->sockfd,IPPROTO_IPV6,
+							IPV6_RECVHOPLIMIT,
 					(void*)&sopt,sizeof(sopt)) < 0){
-			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"setsockopt(IP_RECVTTL=1): %M");
-			goto error;
-		}
+					OWPError(cntrl->ctx,OWPErrFATAL,
+						OWPErrUNKNOWN,
+					"setsockopt(IPV6_RECVHOPLIMIT=1): %M");
+					goto error;
+				}
 #endif
-
+				break;
+#endif
+			case AF_INET:
+#ifdef IP_RECVTTL
+				sopt = 1;
+				if(setsockopt(ep->sockfd,IPPROTO_IP,IP_RECVTTL,
+					(void*)&sopt,sizeof(sopt)) < 0){
+					OWPError(cntrl->ctx,OWPErrFATAL,
+						OWPErrUNKNOWN,
+						"setsockopt(IP_RECVTTL=1): %M");
+					goto error;
+				}
+#endif
+				break;
+			default:
+				OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+					"Invalid address family for test");
+				goto error;
+		}
 	}
 	else{
 		/*
@@ -629,14 +653,43 @@ success:
 		/*
 		 * draft-ietf-ippm-owdp-08.txt adds TTL to the data that
 		 * is stored by the receiver. The sender should set TTL
-		 * to 255 to make this useful.
+		 * to 255 to make this useful. (hoplimit is the field
+		 * name in IPv6.)
 		 */
-		sopt = 255;
-		if(setsockopt(ep->sockfd,IPPROTO_IP,IP_TTL,
-					(void*)&sopt,sizeof(sopt)) < 0){
-			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"setsockopt(IP_TTL=%d): %M",sopt);
-			goto error;
+		switch(localaddr->saddr->sa_family){
+#ifdef	AF_INET6
+			case AF_INET6:
+#ifdef IPV6_UNICAST_HOPS
+				sopt = 255;
+				if(setsockopt(ep->sockfd,IPPROTO_IPV6,
+						IPV6_UNICAST_HOPS,
+						(void*)&sopt,sizeof(sopt)) < 0){
+					OWPError(cntrl->ctx,OWPErrFATAL,
+						OWPErrUNKNOWN,
+					"setsockopt(IPV6_UNICAST_HOPS=%d): %M",
+						sopt);
+					goto error;
+				}
+#endif
+				break;
+#endif
+			case AF_INET:
+#ifdef IP_TTL
+				sopt = 255;
+				if(setsockopt(ep->sockfd,IPPROTO_IP,IP_TTL,
+						(void*)&sopt,sizeof(sopt)) < 0){
+					OWPError(cntrl->ctx,OWPErrFATAL,
+						OWPErrUNKNOWN,
+						"setsockopt(IP_TTL=%d): %M",
+						sopt);
+					goto error;
+				}
+#endif
+				break;
+			default:
+				OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+					"Invalid address family for test");
+				goto error;
 		}
 
 		/*
@@ -1171,6 +1224,8 @@ recvfromttl(
 		int		sockfd,
 		void		*buf,
 		size_t		buf_len,
+		struct sockaddr	*local,
+		socklen_t	local_len __attribute__((unused)),
 		struct sockaddr	*peer,
 		socklen_t	*peer_len,
 		u_int8_t	*ttl
@@ -1213,10 +1268,30 @@ recvfromttl(
 	for(cmdmsgptr = CMSG_FIRSTHDR(&msg);
 			(cmdmsgptr);
 			cmdmsgptr = CMSG_NXTHDR(&msg,cmdmsgptr)){
-		if(cmdmsgptr->cmsg_level == IPPROTO_IP &&
-				cmdmsgptr->cmsg_type == IP_TTL){
-			memcpy(ttl,CMSG_DATA(cmdmsgptr),sizeof(u_int8_t));
-			continue;
+		switch(local->sa_family){
+#ifdef	AF_INET6
+			case AF_INET6:
+				if(cmdmsgptr->cmsg_level == IPPROTO_IPV6 &&
+						cmdmsgptr->cmsg_type ==
+						IPV6_UNICAST_HOPS){
+					memcpy(ttl,CMSG_DATA(cmdmsgptr),
+							sizeof(u_int8_t));
+					goto NEXTCMSG;
+				}
+				break;
+#endif
+			case AF_INET:
+				if(cmdmsgptr->cmsg_level == IPPROTO_IP &&
+						cmdmsgptr->cmsg_type == IP_TTL){
+					memcpy(ttl,CMSG_DATA(cmdmsgptr),
+							sizeof(u_int8_t));
+					goto NEXTCMSG;
+				}
+				break;
+			default:
+				OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
+					"Invalid address family for test");
+				return -rc;
 		}
 
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
@@ -1224,6 +1299,7 @@ recvfromttl(
 				cmdmsgptr->cmsg_len, cmdmsgptr->cmsg_level,
 				cmdmsgptr->cmsg_type);
 		return -rc;
+NEXTCMSG:
 	}
 
 	return rc;
@@ -1418,6 +1494,7 @@ again:
 		memset(&peer_addr,0,sizeof(peer_addr));
 		if(recvfromttl(ep->cntrl->ctx,ep->sockfd,
 				ep->payload,ep->len_payload,
+				ep->localaddr->saddr,ep->localaddr->saddrlen,
 				(struct sockaddr*)&peer_addr,&peer_addr_len,
 				&datarec.ttl) != (ssize_t)ep->len_payload){
 			if(errno != EINTR){
@@ -1754,11 +1831,12 @@ _OWPEndpointInitHook(
 	}
 
 	if(!ep->send){
-
 		ep->remoteaddr = tsession->sender;
+		ep->localaddr = tsession->receiver;
 	}
 	else{
 		ep->remoteaddr = tsession->receiver;
+		ep->localaddr = tsession->sender;
 	}
 
 	/*
