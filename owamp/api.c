@@ -20,6 +20,7 @@
 */
 #include <unistd.h>
 #include <fcntl.h>
+#include <string.h>
 
 #include "./owampP.h"
 #include "./rijndael-api-fst.h"
@@ -150,14 +151,59 @@ OWPAddrByNode(
 	const char	*node
 )
 {
-	OWPAddr	addr = AllocAddr(ctx);
+	OWPAddr	addr;
+	char		buff[MAXHOSTNAMELEN];
+	const char	*nptr=node;
+	char		*pptr=NULL;
+	char		*s1,*s2,*s3;
 
-	if(!addr)
+	if(!node)
 		return NULL;
 
-	strncpy(addr->node,node,MAXHOSTNAMELEN);
+	if(!(addr=AllocAddr(ctx)))
+		return NULL;
 
+	strncpy(buff,node,MAXHOSTNAMELEN);
+
+	/*
+	 * Pull off port if specified. If syntax doesn't match URL like
+	 * node:port - ipv6( [node]:port) - then just assume whole string
+	 * is nodename, and let getaddrinfo report problems later.
+	 * (This service syntax is specified by rfc2732.)
+	 */
+
+	/*
+	 * First try ipv6 syntax since it is more restrictive.
+	 */
+	if(s1 = strchr(buff,'[')){
+		s1++;
+		if(strchr(s1,'[')) goto NOPORT;
+		if(!(s2 = strchr(s1,']'))) goto NOPORT;
+		*s2++='\0';
+		if(strchr(s2,']')) goto NOPORT;
+		if(*s2++ != ':') goto NOPORT;
+		nptr = s1;
+		pptr = s2;
+	}
+	/*
+	 * Now try ipv4 style.
+	 */
+	else if(s1 = strchr(buff,':')){
+		*s1++='\0';
+		if(strchr(s1,':')) goto NOPORT;
+		nptr = buff;
+		pptr = s1;
+	}
+
+
+NOPORT:
+	strncpy(addr->node,node,MAXHOSTNAMELEN);
 	addr->node_set = 1;
+
+	if(pptr){
+		strncpy(addr->port,pptr,MAXHOSTNAMELEN);
+		addr->port_set = 1;
+	}
 
 	return addr;
 }
@@ -398,13 +444,14 @@ _OWPClientConnect(
 			node = server_addr->node;
 		if(server_addr->port_set)
 			port = server_addr->port;
+		else
+			port = OWP_CONTROL_SERVICE_NAME;
 
 		memset(&hints,0,sizeof(struct addrinfo));
 		hints.ai_family = AF_UNSPEC;
 		hints.ai_socktype = SOCK_STREAM;
 
-		if((getaddrinfo(node,OWP_CONTROL_SERVICE_NAME,&hints,&airet)!=0)
-								|| !airet){
+		if((getaddrinfo(node,port,&hints,&airet)!=0) || !airet){
 			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,errno,
 					":getaddrinfo()");
 			goto error;
