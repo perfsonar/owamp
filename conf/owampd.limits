@@ -29,6 +29,11 @@
 #	a connection must pass the limit restrictions of the given
 #	"user class" as well as all "parent" classes.
 #
+#	Within this file "assign" lines are used to assign a "user class"
+#	to a given connection. "limit" lines are used to define a "user class"
+#	and set the limits associated with that "user class". You can not
+#	use a classname before it is defined using a limit line.
+#
 #	The format of this file is as follows:
 #		1) Comment lines are any line that the first non-whitespace
 #		charactor is '#'. These lines are completely ignored other
@@ -76,6 +81,7 @@
 #			none have been defined yet. As such, the first
 #			line defines the root of your class hierarchy.
 #			All remaining limit lines MUST assign a parent.
+#			(This is hierarchical after all.)
 #
 #		bandwidth:
 #			This limits the estimated amount of bandwidth that
@@ -120,10 +126,45 @@
 #			to only encrypted or authenticated mode transactions.
 #			(default: on)
 #	
-limit root with disk=0,bandwidth=0
+#	"assign" lines:
+#		These are used to assign a "user class" to the connection.
+#		The format is:
+#
+#		assign $assigntype [targs*] $classname
+#
+#		$assigntype defines the type of assignment. There are currently
+#		three types of assignment:
+#			default,user,net
+#
+#		"default" is used if no other assignment matches. It takes no
+#		additional args:
+#
+#		assign default jail
+#
+#		This would assign any connection that didn't match more closely
+#		to the classname jail.
+#
+#		"user" is used to match the "username" specified in the owamp
+#		protocol with a "user class". The "username" within the
+#		protocol is used as a key to fetch the "shared secret". The
+#		format of this line would be:
+#
+#		assign user joe paradise
+#
+#		This would assign a connection that was able to authenticate
+#		using the "username" joe the limits specified for the classname
+#		paradise.
+
+# setup the root node with unlimited disk and bandwidth
+limit root with disk=0,\
+		bandwidth=0
+
 # limit box with parent=root,disk=1,bandwidth=1,allow_open_mode=off
 limit box with parent=root,bandwidth=1k
-limit sand with parent=box,disk=10M,bandwidth=1k,delete_on_fetch=on
+limit sand with parent=box,\
+		disk=10M,\
+		bandwidth=1k,\
+		delete_on_fetch=on
 
 assign default sand
 assign net ::/127 root
