@@ -27,9 +27,9 @@ u_int32_t DefaultMode = OWP_MODE_OPEN;
 int free_connections = DEFAULT_NUM_CONN;
 
 struct data {
-	hash_ptr ip2class;
-	hash_ptr class2limits;
-	hash_ptr passwd;
+	I2table ip2class;
+	I2table class2limits;
+	I2table passwd;
 };
 
 static void
@@ -57,7 +57,7 @@ owamp_first_check(void *app_data,
 		  )
 {
 	u_int32_t ip_addr; 
-	hash_ptr ip2class_hash = ((struct data *)&app_data)->ip2class;
+	I2table ip2class_hash = ((struct data *)&app_data)->ip2class;
 	switch (remote->sa_family){
 	case AF_INET:
 	    ip_addr = ntohl((((struct sockaddr_in *)remote)->sin_addr).s_addr);
@@ -207,7 +207,7 @@ owampd_err_func(
 */
 
 void
-print_ip2class_binding(const struct binding *p, FILE* fp)
+print_ip2class_binding(const struct I2binding *p, FILE* fp)
 {
 	fprintf(fp, "DEBUG: the value of key %s/%u is = %s\n",
 	       owamp_denumberize(get_ip_addr(p->key)), 
@@ -225,7 +225,7 @@ print_limits(OWAMPLimits * limits, FILE* fp)
 }
 
 void
-print_class2limits_binding(const struct binding *p, FILE* fp)
+print_class2limits_binding(const struct I2binding *p, FILE* fp)
 {
 	fprintf(fp, "the limits for class %s are: ", p->key->dptr);
 	print_limits((OWAMPLimits *)(p->value->dptr), fp);
@@ -237,7 +237,7 @@ main(int argc, char *argv[])
 {
 	char ctrl_msg[MAX_MSG];
 	char key_bytes[5];
-	datum * dat;
+	I2datum * dat;
 	char class[128];
 	char err_msg[128];
 	int listenfd, connfd;
@@ -322,17 +322,21 @@ main(int argc, char *argv[])
 	
 	/* Open the ip2class hash for writing. */
 	snprintf(path,sizeof(path), "%s/%s", DEFAULT_CONFIG_DIR,IPtoClassFile);
-	if ((app_data.ip2class = hash_init(ctx, 0, NULL, NULL, 
+	/*
+	 * hash errors will be invisible for now - first arg is eh, and
+	 * it hasn't been initialized.
+	 */
+	if ((app_data.ip2class = I2hash_init(NULL, 0, NULL, NULL, 
 				       print_ip2class_binding)) == NULL){
 		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
 			 "Could not initialize hash for %s", IPtoClassFile);
 		exit(1);
 	}
 	owamp_read_ip2class(ctx, path, app_data.ip2class); 
-	hash_print(app_data.ip2class, stderr);
+	I2hash_print(app_data.ip2class, stderr);
 
 	/* Open the class2limits hash for writing. */
-	if ((app_data.class2limits = hash_init(ctx, 0, NULL, NULL, 
+	if ((app_data.class2limits = I2hash_init(NULL, 0, NULL, NULL, 
 					   print_class2limits_binding))==NULL){
 		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
 			"Could not initialize hash for %s", ClassToLimitsFile);
@@ -342,18 +346,18 @@ main(int argc, char *argv[])
 		 DEFAULT_CONFIG_DIR,ClassToLimitsFile);
 	owamp_read_class2limits(path, app_data.class2limits);
 
-	hash_print(app_data.class2limits, stderr); 
+	I2hash_print(app_data.class2limits, stderr); 
 
 	/* Open the passwd hash for writing. */
-	if ((app_data.passwd = hash_init(ctx, 0, NULL, NULL, NULL)) == NULL){
+	if ((app_data.passwd = I2hash_init(NULL, 0, NULL, NULL, NULL)) == NULL){
 		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
 			"Could not initialize hash for %s", PasswdFile);
 		exit(1);
 	}
 	snprintf(path,sizeof(path), "%s/%s", 
 		 DEFAULT_CONFIG_DIR,PasswdFile);
-	read_passwd_file(path, app_data.passwd);
-	hash_print(app_data.passwd, stderr);
+	read_passwd_file(ctx, path, app_data.passwd);
+	I2hash_print(app_data.passwd, stderr);
 
 	listenfd = tcp_listen(ctx, host, port, &addrlen);
 	if (signal(SIGCHLD, sig_chld) == SIG_ERR){
@@ -417,9 +421,9 @@ main(int argc, char *argv[])
 		}
 	}
 	
-	hash_close(&app_data.ip2class);
-	hash_close(&app_data.class2limits);
-	hash_close(&app_data.passwd);
+	I2hash_close(&app_data.ip2class);
+	I2hash_close(&app_data.class2limits);
+	I2hash_close(&app_data.passwd);
 
 	exit(0);
 }

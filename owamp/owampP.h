@@ -35,11 +35,11 @@
 #endif
 
 #if	!HAVE_GETADDRINFO || !HAVE_SOCKET
-#error	Missing networking capabilities!
+#error	Missing needed networking capabilities! (getaddrinfo and socket)
 #endif
 
 #if	!HAVE_MALLOC || !HAVE_MEMSET
-#error	Missing needed functions!
+#error	Missing needed memory functions!
 #endif
 #endif	/* HAVE_CONFIG_H */
 

@@ -1,5 +1,8 @@
+/*
+ * $Id$
+ */
+#include <I2util/table.h>
 #include "access.h"
-#include "table.h"
 
 void
 test_ip2class(hash_ptr ip2class_hash)

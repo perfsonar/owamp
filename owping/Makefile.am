@@ -18,5 +18,8 @@
 #
 #	Description:	owping build description.
 
+INCLUDES	= $(I2UTILINCS)
+
 bin_PROGRAMS	= owping
 owping_SOURCES	= owping.c
+owping_LDADD	= $(I2UTILLIBS)

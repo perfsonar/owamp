@@ -22,7 +22,7 @@
 **	This file contains the OWAMP access policy functions.
 */
 
-#include "../owamp/owampP.h"
+#include <owamp/owamp.h>
 #include "access.h"
 #include "rijndael-api-fst.h"
 
@@ -32,8 +32,6 @@ struct subnet {
 	u_int32_t address;
 	u_int8_t offset;
 };
-
-OWPContext ctx;
 
 u_int32_t
 OWAMPGetBandwidth(OWAMPLimits * lim){
@@ -112,12 +110,12 @@ owamp_denumberize(unsigned long addr)
 ** to be used as a database key.
 */
 
-static datum *
+static I2datum *
 subnet2datum(u_int32_t address, u_int8_t offset)
 {
-	datum *ret;
+	I2datum *ret;
 
-	if ( (ret = (void *)malloc(sizeof(datum))) == NULL) 
+	if ( (ret = (void *)malloc(sizeof(I2datum))) == NULL) 
 		return NULL;    
 	if ( (ret->dptr = (void *)malloc(sizeof(struct subnet))) == NULL)     
 		return NULL; 
@@ -200,13 +198,13 @@ owamp_parse_mask(const char *text, u_int32_t *addr, u_int8_t *off)
 ** This function fills out a datum structure with the given string.
 */
 
-datum*
+I2datum*
 str2datum(const char *bytes)
 {
-	datum *dat;
+	I2datum *dat;
 	size_t len = strlen(bytes)+1;
 
-	if ( (dat = (void *)malloc(sizeof(datum))) == NULL)
+	if ( (dat = (void *)malloc(sizeof(I2datum))) == NULL)
 		return NULL;
 	if ( (dat->dptr = (void *)malloc(len)) == NULL) 
 		return NULL;
@@ -216,13 +214,13 @@ str2datum(const char *bytes)
 	return dat;
 }
 
-datum*
+I2datum*
 limits2datum(const OWAMPLimits * lim)
 {
-	datum* dat;
+	I2datum* dat;
 	size_t len = sizeof(*lim);
 
-	if ( (dat = (void *)malloc(sizeof(datum))) == NULL)
+	if ( (dat = (void *)malloc(sizeof(I2datum))) == NULL)
 		return NULL;
 	if ( (dat->dptr = (void *)malloc(len)) == NULL) 
 		return NULL;
@@ -237,13 +235,13 @@ limits2datum(const OWAMPLimits * lim)
 }
 
 u_int32_t
-get_ip_addr(const datum * dat)
+get_ip_addr(const I2datum * dat)
 {
 	return *(u_int32_t*)(dat->dptr);
 }
 
 u_int8_t
-get_offset(const datum * dat)
+get_offset(const I2datum * dat)
 {
 	return *(u_int8_t*)((dat->dptr)+4);
 }
@@ -262,7 +260,7 @@ get_offset(const datum * dat)
 void
 owamp_read_ip2class(OWPContext ctx,
 		    const char *ip2class, 
-		    hash_ptr ip2class_hash)
+		    I2table ip2class_hash)
 {
 	char line[MAX_LINE], mask[MAX_LINE], class[MAX_LINE];
 	char err_msg[1024];
@@ -270,7 +268,7 @@ owamp_read_ip2class(OWPContext ctx,
 	u_int32_t addr;
 	u_int8_t off; 
 	
-	datum *key, *val;
+	I2datum *key, *val;
 
 	if ( (fp = fopen(ip2class, "r")) == NULL){
 		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
@@ -298,7 +296,7 @@ owamp_read_ip2class(OWPContext ctx,
 		if ( (val = str2datum(class)) == NULL )
 			continue;
 
-		if (hash_store(ctx, ip2class_hash, key, val) != 0)
+		if (I2hash_store(ip2class_hash, key, val) != 0)
 			continue;
 	}
 
@@ -311,9 +309,9 @@ owamp_read_ip2class(OWPContext ctx,
 		goto CLOSE;
 	if ( (val = str2datum(DEFAULT_OPEN_CLASS)) == NULL)
 		goto CLOSE;
-	if (hash_store(ctx, ip2class_hash, key, val) != 0)
+	if (I2hash_store(ip2class_hash, key, val) != 0)
 		OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, 
-			 "WARNING: hash_store failed to insert all key");
+			 "WARNING: I2hash_store failed to insert all key");
  CLOSE:
 	return;
 }
@@ -332,7 +330,7 @@ owamp_read_ip2class(OWPContext ctx,
 */
  
 void
-read_passwd_file(const char *passwd_file, hash_ptr hash)
+read_passwd_file(OWPContext ctx, const char *passwd_file, I2table hash)
 {
 	char line[MAX_LINE];
 	char *kid, *secret;
@@ -341,10 +339,10 @@ read_passwd_file(const char *passwd_file, hash_ptr hash)
 	u_int32_t addr;
 	u_int8_t off; 
 	
-	datum *key, *val;
+	I2datum *key, *val;
 
 	if ( (fp = fopen(passwd_file, "r")) == NULL){
-		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
+		OWPError(ctx, OWPErrFATAL, errno, 
 			 "FATAL: fopen %s for reading", passwd_file);
 		exit(1);
 	}
@@ -379,33 +377,33 @@ read_passwd_file(const char *passwd_file, hash_ptr hash)
 		if ( (val = str2datum(secret)) == NULL )
 			continue;
 
-		if (hash_store(ctx, hash, key, val) != 0)
+		if (I2hash_store(hash, key, val) != 0)
 			continue;
 	}
 
 	if (fclose(fp) < 0)
-		OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, 
+		OWPError(ctx, OWPErrWARNING, errno, 
 			 "Warning: fclose(%d)", fp);	;
 }
 
 char *
-ipaddr2class(u_int32_t ip, hash_ptr ip2class_hash)
+ipaddr2class(u_int32_t ip, I2table ip2class_hash)
 {
 	int offset;
-	datum *key_dat_ptr, *val_dat;
+	I2datum *key_dat_ptr, *val_dat;
 	u_int32_t mask_template = 0xFFFFFFFF;
 	
 	for(offset=32; offset>0; offset--){
 		int bits = 32 - offset;
 		u_int32_t mask = (mask_template>>bits)<<bits;
 		key_dat_ptr = subnet2datum(ip & mask, offset);
-		val_dat = hash_fetch(ip2class_hash, key_dat_ptr);
+		val_dat = I2hash_fetch(ip2class_hash, key_dat_ptr);
 		if (val_dat->dptr)
 			return val_dat->dptr;
 	}
 	
 	key_dat_ptr = subnet2datum(ip, 0);
-	val_dat = hash_fetch(ip2class_hash, key_dat_ptr);
+	val_dat = I2hash_fetch(ip2class_hash, key_dat_ptr);
 	if (val_dat->dptr)
 		return val_dat->dptr;
 
@@ -430,7 +428,7 @@ ipaddr2class(u_int32_t ip, hash_ptr ip2class_hash)
 */
 
 void
-owamp_read_class2limits(const char *class2limits, hash_ptr hash)
+owamp_read_class2limits(const char *class2limits, I2table hash)
 {
 	char line[MAX_LINE];
 	char err_msg[1024];
@@ -438,7 +436,7 @@ owamp_read_class2limits(const char *class2limits, hash_ptr hash)
 	FILE *fp;
 	u_int32_t numval;
 	
-	datum key_dat, val_dat;
+	I2datum key_dat, val_dat;
 
 	if ( (fp = fopen(class2limits, "r")) == NULL){
 		snprintf(err_msg, sizeof(err_msg),"fopen %s for reading", 
@@ -450,7 +448,7 @@ owamp_read_class2limits(const char *class2limits, hash_ptr hash)
 	fprintf(stderr, "\n");
 	while ( (fgets(line, sizeof(line), fp)) != NULL) {
 		OWAMPLimits limits;
-		datum key_dat, val_dat;
+		I2datum key_dat, val_dat;
 
 		if (line[0] == '#')
 			continue;
@@ -481,6 +479,6 @@ owamp_read_class2limits(const char *class2limits, hash_ptr hash)
 			printf("DEBUG: key = %s value =  %lu\n", key, numval);
 			} 
 		/* Now save the limits structure in the hash. */
-		hash_store(ctx, hash, str2datum(class), limits2datum(&limits));
+		I2hash_store(hash, str2datum(class), limits2datum(&limits));
 	}
 }

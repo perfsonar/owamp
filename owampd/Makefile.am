@@ -19,9 +19,10 @@
 #	Description:	owampd build description
 
 INCLUDES			= -I$(top_builddir) -I$(top_builddir)/contrib \
-				-I$(top_srcdir) -I$(top_srcdir)/contrib
+				-I$(top_srcdir) -I$(top_srcdir)/contrib \
+				$(I2UTILINCS)
 
 bin_PROGRAMS	= owampd
 owampd_SOURCES	= owampd.c
 owampd_LDADD	= -L$(top_builddir)/owamp -L$(top_builddir)/contrib \
-		-lowamp -lowamp_contrib
+		-lowamp -lowamp_contrib $(I2UTILLIBS)

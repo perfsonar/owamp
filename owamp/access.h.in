@@ -1,3 +1,8 @@
+/*
+ * $Id$
+ */
+#ifndef	_owamp_contrib_h_
+#define	_owamp_contrib_h_
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -21,7 +26,7 @@
 /* for ntohl */
 #include <sys/param.h>
 
-#include "table.h"
+#include <I2util/util.h>
 
 #define MAX_LINE 1024
 
@@ -48,4 +53,6 @@ typedef struct owamp_limits {
 	u_int8_t test_sessions; /* number of concurrent test sessions */
 } OWAMPLimits;
 
-extern char *ipaddr2class(u_int32_t ip, hash_ptr ip2class_hash);
+extern char *ipaddr2class(u_int32_t ip, I2table ip2class_hash);
+
+#endif	/* _owamp_contrib_h_ */
