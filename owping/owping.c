@@ -1108,35 +1108,35 @@ FAILED:
 
 int
 main(
-        int    argc,
+        int     argc,
         char    **argv
     )
 {
-    char            *progname;
-    OWPErrSeverity        err_ret = OWPErrOK;
-    I2LogImmediateAttr    ia;
-    OWPContext        ctx;
+    char                *progname;
+    OWPErrSeverity      err_ret = OWPErrOK;
+    I2LogImmediateAttr  ia;
+    OWPContext          ctx;
     OWPTimeStamp        start_time;
-    OWPTestSpec        tspec;
-    OWPSlot            slot;
-    OWPNum64        rtt_bound;
-    OWPSID            tosid, fromsid;
-    OWPAcceptType        acceptval;
-    OWPErrSeverity        err;
-    FILE            *fromfp=NULL;
-    char            localbuf[NI_MAXHOST+1+NI_MAXSERV+1];
-    char            remotebuf[NI_MAXHOST+1+NI_MAXSERV+1];
-    char                    *local, *remote;
+    OWPTestSpec         tspec;
+    OWPSlot             slot;
+    OWPNum64            rtt_bound;
+    OWPSID              tosid, fromsid;
+    OWPAcceptType       acceptval;
+    OWPErrSeverity      err;
+    FILE                *fromfp=NULL;
+    char                localbuf[NI_MAXHOST+1+NI_MAXSERV+1];
+    char                remotebuf[NI_MAXHOST+1+NI_MAXSERV+1];
+    char                *local, *remote;
 
-    int            ch;
-    char                    *endptr = NULL;
-    char                    optstring[128];
-    static char        *conn_opts = "A:S:k:u:";
-    static char        *test_opts = "fF:tT:c:i:s:L:P:";
-    static char        *out_opts = "a:vQR";
-    static char        *gen_opts = "h";
+    int                 ch;
+    char                *endptr = NULL;
+    char                optstring[128];
+    static char         *conn_opts = "A:k:S:u:";
+    static char         *test_opts = "c:D:fF:H:i:L:P:s:tT:";
+    static char         *out_opts = "a:QRv";
+    static char         *gen_opts = "h";
 #ifndef    NDEBUG
-    static char        *debug_opts = "w";
+    static char         *debug_opts = "w";
 #endif
 
     ia.line_info = (I2NAME | I2MSG);
@@ -1215,9 +1215,17 @@ main(
 
     while((ch = getopt(argc, argv, optstring)) != -1){
         switch (ch) {
+            u_int32_t   tlng;
+
             /* Connection options. */
             case 'A':
                 if(!(ping_ctx.opt.authmode = strdup(optarg))){
+                    I2ErrLog(eh,"malloc:%M");
+                    exit(1);
+                }
+                break;
+            case 'k':
+                if (!(ping_ctx.opt.keyfile = strdup(optarg))){
                     I2ErrLog(eh,"malloc:%M");
                     exit(1);
                 }
@@ -1234,13 +1242,33 @@ main(
                     exit(1);
                 }
                 break;
-            case 'k':
-                if (!(ping_ctx.opt.keyfile = strdup(optarg))){
-                    I2ErrLog(eh,"malloc:%M");
+                /* Test options. */
+            case 'c':
+                ping_ctx.opt.numPackets = strtoul(optarg, &endptr, 10);
+                if (*endptr != '\0') {
+                    usage(progname,
+                            "Invalid value. Positive integer expected");
                     exit(1);
                 }
                 break;
-                /* Test options. */
+            case 'D':
+                if(ping_ctx.typeP){
+                    usage(progname,
+                            "Invalid option \'-D\'. Can only set one \'-D\' or \'-H\'.");
+                    exit(1);
+                }
+                tlng = strtoul(optarg,&endptr,0);
+                /*
+                 * Validate int conversion and verify user only sets
+                 * last 6 bits (DSCP must fit in 6 bits - RFC 2474.)
+                 */
+                if((*endptr != '\0') || (tlng & ~0x3F)){
+                    usage(progname,
+                            "Invalid value for option \'-D\'. DSCP value expected");
+                    exit(1);
+                }
+                ping_ctx.typeP = tlng << 24;
+                break;
             case 'F':
                 if (!(ping_ctx.opt.save_from_test = strdup(optarg))){
                     I2ErrLog(eh,"malloc:%M");
@@ -1250,6 +1278,27 @@ main(
             case 'f':
                 ping_ctx.opt.from = True;
                 break;
+            case 'H':
+                if(ping_ctx.typeP){
+                    usage(progname,
+                            "Invalid option \'-H\'. Can only set one \'-H\' or \'-D\'.");
+                    exit(1);
+                }
+                tlng = strtoul(optarg,&endptr,0);
+                /*
+                 * Validate int conversion and verify user only sets
+                 * last 16 bits (PHB must fit in 16 bits - RFC 2836.)
+                 */
+                if((*endptr != '\0') || (tlng & ~0xFFFF)){
+                    usage(progname,
+                            "Invalid value for option \'-H\'. PHB value expected");
+                    exit(1);
+                }
+                /* set second bit to specify PHB per owamp spec. */
+                ping_ctx.typeP = 0x40000000;
+                /* copy 16 bit PHB into next 16 bits of typeP. */
+                ping_ctx.typeP |= (tlng << 14);
+                break;
             case 'T':
                 if (!(ping_ctx.opt.save_to_test = strdup(optarg))) {
                     I2ErrLog(eh,"malloc:%M");
@@ -1258,14 +1307,6 @@ main(
                 /* fall through */
             case 't':
                 ping_ctx.opt.to = True;
-                break;
-            case 'c':
-                ping_ctx.opt.numPackets = strtoul(optarg, &endptr, 10);
-                if (*endptr != '\0') {
-                    usage(progname,
-                            "Invalid value. Positive integer expected");
-                    exit(1);
-                }
                 break;
             case 'i':
                 if(!parse_slots(optarg,&ping_ctx.slots,
@@ -1465,7 +1506,7 @@ main(
         tspec.loss_timeout =
             OWPDoubleToNum64(ping_ctx.opt.lossThreshold);
 
-        tspec.typeP = 0;
+        tspec.typeP = ping_ctx.typeP;
         tspec.packet_size_padding = ping_ctx.opt.padding;
         tspec.npackets = ping_ctx.opt.numPackets;
 

@@ -75,6 +75,7 @@ typedef    struct {
     char                *remote_serv;
 
     u_int32_t           auth_mode;
+    u_int32_t           typeP;
 
     OWPContext          lib_ctx;
     OWPControl          cntrl;
