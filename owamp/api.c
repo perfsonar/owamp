@@ -938,7 +938,7 @@ void
 OWPAddr2string(OWPAddr addr, char *buf, size_t len)
 {
 	if (!addr || !(addr->saddr) 
-	    || getnameinfo(addr->saddr, addr->saddr->sa_len, buf, len, NULL, 0,
+	    || getnameinfo(addr->saddr, addr->saddrlen, buf, len, NULL, 0,
 			   NI_NUMERICHOST))
 		strcpy(buf, "");
 }
