@@ -197,7 +197,7 @@ OWPAddrByNode(
 
 
 NOPORT:
-	strncpy(addr->node,node,MAXHOSTNAMELEN);
+	strncpy(addr->node,nptr,MAXHOSTNAMELEN);
 	addr->node_set = 1;
 
 	if(pptr){
