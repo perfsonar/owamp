@@ -2196,11 +2196,10 @@ _OWPReadFetchRecordsHeader(
  *	04|                         Send Timestamp                        |
  *	08|                                                               |
  *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
- *	12|      Send Error Estimate      |                               |
- *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+                               +
+ *	12|      Send Error Estimate      |    Receive Error Estimate     |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *	16|                       Receive Timestamp                       |
- *	  +                               +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
- *	20|                               |    Receive Error Estimate     |
+ *	20|                                                               |
  *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *	24|       TTL       |
  *	  +-+-+-+-+-+-+-+-+-+
@@ -2233,17 +2232,25 @@ _OWPEncodeDataRecord(
 
 	memset(buf,0,25);
 	nlbuf = htonl(rec->seq_no);
+
+        /* seq no */
 	memcpy(&buf[0],&nlbuf,4);
 
+        /* send stamp */
 	_OWPEncodeTimeStamp(&buf[4],&rec->send);
+
+        /* send err */
 	if(!_OWPEncodeTimeStampErrEstimate(&buf[12],&rec->send)){
 		return False;
 	}
 
-	_OWPEncodeTimeStamp(&buf[14],&rec->recv);
-	if(!_OWPEncodeTimeStampErrEstimate(&buf[22],&rec->recv)){
+        /* recv err */
+	if(!_OWPEncodeTimeStampErrEstimate(&buf[14],&rec->recv)){
 		return False;
 	}
+
+        /* recv stamp */
+	_OWPEncodeTimeStamp(&buf[16],&rec->recv);
 
 	buf[24] = rec->ttl;
 
@@ -2280,27 +2287,37 @@ _OWPDecodeDataRecord(
 	memcpy(&rec->seq_no,&buf[0],4);
 	rec->seq_no = ntohl(rec->seq_no);
 
-	_OWPDecodeTimeStamp(&rec->send,&buf[4]);
-	if(!_OWPDecodeTimeStampErrEstimate(&rec->send,&buf[12])){
-		return False;
-	}
+        switch(file_version){
+            case 0:
+            case 2:
+                _OWPDecodeTimeStamp(&rec->send,&buf[4]);
+                if(!_OWPDecodeTimeStampErrEstimate(&rec->send,&buf[12])){
+                    return False;
+                }
 
-	_OWPDecodeTimeStamp(&rec->recv,&buf[14]);
-	if(!_OWPDecodeTimeStampErrEstimate(&rec->recv,&buf[22])){
-		return False;
-	}
+                _OWPDecodeTimeStamp(&rec->recv,&buf[14]);
+                if(!_OWPDecodeTimeStampErrEstimate(&rec->recv,&buf[22])){
+                    return False;
+                }
 
-	switch(file_version){
-		case 0:
-		case 2:
-			rec->ttl = 255;
-			break;
-		case 3:
-			rec->ttl = buf[24];
-			break;
-		default:
-			return False;
-	}
+                rec->ttl = 255;
+                break;
+            case 3:
+                _OWPDecodeTimeStamp(&rec->send,&buf[4]);
+                if(!_OWPDecodeTimeStampErrEstimate(&rec->send,&buf[12])){
+                    return False;
+                }
+                if(!_OWPDecodeTimeStampErrEstimate(&rec->recv,&buf[14])){
+                    return False;
+                }
+
+                _OWPDecodeTimeStamp(&rec->recv,&buf[16]);
+
+                rec->ttl = buf[24];
+                break;
+            default:
+                return False;
+        }
 
 	return True;
 }

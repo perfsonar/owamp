@@ -122,9 +122,9 @@
 #define OWP_DEFAULT_OFFERED_MODE 	(OWP_MODE_OPEN|OWP_MODE_AUTHENTICATED|OWP_MODE_ENCRYPTED)
 
 /*
- * TODO: 4822 should eventually be replaced by an IANA blessed service name.
+ * TODO: 4824 should eventually be replaced by an IANA blessed service name.
  */
-#define OWP_CONTROL_SERVICE_NAME	"4822"
+#define OWP_CONTROL_SERVICE_NAME	"4824"
 
 /*
  * Default value to use for the listen backlog. We pick something large
