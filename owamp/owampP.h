@@ -23,6 +23,26 @@
 */
 #ifndef	OWAMPP_H
 #define	OWAMPP_H
+
+/*
+ * Portablility sanity checkes.
+ */
+#if	HAVE_CONFIG_H
+#include "config.h"
+
+#if	!HAVE_ERRNO_H || !HAVE_NETDB_H || !HAVE_STDLIB_H || !HAVE_SYS_PARAM_H
+#error	Missing Header!
+#endif
+
+#if	!HAVE_GETADDRINFO || !HAVE_SOCKET
+#error	Missing networking capabilities!
+#endif
+
+#if	!HAVE_MALLOC || !HAVE_MEMSET
+#error	Missing needed functions!
+#endif
+#endif	/* HAVE_CONFIG_H */
+
 #include <owamp.h>
 
 #define	_OWP_ERR_MAXSTRING	1024
