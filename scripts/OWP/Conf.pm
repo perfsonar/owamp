@@ -84,7 +84,7 @@ my %DEFS = (
 	CENTRALUPLOADDIR	=>	'/owamp/upload/',
 	UPTIMESENDTOADDR	=>	'netflow.internet2.edu',
 	UPTIMESENDTOPORT	=>	2345,
-	NODEDATADIR		=>	'/data',
+	DATADIR			=>	'/data',
 	OWAMPDVARPATH		=>	'/var/run',
 	OWAMPDPIDFILE		=>	'owampd.pid',
 	OWAMPDINFOFILE		=>	'owampd.info',
@@ -125,6 +125,14 @@ my %HASHOPTS = (
 	MESH		=>	"MESHTYPES",
 );
 
+my %PATHOPTS = (
+	DATADIR			=>	1,
+	OWAMPDVARPATH		=>	1,
+	OWPBINDIR		=>	1,
+	CONFDIR			=>	1,
+	CENTRALUPLOADDIR	=>	1,
+);
+
 sub new {
 	my($class,@initialize) = @_;
 	my $self = {};
@@ -136,20 +144,26 @@ sub new {
 	return $self;
 }
 
-sub resolve_home{
+sub resolve_path{
 	my($self,$path) = @_;
-	my($home,$user);
+	my($home,$user,$key);
 	
 	
 	if(($path =~ m#^~/#o) || ($path =~ m#^~$#o)){
 		$home = $ENV{"HOME"} || $ENV{"LOGDIR"} || (getpwuid($<))[7] ||
 					die "Can't find Home Directory!";
 		$path =~ s#^\~#$home#o;
-		return $path;
 	}
 	elsif(($user) = ($path =~ m#^~([^/]+)/.*#o)){
 		$home = (getpwnam($user))[7];
-		return $home.substr($path,length($user)+1);
+		$path = $home.substr($path,length($user)+1);
+	}
+
+	while( ($key) = ($path =~ m#\$([^\/]+)#o)){
+		$path =~ s/\$$key/$ENV{$key}/g;
+	}
+	while( ($key) = ($path =~ m#\$\{([^\}]+)\}#o)){
+		$path =~ s/\$\{$key\}/$ENV{$key}/g;
 	}
 
 	return $path;
@@ -344,13 +358,13 @@ sub init {
 	# Global conf file
 	#
 	if(defined($ENV{$Conf::GLOBALCONFENV})){
-		$file = $self->resolve_home($ENV{$Conf::GLOBALCONFENV});
+		$file = $self->resolve_path($ENV{$Conf::GLOBALCONFENV});
 	}elsif(defined($confdir)){
-		$file = $self->resolve_home($confdir.'/'.
+		$file = $self->resolve_path($confdir.'/'.
 							$Conf::GLOBALCONFNAME);
 	}
 	else{
-		$file = $self->resolve_home(
+		$file = $self->resolve_path(
 				$DEFS{CONFDIR}.'/'.$Conf::GLOBALCONFNAME);
 	}
 	if(-e $file){
@@ -362,7 +376,7 @@ sub init {
 
 	undef $file;
 	if(defined($ENV{$Conf::DEVCONFENV})){
-		$file = $self->resolve_home($ENV{$Conf::DEVCONFENV});
+		$file = $self->resolve_path($ENV{$Conf::DEVCONFENV});
 	}
 	if(defined($file) and -e $file){
 		$self->{'DEVNODECONF'} = $file
@@ -384,6 +398,10 @@ sub init {
 		$self->{$key} = $DEFS{$key} if(!defined($self->{$key}));
 	}
 
+	foreach $key (keys %PATHOPTS){
+		$self->{$key} = $self->resolve_path($self->{$key})
+						if(defined($self->{$key}));
+	}
 
 	1;
 }
