@@ -18,6 +18,12 @@
 #
 #	Description:	libowamp_contrib build description.
 
-INCLUDES			= -I$(top_builddir) -I$(top_srcdir)
+INCLUDES			= -I$(top_builddir) -I$(top_srcdir) -I.
+
 noinst_LIBRARIES		= libowamp_contrib.a
 libowamp_contrib_a_SOURCES	= access.c access.h
+
+TESTS				= test-hash
+noinst_PROGRAMS			= test-hash
+test_hash_SOURCES		= test-hash.c
+test_hash_ADDLDD		= libowamp_contrib.a
