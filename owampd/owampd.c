@@ -6,31 +6,34 @@
 #define LISTENQ 5
 #define SERV_PORT_STR "5555"
 
-#define DEFAULT_CONFIG_DIR              "/home/karp/projects/owamp/contrib"
-#define DEFAULT_CONFIG_FILE 	 	"policy.conf"
 #define DEFAULT_IP_TO_CLASS_FILE 	"ip2class.conf"
 #define DEFAULT_CLASS_TO_LIMITS_FILE 	"class2limits.conf" 
 #define DEFAULT_PASSWD_FILE 		"owamp_secrets.conf"
 
-const char *DefaultConfigFile = DEFAULT_CONFIG_FILE;
-char *ConfigFile = NULL;
+int ip2class_flag = 0;
+int class2limits_flag = 0;
+int passwd_flag = 0;
+
+extern policy_data * PolicyInit(
+	   OWPContext ctx, 
+	   char *ip2class_file,
+	   char *class2limits_file,
+	   char *passwd_file,
+	   OWPErrSeverity *err_ret
+	   );
+
 const char *DefaultIPtoClassFile = DEFAULT_IP_TO_CLASS_FILE;
 char *IPtoClassFile = NULL;
 const char *DefaultClassToLimitsFile = DEFAULT_CLASS_TO_LIMITS_FILE;
 char *ClassToLimitsFile = NULL;
 const char *DefaultPasswdFile = DEFAULT_PASSWD_FILE;
 char *PasswdFile = NULL;
+
 u_int32_t DefaultMode = OWP_MODE_OPEN;
 
 /* Global variable - the total number of allowed Control connections. */
 #define DEFAULT_NUM_CONN 100
 int free_connections = DEFAULT_NUM_CONN;
-
-struct data {
-	I2table ip2class;
-	I2table class2limits;
-	I2table passwd;
-};
 
 static void
 usage(char *name)
@@ -57,7 +60,7 @@ owamp_first_check(void *app_data,
 		  )
 {
 	u_int32_t ip_addr; 
-	I2table ip2class_hash = ((struct data *)&app_data)->ip2class;
+	I2table ip2class_hash = ((policy_data *)&app_data)->ip2class;
 	switch (remote->sa_family){
 	case AF_INET:
 	    ip_addr = ntohl((((struct sockaddr_in *)remote)->sin_addr).s_addr);
@@ -202,46 +205,17 @@ owampd_err_func(
 	return 0;
 }
 
-/*
-** Basic function to print out ip2class.
-*/
-
-void
-print_ip2class_binding(const struct I2binding *p, FILE* fp)
-{
-	fprintf(fp, "DEBUG: the value of key %s/%u is = %s\n",
-	       owamp_denumberize(get_ip_addr(p->key)), 
-	       get_offset(p->key), p->value->dptr);
-}
-
-void
-print_limits(OWAMPLimits * limits, FILE* fp)
-{
-	fprintf(fp, "bw = %lu, space = %lu, num_sessions = %u\n",
-	       OWAMPGetBandwidth(limits),
-	       OWAMPGetSpace(limits),
-	       OWAMPGetNumSessions(limits)
-	       );
-}
-
-void
-print_class2limits_binding(const struct I2binding *p, FILE* fp)
-{
-	fprintf(fp, "the limits for class %s are: ", p->key->dptr);
-	print_limits((OWAMPLimits *)(p->value->dptr), fp);
-}
-
-
 int
 main(int argc, char *argv[])
 {
+	policy_data* policy;
 	char ctrl_msg[MAX_MSG];
-	char key_bytes[5];
 	I2datum * dat;
 	char class[128];
 	char err_msg[128];
 	int listenfd, connfd;
 	char buff[MAX_LINE];
+	char ip2class[MAXPATHLEN],class2limits[MAXPATHLEN],passwd[MAXPATHLEN];
 	struct sockaddr cliaddr;
 	socklen_t addrlen;
 	char path[MAXPATHLEN]; /* various config files */
@@ -269,16 +243,14 @@ main(int argc, char *argv[])
 		NULL
 	};
 	
-	struct data app_data = {
-		NULL,
-		NULL,
-		NULL
-	};
+	fprintf(stderr, "DEBUG: OWP_CONF_DIR = %s\n",OWP_CONF_DIR);
+	exit(0);
+	
 	/* Parse command line options. */
 	while ((c = getopt(argc, argv, "f:a:p:n:h")) != -1) {
 		switch (c) {
 		case 'f':
-			ConfigFile = strdup(optarg);
+			strncpy(ip2class, optarg, sizeof(ip2class));
 			break;
 		case 'h':
 			usage(argv[0]);
@@ -313,58 +285,12 @@ main(int argc, char *argv[])
 		PasswdFile = strdup(DefaultPasswdFile);
 
 	ctx = OWPContextInitialize(&cfg);
-	
+	policy = PolicyInit(ctx, ip2class, class2limits, passwd, &out);
 	/* 
 	   XXX - can't think of a better place to put it, but it doesn't
 	   belong here. 
 	*/
 	openlog("owampd", LOG_PID | LOG_NDELAY | LOG_PERROR, LOG_DAEMON);
-	
-	/* Open the ip2class hash for writing. */
-	snprintf(path,sizeof(path), "%s/%s", DEFAULT_CONFIG_DIR,IPtoClassFile);
-	/*
-	 * hash errors will be invisible for now - first arg is eh, and
-	 * it hasn't been initialized.
-	 */
-	if ((app_data.ip2class = I2hash_init(NULL, 0, NULL, NULL, 
-				       print_ip2class_binding)) == NULL){
-		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
-			 "Could not initialize hash for %s", IPtoClassFile);
-		exit(1);
-	}
-	owamp_read_ip2class(ctx, path, app_data.ip2class); 
-	I2hash_print(app_data.ip2class, stderr);
-
-	/* Open the class2limits hash for writing. */
-	if ((app_data.class2limits = I2hash_init(NULL, 0, NULL, NULL, 
-					   print_class2limits_binding))==NULL){
-		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
-			"Could not initialize hash for %s", ClassToLimitsFile);
-		exit(1);
-	}
-	snprintf(path,sizeof(path), "%s/%s", 
-		 DEFAULT_CONFIG_DIR,ClassToLimitsFile);
-	owamp_read_class2limits(path, app_data.class2limits);
-
-	I2hash_print(app_data.class2limits, stderr); 
-
-	/* Open the passwd hash for writing. */
-	if ((app_data.passwd = I2hash_init(NULL, 0, NULL, NULL, NULL)) == NULL){
-		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
-			"Could not initialize hash for %s", PasswdFile);
-		exit(1);
-	}
-	snprintf(path,sizeof(path), "%s/%s", 
-		 DEFAULT_CONFIG_DIR,PasswdFile);
-	read_passwd_file(ctx, path, app_data.passwd);
-	I2hash_print(app_data.passwd, stderr);
-
-	listenfd = tcp_listen(ctx, host, port, &addrlen);
-	if (signal(SIGCHLD, sig_chld) == SIG_ERR){
-		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
-			 "signal() failed. errno = %d", errno);	
-		exit(1);
-	}
 
 	/* XXX - remove eventually. */
 	fprintf(stderr, "DEBUG: exiting...\n");
@@ -384,7 +310,7 @@ main(int argc, char *argv[])
 			}
 		}
 
-		if (OWPAddrCheck(ctx, &app_data, NULL, 
+		if (OWPAddrCheck(ctx, policy, NULL, 
 				 &cliaddr, ctrl_msg, &out)==False){
 			do_ban(connfd);     /* access denied */
 			continue;
@@ -408,7 +334,7 @@ main(int argc, char *argv[])
 		}
 		
 		/* child */
-		cntrl = OWPControlAccept(ctx, connfd, &app_data, &out);
+		cntrl = OWPControlAccept(ctx, connfd, policy, &out);
 		
 		if (cntrl == NULL){
 			close(connfd);
@@ -416,7 +342,7 @@ main(int argc, char *argv[])
 		}
 		
 		while (ok == True) {
-			ok = ServerControlMain(cntrl);
+			ok = OWPServerControlMain(cntrl, &out);
 		}
 		
 		/* 
@@ -428,9 +354,9 @@ main(int argc, char *argv[])
 		
 	}
 	
-	I2hash_close(&app_data.ip2class);
-	I2hash_close(&app_data.class2limits);
-	I2hash_close(&app_data.passwd);
+	I2hash_close(&policy->ip2class);
+	I2hash_close(&policy->class2limits);
+	I2hash_close(&policy->passwd);
 
 	exit(0);
 }
