@@ -72,7 +72,6 @@ static	OWPInitializeConfigRec	OWPCfg = {{
 	/* app_data			*/	(void*)&ping_ctx,
 	/* err_func			*/	OWPingErrFunc,
 	/* get_aes_key			*/	NULL,
-	/* check_addr_func		*/	NULL,
 	/* check_control_func		*/	NULL,
 	/* check_test_func		*/	NULL,
 	/* endpoint_init_func		*/	NULL,
