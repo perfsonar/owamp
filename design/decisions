@@ -1,23 +1,19 @@
 $Id$
 
-1. (Server) Develop as part of inetd server and standalone server
+1. (Server) Develop as a standalone server
         A. Standalone
                 not all systems run inetd
                 easier to debug
-        B. inetd subsystem
-                simple to do
-                easy to deploy - perhaps become standard part of inetd
-                not many req's - why use the resources
+		only reasonible way to apply system-wide resource limits
 
 2. Send/Recieve roles should be separate processes from client/server
         A. select of single file descriptor - perhaps more accurate time
         B. localize clock mgmt to send/recv code/process
+	C. Able to use same send/recv code in client and server
 
 3. Concurrent server model
-        inetd model - don't need to worry about it
-                breaks need to be applied via inetd rules
-        stand alone:
-                use traditional accept/fork/exec
-			breaks applied using controlling parent process
-			keeping track of maximum # children.
-
+	use traditional accept/fork/exec
+		resource limits applied using controlling parent process
+		(Threads not portable enough yet... grr.)
+		(pre-forking not worth it - few long-lived connections)
+		(async i/o - not worth the complexity.)
