@@ -72,7 +72,7 @@ autoflush GNUPLOT 1;
 
 my $age = $conf->must_get_val(DIGESTRES=>$res, ATTR=>'PLOTPERIOD');
 my $res_name = $conf->must_get_val(DIGESTRES=>$res, ATTR=>'COMMONRESNAME');
-my $period_name = $conf->must_get_val(DIGESTRES=>$res, 
+my $period_name = $conf->must_get_val(DIGESTRES=>$res,
 				      ATTR=>'PLOT_PERIOD_NAME');
 
 foreach my $mtype (@mtypes){
@@ -317,7 +317,7 @@ sub is_younger_than {
 
     $sec =~ s/^\+//;
 
-    my $current = OWP::Utils::time2time_1970($init);
+    my $current = OWP::Utils::time_1970totime($init);
 
     if (DEBUG) {
 	my $diff = $current - $start;

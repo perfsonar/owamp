@@ -34,13 +34,14 @@ my $offset_1970 = new Math::BigInt JAN_1970;
 my $scale = new Math::BigInt 2**32;
 
 # convert the number of seconds returned by time() into the number
-# of seconds since Jan 1, 1970
-sub time2time_1970 {
+# of seconds since Jan 1, 1900
+sub time_1970totime {
     return $_[0] + JAN_1970;
 }
 
-# convert the number of seconds since 1900 to 
-sub time_1970totime {
+# convert the number of seconds since Jan 1, 1900
+# that since Jan 1, 1970
+sub time2time_1970 {
     return $_[0] - JAN_1970;
 }
 
@@ -48,9 +49,11 @@ sub time_1970totime {
 # of the unsigned 64-bit integer [32.32]
 sub time2owptime {
     my $bigtime = new Math::BigInt $_[0];
-    $bigtime = time2time_1970($bigtime) * $scale;
+    $bigtime = time_1970totime($bigtime) * $scale;
     $bigtime =~ s/^\+//;
     return $bigtime;
 }
+
+
 
 1;
