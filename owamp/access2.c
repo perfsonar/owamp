@@ -648,7 +648,9 @@ owp_kid2passwd(const char *kid, int len, owp_policy_data* policy)
 	I2table hash;
 	I2datum *key, *val;
 	
-	assert(kid); assert(policy);
+	if(!kid || !policy)
+		return NULL;
+
 	hash = policy->passwd;
 	if(!hash)
 		return NULL;
@@ -674,11 +676,14 @@ owp_netmask2class(owp_access_netmask *netmask, owp_policy_data* policy)
 	I2table hash;
 	u_int32_t mask_template  = 0xFFFFFFFF;
 	int offset;
-	owp_access_netmask* cur_mask = (void *)malloc(sizeof(*cur_mask));
-	if (!cur_mask) {
+	owp_access_netmask* cur_mask;
+
+	if(!netmask || !policy)
+		return NULL;
+
+	if (!(cur_mask = malloc(sizeof(*cur_mask)))) {
 		return NULL;
 	}
-	assert(netmask); assert(policy);
 	cur_mask->af = netmask->af;
 	hash = policy->ip2class;
 	switch (netmask->af) {
@@ -758,7 +763,9 @@ owp_sockaddr2class(struct sockaddr *addr, owp_policy_data* policy)
 {
 	owp_access_netmask mask;
 
-	assert(addr); assert(policy);
+	if(!addr || !policy)
+		return NULL;
+
 	mask.offset = (u_int8_t)0;
 
 	switch (addr->sa_family) {

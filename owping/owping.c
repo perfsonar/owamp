@@ -758,11 +758,18 @@ main(
 		exit(1);
 	}
 
-	policy = OWPPolicyInit(ctx, NULL, NULL, passwd, &err_ret);
-	if (err_ret == OWPErrFATAL){
-		I2ErrLog(eh, "PolicyInit failed. Exiting...");
-		exit(1);
-	};
+	if(ping_ctx.opt.identity){
+		/*
+		 * Eventually need to modify the policy init for the
+		 * client to deal with a pass-phrase instead of/ or in
+		 * addition to the passwd file.
+		 */
+		policy = OWPPolicyInit(ctx, NULL, NULL, passwd, &err_ret);
+		if (err_ret == OWPErrFATAL){
+			I2ErrLog(eh, "PolicyInit failed. Exiting...");
+			exit(1);
+		};
+	}
 
 	/*
 	 * This is in reality dependent upon the actual protocol used
@@ -897,32 +904,18 @@ main(
 	 */
 	test_spec.InvLambda = (double)1000000.0 / ping_ctx.opt.rate;
 
-	/*
-	 * TODO: Figure out how the client is going to make policy
-	 * requests. could just leave it empty I suppose. (Could also
-	 * make the policy functions make the request directly if
-	 * the pipefd portion of PerConnData is -1....
-	 */
 	conndata.pipefd = -1;
 	conndata.link_data_dir = NULL;
 
 	if (ping_ctx.opt.datadir) {
-		/*
-		  XXX - TODO: create the directory.
-		*/
 		  conndata.real_data_dir = ping_ctx.opt.datadir;
 	}	
 	else { /* create a unique temp dir */
-		conndata.real_data_dir = strdup(OWP_TMPDIR_TEMPLATE);
-		if (!conndata.real_data_dir) {
-			I2ErrLog(eh, "FATAL: main: malloc(%d) failed",
-				 strlen(OWP_TMPDIR_TEMPLATE) + 1);
-			exit(1);
-		}
+		conndata.real_data_dir = conndata.real_data_dir_mem;
+		strcpy(conndata.real_data_dir,OWP_TMPDIR_TEMPLATE);
 		if (mkdtemp(conndata.real_data_dir) == NULL) {
 			I2ErrLog(eh, 
 		       "FATAL: main: mkdtemp: failed to create temp data dir");
-			free(conndata.real_data_dir);
 			exit(1);
 		}
 	}
