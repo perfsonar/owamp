@@ -53,6 +53,8 @@ typedef	struct {
 		char		*datadir;
 		char		*readfrom;
 
+		float           percentile;
+
 		u_int32_t	lossThreshold;
 
 		/* Flags */

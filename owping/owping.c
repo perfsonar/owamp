@@ -194,6 +194,7 @@ static	I2OptDescRec	set_options[] = {
 	{"zreceiver",-2, NULL,"IP address/node name of receiver [and server]"},
 	{"padding", 1, "0", "min size of padding for test packets (octets)"},
 	{"rate", 1, "1.0", "rate of test packets (packets/sec)"},
+	{"percentile", 1, "50.0", "report given percentile of delays (0-100)"},
 	{"numPackets", 1, "10", "number of test packets"},
 
 	/*
@@ -263,6 +264,10 @@ static  I2Option  get_options[] = {
         {
 	"rate", I2CvtToFloat, &ping_ctx.opt.rate,
 	sizeof(ping_ctx.opt.rate)
+	},
+        {
+	"percentile", I2CvtToFloat, &ping_ctx.opt.percentile,
+	sizeof(ping_ctx.opt.percentile)
 	},
         {
 	"numPackets", I2CvtToUInt, &ping_ctx.opt.numPackets,
@@ -443,7 +448,8 @@ owp_record_out(fetch_state_ptr state, OWPCookedDataRecPtr rec)
 		if (rec->send.sync && rec->recv.sync) {
 			double prec = owp_bits2prec(rec->send.prec) 
 				+ owp_bits2prec(rec->recv.prec);
-    fprintf(state->fp, "seq_no=%u delay=%.3f ms (sync, precision %.3f ms)\n", 
+    fprintf(state->fp, 
+	    "seq_no=%-10u delay=%.3f ms       (sync, precision %.3f ms)\n", 
 				rec->seq_no, delay*THOUSAND, prec);
 		} else 
 			fprintf(state->fp,"seq_no=%u delay=%.3f ms (unsync)\n",
@@ -653,6 +659,14 @@ owp_do_summary(fetch_state_ptr state)
 		fprintf(state->fp, 
 			"only up to %d-reordering is handled\n", OWP_MAX_N);
 
+	if (fabs(ping_ctx.opt.percentile - 50.0) > 0.000001) {
+		float x = ping_ctx.opt.percentile/100.0;
+		fprintf(state->fp, 
+			"%.2f percentile of one-way delays: %.3f ms\n",
+			ping_ctx.opt.percentile,
+			owp_get_percentile(state, x) * THOUSAND);
+	}
+
 	return 0;
 }
 
@@ -676,7 +690,7 @@ do_records_all(char *datafile, fetch_state_ptr state)
 	if ((fd = open(datafile, O_RDONLY)) < 0) {
 		if (errno == EINTR)
 			goto open_again;
-		I2ErrLog(eh, "FATAL: open() failed:%M");
+		I2ErrLog(eh, "FATAL: open(%s) failed:%M", datafile);
 		return -1;
 	}
 
@@ -827,6 +841,12 @@ main(
 	 * Print help.
 	 */
 	if(ping_ctx.opt.help) {
+		usage(od, progname, NULL);
+		exit(0);
+	}
+
+	if ((ping_ctx.opt.percentile < 0.0) 
+		|| (ping_ctx.opt.percentile > 100.0)) {
 		usage(od, progname, NULL);
 		exit(0);
 	}
