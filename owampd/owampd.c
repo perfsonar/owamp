@@ -384,6 +384,8 @@ NewConnection(
 	int			listenfd = OWPAddrFD(listenaddr);
 	OWPControl		cntrl=NULL;
 	OWPErrSeverity		out;
+	struct itimerval	itval;
+	OWPRequestType		msgtype=OWPReqInvalid;
 
 ACCEPT:
 	sbufflen = sizeof(sbuff);
@@ -460,10 +462,9 @@ ACCEPT:
 	}
 
 	/* Rest of function is child */
-	struct itimerval	itval;
-	OWPRequestType		msgtype=OWPReqInvalid;
 
 #ifndef	NDEBUG
+	{
 	int		childwait;
 
 	childwait = opts.childwait;
@@ -477,6 +478,7 @@ ACCEPT:
 							(void*)childwait)){
 		OWPError(policy->ctx,OWPErrWARNING,OWPErrUNKNOWN,
 		"OWPContextConfigSet(): Unable to set OWPChildWait?!");
+	}
 	}
 #endif
 	/*
