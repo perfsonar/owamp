@@ -20,16 +20,20 @@
 #			This module is used to set configuration parameters
 #			for the OWP one-way-ping mesh configuration.
 #
-#			To add additional configuration parameters just add
-#			them to the OPTS hash.  If the new parameter is
-#			a BOOL then also add it to the BOOL hash. If the
-#			new parameter is an array that itself defines additional
-#			parameters, then add it to DEPS.
+#			To add additional "scalar" parameters, just start
+#			using them. If the new parameter is
+#			a BOOL then also add it to the BOOL hash here. If the
+#			new parameter is an array then add it to the ARRS
+#			hash.
+#
 #	Usage:
 #
-#			my $conf = new OWP::Conf($addr,$confpath)
-#			$addr is required
-#			$confpath will default to $HOME
+#			my $conf = new OWP::Conf([
+#						NODE	=>	nodename,
+#						CONFDIR =>	path/to/confdir,
+#						])
+#			NODE will default to ($node) = ($hostname =~ /^.*-(/w)/)
+#			CONFDIR will default to $HOME
 #
 #			The config files can have sections that are
 #			only relevant to a particular system/node/addr by
@@ -39,9 +43,9 @@
 #			osspecificsettings	val
 #			</OS>
 #
-#			The names for the headings are OS/Node/Addr.
+#			The names for the headings are OS and Host.
 #			$regex is a text string used to match uname -s,
-#			uname -n, and $addr. It can contain the wildcard
+#			and uname -n. It can contain the wildcard
 #			chars '*' and '?' with '*' matching 0 or more occurances
 #			of *anything* and '?' matching exactly 1 occurance
 #			of *anything*.
@@ -64,59 +68,58 @@ $Conf::NODECONFENV='OWPNODECONF';
 $Conf::GLOBALCONFNAME='owmesh.conf';
 $Conf::NODECONFNAME='ownode.conf';
 
-my %OPTS = (
-	'DEBUG',		'Debug',
-	'VERBOSE',		'Verbose',
-	'GLOBALCONF',		'GlobalConf',
-	'NODECONF',		'NodeConf',
-	'DEFSECRET',		'DefSecret',
-	'SECRETNAME',		'SecretName',
-	'SECRETNAMES',		'SecretNames',
-	'MDCMD',		'MdCmd',
-	'MDCMDFIELD',		'MdCmdField',
-	'CENTRALHOST',		'CentralHost',
-	'CENTRALHOSTUSER',	'CentralHostUser',
-	'CENTRALUPLOADDIR',	'CentralUpLoadDir',
-	'UPTIMESENDTOADDR',	'UpTimeSendToAddr',
-	'UPTIMESENDTOPORT',	'UpTimeSendToPort',
-	'NODEDATADIR',		'NodeDataDir',
-	'OWAMPDVARPATH',	'OwampdVarPath',
-	'OWAMPDPIDFILE',	'OwampdPidFile',
-	'OWAMPDINFOFILE',	'OwampdInfoFile',
-);
-
+#
+# This hash is used to privide default values for "some" parameters.
+#
 my %DEFS = (
-	'DEBUG',		0,
-	'VERBOSE',		0,
-	'DEFSECRET',		'abcdefgh12345678',
-	'SECRETNAME',		'DEFSECRET',
-	'SECRETNAMES',		['DEFSECRET'],
-	'MDCMD',		'/sbin/md5',	# FreeBSD
-	'MDCMDFIELD',		3,		# FreeBSD
-	'CENTRALHOST',		'netflow.internet2.edu',
-	'CENTRALHOSTUSER',	'owamp',
-	'CENTRALUPLOADDIR',	'/owamp/upload/',
-	'UPTIMESENDTOADDR',	'netflow.internet2.edu',
-	'UPTIMESENDTOPORT',	2345,
-	'NODEDATADIR',		'/data',
-	'OWAMPDVARPATH',	'/var/run',
-	'OWAMPDPIDFILE',	'owampd.pid',
-	'OWAMPDINFOFILE',	'owampd.info',
-	'OWPCONFDIR',		"$Conf::CONFPATH/",
+	DEBUG			=>	0,
+	VERBOSE			=>	0,
+	DEFSECRET		=>	'abcdefgh12345678',
+	SECRETNAME		=>	'DEFSECRET',
+	SECRETNAMES		=>	['DEFSECRET'],
+	MDCMD			=>	'/sbin/md5',	# FreeBSD
+	MDCMDFIELD		=>	3,		# FreeBSD
+	CENTRALHOST		=>	'netflow.internet2.edu',
+	CENTRALHOSTUSER		=>	'owamp',
+	CENTRALUPLOADDIR	=>	'/owamp/upload/',
+	UPTIMESENDTOADDR	=>	'netflow.internet2.edu',
+	UPTIMESENDTOPORT	=>	2345,
+	NODEDATADIR		=>	'/data',
+	OWAMPDVARPATH		=>	'/var/run',
+	OWAMPDPIDFILE		=>	'owampd.pid',
+	OWAMPDINFOFILE		=>	'owampd.info',
+	CONFDIR			=>	"$Conf::CONFPATH/",
 );
 
 # Opts that are boolean.
+# (These options will be set if the word is by itself, or if the value
+# is anything other than false/off/no.)
 my %BOOLS = (
-	'DEBUG',		1.0,
-	'VERBOSE',		1.0,
+	DEBUG		=>	1,
+	VERBOSE		=>	1,
 );
 
-# Opts that in effect create other opts, or their value should be interpreted
-# as an opt.
-# (These cause another iteration through...)
-my %DEPS = (
-	'SECRETNAME',		1,
-	'SECRETNAMES',		1,
+# Opts that are arrays.
+# (These options are automatically split with whitespace - and the return
+# is set as an array reference. These options can also show up on more
+# than one line, and the values will append onto the array.)
+my %ARRS = (
+	SECRETNAMES	=>	1,
+	MESHNODES	=>	1,
+	MESHTYPES	=>	1,
+	ADJNODES	=>	1,
+);
+
+# Opts that in effect create sub opt hashes.
+# The "NODE" one is the only one currently, and it is a special case in
+# that the api understands it's existance.
+#
+# The keys here actually define new syntax for the config file. A very
+# ugly description of this would be:
+# <"KEY"="any one of @{$HASHOPTS{"KEY"}}">
+# </"KEY">
+my %HASHOPTS = (
+	NODE	=>	"MESHNODES",
 );
 
 sub new {
@@ -149,147 +152,183 @@ sub resolve_home{
 	return $path;
 }
 
-sub load_file_section{
-	my($self,$line,$file,$fh,$href,$type,$match) = @_;
-	my($start,$end,$exp,$doit,$pname,$pval);
+# grok a single line from the config file, and adding that parameter
+# into the hash ref passed in, unless skip is set.
+sub load_line{
+	my($self,$line,$href,$skip) = @_;
+	my($pname);
+
+	$_ = $line;
+
+	return 1 if(/^\s*#/); # comments
+	return 1 if(/^\s*$/); # blank lines
+
+	# bool
+	if(($pname) = /^(\S+)\s*$/o){
+		$pname =~ tr/a-z/A-Z/;
+		${$href}{$pname} = 1 if(!defined($skip));
+		return 1;
+	}
+	# assignment
+	if((($pname,$_) = /^(\S+)\s+(.*)/o)){
+		return 1 if(defined($skip));
+		$pname =~ tr/a-z/A-Z/;
+		if(defined($BOOLS{$pname})){
+			if(!/off/oi && !/false/oi && !/no/oi){
+				${$href}{$pname} = 1;
+			}
+		}
+		elsif(defined($ARRS{$pname})){
+			push @{${$href}{$pname}}, split;
+		}
+		else{
+			${$href}{$pname} = $_;
+		}
+		return 1;
+	}
+
+	return 0;
+}
+
+sub load_regex_section{
+	my($self,$line,$file,$fh,$type,$match) = @_;
+	my($start,$end,$exp,$skip);
 
 	# set start to expression matching <$type=($exp)>
 	$start = sprintf "^<%s\\s\*=\\s\*\(\\S\+\)\\s\*>\\s\*", $type;
-	# set end to expression matching </$type>
-	$end = sprintf "^<\\\/%s\\s\*>\\s\*", $type;
 
 	# return 0 if this is not a BEGIN section <$type=$exp>
 	return 0 if(!(($exp) = ($line =~ /$start/i)));
+
+	# set end to expression matching </$type>
+	$end = sprintf "^<\\\/%s\\s\*>\\s\*", $type;
+
+	# check if regex matches for this expression
+	# (If it doesn't match, set skip so syntax matching will grok
+	# lines without setting hash values.)
 	$exp =~ s/([^\w\s-])/\\$1/g;
 	$exp =~ s/\\\*/.\*/g;
 	$exp =~ s/\\\?/./g;
-	if($match =~ /$exp/){
-		$doit = 1;
-	}else{
-		$doit = 0;
+	if($match =~ !/$exp/){
+		$skip = 1;
 	}
+
+	#
+	# Grok all lines in this sub-section
+	#
 	while(<$fh>){
 		last if(/$end/i);
 		die "Syntax error $file:$.:\"$_\"" if(/^</);
-		next if(/^\s*#/); # comments
-		next if(/^\s*$/); # blank lines
-		next if(!$doit);
-		# bool
-		if(($pname) = /^(\S+)\s*$/o){
-			$pval = 1;
-			${$href}{$pname} = $pval;
-			next;
-		}
-		# assignment
-		if((($pname,$pval) = /^(\S+)\s+(.*)/o)){
-			$pname =~ tr/a-z/A-Z/;
-			${$href}{$pname} = $pval;
-			next;
-		}
+		next if $self->load_line($_,$self,$skip);
 		# Unknown format
 		die "Syntax error $file:$.:\"$_\"";
 	}
 	return 1;
 }
 
-sub load_file{
-	my($self,$file,$addr) = @_;
-	my($sysname,$nodename) = POSIX::uname();
+sub load_subhash{
+	my($self,$line,$file,$fh) = @_;
+	my($type,$start,$end,$name,$found,$skip,%subhash);
 
-	my(%gprefs,%sprefs,$pname,$pval,$exp,$key);
+	HOPTS:
+	foreach (keys %HASHOPTS){
+		# set start to expression matching <$type=($name)>
+		$start = sprintf "^<%s\\s\*=\\s\*\(\\S\+\)\\s\*>\\s\*", $_;
+		if(($name) = ($line =~ /$start/i)){
+			$type = $_;
+			last HOPTS;
+		}
+	}
+	# return 0 if this is not a BEGIN section <$type=$name>
+	return 0 if(!defined($name));
+	$name =~ tr/a-z/A-Z/;
+
+	# set end to expression matching </$type>
+	$end = sprintf "^<\\\/%s\\s\*>\\s\*", $type;
+
+	# check if value matches for one of the values in HASHOPTS{$type}
+	# (If it doesn't match, print a warning and set skip so syntax
+	# matching will grok lines without setting hash values.)
+	$found = 0;
+	if(defined($self->{$HASHOPTS{$type}})){
+		HVAR:
+		foreach (@{$self->{$HASHOPTS{$type}}}){
+			/^$name$/	and $found = 1, last HVAR;
+		}
+	}
+	if(!$found){
+		$skip = 1;
+		warn "$file:$.:<$type=$name> section ignored...",
+			" $name is not in $HASHOPTS{$type}";
+	}
+
+	#
+	# Grok all lines in this sub-section
+	#
+	while(<$fh>){
+		last if(/$end/i);
+		die "Syntax error $file:$.:\"$_\"" if(/^</);
+		next if $self->load_line($_,\%subhash,$skip);
+		# Unknown format
+		die "Syntax error $file:$.:\"$_\"";
+	}
+	%{$self->{$name}} = %subhash if($found);
+	return 1;
+}
+
+sub load_file{
+	my($self,$file,$node) = @_;
+	my($sysname,$hostname) = POSIX::uname();
+
+	my($pname,$pval,$key);
 	open PFILE, "<".$file || die "Unable to open $file";
 	GLOBAL:
 	while(<PFILE>){
-		next if(/^\s*#/); # comments
-		next if(/^\s*$/); # blank lines
-		# ADDR
-		next if($self->load_file_section
-				($_,$file,\*PFILE,\%gprefs,"Addr",$addr));
-		# NODE
-		next if($self->load_file_section
-				($_,$file,\*PFILE,\%gprefs,"Node",$nodename));
+		#
+		# regex matches
+		#
+
+		# HOSTNAME
+		next if($self->load_regex_section($_,$file,\*PFILE,"HOST",
+								$hostname));
 		# OS
-		next if($self->load_file_section
-				($_,$file,\*PFILE,\%gprefs,"OS",$sysname));
-		# global bool
-		if(($pname) = /^(\S+)\s*$/o){
-			$pname =~ tr/a-z/A-Z/;
-			$pval = 1;
-			$gprefs{$pname} = $pval;
-			next;
-		}
-		# global assignment
-		if((($pname,$pval) = /^(\S+)\s+(.*)/o)){
-			$pname =~ tr/a-z/A-Z/;
-			$gprefs{$pname} = $pval;
-			next;
-		}
+		next if($self->load_regex_section($_,$file,\*PFILE,"OS",
+								$sysname));
+		# sub-hash's
+		next if($self->load_subhash($_,$file,\*PFILE));
+
+		# global options
+		next if $self->load_line($_,$self);
+
 		die "Syntax error $file:$.:\"$_\"";
-	}
-	# load OPTS into self
-	foreach $key (keys(%OPTS)){
-		$self->{$key} = $gprefs{$key}
-					if(defined($gprefs{$key}));
-	}
-
-	foreach $key (keys %gprefs){
-		print "$key=$gprefs{$key}\n";
-	}
-
-	# load OPTS defined by the dependent opts
-	foreach $key (keys(%DEPS)){
-		my (@arr);
-		next if(!defined($gprefs{$key}));
-		@arr = split " ", $gprefs{$key};
-		next if(@arr < 1);
-		foreach (@arr) {
-			tr/a-z/A-Z/;
-			print "$_:\n";
-			$self->{$_} = $gprefs{$_}
-					if(defined($gprefs{$_}));
-		}
-		if(@arr > 1){
-			$self->{$key} = [@arr];
-		}
-		else{
-			$self->{$key} = $arr[0];
-		}
 	}
 
 	1;
 }
 
 sub init {
-	my($self,$addr,$confpath,$rest) = @_;
-	my($file,$key);
+	my($self,%args) = @_;
+	my($confdir,$nodename);
+	my($name,$file,$key);
+	my($sysname,$hostname) = POSIX::uname();
+#	my $hostname = 'nms2-ipls.internet2.edu';
 
-	die "Conf requires an addr specification!" if(!defined($addr));
-	if(defined($ENV{$Conf::GLOBALCONFENV})){
-		$file = $self->resolve_home($ENV{$Conf::GLOBALCONFENV});
-	}elsif(defined($confpath)){
-		$file = $self->resolve_home($confpath.'/'.
-							$Conf::GLOBALCONFNAME);
-	}
-	else{
-		$file = $self->resolve_home(
-				$DEFS{OWPCONFDIR}.'/'.$Conf::GLOBALCONFNAME);
-	}
-	if(-e $file){
-		$self->{'GLOBALCONF'} = $file
-	}else{
-		die "Unable to open Global conf:$file";
+	ARG:
+	foreach (keys %args){
+		$name = $_;
+		$name =~ tr/a-z/A-Z/;
+		if($name ne $_){
+			$args{$name} = $args{$_};
+			delete $args{$_};
+		}
+		/^confdir$/oi	and $confdir = $args{$name}, next ARG;
+		/^node$/oi	and $nodename = $args{$name}, next ARG;
 	}
 
-	if(defined($ENV{$Conf::NODECONFENV})){
-		$file = $self->resolve_home($ENV{$Conf::NODECONFENV});
-	}elsif(defined($confpath)){
-		$file = $self->resolve_home($confpath.'/'.$Conf::NODECONFNAME);
-	}else{
-		$file = $self->resolve_home(
-				$DEFS{OWPCONFDIR}.'/'.$Conf::NODECONFNAME);
-	}
-	if(-e $file){
-		$self->{'NODECONF'} = $file
+	if(!defined($nodename)){
+		($nodename) = ($hostname =~ /^[^-]*-(\w*)/o) and
+			$nodename =~ tr/a-z/A-Z/;
+		$args{'NODE'} = $nodename if(defined($nodename));
 	}
 
 #
@@ -298,26 +337,102 @@ sub init {
 	foreach $key (keys(%DEFS)){
 		$self->{$key} = $DEFS{$key};
 	}
-#
-#	config files
-#
-	$self->load_file($self->{'GLOBALCONF'},$addr);
-	$self->load_file($self->{'NODECONF'},$addr)
-		if defined($self->{'NODECONF'});
 
-#	//	environment
-	foreach $key (keys(%OPTS)){
-		$self->{$key} = $ENV{$key} if defined($ENV{$key});
+	#
+	# Global conf file
+	#
+	if(defined($ENV{$Conf::GLOBALCONFENV})){
+		$file = $self->resolve_home($ENV{$Conf::GLOBALCONFENV});
+	}elsif(defined($confdir)){
+		$file = $self->resolve_home($confdir.'/'.
+							$Conf::GLOBALCONFNAME);
 	}
+	else{
+		$file = $self->resolve_home(
+				$DEFS{CONFDIR}.'/'.$Conf::GLOBALCONFNAME);
+	}
+	if(-e $file){
+		$self->{'GLOBALCONF'} = $file
+	}else{
+		die "Unable to open Global conf:$file";
+	}
+	$self->load_file($self->{'GLOBALCONF'},$nodename);
 
-	my($bool);
-	foreach $bool (keys(%BOOLS)){
-		$self->{$bool} = undef if($self->{$bool} =~ /off/oi);
-		$self->{$bool} = undef if($self->{$bool} =~ /false/oi);
-		$self->{$bool} = undef if($self->{$bool} =~ /no/oi);
+# Remove this for now - lets see if we can use a single conf file.
+# 	#
+# 	# Host specific conf file
+# 	#
+#	if(defined($ENV{$Conf::NODECONFENV})){
+#		$file = $self->resolve_home($ENV{$Conf::NODECONFENV});
+#	}elsif(defined($confdir)){
+#		$file = $self->resolve_home($confdir.'/'.$Conf::NODECONFNAME);
+#	}else{
+#		$file = $self->resolve_home(
+#				$DEFS{CONFDIR}.'/'.$Conf::NODECONFNAME);
+#	}
+#	if(-e $file){
+#		$self->{'NODECONF'} = $file
+#	}
+#	$self->load_file($self->{'NODECONF'},$nodename)
+#		if defined($self->{'NODECONF'});
+
+#
+#	args passed in as initializers over-ride everything else.
+#
+	foreach $key (keys %args){
+		$self->{$key} = $args{$key};
 	}
 
 	1;
+}
+
+sub get_val {
+	my($self,%args) = @_;
+	my($type,$attr,$hopt,$name,@subhash,$val);
+
+	ARG:
+	foreach (keys %args){
+		/^attr$/oi	and $attr = $args{$_}, next ARG;
+		/^type$/oi	and $type = $args{$_}, next ARG;
+		foreach $hopt (keys %HASHOPTS){
+			if(/^$hopt$/i){
+				$name = $args{$_};
+				$name =~ tr/a-z/A-Z/;
+				if(defined($self->{$name})){
+					push @subhash, $self->{$name};
+				}
+				else{
+					warn "No sub-hash defined for $_=>$args{$_}";
+				}
+				next ARG;
+			}
+		}
+		die "Unknown named parameter $_ passed into get_val";
+	}
+
+	return undef if(!defined($attr));
+
+	$attr .= $type if(defined($type));
+
+	foreach (@subhash){
+		$val = ${$_}{$attr} if(defined(${$_}{$attr}));
+	}
+	$val = $self->{$attr} if(!defined($val));
+
+	return undef if(!defined($val));
+
+	#
+	# This is used to return an actual value from this function
+	# instead of a reference.
+	#
+	for (ref $val){
+		/^$/		and return $val;
+		/HASH/		and return %$val;
+		/ARRAY/		and return @$val;
+		/SCALAR/	and return $$val;
+	}
+	
+	die "Invalid hash value!";
 }
 
 1;
