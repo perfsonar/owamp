@@ -79,6 +79,16 @@ Number of test packets to send in the test session.
 100
 .RE
 .TP
+\fB\-D\fR \fIDSCP\fR
+.br
+Set an RFC 2474 style DSCP value for the TOS byte in the sending packets. This
+option may only be specified once and is mutually exclusive with the
+\fI\-H\fR option.
+.RS
+.IP Default:
+Unset.
+.RE
+.TP
 \fB\-f\fR | \fB\-F\fR \fIfromfile\fR
 .br
 Perform a One-way test \fBf\fRrom the target \fIpeerhost\fR. The \fI\-F\fR
@@ -90,6 +100,12 @@ performed.
 .IP Default:
 True, unless the \fI\-t\fR or \fI\-T\fR have been specified explicitly.
 .RE
+.TP
+\fB\-H\fR \fIPHB\fR
+.br
+Set an RFC 2836 style Per Hop Behavior identification code for the TOS
+byte in the sending packets. This option may only be specified once and is
+mutually exclusive with the \fI\-D\fR option.
 .TP
 \fB\-i\fR \fIsend_schedule\fR
 .br
