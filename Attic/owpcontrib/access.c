@@ -1,4 +1,29 @@
-#include "access.h"
+#include <stdio.h>
+#include <string.h>
+#include <sys/types.h>
+#include <limits.h>
+#include <math.h>
+#include <fcntl.h>
+#include <ndbm.h>
+#include <sys/stat.h>
+#include <assert.h>
+
+/* for inet_pton */
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
+/* for ntohl */
+#include <sys/param.h>
+
+/*
+** This structure is used to keep track of usage resources.
+*/
+
+struct OWAMPLimits {
+	int fake;
+};
+
 
 #define MAX_LINE 1024
 #define DB_KEY_LEN 128
@@ -122,7 +147,7 @@ owamp_parse_mask(const char *text)
 		if(!mask_str)
 			return NULL;
 		
-		if((addr = numberize(addr_str)) == -1)
+		if((addr = owamp_numberize(addr_str)) == -1)
 			return NULL;
 	
 		/* CIDR */
@@ -140,7 +165,7 @@ owamp_parse_mask(const char *text)
 	else
 	{
 		/* regular IP address */
-		if((addr = numberize(addr_str)) == -1)
+		if((addr = owamp_numberize(addr_str)) == -1)
 			return NULL;
 		lb = addr;
 		off = 0;
@@ -162,7 +187,7 @@ owamp_datumify(const char *str, datum *dat)
 	
 	len = strlen(str) + 1;
 	if ( (dat->dptr = (void *)malloc(len)) == NULL) {
-		fprintf(stderr, "warning: malloc failed in datumify\n");
+		fprintf(stderr, "warning: malloc failed in owamp_datumify\n");
 		return -1;
 	}
 
@@ -209,8 +234,8 @@ owamp_read_config(const char *ip2class)
 			continue;
 
 		/* Now save the key/class pair in a hash. */
-		if ( datumify(key, &key_dat) < 0 ) continue;
-		if ( datumify(class, &val_dat) < 0 ) continue;
+		if ( owamp_datumify(key, &key_dat) < 0 ) continue;
+		if ( owamp_datumify(class, &val_dat) < 0 ) continue;
 		if ( dbm_store(dbm, key_dat, val_dat, DBM_REPLACE) != 0){
 			fprintf(stderr, 
 				"dbm_store failed. key = %s, val = %s\n",
@@ -248,11 +273,11 @@ owamp_print_dbm(char *base)
 int
 main(int argc, char *argv[])
 {
-	parse_options(argc, argv);
+	owamp_parse_options(argc, argv);
 	if (!IPtoClassFile)
 		IPtoClassFile = strdup(DefaultIPtoClassFile);
 	
 	owamp_read_config(IPtoClassFile);
-	print_dbm(IPtoClassFile);
+	owamp_print_dbm(IPtoClassFile);
 	exit(0);
 }
