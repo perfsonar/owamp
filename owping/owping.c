@@ -278,24 +278,41 @@ owp_record_out(fetch_state_ptr state, OWPDataRecPtr rec)
 		       (state->to)?  state->to : "***");
 
 	delay = owp_delay(&rec->send, &rec->recv);
-	if (ping_ctx.opt.full)
-		fprintf(state->fp, 
+	if (ping_ctx.opt.full) {
+		if (!OWPIsLostRecord(rec))
+			fprintf(state->fp, 
 	 "#%-10u send=%8X:%-8X %u%c     recv=%8X:%-8X %u%c\n",
-			rec->seq_no, rec->send.sec, rec->send.frac_sec, 
-			rec->send.prec, (rec->send.sync)? 'S' : 'U', 
-			rec->recv.sec, rec->recv.frac_sec, 
-			rec->recv.prec, (rec->recv.sync)? 'S' : 'U');
-	else {
+				rec->seq_no, rec->send.sec, 
+				rec->send.frac_sec, 
+				rec->send.prec, (rec->send.sync)? 'S' : 'U', 
+				rec->recv.sec, rec->recv.frac_sec, 
+				rec->recv.prec, (rec->recv.sync)? 'S' : 'U');
+		else
+			fprintf(state->fp, 
+				"#%-10u send=%8X:%-8X %u%c     *LOST*\n",
+				rec->seq_no, rec->send.sec, 
+				rec->send.frac_sec, 
+				rec->send.prec, 
+				(rec->send.sync)? 'S' : 'U');
+		return;
+	}
+
+	if (!OWPIsLostRecord(rec)) {
 		if (rec->send.sync && rec->recv.sync) {
 			double prec = owp_bits2prec(rec->send.prec) 
 				+ owp_bits2prec(rec->recv.prec);
-    fprintf(state->fp, 
-	    "seq_no=%-10u delay=%.3f ms       (sync, precision %.3f ms)\n", 
-				rec->seq_no, delay*THOUSAND, prec*THOUSAND);
-		} else 
-			fprintf(state->fp,"seq_no=%u delay=%.3f ms (unsync)\n",
-				rec->seq_no, delay*THOUSAND);
+			fprintf(state->fp, 
+	       "seq_no=%-10u delay=%.3f ms       (sync, precision %.3f ms)\n", 
+				rec->seq_no, delay*THOUSAND, 
+				prec*THOUSAND);
+		
+			return;
+		}
+		fprintf(state->fp, "seq_no=%u delay=%.3f ms (unsync)\n",
+			rec->seq_no, delay*THOUSAND);
+		return;
 	}
+	fprintf(state->fp, "seq_no=%-10u *LOST*\n", rec->seq_no);
 }
 
 #define OWP_MAX_BUCKET  (OWP_NUM_LOW + OWP_NUM_MID + OWP_NUM_HIGH - 1)
