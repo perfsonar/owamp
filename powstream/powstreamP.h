@@ -88,14 +88,6 @@ typedef	struct {
 
 } powapp_trec, *powapp_t;
 
-typedef struct pow_session_rec{
-	OWPSID		sid;
-	FILE		*fp;
-	char		*fname;
-	char		fname_mem[PATH_MAX];
-	OWPNum64	end;
-} pow_session_rec, *pow_session;
-
 typedef struct pow_cntrl_rec{
 	OWPControl		cntrl;
 	OWPScheduleContext	sctx;
@@ -103,6 +95,7 @@ typedef struct pow_cntrl_rec{
 	OWPNum64		*sessionStart;
 	OWPNum64		owptime_mem;
 	FILE			*fp;
+	FILE			*testfp;
 	char			fname[PATH_MAX];
 	u_int32_t		numPackets;
 } pow_cntrl_rec, *pow_cntrl;
