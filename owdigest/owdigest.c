@@ -39,12 +39,12 @@
 (qsort(base, nmemb, size, compar), 0)
 #endif
 
-#define PREC_THRESHOLD  ((u_int8_t)40)   /* packets where EITHER sender OR
+#define PREC_THRESHOLD  ((u_int8_t)35)   /* packets where EITHER sender OR
 					    receiver has fewer precision bits
 					    get thrown out */
 
 static I2ErrHandle	eh;
-static char magic[9] = "OwD";
+static char magic[9] = "OwDigest";
 static u_int8_t version = 1;
 
 #define OWP_MAX_N           100  /* N-reordering statistics parameter */
@@ -201,7 +201,7 @@ main(int argc, char *argv[])
 	u_int32_t hdr_len, num_rec, i, last_seqno, dup, sent, lost;
 	state s;
 	u_int8_t prec = PREC_THRESHOLD;
-	u_int16_t *counts;
+	u_int32_t *counts;
 	double delay;
 	
 	char     *progname;
@@ -267,7 +267,7 @@ main(int argc, char *argv[])
 	}
 
 	num_buckets = OWP_NUM_LOW + OWP_NUM_MID + OWP_NUM_HIGH;
-	counts = (u_int16_t *)malloc(num_buckets*sizeof(*counts));
+	counts = (u_int32_t *)malloc(num_buckets*sizeof(*counts));
 		
 	if (!counts) {
 		I2ErrLog(eh, "FATAL: main: malloc failed: %M");
@@ -317,7 +317,8 @@ main(int argc, char *argv[])
 	/* Do a single pass through the sorted records. */
 	for (i = 0; i < num_rec; i++) {
 		int bucket;
-
+		if (verbose)
+			printf("prec = %u\n", prec);
 		if (OWPGetPrecBits(&s.records[i]) < prec)
 			continue;
 
@@ -342,7 +343,7 @@ main(int argc, char *argv[])
 		if (verbose)
 			print_rec(&s.records[i], 0);
 	}
-	
+
 	/* 
 	   Header contains: magic number, version, header length,
 	   precision, sent, lost and dup. NOTE: precision is
