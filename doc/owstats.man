@@ -69,7 +69,7 @@ Print individual packet records one per line in the raw format:
 .br
 .TS
 li l .
-SEQNO	Sequence Number.
+SEQNO	Sequence number.
 SENDTIME	Send timestamp.
 SSYNC	Sending system synchronized (0 or 1).
 SERR	Estimate of SENDTIME error.
@@ -82,7 +82,7 @@ The timestamps are ASCII representation of 64 bit integers with the
 high-order 32 bits representing the number of seconds since Jan 1, 1900
 and the low-order 32 bits representing fractional seconds.
 .PP
-(Implies \fI\-Q\fR.)
+The \fI\-R\fR option implies \fI\-Q\fR.
 .IP Default:
 Unset.
 .RE
@@ -102,7 +102,7 @@ Report the summary statistics from the file datafile.owp.
 .LP
 \fBowstats -a 95 datafile.owp\fR
 .IP
-Report the summary statistics from the file datafile.owp. Additionally
+Report the summary statistics from the file datafile.owp. Also,
 report the 95th percentile of delay as an extra statistic.
 .LP
 \fBowstats -R datafile.owp\fR
@@ -115,8 +115,8 @@ statistics computed at all.
 Show individual delays for each packet with summary statistics
 printed at the end.
 .SH SEE ALSO
-owampd(8), owping(1), owfetch(1) and the \%http://e2epi.internet2.edu/owamp/
-web sites.
+owampd(8), owping(1), owfetch(1) and the \fBOWAMP\fR web site
+\%(http://e2epi.internet2.edu/owamp/).
 .SH ACKNOWLEDGMENTS
 This material is based in part on work supported by the National Science
 Foundation (NSF) under Grant No. ANI-0314723. Any opinions, findings and

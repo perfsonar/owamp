@@ -32,7 +32,7 @@ owping \- Client application to request one-way latency tests.
 initiate one-way latency tests.
 .PP
 Round-trip latency measurements (ping) are
-an accepted technique to look for network problems. One-way measurements
+an accepted technique to look for network problems; One-way measurements
 have the potential to be even more useful. With round-trip measurements
 it is difficult to isolate the direction in which congestion is experienced.
 Traffic is often asymmetric with many sites being either primarily producers
@@ -43,7 +43,7 @@ specific parts of a network.
 .B owping
 works by
 contacting an \fBowampd\fR daemon on the remote peer host.
-\fBowampd\fR manages the resources of the host it runs on.
+\fBowampd\fR manages the resources of the host on which it runs.
 .PP
 The \fBowping\fR client is used to request the type of
 test wanted. The parameters allow the user to select the full send schedule,
@@ -103,7 +103,7 @@ between each packet will average \fIwait\fR seconds.
 Amount of time to wait for a packet to be received before declaring it
 lost. As such, it is also the amount of time the test session has to
 stay active after the last packet is sent to be able to count duplicate
-packets. i.e. Add this number to the duration of your session to determine
+packets. I.e., add this number to the duration of your session to determine
 how long to expect a test session to take.
 
 Note: The default of 2 seconds longer than a round-trip estimate was simply
@@ -118,7 +118,7 @@ the \fItimeout\fR option should be specified.
 .TP
 \fB\-s\fR \fIsize\fR
 .br
-Size of the padding to add to each minimally sized test packet. The minimal
+Size of the padding to add to each minimally-sized test packet. The minimal
 size for a test packet in \fIopen\fR mode is 14 bytes. The minimal size
 for a test packet in \fIauthenticated\fR or \fIencrypted\fR mode is 32 bytes.
 .RS
@@ -128,7 +128,7 @@ for a test packet in \fIauthenticated\fR or \fIencrypted\fR mode is 32 bytes.
 .TP
 \fB\-t\fR
 .br
-Perform a One-way test \fBt\fRoward the target \fIpeerhost\fR.
+Perform a one-way test \fBt\fRoward the target \fIpeerhost\fR.
 .RS
 .IP Default:
 True, unless the \fI\-f\fR or \fI\-F\fR have been specified.
@@ -136,7 +136,7 @@ True, unless the \fI\-f\fR or \fI\-F\fR have been specified.
 .TP
 \fB\-T\fR \fItofile\fR
 .br
-Perform a One-way test \fBt\fRoward the target \fIpeerhost\fR, and
+Perform a one-way test \fBt\fRoward the target \fIpeerhost\fR, and
 save the results in \fItofile\fR.
 .RS
 .IP Default:
@@ -231,7 +231,7 @@ Print individual packet records one per line in the raw format:
 .br
 .TS
 li l .
-SEQNO	Sequence Number.
+SEQNO	Sequence number.
 SENDTIME	Send timestamp.
 SSYNC	Sending system synchronized (0 or 1).
 SERR	Estimate of SENDTIME error.
@@ -244,7 +244,7 @@ The timestamps are ASCII representation of 64 bit integers with the
 high-order 32 bits representing the number of seconds since Jan 1, 1900
 and the low-order 32 bits representing fractional seconds.
 .PP
-(Implies \fI\-Q\fR.)
+The \fI\-R\fR option implies \fI\-Q\fR.
 .IP Default:
 Unset.
 .RE
@@ -260,14 +260,14 @@ Unset.
 .LP
 \fBowping somehost.com\fR
 .IP
-Run two concurrent ~10 second test sessions at a rate of a packet every 0.1
+Run two concurrent ~10-second test sessions at a rate of a packet every 0.1
 seconds. One session sending packets from the local host to somehost.com,
 the other session receiving packets from somehost.com.) Print summary
 statistics of the results only.
 .LP
 \fBowping -f somehost.com\fR
 .IP
-Run a single ~10 second test session at a rate of one packet every 0.1
+Run a single ~10-second test session at a rate of one packet every 0.1
 seconds with the packets being sent from somehost.com and received
 at the local host.
 .LP
@@ -288,7 +288,7 @@ Run the default test as in the first example. Authenticate using
 the identity \fIsomeuser\fR. \fBowping\fR will prompt for a \fIpassphrase\fR.
 .SH SEE ALSO
 owampd(8), owstats(1), owfetch(1) and the \%http://e2epi.internet2.edu/owamp/
-web sites.
+web site.
 .SH ACKNOWLEDGMENTS
 This material is based in part on work supported by the National Science
 Foundation (NSF) under Grant No. ANI-0314723. Any opinions, findings and
