@@ -965,6 +965,8 @@ sub update_node{
 		if($validend){
 			local (*TFILE);
 
+			warn "VALIDTIME=$validend for $node:$dir"
+				if defined($verbose);
 			# inform archive of updated valid_time
 			$archive->valid_time(DIRECTORY=>$dir,
 							VALID_TIME=>$validend);
