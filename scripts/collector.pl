@@ -413,6 +413,7 @@ sub combine_digests{
 	# it is time to process the list into a new file at the
 	# larger resolution.
 	if($fileend > $buildend){
+		warn "attempting to merge ${dir}/${res} to ${dir}/${buildres}";
 		if(!OWP::Digest::merge(
 		"${dir}/${buildres}/${newstart}_${newend}${digestsuffix}",
 			map {"${dir}/${res}/${_}${digestsuffix}"} @buildfiles)){
@@ -960,8 +961,8 @@ sub update_node{
 
 				# $start is before this interval - invalid.
 				if($start < $lvals[0]){
-					unlink "$dir/$res/$_" ||
-					warn("unlink($dir/$res/$_): $!");
+					unlink "${dir}/${res}/${start}_${end}.${digestsuffix}" ||
+					warn("unlink(${dir}/${res}/${start}_${end}.${digestsuffix}): $!");
 					next SENDDIR;
 				}
 
