@@ -467,17 +467,20 @@ ACCEPT:
 	{
 	int		childwait;
 
-	childwait = opts.childwait;
-	/* busy loop to wait for debug-attach */
-	while(childwait);
-	/*
-	 * set OWPChildWait if you want to attach
-	 * to them... (by resetting childwait back to non-zero)
-	 */
-	if(childwait && !OWPContextConfigSet(policy->ctx,OWPChildWait,
-							(void*)childwait)){
+	if((childwait = opts.childwait)){
 		OWPError(policy->ctx,OWPErrWARNING,OWPErrUNKNOWN,
-		"OWPContextConfigSet(): Unable to set OWPChildWait?!");
+				"Busy-loop...");
+		/* busy loop to wait for debug-attach */
+		while(childwait);
+		/*
+		 * set OWPChildWait if you want to attach
+		 * to them... (by resetting childwait back to non-zero)
+		 */
+		if(childwait && !OWPContextConfigSet(policy->ctx,OWPChildWait,
+							(void*)childwait)){
+			OWPError(policy->ctx,OWPErrWARNING,OWPErrUNKNOWN,
+			"OWPContextConfigSet(): Unable to set OWPChildWait?!");
+		}
 	}
 	}
 #endif

@@ -969,6 +969,7 @@ _OWPWriteTestRequest(
 	OWPTestSpec	*test_spec
 )
 {
+	u_int8_t	zero[16];
 	u_int8_t	*buf = (u_int8_t*)cntrl->msg;
 	u_int32_t	buf_len = sizeof(cntrl->msg);
 	u_int32_t	i;
@@ -1020,7 +1021,8 @@ _OWPWriteTestRequest(
 	/*
 	 * Send 1 block of Integrity Zero Padding.
 	 */
-	if(_OWPSendBlocks(cntrl,cntrl->zero,1) != 1){
+	memset(zero,0,16);
+	if(_OWPSendBlocks(cntrl,zero,1) != 1){
 		cntrl->state = _OWPStateInvalid;
 		return OWPErrFATAL;
 	}

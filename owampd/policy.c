@@ -515,6 +515,7 @@ parselimitline(
 			}
 			limtemp[tnode.ilim++] = tnode.parent->limits[i];
 override:
+			;
 		}
 	}
 	/*
@@ -1460,22 +1461,23 @@ BADLINE:
 	if(!OWPContextConfigSet(ctx,OWPDPOLICY,policy)){
 		return NULL;
 	}
-	if(!OWPContextConfigSet(ctx,OWPGetAESKey,getaeskey)){
+	if(!OWPContextConfigSet(ctx,OWPGetAESKey,(void*)getaeskey)){
 		return NULL;
 	}
-	if(!OWPContextConfigSet(ctx,OWPCheckControlPolicy,checkcontrolfunc)){
+	if(!OWPContextConfigSet(ctx,OWPCheckControlPolicy,
+						(void*)checkcontrolfunc)){
 		return NULL;
 	}
-	if(!OWPContextConfigSet(ctx,OWPCheckTestPolicy,checktestfunc)){
+	if(!OWPContextConfigSet(ctx,OWPCheckTestPolicy,(void*)checktestfunc)){
 		return NULL;
 	}
-	if(!OWPContextConfigSet(ctx,OWPTestComplete,testcompletefunc)){
+	if(!OWPContextConfigSet(ctx,OWPTestComplete,(void*)testcompletefunc)){
 		return NULL;
 	}
-	if(!OWPContextConfigSet(ctx,OWPOpenFile,openfilefunc)){
+	if(!OWPContextConfigSet(ctx,OWPOpenFile,(void*)openfilefunc)){
 		return NULL;
 	}
-	if(!OWPContextConfigSet(ctx,OWPCloseFile,closefilefunc)){
+	if(!OWPContextConfigSet(ctx,OWPCloseFile,(void*)closefilefunc)){
 		return NULL;
 	}
 
@@ -1529,7 +1531,7 @@ OWPDGetAESKey(
 		return False;
 	}
 
-	memcpy(key_ret,val.dptr,sizeof(key_ret));
+	memcpy(key_ret,val.dptr,sizeof(OWPKey));
 
 	return True;
 }
@@ -1774,7 +1776,9 @@ OWPDResourceUsage(
 	OWPError(node->policy->ctx,OWPErrINFO,OWPErrPOLICY,
 		"ResInit %s:%s = %llu",node->nodename,
 				GetLimName(lim.limit),lim.value);
-	return IntegerResourceUsage(node,lim);
+	IntegerResourceUsage(node,lim);
+
+	return;
 }
 
 static OWPBoolean

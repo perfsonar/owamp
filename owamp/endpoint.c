@@ -862,14 +862,14 @@ AGAIN:
 				 * becomes easier. (OWPSendBlocks becomes more
 				 * involved...)
 				 */
-				((u_int32_t*)clr_buffer)[4] =
-		((u_int32_t*)clr_buffer)[4] ^ ((u_int32_t*)&ep->payload)[0];
-				((u_int32_t*)clr_buffer)[5] =
-		((u_int32_t*)clr_buffer)[5] ^ ((u_int32_t*)&ep->payload)[1];
-				((u_int32_t*)clr_buffer)[6] =
-		((u_int32_t*)clr_buffer)[6] ^ ((u_int32_t*)&ep->payload)[2];
-				((u_int32_t*)clr_buffer)[7] =
-		((u_int32_t*)clr_buffer)[7] ^ ((u_int32_t*)&ep->payload)[3];
+				((u_int32_t*)clr_buffer)[4] ^=
+						((u_int32_t*)ep->payload)[0];
+				((u_int32_t*)clr_buffer)[5] ^=
+						((u_int32_t*)ep->payload)[1];
+				((u_int32_t*)clr_buffer)[6] ^=
+						((u_int32_t*)ep->payload)[2];
+				((u_int32_t*)clr_buffer)[7] ^=
+						((u_int32_t*)ep->payload)[3];
 				rijndaelEncrypt(ep->cntrl->encrypt_key.rk,
 					ep->cntrl->encrypt_key.Nr,
 					&clr_buffer[16],&ep->payload[16]);
@@ -1242,6 +1242,7 @@ run_receiver(
 	if(!ep->begin){
 		goto error;
 	}
+
 	ep->begin->relative = OWPScheduleContextGenerateNextDelta(
 							ep->tsession->sctx);
 	/* just using expecttime as a temp var here. */
@@ -1455,10 +1456,11 @@ again:
 			rijndaelDecrypt(ep->cntrl->decrypt_key.rk,
 					ep->cntrl->decrypt_key.Nr,
 					&ep->payload[0],&ep->payload[0]);
+
 			/*
 			 * Check zero bits to ensure valid encryption.
 			 */
-			if(!memcmp(z1,zero,12)){
+			if(memcmp(z1,zero,12)){
 				goto again;
 			}
 
@@ -1467,18 +1469,18 @@ again:
 				rijndaelDecrypt(ep->cntrl->decrypt_key.rk,
 					ep->cntrl->decrypt_key.Nr,
 					&ep->payload[16],&ep->payload[16]);
-				((u_int32_t*)&ep->payload)[4] ^=
+				((u_int32_t*)ep->payload)[4] ^=
 							((u_int32_t*)iv)[0];
-				((u_int32_t*)&ep->payload)[5] ^=
+				((u_int32_t*)ep->payload)[5] ^=
 							((u_int32_t*)iv)[1];
-				((u_int32_t*)&ep->payload)[6] ^=
+				((u_int32_t*)ep->payload)[6] ^=
 							((u_int32_t*)iv)[2];
-				((u_int32_t*)&ep->payload)[7] ^=
+				((u_int32_t*)ep->payload)[7] ^=
 							((u_int32_t*)iv)[3];
 				/*
 				 * Check zero bits to ensure valid encryption.
 				 */
-				if(!memcmp(z2,zero,6)){
+				if(memcmp(z2,zero,6)){
 					goto again;
 				}
 			 }
@@ -1793,7 +1795,11 @@ parenterr:
 	{
 		int	waitfor = (int)OWPContextConfigGet(ctx,OWPChildWait);
 
-		while(waitfor);
+		if(waitfor){
+			OWPError(ctx,OWPErrWARNING,OWPErrUNKNOWN,
+				"PID=[%d] Busy-loop...",getpid());
+			while(waitfor);
+		}
 	}
 #endif
 

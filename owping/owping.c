@@ -1201,12 +1201,10 @@ main(
 			exit(0);
 		}
 
-		/*
-		 * TODO: fix policy
-		 */
 		owp_set_auth(ctx, progname, &ping_ctx); 
 
 
+#ifndef	NDEBUG
 		/*
 		 * Setup debugging of child processes.
 		 */
@@ -1217,6 +1215,7 @@ main(
 			     I2ErrLog(eh,
 			"OWPContextConfigSet(): Unable to set OWPChildWait?!");
 		}
+#endif
 		
 		/*
 		 * Open connection to owampd.
@@ -1437,9 +1436,6 @@ main(
 		argv++;
 		argc--;
 
-		/*
-		 * TODO: fix policy
-		 */
 		owp_set_auth(ctx, progname, &ping_ctx); 
 
 		/*
