@@ -27,7 +27,7 @@
 #include <assert.h>
 #include <sys/timex.h>
 
-#include <owpcontrib/unixtime.h>
+#include <owamp/unixtime.h>
 #include <owpcontrib/access.h>
 #include "owampP.h"
 #include "endpoint.h"
@@ -133,26 +133,6 @@ EndpointFree(
 	free(ep);
 
 	return;
-}
-
-/*
- * buff must be at least (nbytes*2) +1 long or memory will be over-run.
- */
-void
-hexencode(
-	char		*buff,
-	u_int8_t	*bytes,
-	unsigned int	nbytes
-	)
-{
-	char		hex[]="0123456789abcdef";
-	unsigned int	i;
-
-	for(i=0;i<nbytes;i++){
-		*buff++ = hex[*bytes >> 4];
-		*buff++ = hex[*bytes++ & 0x0f];
-	}
-	*buff = '\0';
 }
 
 static char *
@@ -437,7 +417,7 @@ OWPDefEndpointInit(
 		 * Now complete the filename for the linkpath.
 		 */
 		strcat(ep->linkpath,OWP_PATH_SEPARATOR);
-		hexencode(sid_name,sid,sizeof(OWPSID));
+		OWPHexEncode(sid_name,sid,sizeof(OWPSID));
 		strcat(ep->linkpath,sid_name);
 		strcat(ep->linkpath,".i");
 

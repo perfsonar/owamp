@@ -26,7 +26,8 @@ libowamp_a_SOURCES	= api.c capi.c sapi.c context.c error.c owampP.h \
 			endpoint.h endpoint.c time.c \
 			arithm64.h arithm64.c \
 			rijndael-alg-fst.c rijndael-alg-fst.h \
-			rijndael-api-fst.c rijndael-api-fst.h
+			rijndael-api-fst.c rijndael-api-fst.h \
+			unixtime.h unixtime.c
 
 # Need to rewrite this test slightly before making it a build test...
 #TESTS			= rijndael-test-fst

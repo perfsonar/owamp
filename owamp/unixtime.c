@@ -23,7 +23,7 @@
  */
 
 #include <owamp/owamp.h>
-#include <owpcontrib/unixtime.h>
+#include <owamp/unixtime.h>
 
 /*
  * Function:	OWPGetTimeOfDay

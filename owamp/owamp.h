@@ -62,6 +62,7 @@
 #include <sys/socket.h>
 #include <sys/param.h>
 #include <netdb.h>
+#include <time.h>
 
 #ifndef	False
 #define	False	(0)
@@ -716,11 +717,45 @@ OWPFetchRecords(OWPControl cntrl,
 double
 owp_delay(OWPTimeStamp *send_time, OWPTimeStamp *recv_time);
 
+/*
+ * buff must be at least (nbytes*2) +1 long or memory will be over-run.
+ */
 void
-hexencode(
+OWPHexEncode(
 	char		*buff,
 	u_int8_t	*bytes,
 	unsigned int	nbytes
+	);
+
+/*
+ * time.c conversion functions.
+ */
+
+#define	OWPJAN_1970	(unsigned long)0x83aa7e80	/* diffs in epoch*/
+
+extern OWPTimeStamp *
+OWPCvtTVtoTS(
+	OWPTimeStamp	*tstamp,
+	struct timeval	*tval
+);
+
+extern OWPTimeStamp *
+OWPGetTimeOfDay(
+	OWPTimeStamp	*tstamp
+);
+
+extern OWPTimeStamp *
+OWPCvtTimespec2Timestamp(
+	OWPTimeStamp	*tstamp,
+	struct timespec	*tval,
+	u_int32_t	*errest,	/* usec's */
+	u_int32_t	*last_errest	/* usec's */
+	);
+
+extern struct timespec *
+OWPCvtTimestamp2Timespec(
+	struct timespec	*tval,
+	OWPTimeStamp	*tstamp
 	);
 
 #endif	/* OWAMP_H */
