@@ -89,7 +89,7 @@ while (1) {
 	    warn "empty message - skipping" if VERBOSE;
 	    next;
 	}
-	my ($hashed, $plain) = split /$update_sep/, $buf;
+	my ($hashed, $plain) = split /$update_sep/, $buf, 2;
 	unless ($plain) {
 	    warn "empty plain message - skipping" if VERBOSE;
 	    next;
@@ -100,7 +100,7 @@ while (1) {
 	    warn "\$plain = $plain\n";
 	    next;
 	}
-	my ($node, $intervals) = split /$update_sep/, $plain;
+	my ($node, $intervals) = split /$update_sep/, $plain, 2;
 	unless ($intervals) {
 	    warn "empty list of intervals - skipping" if VERBOSE;
 	    next;
@@ -118,7 +118,7 @@ while (1) {
 	}
 
 	# Update the list of live intervals, or initialize it if there's none.
-	if (exists $live_db{$node} && $live_db{$node}) {
+	if ($live_db{$node}) {
 	    my @saved = split /$update_sep/, $live_db{$node};
 	    unless ($intervals[$#intervals] > $saved[$#saved]) {
 		warn "out-dated message: skipping";
