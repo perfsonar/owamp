@@ -180,6 +180,27 @@ OWAMP has been tested most extensively on FreeBSD 4.7 and Linux 2.4.20,
 but most recent versions of UNIX should work.
 <h3>
 
+<hr WIDTH="100%">Recommended Hardware</h3>
+OWAMP does not have any strict hardware requirements. More tasking packet
+send schedules will of course require more capable hardware but low bandwidth
+schedules with small packets can be done on fairly modest hardware. In
+general, the more head room your system has, the more accurate your timestamps
+will be. <b>Internet2</b> has had good luck using the following hardware
+to collect data on the <b>Abilene</b> network:
+<dl>
+<dd>
+Intel SCB2 motherboard</dd>
+<dd>
+Inter Ethernet Pro 10/100+ (i82555) (on-motherboard)</dd>
+<dd>
+2 x 1.266 GHz PIII, 512 KB L2 cache, 133 MHz FSB</dd>
+<dd>
+2 x 512 MB ECC registered RAM (one/slot to enable interleaving)</dd>
+<dd>
+2 x Seagate 18 GB SCSI (ST318406LC)</dd>
+</dl>
+<h3>
+
 <hr WIDTH="100%"><a NAME="Build"></a>Building the Application</h3>
 The OWAMP software uses the <i>gnu autoconf</i> tools to configure the
 build process. OWAMP is distributed with a pre-built <b>configure</b> script
