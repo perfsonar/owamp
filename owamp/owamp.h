@@ -125,6 +125,21 @@ typedef int (*OWPErrFunc)(
 );
 
 /*
+ * This type is used to define the function that retrieves the shared
+ * secret from whatever key-store is in use.
+ * It should return True if it is able to fill in the key_ret variable that
+ * is passed in from the caller. False if not. If the function returns false,
+ * the caller will check the err_ret value. If OK, then the kid simply didn't
+ * exist - otherwise it indicates an error in the key store mechanism.
+ */	
+typedef OWPBool	(*OWPGetAESKeyFunc)(
+	void		*app_data,
+	OWPKID		kid,
+	OWPKey		*key_ret,
+	OWPErrSeverity	*err_ret
+);
+
+/*
  * If set, this function will be called from OWPControlOpen before the actual
  * connection is tried. This will allow the policy to determine if it
  * is willing to even speak "control" to that IP. (In the reference
@@ -149,7 +164,7 @@ typedef void (*OWPCheckAddrPolicy)(
  */
 typedef void (*OWPCheckControlPolicyFunc)(
 	void		*app_data,
-	OWPSessionModes	mode_req,
+	OWPSessionModes	*mode_req,
 	OWPKID		kid,
 	struct sockaddr	*local_sa_addr,
 	struct sockaddr	*remote_sa_addr,
@@ -225,16 +240,6 @@ typedef OWPTimeStamp (*OWPGetTimeStampFunc)(
 	OWPErrSeverity	*err_ret
 );
 
-/*
- * This type is used to define the function that retrieves the shared
- * secret from whatever key-store is in use.
- */
-typedef OWPKey	(*OWPGetKeyFunc)(
-	void		*closure,
-	OWPKID		kid,
-	OWPErrSeverity	*err_ret
-);
-
 
 /* 
  * This structure encodes parameters needed to initialize the library.
@@ -243,7 +248,7 @@ typedef struct {
 	time_sec_perhaps		tm_out;
 	void				*app_data;
 	OWPErrFunc			*err_func;
-	OWPGetKeyFunc			*get_aes_key;
+	OWPGetAESKeyFunc		*get_aes_key_func;
 	OWPCheckAddrPolicy		*check_addr_func;
 	OWPCheckControlPolicyFunc	*check_control_func;
 	OWPCheckTestPolicyFunc		*check_test_func;
@@ -347,6 +352,9 @@ OWPAddrFree(
  * function return values:
  * 	If successful - even marginally - a valid OWPclient handle
  * 	is returned. If unsuccessful, NULL is returned.
+ *
+ * 	local_addr can only be set using OWPAddrByNode or OWPAddrByAddrInfo
+ * 	server_addr can use any of the OWPAddrBy* functions.
  */
 extern OWPControl
 OWPControlOpen(
@@ -355,17 +363,16 @@ OWPControlOpen(
 	OWPAddr		server_addr,	/* server addr or NULL	*/
 	u_int32_t	mode_mask,	/* OR of OWPSessionModes */
 	const OWPKID	*kid,		/* null if unwanted	*/
-	const OWPKey	*key,		/* null if unwanted	*/
 	OWPErrSeverity	*err_ret
 );
 
 /*
  * This function is used to configure the address specification
  * for either one of the sender or receiver endpoints prior to
- * requesting the server to configure that endpoint.
+ * requesting that endpoint be configured by the "other" end.
  */
 extern OWPEndpoint
-OWPServerConfigEndpoint(
+OWPConfigureRequestEndpoint(
 	OWPAddr		addr,
 	OWPErrSeverity	*err_ret
 );

@@ -273,16 +273,68 @@ _OWPControlAlloc(
 	return cntrl;
 }
 
+/*
+ * This function just ensure's that there is a valid addr_info pointer in
+ * the addr OWPAddr pointer.
+ * Returns OWPErrOK on success.
+ */
+OWPErrSeverity
+_OWPAddrInfo(
+	OWPContext	ctx,
+	OWPAddr		addr
+)
+{
+	/*
+	 * Don't need addr_info if we already have a fd.
+	 */
+	if(addr->fd > -1)
+		return OWPErrOK;
+
+	if(addr->ai)
+		return OWPErrOK;
+	/*
+	 * Call getaddrinfo to find useful addresses
+	 */
+	struct addrinfo	hints, *airet;
+	const char	*node=NULL;
+
+	if(addr->node_set)
+		node = addr->node;
+
+	memset(&hints,0,sizeof(struct addrinfo));
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = SOCK_STREAM;
+
+	if((getaddrinfo(node,OWP_CONTROL_SERVICE_NAME,&hints,&airet)!=0)
+								|| !airet){
+		OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,errno,
+					":getaddrinfo()");
+		return OWPErrFATAL;
+	}
+
+	addr->ai = airet;
+	return OWPErrOK;
+}
+
 void
 _OWPClientBind(
 	OWPControl	cntrl,
 	int		fd,
-	struct addrinfo	*local_addrinfo,
+	OWPAddr		local_addr,
 	struct addrinfo	*remote_addrinfo,
 	OWPErrSeverity	*err_ret
 )
 {
 	struct addrinfo	*ai;
+
+	if(local_addr->fd > -1){
+		OWPErrorLine(cntrl->ctx,OWPLine,OWPErrUNKNOWN,
+						"Invalid local_addr - ByFD");
+		*err_ret = OWPErrFATAL;
+	}
+
+	if(!local_addr->ai){
+	}
 
 	for(ai=local_addrinfo;ai;ai = ai_next){
 		if(ai->ai_family != remote_addrinfo->ai_family)
@@ -313,7 +365,6 @@ _OWPClientConnect(
 )
 {
 	int		fd=-1;
-	struct sockaddr	*local_saddr=NULL;
 
 	if((!server_addr) &&
 		!(server_addr = OWPAddrByNode("localhost"))){
@@ -329,7 +380,7 @@ _OWPClientConnect(
 		/*
 		 * Call getaddrinfo to find useful addresses
 		 */
-		struct addrinfo	hints, *ret;
+		struct addrinfo	hints, *airet;
 		const char	*node=NULL;
 
 		if(server_addr->node_set)
@@ -339,32 +390,32 @@ _OWPClientConnect(
 		hints.ai_family = AF_UNSPEC;
 		hints.ai_socktype = SOCK_STREAM;
 
-		if((getaddrinfo(node,OWP_CONTROL_SERVICE_NAME,&hints,&ret)!=0)
-								|| !ret){
+		if((getaddrinfo(node,OWP_CONTROL_SERVICE_NAME,&hints,&airet)!=0)
+								|| !airet){
 			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,errno,
 					":getaddrinfo()");
 			*err_ret = OWPErrFATAL;
 			return -1;
 		}
 
-		server_addr->ai = ret;
+		server_addr->ai = airet;
 	}
 
 	for(ai=server_addr->ai;ai;ai->ai_next){
 		OWPErrSeverity	addr_ok;
 
-		fd = socket(ret->ai_family,ret->ai_socktype,ret->ai_protocol);
+		fd = socket(ai->ai_family,ai->ai_socktype,ai->ai_protocol);
 		if(fd < 0)
 			continue;
 
 		if(local_addr){
 			addr_ok = OWPErrOK;
-			_OWPClientBind(cntrl,fd,local_addr,ret,&addr_ok);
+			_OWPClientBind(cntrl,fd,local_addr,ai,&addr_ok);
 			if(addr_ok != OWPErrOK)
 				goto next;
 		}
 
-		_OWPCheckAddr(cntrl->ctx,local_addr,ret->ai_addr,
+		_OWPCallCheckAddrPolicy(cntrl->ctx,local_addr,ai->ai_addr,
 				&addr_ok);
 		if(addr_ok != OWPErrOK)
 			goto next;
@@ -395,46 +446,66 @@ next:
 
 OWPControl
 OWPControlOpen(
-	OWPContext	ctx,
-	OWPAddr		local_addr,
-	OWPAddr		server_addr,
-	u_int32_t	mode_req_mask,
-	const OWPKID	*kid,
-	const OWPKey	*key,
-	OWPErrSeverity	*err_ret
+	OWPContext	ctx,		/* control context	*/
+	OWPAddr		local_addr,	/* local addr or null	*/
+	OWPAddr		server_addr,	/* server addr		*/
+	u_int32_t	mode_req_mask,	/* requested modes	*/
+	const OWPKID	*kid,		/* kid or NULL		*/
+	OWPErrSeverity	*err_ret	/* err - return		*/
 )
 {
 	int		fd;
 	OWPControl	cntrl = _OWPControlAlloc(ctx,err_ret);
 	u_int32_t	mode_avail;
-	u_int32_t	challenge[4];
+	OWPKey		key_value;
+	OWPKey		*key=NULL;
+	struct sockaddr	*local=NULL, *remote;
 
+	*err_ret = OWPErrOK;
 
 	if( !(cntrl = _OWPControlAlloc(ctx,err_ret))){
 		OWPAddrFree(server_addr);
 		return NULL;
 	}
 
-	if(_OWPClientConnect(cntrl,server_addr,err_ret) != 0){
+	if(_OWPClientConnect(cntrl,local_addr,server_addr,err_ret) != 0){
 		_OWPControlFree(cntrl);
 		return NULL;
 	}
 
 
-	if(_OWPClientReadServerGreeting(cntrl,&mode_avail,challenge,err_ret)
-									!= 0){
+	if(_OWPClientReadServerGreeting(cntrl,&mode_avail,err_ret) != 0){
 		_OWPControlFree(cntrl);
 		return NULL;
 	}
 
 	/*
 	 * Select mode wanted...
-	 * Remove auth bits, if they were set with no kid or key.
 	 */
-	if(!kid || !key)
-		mode_req_mask &= ~OWP_DO_ENCRYPT;
-	mode_avail &= mode_req_mask;
+	mode_avail &= mode_req_mask;	/* mask out unwanted modes */
+	/*
+	 * retrieve key if needed
+	 */
+	if(kid &&
+		(mode_avail & (OWP_MODE_ENCRYPTED|OWP_MODE_AUTHENTICATED))){
+		if(!_OWPCallGetAESKey(ctx,kid,&key_value,err_ret)){
+			if(*err_ret != OWPErrOK){
+				OWPControlFree(cntrl);
+				return NULL;
+			}
+		}
+		else
+			key = &key_value;
+	}
+	/*
+	 * If no key, then remove auth/crypt modes
+	 */
+	if(!key)
+		mode_avail &= ~(OWP_MODE_ENCRYPTED|OWP_MODE_AUTHENTICATED);
 
+	/*
+	 * Pick "highest" level mode still available.
+	 */
 	if(mode_avail & OWP_MODE_ENCRYPTED){
 		cntrl->mode = OWP_MODE_ENCRYPTED;
 	}else if(mode_avail & OWP_MODE_AUTHENTICATED){
@@ -448,14 +519,27 @@ OWPControlOpen(
 		return NULL;
 	}
 
-	if((cntrl->mode & _OWP_DO_ENCRYPT) &&
-		(_OWPInitClientEncryptionValues(cntrl,challenge,err_ret)!=0)){
-
+	/*
+	 * cntrl->mode MUST be set before calling this!
+	 */
+	if(_OWPInitClientEncryptionValues(cntrl,err_ret)!=0){
 		_OWPControlFree(cntrl);
 		return NULL;
 	}
 
-	if(_OWPClientRequestModeReadResponse(cntrl,&mode_avail,challenge,err_ret) != 0){
+	/*
+	 * This function validates the kid/key with the other party.
+	 */
+	if(_OWPClientRequestModeReadResponse(cntrl,&mode_avail,err_ret) != 0){
+		_OWPControlFree(cntrl);
+		return NULL;
+	}
+
+	/*
+	 * Now determine if client side is willing to actually talk control
+	 * given the kid/addr combinations.
+	 */
+	if(!_OWPCallCheckControlPolicy(ctx,cntrl->mode,kid,cntrl->key,)){
 		_OWPControlFree(cntrl);
 		return NULL;
 	}
