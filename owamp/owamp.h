@@ -775,6 +775,21 @@ double
 owp_delay(OWPTimeStamp *send_time, OWPTimeStamp *recv_time);
 
 /*
+** Given a 20-byte timestamp record, return its sequence number.
+*/
+u_int32_t
+OWPGetSeqno(u_int8_t *rec);
+
+/*
+** Parse the 20-byte timestamp data record for application to use.
+*/
+void
+OWPParseDataRecord(u_int8_t *rec, 
+		   OWPTimeStamp *send, 
+		   OWPTimeStamp *recv, 
+		   u_int32_t     *seq_no);
+
+/*
  * buff must be at least (nbytes*2) +1 long or memory will be over-run.
  */
 void

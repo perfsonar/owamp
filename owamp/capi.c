@@ -1106,7 +1106,7 @@ OWPFetchLocalRecords(int fd,
 	}
 	
 	/* Read and process the remaining records. */
-	if (I2Readn(fd, buf, rem_bytes) != rem_bytes)
+	if (I2Readn(fd, buf, rem_bytes) < 0)
 		return OWPErrFATAL;
 	cur_rec = buf;
 	for (j = 0; j < rem_bytes / _OWP_TS_REC_SIZE; j++) {
@@ -1114,4 +1114,31 @@ OWPFetchLocalRecords(int fd,
 			return OWPErrFATAL;
 		cur_rec += _OWP_TS_REC_SIZE;
 	}
+	return OWPErrOK;
+}
+
+
+/*
+** Given a 20-byte timestamp record, return its sequence number.
+*/
+u_int32_t
+OWPGetSeqno(u_int8_t *rec)
+{
+	return ntohl(*(u_int32_t *)rec);
+}
+
+/*
+** Parse the 20-byte timestamp data record for application to use.
+*/
+void
+OWPParseDataRecord(u_int8_t *rec, 
+		   OWPTimeStamp *send, 
+		   OWPTimeStamp *recv, 
+		   u_int32_t     *seq_no)
+{
+	assert(rec);
+
+	*seq_no = OWPGetSeqno(rec);
+	OWPDecodeTimeStamp(send, (u_int32_t *)&rec[4]);
+	OWPDecodeTimeStamp(recv, (u_int32_t *)&rec[12]);
 }
