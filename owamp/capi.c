@@ -21,15 +21,19 @@
  *	This file contains the api functions that are typically called from
  *	an owamp client application.
  */
+#include <I2util/util.h>
+#include <owamp/owampP.h>
+
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <string.h>
 #include <assert.h>
 
-#include <I2util/util.h>
 
-#include "./owampP.h"
 
 static OWPBoolean
 _OWPClientBind(
@@ -639,6 +643,72 @@ _OWPClientRequestTestReadResponse(
 	return -1;
 }
 
+static OWPAddr
+AddrByLocalControl(
+		OWPControl	cntrl
+		)
+{
+	struct addrinfo		*ai=NULL;
+	OWPAddr			addr;
+	struct sockaddr_storage	saddr_rec;
+	struct sockaddr		*oaddr;
+	socklen_t		len;
+
+	if(cntrl->local_addr && cntrl->local_addr->saddr){
+		oaddr = cntrl->local_addr->saddr;
+		len = cntrl->local_addr->saddrlen;
+	}else{
+		memset(&saddr_rec,0,sizeof(saddr_rec));
+		oaddr = (struct sockaddr*)&saddr_rec;
+		len = sizeof(saddr_rec);
+		if(getsockname(cntrl->sockfd,oaddr,&len) != 0){
+			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+					"getsockname():%M");
+			return NULL;
+		}
+	}
+
+	if(!oaddr || !len)
+		return NULL;
+
+	if( !(addr = _OWPAddrAlloc(cntrl->ctx)))
+		return NULL;
+
+	if( !(ai = malloc(sizeof(struct addrinfo))) ||
+					!(addr->saddr = malloc(sizeof(len)))){
+			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+					"malloc():%M");
+			goto error;
+	}
+
+	memcpy(addr->saddr,oaddr,len);
+	ai->ai_addr = addr->saddr;
+	addr->saddrlen = len;
+	ai->ai_addrlen = len;
+
+	ai->ai_flags = 0;
+	ai->ai_family = oaddr->sa_family;
+	ai->ai_socktype = SOCK_DGRAM;
+	ai->ai_protocol = IPPROTO_IP;	/* reasonable default */
+	ai->ai_canonname = NULL;
+	ai->ai_next = NULL;
+
+	addr->ai = ai;
+	addr->ai_free = True;
+	addr->so_type = SOCK_DGRAM;
+	addr->so_protocol = IPPROTO_IP;
+
+	return addr;
+
+error:
+	if(addr)
+		OWPAddrFree(addr);
+	if(ai)
+		free(ai);
+
+	return NULL;
+}
+
 OWPBoolean
 OWPSessionRequest(
 	OWPControl	cntrl,
@@ -670,12 +740,12 @@ OWPSessionRequest(
 	}
 
 	if((!receiver) &&
-		!(receiver = OWPAddrByNode(cntrl->ctx,"localhost"))){
+		!(receiver = AddrByLocalControl(cntrl))){
 		goto error;
 	}
 
 	if((!sender) &&
-		!(sender = OWPAddrByNode(cntrl->ctx,"localhost"))){
+		!(sender = AddrByLocalControl(cntrl))){
 		goto error;
 	}
 

@@ -488,28 +488,11 @@ ACCEPT:
 		while(childwait);
 #endif
 
-#ifdef	NOT
-		for(i=getdtablesize()-1;i>=0;i--){
-#ifndef	NDEBUG
-			if(i == fileno(stderr))
-				continue;
-#endif
-			if((i == connfd) || (i == new_pipe[1]))
-				continue;
-
-			/*
-			 * Ignore errors unless it was an interrupt.
-			 * (If interrupt, call close again.)
-			 */
-			while((close(i) < 0) && (errno == EINTR));
-		}
-#endif
-
 		/*
 		 * TODO: Could check if the class from this IP allows
 		 * open_mode, and modify "mode" if open is not allowed...
 		 * For now, just leave it alone and if open is not allowed
-		 * for this address, then Accept will fail when it calls
+		 * for this address, then OWPControlAccept will fail when it calls
 		 * the CheckControlPolicy function.
 		 */
 		memset(&conndata,0,sizeof(conndata));

@@ -63,7 +63,7 @@ is_local_node(
 		ai = &hints;
 	}
 
-	if( (getaddrinfo(nodename,NULL,ai,&ai_ret) != 0))
+	if( (getaddrinfo(nodename,NULL,ai,&ai_ret) != 0) || (!ai_ret))
 		return False;
 
 	for(ai=ai_ret;ai && !val;ai=ai->ai_next){
