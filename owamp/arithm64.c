@@ -244,8 +244,20 @@ OWPtimespec2num64(struct timespec *from)
 	return (res*4) + (res*0x8CA6C)/0x1DCD65;
 }
 
-
-
+/*
+** Convert the protocol representation of InvLambda (32-but unsigned
+** int relative to microseconds) to the OWPnum64 representation.
+**
+** Discussion: given <inv_lambda_usec>, the goal is to compute
+** (inv_lambda_usec*2^32)/10^6 = (inv_lambda_usec)*[(2^26)/(5^6)] = 
+** (inv_lambda_usec)*[4294 + (15114)/0x3D09]. The rest is obvious
+** from the code.
+*/
+OWPnum64
+OWPusec2num64(u_int32_t usec)
+{
+	return ((u_int64_t)usec*4294) + ((u_int64_t)usec*15114)/0x3D09;
+}
 /*
 ** This function converts a 32-bit binary string (network byte order)
 ** into a OWPnum64 number (32 least significant bits).

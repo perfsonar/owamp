@@ -41,6 +41,7 @@ void OWPnum64totimeval(OWPnum64 from, struct timeval *to);
 OWPnum64  OWPtimeval2num64(struct timeval *from);
 void OWPnum64totimespec(OWPnum64 from, struct timespec *to);
 OWPnum64 OWPtimespec2num64(struct timespec *from);
+OWPnum64 OWPusec2num64(u_int32_t usec);
 
 /* Arithmetic support. */
 extern OWPnum64 OWPulong2num64(u_int32_t a);
