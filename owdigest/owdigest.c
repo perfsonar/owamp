@@ -204,6 +204,7 @@ main(int argc, char *argv[])
 	u_int8_t prec = PREC_THRESHOLD;
 	u_int32_t *counts, min_microsec;
 	double delay, min;
+	u_int8_t worst_prec_bits = 64;
 	
 	char     *progname;
 	int num_buckets, ch, verbose = 0;
@@ -319,14 +320,19 @@ main(int argc, char *argv[])
 	/* Do a single pass through the sorted records. */
 	for (i = 0; i < num_rec; i++) {
 		int bucket;
+		u_int8_t prec_bits = OWPGetPrecBits(&s.records[i]);
 
+#ifdef DIGEST_DEBUG
+		fprintf(stderr, "DEBUG: packet %d has prec_bits = %u\n",
+			i, prec_bits);
+#endif
 		debsent++;
 
 		if (verbose)
 			printf("prec = %u\n", prec);
-		if (OWPGetPrecBits(&s.records[i]) < prec){
+		if (prec_bits < prec){
 			fprintf(stderr, "prec=%u, real_prec=%u\n",
-				prec, OWPGetPrecBits(&s.records[i]));
+				prec, prec_bits);
 			continue;
 		}
 
@@ -346,6 +352,12 @@ main(int argc, char *argv[])
 		delay = owp_delay(&s.records[i].send, &s.records[i].recv);
 		if (delay < min)
 			min = delay;
+		
+		if (prec_bits < worst_prec_bits)
+			worst_prec_bits = prec_bits;
+#ifdef DIGEST_DEBUG
+		fprintf(stderr, "DEBUG: worst = %u\n", worst_prec_bits);
+#endif
 		bucket = owp_bucket(delay);
 		assert((0 <= bucket) && (bucket <= OWP_MAX_BUCKET));
 		counts[bucket]++;
@@ -353,9 +365,9 @@ main(int argc, char *argv[])
 		if (verbose)
 			print_rec(&s.records[i], 0);
 	}
-
+#ifdef DIGEST_DEBUG
 	fprintf(stderr, "sent=%u, debsent=%u\n", sent, debsent);
-
+#endif
 	min_microsec = (u_int32_t)(min * MILLION);
 
 	/* 
@@ -369,7 +381,7 @@ main(int argc, char *argv[])
 	if ((fwrite(magic, 1, sizeof(magic), out) < 1) 
 	    || (fwrite(&version, sizeof(version), 1, out) < 1)
 	    || (fwrite(&out_hdrlen, sizeof(out_hdrlen), 1, out) < 1)
-	    || (fwrite(&prec, sizeof(prec), 1, out) < 1)
+	    || (fwrite(&worst_prec_bits, sizeof(worst_prec_bits), 1, out) < 1)
 	    || (fwrite(&sent, sizeof(sent), 1, out) < 1)
 	    || (fwrite(&lost, sizeof(lost), 1, out) < 1)
 	    || (fwrite(&dup, sizeof(dup), 1, out) < 1)
