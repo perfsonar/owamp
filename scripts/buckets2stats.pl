@@ -92,11 +92,12 @@ my $summ_period = $conf->get_val(ATTR => 'SUMMARY_PERIOD') || 300;
 open(GNUPLOT, "| gnuplot") or die "cannot execute gnuplot";
 autoflush GNUPLOT 1;
 
-my $age = $conf->must_get_val(DIGESTRES=>$res, ATTR=>'PLOTPERIOD');
-my $res_name = $conf->must_get_val(DIGESTRES=>$res, ATTR=>'COMMONRESNAME');
-my $period_name = $conf->must_get_val(DIGESTRES=>$res,
-				      ATTR=>'PLOT_PERIOD_NAME');
-my $vtimefile = $conf->must_get_val(ATTR=>'CentralPerDirValidFile');
+my $age = $conf->must_get_val(DIGESTRES => $res, ATTR => 'PLOTPERIOD');
+my $res_name = $conf->must_get_val(DIGESTRES => $res, ATTR => 'COMMONRESNAME');
+my $period_name = $conf->must_get_val(DIGESTRES => $res,
+				      ATTR => 'PLOT_PERIOD_NAME');
+my $vtimefile = $conf->must_get_val(ATTR => 'CentralPerDirValidFile');
+my $inf_coef = $conf->get_val(ATTR => 'INF_DELAY_MULT') || 1.5;
 
 foreach my $mtype (@mtypes){
     foreach my $recv (@nodes){
@@ -175,7 +176,7 @@ foreach my $mtype (@mtypes){
 		    my $lost_perc = ($lost/$sent)*100.0;
 
 		    # Compute stats for a new data point.
-		    my $median = get_percentile(0.5, $sent, $pairs_ref);
+		    my $median = get_percentile(0.5, $sent, $pairs_ref, $lost);
 		    $worst_loss = $lost_perc if ($lost_perc > $worst_loss);
 		    $worst_median_delay = $median
 			    if ($median > $worst_median_delay);
@@ -234,6 +235,18 @@ sub plot_resolution {
 	return;
     }
 
+    my $gnu_inf_med = "$datadir/$res.inf-med";
+    open(GNU_INF_MED, ">$gnu_inf_med")
+	    or die "Could not open $gnu_inf_med: $!";
+    autoflush GNU_INF_MED 1;
+    my $got_inf_med = 0;
+
+    my $gnu_inf_ninety = "$datadir/$res.inf-ninety";
+    open(GNU_INF_NINETY, ">$gnu_inf_ninety")
+	    or die "Could not open $gnu_inf_ninety: $!";
+    autoflush GNU_INF_NINETY 1;
+    my $got_inf_ninety = 0;
+
     my $init = time();
 
     my $xr_end = join '/', mdHMS($init);
@@ -266,16 +279,39 @@ sub plot_resolution {
 
 	my $lost_perc = fmt(($lost/$sent)*100);
 
-	# Compute stats for a new data point.
-	my @stats = (fmt(get_percentile(0.5, $sent, $pairs_ref)), $min,
-		     fmt(get_percentile(0.9, $sent, $pairs_ref)), $lost_perc);
+	my ($med, $perc_ninety) =
+		(get_percentile(0.5, $sent, $pairs_ref, $lost),
+		 get_percentile(0.9, $sent, $pairs_ref, $lost));
+
+	# Fetch index of the last non-empty bucket.
+	my $inf = index2pt(${$pairs_ref}[-1]->[0]) * $inf_coef;
+	$inf ||= 50;
+
+	# Plotting is done in 2 layers. Infinities are placed in
+	# a separate file.
+	my @stats = (($med eq 'inf')? $min : fmt($med),
+		     $min,
+		     ($perc_ninety eq 'inf')? $min : fmt($perc_ninety),
+		     $lost_perc);
 
 	warn join "\n", "Stats for the file $datafile are:",
 		@stats, '' if DEBUG;
-	print GNUDAT join " ", "$year/$mon/$day/$hour/$minute/$second",
-		@stats, "\n";
+	my $date = "$year/$mon/$day/$hour/$minute/$second";
+	print GNUDAT join " ", $date, @stats, "\n";
 	$got_data = 1;
+
+	if ($med eq 'inf') {
+	    print GNU_INF_MED join " ", $date, $inf, "\n";
+	    $got_inf_med = 1;
+	}
+	if ($perc_ninety eq 'inf') {
+	    print GNU_INF_NINETY join " ", $date, $inf, "\n";
+	    $got_inf_ninety = 1;
+	}
     }
+
+    close GNU_INF_MED;
+    close GNU_INF_NINETY;
 
     my $psize = ($got_data)? 1 : 0.0;
     unless ($got_data) {
@@ -311,15 +347,28 @@ set nokey
 set grid
 $xtics
 set xlabel "Time ($fmt_xlabel)"
-set ylabel "Delay (ms)"
-set title \"$delays_title\"
-set output "$delays_png"
-plot "$gnu_dat" using 1:2:3:4 with errorbars ps $psize
+
 set ylabel "Loss (%)"
 set title \"$loss_title\"
 set output "$loss_png"
 plot [] [0:100] "$gnu_dat" using 1:5 ps $psize
+
+set ylabel "Delay (ms)"
+set title \"$delays_title\"
+set output "$delays_png"
 STOP
+
+    print GNUPLOT "set multiplot\n" if ($got_inf_med || $got_inf_ninety);
+    print GNUPLOT "plot '$gnu_dat' using 1:2:3:4 with errorbars ps $psize\n";
+
+    if ($got_inf_med) {
+	print GNUPLOT "plot '$gnu_inf_med' using 1:2 pt 3 ps 2\n";
+    }
+
+    if ($got_inf_ninety) {
+	print GNUPLOT "plot $gnu_inf_ninety using 1:2 pt 4 ps 2\n";
+    }
+    print GNUPLOT "set nomultiplot\n" if ($got_inf_med || $got_inf_ninety);
 
     close GNUDAT;
     warn "plotted files: $delays_png $loss_png" if VERBOSE;
@@ -346,7 +395,7 @@ sub index2pt {
 # with a fuzz factor due to use of buckets. Multiply the result
 # by 1000 to convert from sec to ms.
 sub get_percentile {
-    my ($alpha, $sent, $pairs_ref) = @_;
+    my ($alpha, $sent, $pairs_ref, $lost) = @_;
     my $sum = 0;
 
      unless ((0.0 <= $alpha) && ($alpha <= 1.0)) {
@@ -354,16 +403,14 @@ sub get_percentile {
  	return undef;
      }
 
+    return 'inf' if ($alpha + ($lost/$sent) > 1.0);
+    
     for my $pair (@{$pairs_ref}) {
 	my ($index, $count) = @{$pair};
 	$sum += $count;
 
-	return fmt(index2pt($index)*THOUSAND)
-		if $sum >= $alpha*$sent;
+	return index2pt($index)*THOUSAND if $sum >= $alpha*$sent;
     }
-
-#    warn "DEBUG: returning max. buckets printout follows:";
-#    print_pairs($pairs_ref);
 
     return CUTOFF_D*THOUSAND;
 }
@@ -454,7 +501,7 @@ sub get_buck_ref {
     }
 
     # Lost packets get "infinite" delay.
-    push @pairs, [MAX_BUCKET, $lost] if $lost;
+#    push @pairs, [MAX_BUCKET, $lost] if $lost;
 
     return [$sent, $min, $lost, \@pairs];
 }
