@@ -1321,7 +1321,7 @@ OWPWriteDataHeader(
 				hdr->sid,&hdr->test_spec) != 0){
 			return 1;
 		}
-		ver = htonl(2);
+		ver = htonl(3);
 		/*
 		 * Compute the offset to the data records:
 		 * 	MAGIC+Version+HdrLen+Finished+TestRequestPramble+Slots
@@ -1679,13 +1679,16 @@ _OWPReadDataHeaderInitial(
 	*ver = ntohl(*ver);
 
 	/*
-	 * This code only supports version 0 and 2 owp files.
+	 * Currently it supports 0 and 2 and 3.
 	 */
-	if((*ver != 0) && (*ver != 2)){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-		"_OWPReadDataHeaderInitial: Unknown file version (%d)",*ver);
-		errno = ENOSYS;
-		return 1;
+	switch(*ver){
+		case 0: case 2: case 3:
+			break;
+		default:
+			OWPError(ctx,OWPErrFATAL,EINVAL,
+			"_OWPReadDataHeaderInitial: Invalid file version (%d)",
+				*ver);
+		return OWPErrFATAL;
 	}
 
 	/*

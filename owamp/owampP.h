@@ -44,20 +44,17 @@
 #include <I2util/util.h>
 #include <owamp/owamp.h>
 
-/* 
-** Lengths (in 16-byte blocks) of various Control messages. 
-*/
-#define _OWP_RIJNDAEL_BLOCK_SIZE	16
-#define _OWP_TEST_REQUEST_BLK_LEN	7
-#define _OWP_START_SESSIONS_BLK_LEN	2
-#define _OWP_STOP_SESSIONS_BLK_LEN	2
-#define _OWP_FETCH_SESSION_BLK_LEN	3
-#define _OWP_CONTROL_ACK_BLK_LEN	2
-#define _OWP_MAX_MSG_BLK_LEN		_OWP_TEST_REQUEST_BLK_LEN
-#define _OWP_MAX_MSG	(_OWP_MAX_MSG_BLK_LEN*_OWP_RIJNDAEL_BLOCK_SIZE)
-#define _OWP_TEST_REQUEST_PREAMBLE_SIZE	(_OWP_TEST_REQUEST_BLK_LEN*_OWP_RIJNDAEL_BLOCK_SIZE)
+/*
+ * byte lengths of test record's for specific "file" versions.
+ */
 #define	_OWP_TESTRECV2_SIZE	24
-#define	_OWP_TESTREC_SIZE	25
+#define	_OWP_TESTRECV3_SIZE	25
+#define	_OWP_TESTREC_SIZE	_OWP_TESTRECV3_SIZE
+
+/*
+ * Size of a single AES block
+ */
+#define _OWP_RIJNDAEL_BLOCK_SIZE	16
 
 /*
  * The FETCH buffer is the smallest multiple of both the _OWP_TESTREC_SIZE
@@ -81,6 +78,17 @@
 #if (_OWP_FETCH_BUFFSIZE != (_OWP_TESTREC_SIZE * _OWP_FETCH_TESTREC_BLOCKS))
 #error "Fetch Buffer is mis-sized for Test Record Size!"
 #endif
+/* 
+** Lengths (in 16-byte blocks) of various Control messages. 
+*/
+#define _OWP_TEST_REQUEST_BLK_LEN	7
+#define _OWP_START_SESSIONS_BLK_LEN	2
+#define _OWP_STOP_SESSIONS_BLK_LEN	2
+#define _OWP_FETCH_SESSION_BLK_LEN	3
+#define _OWP_CONTROL_ACK_BLK_LEN	2
+#define _OWP_MAX_MSG_BLK_LEN		_OWP_FETCHV3_AES_BLOCKS
+#define _OWP_MAX_MSG	(_OWP_MAX_MSG_BLK_LEN*_OWP_RIJNDAEL_BLOCK_SIZE)
+#define _OWP_TEST_REQUEST_PREAMBLE_SIZE	(_OWP_TEST_REQUEST_BLK_LEN*_OWP_RIJNDAEL_BLOCK_SIZE)
 
 /*
  * Control state constants.
