@@ -18,7 +18,9 @@
 **	Description:	
 **      Hook functions used by OWAMP applications.
 */
-#include <owamp/owamp.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+
 #include <owamp/owampP.h>
 #include <owamp/access.h>
 #include <owamp/conndata.h>

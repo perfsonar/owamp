@@ -26,8 +26,11 @@
 #include <netinet/in.h>
 #include <assert.h>
 #include <sys/timex.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <sys/stat.h>
 
-#include <owamp/access.h>
+#include "access.h"
 #include "owampP.h"
 #include "endpoint.h"
 #include "conndata.h"

@@ -21,20 +21,27 @@
  *	Description:	
  */
 #include <stdio.h>
+#include <stdlib.h>
 #include <ctype.h>
+#include <assert.h>
+#include <string.h>
+#include <unistd.h>
 #include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <unistd.h>
 #include <signal.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <pwd.h>
 #include <grp.h>
+#include <syslog.h>
 
 #include <owamp/owamp.h>
 #include <owamp/conndata.h>
 #include <owamp/access.h>
-#include <I2util/util.h>
 
 #include "owampdP.h"
 
@@ -47,6 +54,10 @@ static I2ErrLogSyslogAttr	syslogattr;
 static I2ErrHandle		errhand;
 static I2table			fdtable=NULL;
 static I2table			pidtable=NULL;
+
+#if defined HAVE_DECL_OPTRESET && !HAVE_DECL_OPTRESET
+int optreset;
+#endif
 
 static void
 usage(
@@ -1231,7 +1242,7 @@ main(int argc, char *argv[])
 			exit(1);
 		}
 		strcpy(pid_file,info_file);
-		info_file[strlen(info_file)-1] = '\0'; // remove trailing "i"
+		info_file[strlen(info_file)-1] = '\0'; /* remove trailing "i"*/
 		if(rename(pid_file,info_file) != 0){
 			I2ErrLog(errhand,"rename(): %M");
 			kill(mypid,SIGTERM);

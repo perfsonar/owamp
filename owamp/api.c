@@ -22,6 +22,7 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <signal.h>
 #include <netinet/in.h>
 #include <string.h>
 #include <assert.h>
@@ -1252,7 +1253,7 @@ OWPReadDataHeader(
 		return 0;
 	}
 
-	if(stat_buf.st_size < sizeof(magic)+sizeof(ver)+sizeof(hlen)){
+	if(stat_buf.st_size < (off_t)(sizeof(magic)+sizeof(ver)+sizeof(hlen))){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
 				"OWPReadDataHeader:Invalid owp file");
 		return 0;

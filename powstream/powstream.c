@@ -24,15 +24,18 @@
  *	set up perpetual tests and keep them going until this application
  *	is killed.
  */
+#include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/stat.h>
 #include <string.h>
 #include <ctype.h>
 #include <netdb.h>
 #include <signal.h>
+#include <assert.h>
+#include <syslog.h>
 
-#include <I2util/util.h>
 /*
  * TODO: Remove encode/decode timestamps and replace with a write_record
  * function - then this can include owamp.h instead of owampP.h.
@@ -40,6 +43,11 @@
 #include <owamp/owampP.h>
 #include <owamp/conndata.h>
 #include <owamp/access.h>
+
+
+#if defined HAVE_DECL_OPTRESET && !HAVE_DECL_OPTRESET
+int optreset;
+#endif
 
 #include "./powstreamP.h"
 
@@ -109,8 +117,8 @@ usage(const char *progname, const char *msg)
 {
 	if(msg) fprintf(stderr, "%s: %s\n", progname, msg);
 	fprintf(stderr,"usage: %s %s\n", 
-			progname, "[arguments] testaddr [servaddr]",
-			"[arguments] are as follows: "
+			progname,
+			 "[arguments] testaddr [servaddr]"
 			);
 	fprintf(stderr, "\n");
 	print_conn_args();
@@ -1004,7 +1012,7 @@ AGAIN:
 			/*
 			 * Position of first record we need to look at.
 			 */
-			if(parse.begin < hlen)
+			if((unsigned)parse.begin < hlen)
 				parse.begin = hlen;
 			if(fseeko(p->fp,parse.begin,SEEK_SET) != 0){
 				I2ErrLog(eh,"fseeko():%M");

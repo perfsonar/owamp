@@ -23,10 +23,18 @@
 #ifndef	OWAMP_H
 #define	OWAMP_H
 
+#include <I2util/util.h>
+
 /*
  * Portablility sanity checkes.
  */
 #if	HAVE_CONFIG_H
+#undef PACKAGE_BUGREPORT
+#undef PACKAGE_NAME
+#undef PACKAGE_STRING
+#undef PACKAGE_TARNAME
+#undef PACKAGE_VERSION
+
 #include <owamp/config.h>
 
 #if	!HAVE_ERRNO_H || !HAVE_NETDB_H || !HAVE_STDLIB_H || !HAVE_SYS_PARAM_H
@@ -116,7 +124,6 @@
 
 
 #include <owamp/rijndael-api-fst.h>
-#include <I2util/util.h>
 
 #define	OWP_MODE_UNDEFINED		(0)
 #define	OWP_MODE_OPEN			(01)

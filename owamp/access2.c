@@ -21,10 +21,13 @@
 **	This file contains the OWAMP access policy functions.
 */
 
-#ifndef OWP_ACCESS2_H
-#define OWP_ACCESS2_H
-
+#include <stdlib.h>
+#include <limits.h>
 #include <ctype.h>
+#include <string.h>
+#include <assert.h>
+#include <errno.h>
+
 #include <owamp/owamp.h>
 #include "./access.h"
 
@@ -821,7 +824,7 @@ owp_read_passwd_file(OWPContext ctx,
 		     const char *passwd_file, 
 		     owp_policy_data *policy)
 {
-	char line[MAX_LINE];
+	char line[OWPMAX_LINE];
 	char *kid, *secret, *class;
 	FILE *fp;
 	owp_kid_data *kid_data;
@@ -995,5 +998,3 @@ unsigned long
 OWAMPGetSpace(owp_lim *lim){
 	return lim->values[1];
 }
-
-#endif

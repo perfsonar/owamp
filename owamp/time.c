@@ -33,6 +33,7 @@
  *
  *
  */
+#include <string.h>
 #include <owamp/owamp.h>
 
 /*

@@ -18,8 +18,13 @@
  *
  *	Description:	
  */
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
 #include <owamp/owampP.h>
-#include <I2util/table.h>
+#include <I2util/util.h>
 #include "access.h"
 
 /*

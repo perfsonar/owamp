@@ -1,44 +1,13 @@
 /*
  * $Id$
  */
-#ifndef	_owamp_contrib_h_
-#define	_owamp_contrib_h_
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/types.h>
-#include <limits.h>
-#include <math.h>
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <assert.h>
-#include <netdb.h>
-#include <errno.h>
-#include <sys/wait.h>
-#include <syslog.h>
-#include <stdarg.h>
+#ifndef	_OWP_ACCESS_H_
+#define	_OWP_ACCESS_H_
 
-/* for inet_pton */
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-
-/* for ntohl */
-#include <sys/param.h>
-
-#include <I2util/table.h>
+#include <I2util/util.h>
 #include <owamp/owamp.h>
 
-#ifndef	OWP_PREFIX
-#define	OWP_PREFIX	/usr/local
-#endif
-
-#undef	AUTOCONF_SYSCONFDIR
-#define	MSTRCAT(A,B)		#A ## #B
-#define	MSTRCATEXPAND(A,B)	MSTRCAT(A,B)
-#define	OWP_CONFDIR		MSTRCATEXPAND(OWP_PREFIX,AUTOCONF_SYSCONFDIR)
-
-#define MAX_LINE 1024
+#define OWPMAX_LINE 1024
 
 #ifndef MAXPATHLEN
 #define MAXPATHLEN 1024
@@ -55,7 +24,7 @@ typedef u_int64_t owp_lim_t;
 ** This structure is used to keep track of usage resources.
 */
 typedef struct owamp_limits {
-	owp_lim_t values[6];   
+	owp_lim_t values[6];
 } owp_lim;
 
 /*
@@ -104,7 +73,7 @@ typedef struct owp_access_id {
 typedef struct owp_access_netmask {
 	u_int32_t addr4;            /* In host byte order. */
 	u_int8_t  addr6[16];        /* In network byte order. */
-	u_int8_t  offset; 
+	u_int8_t  offset;
 	int       af;               /* AF_INET, AF_INET6 */
 } owp_access_netmask;
 
@@ -164,7 +133,7 @@ owp_check_control(
 	);
 
 extern OWPBoolean owp_check_test(void *app_data, OWPSessionMode	mode,
-	const char *kid, OWPBoolean local_sender, 
+	const char *kid, OWPBoolean local_sender,
 	struct sockaddr *local_sa_addr, struct sockaddr	*remote_sa_addr,
 	OWPTestSpec	*test_spec, OWPErrSeverity *err_ret);
 extern unsigned long OWAMPGetBandwidth(owp_lim* lim);
@@ -203,4 +172,4 @@ extern void owp_buf_free(owp_chunk_buf_ptr buf);
 extern int owp_symbol_save(OWPContext ctx, owp_chunk_buf_ptr buf, int c);
 extern void owp_buf_print(FILE *fp, owp_chunk_buf_ptr buf);
 
-#endif	/* _owamp_contrib_h_ */
+#endif	/*	_OWP_ACCESS_H_	*/

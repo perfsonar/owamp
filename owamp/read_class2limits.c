@@ -20,9 +20,10 @@
 **	Description:	Functions to parse class2limits config file.
 */
 
-#ifndef OWP_READCLASS_H
-#define OWP_READCLASS_H
-
+#include <stdlib.h>
+#include <assert.h>
+#include <string.h>
+#include <errno.h>
 #include <ctype.h>
 #include <owamp/owamp.h>
 #include "./access.h"
@@ -607,4 +608,3 @@ owp_read_class2limits2(OWPContext ctx,
 
 	return 0;
 }
-#endif

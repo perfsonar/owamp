@@ -77,6 +77,7 @@ S4. [Deliver the answer.] Set X <- mu*(j + V)*ln2.
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
+#include <string.h>
 #include <owamp/owamp.h>
 #include "rijndael-alg-fst.h"
 
