@@ -426,7 +426,7 @@ _OWPControlAlloc(
 	 * Init encryption fields
 	 */
 	cntrl->kid = NULL;
-	cntrl->kid_buffer[sizeof(cntrl->kid_buffer)-1] = '\0';
+	memset(cntrl->kid_buffer,'\0',sizeof(cntrl->kid_buffer));
 	memset(cntrl->session_key,0,sizeof(cntrl->session_key));
 	memset(cntrl->readIV,0,sizeof(cntrl->readIV));
 	memset(cntrl->writeIV,0,sizeof(cntrl->writeIV));

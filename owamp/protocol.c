@@ -132,7 +132,7 @@ _OWPReadServerGreeting(
  *
  * 	ClientGreeting message format:
  *
- * 	size: 60 octets
+ * 	size: 68 octets
  *
  * 	   0                   1                   2                   3
  * 	   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
@@ -141,20 +141,22 @@ _OWPReadServerGreeting(
  *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *	04|                              KID                              |
  *	08|                                                               |
- *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *	12|                                                               |
  *	16|                                                               |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *	20|                                                               |
  *	24|                       Token (32 octets)                       |
  *	28|                                                               |
  *	32|                                                               |
  *	36|                                                               |
  *	40|                                                               |
- *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *	44|                                                               |
- *	48|                     Client-IV (16 octets)                     |
+ *	48|                                                               |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *	52|                                                               |
- *	56|                                                               |
+ *	56|                     Client-IV (16 octets)                     |
+ *	60|                                                               |
+ *	64|                                                               |
  *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *
  */
@@ -175,12 +177,12 @@ _OWPWriteClientGreeting(
 	*(u_int32_t *)&buf[0] = htonl(cntrl->mode);
 
 	if(cntrl->kid)
-		memcpy(&buf[4],cntrl->kid,8);
+		memcpy(&buf[4],cntrl->kid,16);
 	else
-		I2RandomBytes(&buf[4],8);
+		I2RandomBytes(&buf[4],16);
 
-	memcpy(&buf[12],token,32);
-	memcpy(&buf[44],cntrl->writeIV,16);
+	memcpy(&buf[20],token,32);
+	memcpy(&buf[52],cntrl->writeIV,16);
 
 	if(OWPWriten(cntrl->sockfd,buf,60) != 60)
 		return OWPErrFATAL;
@@ -204,16 +206,16 @@ _OWPReadClientGreeting(
 		return OWPErrFATAL;
 	}
 
-	if(OWPReadn(cntrl->sockfd,buf,60) != 60){
+	if(OWPReadn(cntrl->sockfd,buf,68) != 68){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 					"Read failed:(%s)",strerror(errno));
 		return OWPErrFATAL;
 	}
 
 	*mode = ntohl(*(u_int32_t *)&buf[0]);
-	memcpy(cntrl->kid_buffer,&buf[4],8);
-	memcpy(token,&buf[12],32);
-	memcpy(clientIV,&buf[44],16);
+	memcpy(cntrl->kid_buffer,&buf[4],16);
+	memcpy(token,&buf[20],32);
+	memcpy(clientIV,&buf[52],16);
 
 	return OWPErrOK;
 }

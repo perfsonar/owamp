@@ -199,7 +199,7 @@ struct OWPControlRec{
 	 * Encryption fields
 	 */
 	char			*kid; /* null if not set - else kid_buffer */
-	char			kid_buffer[9];
+	char			kid_buffer[17];
 	keyInstance             encrypt_key;
 	keyInstance             decrypt_key;
 	u_int8_t		session_key[16];
