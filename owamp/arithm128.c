@@ -41,7 +41,7 @@ are precomputed. NOTE: all scalar quantities and arithmetical
 operations are in fixed-precision 128-bit arithmetic (64 bits before
 and after the decimal point). All 64-bit uniform random strings are
 obtained by applying AES in counter mode to a 128-bit unsigned integer
-(inialized to be zero) written in network byte order, then picking the
+(initialized to be zero) written in network byte order, then picking the
 lower or upper half of the encrypted 128-bit block, depending as the
 counter is even or odd, respectively.
 
@@ -69,9 +69,6 @@ S4. [Deliver the answer.] Set X <- mu*(j + V)*ln2.
 #include <assert.h>
 #include "arithm128.h"
 
-struct num128 raw2num(const unsigned char *raw);
-struct num128 unif_rand();      /* Generate a Unif(0, 1) random quantity. */
-
 /* We often need to scale by 10^6 so let's fix a struct for that. */
 static struct num128 million = {{0, 0, 0, 0, 16960, 15, 0, 0}}; 
 
@@ -85,6 +82,13 @@ static rand_context next;
 #define MASK16(x) ((x) & 0xFFFF)
 #define MASK32(x) ((x) & 0xFFFFFFFF)
 
+/*
+** The array has been computed according to the formula:
+**
+**       Q[k] = (ln2)/(1!) + (ln2)^2/(2!) + ... + (ln2)^k/(k!)
+**
+** as described in the Knuth algorithm.
+*/
 static struct num128 Q[K] = {
 	{{     0,      0,      0,      0, 0, 0, 0, 0}},  /* Placeholder. */
 	{{0x79AC, 0xD1CF, 0x17F7, 0xB172, 0, 0, 0, 0}},
@@ -153,7 +157,7 @@ num128_add(num128 x, num128 y, num128 z)
 /*
 ** Multiplication. The result is saved in the variable z.
 */
-void
+static void
 num128_mul(num128 x, num128 y, num128 z)
 {
 	int i, j;
@@ -316,20 +320,10 @@ timeval2num(struct timeval *from, num128 to)
 }
 
 /*
-** This function treats a num struct as representing an unsigned long
-** integer, and returns that integer.
-*/
-unsigned long 
-num2ulong(num128 x)
-{
-	return (x->digits[5] << 16) + x->digits[4];
-}
-
-/*
 ** This function converts a 64-bit binary string (network byte order)
 ** into num struct (fractional part only). The integer part iz zero.
 */
-struct num128
+static struct num128
 raw2num(const unsigned char *raw)
 {
 	int i;
@@ -342,8 +336,34 @@ raw2num(const unsigned char *raw)
 }
 
 /*
-** Exported functions.
+** Random number generating functions.
 */
+
+
+/*
+** Generate a 64-bit uniform random string and save it in the lower
+** part of the struct.
+*/
+static struct num128
+unif_rand()
+{
+	static int reuse = 1;
+	int j;
+
+	reuse = 1 - reuse;
+	if (reuse)
+		return raw2num(next.out + 8);
+
+	rijndaelEncrypt(next.key.rk, next.key.Nr, next.counter, next.out);
+	
+	/* Increment next.counter as an 128-bit single quantity in network
+	   byte order for AES counter mode. */
+	for (j = 15; j >= 0; j--)
+		if (++next.counter[j])
+			break;
+	
+	return raw2num(next.out);
+}
 
 /*
 ** Seed the random number generator using a 16-byte string.
@@ -361,8 +381,8 @@ rand_context_init(BYTE *sid)
 
 /* 
 ** Generate an exponential deviate using 64-bit binary string as an input
-** (encoded using 2 unsigned long integers). This is algorithm 3.4.1.S from
-** Knuth's v.2 of "Art of Computer Programming" (1998), p.133.
+** This is algorithm 3.4.1.S from Knuth's v.2 of "Art of Computer Programming" 
+** (1998), p.133.
 */
 struct num128 
 exp_rand()
@@ -415,31 +435,6 @@ exp_rand()
 	num128_add(&J, &V, &tmp);
 	num128_mul(&tmp, LN2, &ret);
 	return ret;
-}
-
-/*
-** Generate a 64-bit uniform random string and save it in the lower
-** part of the struct.
-*/
-static struct num128
-unif_rand()
-{
-	static int reuse = 1;
-	int j;
-
-	reuse = 1 - reuse;
-	if (reuse)
-		return raw2num(next.out + 8);
-
-	rijndaelEncrypt(next.key.rk, next.key.Nr, next.counter, next.out);
-	
-	/* Increment next.counter as an 128-bit single quantity in network
-	   byte order for AES counter mode. */
-	for (j = 15; j >= 0; j--)
-		if (++next.counter[j])
-			break;
-	
-	return raw2num(next.out);
 }
 
 /*

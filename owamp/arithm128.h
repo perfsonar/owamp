@@ -66,5 +66,4 @@ struct num128 exp_rand();       /* Generate an exponential (mean 1) deviate */
 
 /* Debugging and auxilliary functions */
 void num_print(num128 x);
-unsigned long num2ulong(num128 x);
 #endif
