@@ -350,7 +350,7 @@ OWPDefEndpointInit(
 		if((mkdir(cdata->real_data_dir,0755) != 0) 
 		   && (errno != EEXIST)){
 			 OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"mkdir(%s):%M",
-				  cdata->datadir);
+				  cdata->real_data_dir);
 			goto error;
 		}
 
