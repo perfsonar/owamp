@@ -77,12 +77,14 @@ typedef enum {
 
 #define	OWP_ERR_MAXSTRING	(1024)
 
-typedef int	OWPBoolean;
-typedef u8	OWPSID[16];
-typedef u8	OWPSequence[4];
-typedef char	OWPKID[8];
-typedef u8	OWPKey[16];
-typedef u8	OWPSessionMode[4];
+typedef unsigned char	OWPByte;
+
+typedef u_int32_t	OWPBoolean;
+typedef OWPByte		OWPSID[16];
+typedef OWPByte		OWPSequence[4];
+typedef char		OWPKID[8];
+typedef OWPByte		OWPKey[16];
+typedef u_int32_t	OWPSessionMode;
 
 
 typedef struct OWPTimeStampRec{
@@ -410,7 +412,7 @@ OWPControlOpen(
 extern OWPEndpoint
 OWPDefineEndpoint(
 	OWPAddr		addr,
-	OWPEndType	send_or_recv,
+	OWPEndpointType	send_or_recv,
 	OWPBoolean	server_request
 );
 

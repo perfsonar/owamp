@@ -101,10 +101,10 @@ struct OWPControlRec{
 	 */
 	OWPKID			kid;
 	OWPKey			key;
-	u8			challenge[16];
-	u8			session_key[16];
-	u8			readIV[16];
-	u8			writeIV[16];
+	OWPByte			challenge[16];
+	OWPKey			session_key[16];
+	OWPByte			readIV[16];
+	OWPByte			writeIV[16];
 
 	struct OWPControlRec	*next;
 };

@@ -296,7 +296,7 @@ _OWPAddrInfo(
 	return OWPErrOK;
 }
 
-static void
+static OWPBoolean
 _OWPClientBind(
 	OWPControl	cntrl,
 	int		fd,
@@ -312,13 +312,13 @@ _OWPClientBind(
 		OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
 						"Invalid local_addr - ByFD");
 		*err_ret = OWPErrFATAL;
-		return;
+		return False;
 	}
 
 	if(!local_addr->ai &&
 		(_OWPAddrInfo(cntrl->ctx,local_addr) < OWPErrWARNING)){
 		*err_ret = OWPErrFATAL;
-		return;
+		return False;
 	}
 
 	for(ai=local_addr->ai;ai;ai = ai->ai_next){
@@ -329,10 +329,10 @@ _OWPClientBind(
 		if(ai->ai_protocol != remote_addrinfo->ai_protocol)
 			continue;
 		if(!_OWPCallCheckAddrPolicy(cntrl->ctx,ai->ai_addr,
-				&server_addr->saddr,&local_err)){
+				&remote_addrinfo->ai_addr,&local_err)){
 			if(local_err != OWPErrOK){
 				*err_ret = local_err;
-				return;
+				return False;
 			}
 			continue;
 		}
@@ -340,23 +340,20 @@ _OWPClientBind(
 		if(bind(fd,ai->ai_addr,ai->ai_addrlen) == 0){
 			local_addr->saddr = *ai->ai_addr;
 			local_addr->saddr_set = True;
-			return;
+			return True;
+		}
+
 		OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,errno,
 							"bind(,,):%m");
 		*err_ret = OWPErrFATAL;
-		return;
+		return False;
 	}
 
 	/*
-	 * This should probably be a silent failure, since it is called
-	 * from a loop looking for valid addr combinations...
+	 * None found.
 	 */
-#if	NOT
-	OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,errno,
-						"Invalid local addr spec's");
-#endif
-	*err_ret = OWPErrFATAL;
-	return;
+	*err_ret = OWPErrOK;
+	return False;
 }
 
 static int

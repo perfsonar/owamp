@@ -18,5 +18,5 @@
 #
 #	Description:	owping build description.
 
-bin_PROGRAMS	= 
+bin_PROGRAMS	= owping
 owping_SOURCES	= owping.c
