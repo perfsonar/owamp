@@ -41,7 +41,7 @@
 static	ow_ping_trec	ping_ctx;
 static I2ErrHandle	eh;
 
-#define OWP_TMPFILE "/tmp/owamp.XXXXX"
+#define OWP_TMPFILE "/tmp/owamp.XXXXXX"
 
 #ifdef	NOT
 static int
