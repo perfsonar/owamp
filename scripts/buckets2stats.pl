@@ -21,8 +21,11 @@ use strict;
 # front page table.
 
 use strict;
-use constant DEBUG => 1;
-use constant VERBOSE => 1;
+
+use constant ARCHIVE_DEBUG => 0;
+
+use constant DEBUG => 0;
+use constant VERBOSE => 0;
 
 use FindBin;
 use lib ("$FindBin::Bin");
@@ -38,7 +41,9 @@ use OWP::Digest;
 use OWP;
 
 use constant TESTING => 0; # XXX - set to 0 eventually
+
 use constant THOUSAND => 1000;
+use constant MILLION => 1000000;
 
 # the first 3 fields (all unsigned bytes) are fixed in all versions of header 
 use constant MAGIC_SIZE => 9;
@@ -98,6 +103,9 @@ my $period_name = $conf->must_get_val(DIGESTRES => $res,
 				      ATTR => 'PLOT_PERIOD_NAME');
 my $vtimefile = $conf->must_get_val(ATTR => 'CentralPerDirValidFile');
 my $inf_coef = $conf->get_val(ATTR => 'INF_DELAY_MULT') || 1.5;
+
+my ($cur_min, $cur_hour) = (gmtime(time()))[1, 2];
+my $time_to_archive = (($cur_min >= 58) || ($cur_min <= 2))? 1: 0;
 
 foreach my $mtype (@mtypes){
     foreach my $recv (@nodes){
@@ -160,12 +168,12 @@ foreach my $mtype (@mtypes){
 		    next unless $sec;
 		    $sec -= OWP::Utils::JAN_1970;
 		    my ($year, $mon, $day, $hour, $minute, $second)
-			    = mdHMS($sec);
+			    = ymdHMS($sec);
 
 		    my $datafile = "$datadir/$ofile";
 		    my $dat_fh = new FileHandle "<$datafile";
 		    die "Could not open $datafile: $!" unless $dat_fh;
-		    my ($sent, $min, $lost, $pairs_ref) =
+		    my ($sent, $min, $lost, $pairs_ref, $prec) =
 			    @{get_buck_ref($dat_fh, $datafile)};
 		    undef $dat_fh;
 
@@ -206,6 +214,9 @@ sub plot_resolution {
     my ($datadir, $summary_file, $wwwdir) =
 	    $conf->get_names_info($mtype, $recv, $sender, $res);
     my $png_file = $res;
+    my $archive_png = ($time_to_archive && ($res == 30))? 1 : 0;
+
+    $archive_png = 1 if ARCHIVE_DEBUG;
 
     warn "plot_resolution: trying datadir = $datadir" if VERBOSE;
 
@@ -213,6 +224,8 @@ sub plot_resolution {
 	warn "directory $datadir does not exist - skipping";
 	return;
     }
+
+    my $archive_dir = "$datadir/png_archive";
 
     my @all = split /\n/, `ls $datadir`;
 
@@ -225,6 +238,17 @@ sub plot_resolution {
 	mkpath([$wwwdir], 0, 0755) or die "Could not create dir $wwwdir: $!";
     }
 
+    if ($archive_png) {
+	   if (-f $archive_dir) {
+	       warn "designated directory $archive_dir is a file! - skipping";
+	       return;
+	   }
+
+	   unless (-d $archive_dir) {
+	       mkpath([$archive_dir], 0, 0755)
+		       or die "Could not create dir $archive_dir: $!";
+	   }
+    }
 
     my $gnu_dat = "$datadir/$res.dat";
     open(GNUDAT, ">$gnu_dat") or die "Could not open $gnu_dat: $!";
@@ -248,11 +272,23 @@ sub plot_resolution {
     my $got_inf_ninety = 0;
 
     my $init = time();
+    my ($y, $M, $d, $h, $m, $s, $xr_end, $xr_start, $archived_prefix);
 
-    my $xr_end = join '/', mdHMS($init);
-    my $xr_start = join '/', mdHMS($init - $age);
+    # Prepare start/end times needed for later developments.
+    if ($archive_png) {
+	($y, $M, $d, $h, $m, $s) = ymdHMS($init - $age);
+	$xr_start = join '/', $y, $m, $d, $h, $m, $s;
+	$h += sprintf "%.0f", ($m / 60.0);
+	$archived_prefix = "$archive_dir/" . join '.', $y, $M, $d, $h;
+	($y, $M, $d, $h, $m, $s) = ymdHMS($init);
+	$xr_end = join '/', $y, $M, $d, $h, $m, $s;
+    } else {
+	$xr_end = join '/', ymdHMS($init);
+	$xr_start = join '/', ymdHMS($init - $age);
+    }
 
     my $got_data = 0;
+    my $worst_prec = 64;
 
     foreach my $file (@all) {
 	my $ofile = $file;
@@ -263,14 +299,20 @@ sub plot_resolution {
 	next unless $sec;
 	$sec -= OWP::Utils::JAN_1970;
 
-	my ($year, $mon, $day, $hour, $minute, $second) = mdHMS($sec);
+	my ($year, $mon, $day, $hour, $minute, $second) = ymdHMS($sec);
 
 	my $datafile = "$datadir/$ofile";
 	my $dat_fh = new FileHandle "<$datafile";
 	die "Could not open $datafile: $!" unless $dat_fh;
-	my ($sent, $min, $lost, $pairs_ref) =
+	my ($sent, $min, $lost, $pairs_ref, $prec) =
 		@{get_buck_ref($dat_fh, $datafile)};
 	undef $dat_fh;
+
+	print "DEBUG: file $datafile, prec = $prec\n" if DEBUG;
+
+	$worst_prec = $prec if $prec < $worst_prec;
+
+	print "DEBUG: loop: worst_prec = $worst_prec\n" if DEBUG;
 
 	unless ($sent) {
 	    warn "sent == 0 in $datafile - skipping";
@@ -310,25 +352,39 @@ sub plot_resolution {
 	}
     }
 
+    # Compute the worst error in usec's
+    my $err = ((2**(32 - $worst_prec)) * 2) * THOUSAND;
+
     close GNU_INF_MED;
     close GNU_INF_NINETY;
 
-    my $psize = ($got_data)? 1 : 0.0;
-    unless ($got_data) {
+    my ($psize, $err_line);
+
+    if ($got_data) {
+	$psize = 1;
+	$err_line = "Max error $err ms.";
+#	$err_line = "set key right top title \"Max error $err usec.\"";
+	print "DEBUG: worst_prec = $worst_prec\n" if DEBUG;
+    } else {
 	warn "no new data found in $datadir - creating an empty plot";
-	print GNUDAT join '/', mdHMS($init - 0.5*$age);
+	print GNUDAT join '/', ymdHMS($init - 0.5*$age);
 	print GNUDAT ' ', join ' ', 0, 0, 0, 0, 0, "\n";
+	$psize = 0.0;
+	$err_line = '';
+	print "DEBUG: no data for the $sender -> $recv\n" if DEBUG;
     }
+
+    warn "err_line = $err_line" if DEBUG;
 
     my $delays_png = "$wwwdir/$png_file-delays.png";
     my $delays_title = "Delays: Min, Median, and 90th Percentile " .
-	    "for the last $period_name sampled at $res_name frequency";
+	    "for the last $period_name. $err_line";
+#	    "for the last $period_name sampled at $res_name frequency";
     my $loss_png = "$wwwdir/$png_file-loss.png";
     my $loss_title = "Loss percentage " .
 	    "for the last $period_name sampled at $res_name frequency";
     my $fmt = $conf->must_get_val(DIGESTRES=>$res, ATTR=>'PLOT_FMT');
-    my @tmp = split //, $fmt;
-    my $fmt_xlabel = join '/', map {code2unit($_)} @tmp;
+    my $fmt_xlabel = join '/', map {code2unit($_)} split //, $fmt;
 
     $fmt = join ':', map {"%$_"} split //, $fmt;
     my $xrange = (defined $ARGV[2] && $ARGV[2] eq 'fake')? '' :
@@ -370,7 +426,25 @@ STOP
     }
     print GNUPLOT "set nomultiplot\n" if ($got_inf_med || $got_inf_ninety);
 
-    close GNUDAT;
+    if ($archive_png) {
+	my $archived_delays_file = "$archived_prefix.delay.png";
+	unless (-e $archived_delays_file) {
+	    link $delays_png, $archived_delays_file
+		    or die "link $delays_png, $archived_delays_file: $!";
+	}
+	
+	warn "archived $archived_delays_file";
+
+	my $archived_loss_file = "$archived_prefix.loss.png";
+	unless (-e $archived_loss_file) {
+	    link $loss_png, $archived_loss_file
+		    or die "link $loss_png, $archived_loss_file: $!";
+	}
+
+	warn "archived $archived_loss_file";
+    }
+
+    close GNUDAT; # releases the lock for this resolution
     warn "plotted files: $delays_png $loss_png" if VERBOSE;
     warn "data file: $gnu_dat" if VERBOSE;
 }
@@ -448,7 +522,7 @@ sub code2unit {
     $t eq 'y' && return 'year'
 };
 
-sub mdHMS {
+sub ymdHMS {
     my ($second, $minute, $hour, $day, $mon, $year, $wday, $yday)
 	    = gmtime($_[0]);
     $mon++;
@@ -503,7 +577,7 @@ sub get_buck_ref {
     # Lost packets get "infinite" delay.
 #    push @pairs, [MAX_BUCKET, $lost] if $lost;
 
-    return [$sent, $min, $lost, \@pairs];
+    return [$sent, $min, $lost, \@pairs, $prec];
 }
 
 sub print_pairs {
