@@ -40,9 +40,12 @@
 (qsort(base, nmemb, size, compar), 0)
 #endif
 
-#define PREC_THRESHOLD  ((u_int8_t)35)   /* packets where EITHER sender OR
-					    receiver has fewer precision bits
-					    get thrown out */
+/*
+ * Default threshold for ignoring data. If the error estimate isn't
+ * at least within 125 msec's, treat it as missing data.
+ */
+#define PREC_THRESHOLD  (0.125)
+
 
 static I2ErrHandle	eh;
 static char magic[9] = "OwDigest";
@@ -58,22 +61,6 @@ typedef struct state {
 	OWPDataRec *records;            /* records to be sorted              */
 	int        cur;                 /* current index to place new record */
 } state, *state_ptr;
-
-#define OWP_CMP(a,b) ((a) < (b))? -1 : (((a) == (b))? 0 : 1)
-#define OWP_MIN(a,b) ((a) < (b))? (a) : (b)
-#define OWP_MAX(a,b) ((a) < (b))? (b) : (a)
-
-/*
-** The function returns -1. 0 or 1 if the first record's sequence
-** number is respectively less than, equal to, or greater than that 
-** of the second.
-*/
-int
-owp_seqno_cmp(OWPDataRecPtr a, OWPDataRecPtr b)
-{
-	assert(a); assert(b);
-	return OWP_CMP(a->seq_no, b->seq_no);
-}
 
 
 #define OWP_MAX_BUCKET  (OWP_NUM_LOW + OWP_NUM_MID + OWP_NUM_HIGH - 1)
@@ -110,33 +97,32 @@ owp_bucket(double delay)
 	return OWP_MAX_BUCKET;
 }
 
+/*
+** The function returns <0. 0 or >0 if the first record's sequence
+** number is respectively less than, equal to, or greater than that 
+** of the second.
+*/
 int
-tstamp_cmp(const void *a, const void *b)
+owp_seqno_cmp(
+	const void	*a,
+	const void	*b
+	)
 {
-	OWPDataRecPtr first = (OWPDataRecPtr)a;
-	OWPDataRecPtr second  = (OWPDataRecPtr)b;
+	OWPDataRec	*ar = (OWPDataRec*)a;
+	OWPDataRec	*br = (OWPDataRec*)b;
 
-	if (first->send.sec < second->send.sec
-	    || (first->send.sec == second->send.sec 
-		&& first->send.frac_sec < second->send.frac_sec))
-		return -1;
-
-	if (first->send.sec > second->send.sec
-	    || (first->send.sec == second->send.sec 
-		&& first->send.frac_sec > second->send.frac_sec))
-		return 1;
-
-	return 0;
+	return ar->seq_no - br->seq_no;
 }
 
 int
-do_single_record(void *calldata, OWPDataRecPtr rec) 
+do_single_record(
+		OWPDataRec	*rec,
+		void		*calldata
+		)
 {
 	state_ptr s = (state_ptr)calldata;
-	assert(s); assert(rec);
 
-	memcpy(&s->records[s->cur], rec, sizeof(*rec));
-	s->cur++;
+	s->records[s->cur++] = *rec;
 	
 	return 0;
 }
@@ -155,37 +141,39 @@ usage()
 ** Print out a record. Used for debugging.
 */
 void
-print_rec(OWPDataRecPtr rec, int full)
+print_rec(
+	OWPDataRec	*rec,
+	int		full
+	)
 {
-	double delay = owp_delay(&rec->send, &rec->recv);
+	double delay = OWPDelay(&rec->send, &rec->recv);
 				 
 	if (full) {
 		if (!OWPIsLostRecord(rec))
 			fprintf(stdout, 
-			  "#%-10u send=%8X:%-8X %u%c     recv=%8X:%-8X %u%c\n",
-				rec->seq_no, rec->send.sec, 
-				rec->send.frac_sec, rec->send.prec, 
+			  "#%-10u send=%f %f%c     recv=%f %f%c\n",
+				rec->seq_no,
+				OWPNum64ToDouble(rec->send.owptime),
+				OWPGetTimeStampError(&rec->send),
 				(rec->send.sync)? 'S' : 'U', 
-				rec->recv.sec, rec->recv.frac_sec, 
-				rec->recv.prec, 
+				OWPNum64ToDouble(rec->recv.owptime),
+				OWPGetTimeStampError(&rec->recv),
 				(rec->recv.sync)? 'S' : 'U');
 		else
 			fprintf(stdout, 
-				"#%-10u send=%8X:%-8X %u%c     *LOST*\n",
-				rec->seq_no, rec->send.sec, 
-				rec->send.frac_sec, rec->send.prec, 
-				(rec->send.sync)? 'S' : 'U');
+				"#%-10u send=%f		*LOST*\n",
+				rec->seq_no,
+				OWPNum64ToDouble(rec->send.owptime));
 		return;
 	}
 	
 	if (!OWPIsLostRecord(rec)) {
 		if (rec->send.sync && rec->recv.sync) {
-			double prec = owp_bits2prec(rec->send.prec) 
-				+ owp_bits2prec(rec->recv.prec);
+			double prec = OWPGetTimeStampError(&rec->send) +
+					OWPGetTimeStampError(&rec->recv);
 			fprintf(stdout, 
 	      "seq_no=%-10u delay=%.3f ms       (sync, precision %.3f ms)\n", 
-				rec->seq_no, delay*THOUSAND, 
-				prec*THOUSAND);
+				rec->seq_no, delay*THOUSAND, prec*THOUSAND);
 		} else
 			fprintf(stdout, 
 				"seq_no=%u delay=%.3f ms (unsync)\n",
@@ -200,28 +188,32 @@ print_rec(OWPDataRecPtr rec, int full)
 int
 main(int argc, char *argv[]) 
 {
-	FILE *fp, *out = stdout;
-	u_int32_t hdr_len, num_rec, i, last_seqno, dup, sent, lost, debsent;
-	state s;
-	u_int8_t prec = PREC_THRESHOLD;
-	u_int32_t *counts;
-	double delay, min;
-	u_int8_t worst_prec_bits = 64;
-	u_int8_t best_prec_bits = 0;
+	FILE			*fp,
+				*out = stdout;
+	OWPSessionHeaderRec	hdr;
+	off_t			hdr_len;
+	u_int32_t		num_rec, i, last_seqno,
+				dup, sent, lost;
+	state			s;
+	double			prec = PREC_THRESHOLD;
+	u_int32_t		*counts;
+	double			delay, min;
+	double			worst_prec;
+	double			best_prec;
 
 	I2ErrLogSyslogAttr	syslogattr;
-	int fac;
+	int			fac;
 	
-	char     *progname;
-	int num_buckets, ch, verbose = 0;
+	char			*progname;
+	int			num_buckets, ch, verbose = 0;
 	I2LogImmediateAttr	ia;
-
-	u_int8_t out_hdrlen = sizeof(magic) + sizeof(version) 
-		+ sizeof(prec) + sizeof(out_hdrlen) + sizeof(sent) 
-		+ sizeof(lost) + sizeof(dup) + sizeof(min);
-
-	OWPInitializeConfigRec	owpcfg = {{0,0},NULL,NULL,NULL,NULL,0,NULL};
+	u_int8_t		out_hdrlen;
 	OWPContext		ctx;
+	int			first;
+
+	out_hdrlen = sizeof(magic) + sizeof(version) + sizeof(prec) +
+			sizeof(out_hdrlen) + sizeof(sent) + sizeof(lost) +
+			sizeof(dup) + sizeof(min);
 
 	ia.line_info = (I2NAME | I2MSG);
 	ia.fp = stderr;
@@ -236,11 +228,19 @@ main(int argc, char *argv[])
 	syslogattr.line_info |= I2FILE | I2LINE;
 #endif
 
-	while ((ch = getopt(argc, argv, "hp:v")) != -1)
+	while((ch = getopt(argc, argv, "hp:v")) != -1){
+		char	*endptr;
+
 		switch (ch) {
 			/* Connection options. */
 		case 'p':
-			prec = (u_int8_t)atoi(optarg);
+			prec = strtod(optarg, &endptr);
+			if(*endptr != '\0'){
+				fprintf(stderr,
+				"Invalid -p: min acceptable precision \"%s\"",
+					optarg);
+				exit(1);
+			}
 			break;
 		case 'v':
 			verbose = 1;
@@ -262,6 +262,7 @@ main(int argc, char *argv[])
 		default:
 			usage();
 		}
+	}
 
 	argc -= optind;
 	argv += optind;
@@ -278,8 +279,7 @@ main(int argc, char *argv[])
 		exit(1);
 	}
 
-	owpcfg.eh = eh;
-	if(!(ctx = OWPContextInitialize(&owpcfg))){
+	if(!(ctx = OWPContextCreate(eh))){
 		I2ErrLog(eh,"Unable to initialize OWP library.");
 		exit(1);
 	}
@@ -309,7 +309,7 @@ main(int argc, char *argv[])
 		counts[i] = 0;
 	
 	if ((fp = fopen(argv[0], "rb")) == NULL){
-		I2ErrLog(eh, "fopen(%s):%M", argv[0]);
+		I2ErrLog(eh, "fopen(%s): %M", argv[0]);
 		exit(1);
 	}
 
@@ -318,86 +318,78 @@ main(int argc, char *argv[])
 		exit(1);
 	}
 		
-	if (!(num_rec = OWPReadDataHeader(ctx,fp,&hdr_len,NULL))) {
+	if(!(num_rec = OWPReadDataHeader(ctx,fp,&hdr_len,&hdr))){
 		I2ErrLog(eh,"OWPReadDataHeader");
 		exit(1);
 	}
 
 	s.records = (OWPDataRec *)malloc(num_rec * sizeof(OWPDataRec));
 	if (s.records == NULL) {
-		I2ErrLog(eh, "malloc():%M");
+		I2ErrLog(eh, "malloc(): %M");
 		exit(1);
 	}
 	s.cur = 0;
 	
-	if(OWPParseRecords(fp,num_rec,NULL,do_single_record,&s)
+	if(OWPParseRecords(ctx,fp,num_rec,hdr.version,do_single_record,&s)
 							< OWPErrWARNING){
-		I2ErrLog(eh,"OWPParseRecords():%M");
+		I2ErrLog(eh,"OWPParseRecords(): %M");
 		exit(1);
 	}
 
-	/* Computing reordering stats is done here. */
+	/* sort the records in seq_no order */
 
-	if (mergesort(s.records, num_rec, sizeof(OWPDataRec), tstamp_cmp) < 0){
-		I2ErrLog(eh,"mergesort():%M");
+	if(mergesort(s.records,num_rec,sizeof(OWPDataRec),owp_seqno_cmp) < 0){
+		I2ErrLog(eh,"mergesort(): %M");
 		exit(1);
 	}
 
-	sent = lost = dup = debsent = 0;
-	last_seqno = 0xFFFFFFFF;
-	min = 9999999.0;
+	first=1;
+	sent = lost = dup = 0;
 
 	/* Do a single pass through the sorted records. */
 	for (i = 0; i < num_rec; i++) {
-		int bucket;
-		u_int8_t prec_bits = OWPGetPrecBits(&s.records[i]);
-#ifdef LATER
-		u_int32_t min_bits, max_bits;
-#endif
-#ifdef DIGEST_DEBUG
-		fprintf(stderr, "DEBUG: packet %d has prec_bits = %u\n",
-			i, prec_bits);
-#endif
-		debsent++;
-
-		if (verbose)
-			printf("prec = %u\n", prec);
-
-		if (prec_bits < prec) {
-			fprintf(stderr, "prec=%u, real_prec=%u\n",
-				prec, prec_bits);
-			continue;
-		}
-
-
-		if (s.records[i].seq_no == last_seqno) {
-			dup++;
-			continue;
-		}
-#ifdef LATER
-		max_bits = OWP_MAX(s.records[i].send.prec,
-				   s.records[i].recv.prec);
-		min_bits = OWP_MIN(s.records[i].send.prec,
-				   s.records[i].recv.prec);
-#endif
-		sent++;
-		last_seqno = s.records[i].seq_no;
+		int	bucket;
+		double	rec_prec;
 
 		if (OWPIsLostRecord(&s.records[i])) {
 			lost++;
 			continue;
 		}
 
-		delay = owp_delay(&s.records[i].send, &s.records[i].recv);
-		if (delay < min)
+		rec_prec = OWPGetTimeStampError(&s.records[i].send) +
+			OWPGetTimeStampError(&s.records[i].recv);
+
+		if (rec_prec > prec) {
+			fprintf(stderr,
+				"Bad Record: prec required=%f, rec prec=%f\n",
+				prec, rec_prec);
+			continue;
+		}
+
+		if(!first && (s.records[i].seq_no == last_seqno)){
+			dup++;
+			continue;
+		}
+
+		sent++;
+		last_seqno = s.records[i].seq_no;
+
+		delay = OWPDelay(&s.records[i].send, &s.records[i].recv);
+		if(first || (delay < min)){
 			min = delay;
-		
-		if (prec_bits < worst_prec_bits)
-			worst_prec_bits = prec_bits;
-		if (prec_bits > best_prec_bits)
-			best_prec_bits = prec_bits;
+		}
+
+		if(first || (rec_prec > worst_prec)){
+			worst_prec = rec_prec;
+		}
+
+		if(first || (rec_prec < best_prec)){
+			best_prec = rec_prec;
+		}
+
+		first=0;
 #ifdef DIGEST_DEBUG
-		fprintf(stderr, "DEBUG: worst = %u\n", worst_prec_bits);
+		fprintf(stderr, "DEBUG: worst = %f\n", worst_prec);
 #endif
 		bucket = owp_bucket(delay);
 		assert((0 <= bucket) && (bucket <= OWP_MAX_BUCKET));
@@ -406,9 +398,6 @@ main(int argc, char *argv[])
 		if (verbose)
 			print_rec(&s.records[i], 0);
 	}
-#ifdef DIGEST_DEBUG
-	fprintf(stderr, "sent=%u, debsent=%u\n", sent, debsent);
-#endif
 
 	/* 
 	   Header contains: magic number, version, header length,
@@ -419,13 +408,15 @@ main(int argc, char *argv[])
 	   header versions.
 	*/
 	if (sent == 0) {
-		I2ErrLog(eh,"all packets discarded - session had maximum prec_bits == %u", best_prec_bits);
+		I2ErrLog(eh,
+			"all packets discarded - session had best prec == %f",
+			best_prec);
 	}
 
 	if ((fwrite(magic, 1, sizeof(magic), out) < 1) 
 	    || (fwrite(&version, sizeof(version), 1, out) < 1)
 	    || (fwrite(&out_hdrlen, sizeof(out_hdrlen), 1, out) < 1)
-	    || (fwrite(&worst_prec_bits, sizeof(worst_prec_bits), 1, out) < 1)
+	    || (fwrite(&worst_prec, sizeof(worst_prec), 1, out) < 1)
 	    || (fwrite(&sent, sizeof(sent), 1, out) < 1)
 	    || (fwrite(&lost, sizeof(lost), 1, out) < 1)
 	    || (fwrite(&dup, sizeof(dup), 1, out) < 1)

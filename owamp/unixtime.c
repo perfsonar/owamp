@@ -58,5 +58,5 @@ OWPGetTimeOfDay(
 	if(gettimeofday(&tval,NULL) != 0)
 		return NULL;
 
-	return OWPCvtTimeval2Timestamp(tstamp,&tval);
+	return OWPTimevalToTimestamp(tstamp,&tval);
 }

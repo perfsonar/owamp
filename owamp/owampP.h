@@ -31,6 +31,7 @@
 #include <unistd.h>
 #include <netdb.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/socket.h>
 #include <sys/param.h>
@@ -43,52 +44,72 @@
 #include <I2util/util.h>
 #include <owamp/owamp.h>
 
-#define	_OWP_DO_CIPHER		(OWP_MODE_AUTHENTICATED|OWP_MODE_ENCRYPTED)
-
 /* 
 ** Lengths (in 16-byte blocks) of various Control messages. 
 */
 #define _OWP_RIJNDAEL_BLOCK_SIZE	16
-#define _OWP_TEST_REQUEST_BLK_LEN	6
+#define _OWP_TEST_REQUEST_BLK_LEN	7
 #define _OWP_START_SESSIONS_BLK_LEN	2
 #define _OWP_STOP_SESSIONS_BLK_LEN	2
-#define _OWP_RETRIEVE_SESSION_BLK_LEN	3
+#define _OWP_FETCH_SESSION_BLK_LEN	3
 #define _OWP_CONTROL_ACK_BLK_LEN	2
 #define _OWP_MAX_MSG_BLK_LEN		_OWP_TEST_REQUEST_BLK_LEN
 #define _OWP_MAX_MSG	(_OWP_MAX_MSG_BLK_LEN*_OWP_RIJNDAEL_BLOCK_SIZE)
-#define	_OWP_TS_REC_SIZE	20
+#define _OWP_TEST_REQUEST_PREAMBLE_SIZE	(_OWP_TEST_REQUEST_BLK_LEN*_OWP_RIJNDAEL_BLOCK_SIZE)
+#define	_OWP_TESTREC_SIZE	24
+
+/*
+ * The FETCH buffer is the smallest multiple of both the _OWP_TS_REC_SIZE
+ * and the _OWP_RIJNDAEL_BLOCK_SIZE. The following must be true:
+ * _OWP_FETCH_AES_BLOCKS * _OWP_RIJNDAEL_BLOCK_SIZE == _OWP_FETCH_BUFFSIZE
+ * _OWP_FETCH_TESTREC_BLOCKS * _OWP_TESTREC_SIZE == _OWP_FETCH_BUFFSIZE
+ */
+#define _OWP_FETCH_BUFFSIZE		48
+#define _OWP_FETCH_AES_BLOCKS		3
+#define _OWP_FETCH_TESTREC_BLOCKS	2
+
+#if (_OWP_FETCH_BUFFSIZE != (_OWP_RIJNDAEL_BLOCK_SIZE * _OWP_FETCH_AES_BLOCKS))
+#error "Fetch Buffer is mis-sized for AES block size!"
+#endif
+#if (_OWP_FETCH_BUFFSIZE != (_OWP_TESTREC_SIZE * _OWP_FETCH_TESTREC_BLOCKS))
+#error "Fetch Buffer is mis-sized for Test Record Size!"
+#endif
 
 /*
  * Control state constants.
  */
 /* initial & invalid */
-#define	_OWPStateInitial	(0x00)
-#define	_OWPStateInvalid	(0x00)
+#define	_OWPStateInitial		(0x0000)
+#define	_OWPStateInvalid		(0x0000)
 /* during negotiation */
-#define	_OWPStateSetup		(0x01)
+#define	_OWPStateSetup			(0x0001)
+#define	_OWPStateUptime			(_OWPStateSetup << 1)
 /* after negotiation ready for requests */
-#define	_OWPStateRequest	(0x02)
+#define	_OWPStateRequest		(_OWPStateUptime << 1)
 /* test sessions are active  */
-#define	_OWPStateTest		(0x04)
+#define	_OWPStateTest			(_OWPStateRequest << 1)
 /*
  * The following states are for partially read messages on the server.
  */
-#define _OWPStateTestRequest		(0x08)
-#define _OWPStateStartSessions		(0x010)
-#define _OWPStateStopSessions		(0x020)
-#define _OWPStateRetrieveSession	(0x040)
+#define _OWPStateTestRequest		(_OWPStateTest << 1)
+#define _OWPStateTestRequestSlots	(_OWPStateTestRequest << 1)
+#define _OWPStateStartSessions		(_OWPStateTestRequestSlots << 1)
+#define _OWPStateStopSessions		(_OWPStateStartSessions << 1)
+#define _OWPStateFetchSession		(_OWPStateStopSessions << 1)
+#define _OWPStateTestAccept		(_OWPStateFetchSession << 1)
+#define _OWPStateControlAck		(_OWPStateTestAccept << 1)
+/* during fetch-session */
+#define _OWPStateFetching		(_OWPStateControlAck << 1)
+#define _OWPStateFetchingRecords	(_OWPStateFetching << 1)
 
-/* from the server side - "Reading" indicates a partially read request */
-#define _OWPStateReading	(_OWPStateTestRequest|_OWPStateStartSessions|_OWPStateStopSessions|_OWPStateRetrieveSession)
+/* Reading indicates partial read request-ReadRequestType without remainder */
+#define _OWPStateReading	(_OWPStateTestRequest|_OWPStateStartSessions|_OWPStateStopSessions|_OWPStateFetchSession)
 
-#define _OWPStateTestAccept	(0x080)
-#define _OWPStateControlAck	(0x0100)
 /*
  * "Pending" indicates waiting for server response to a request.
  */
 #define	_OWPStatePending	(_OWPStateTestAccept|_OWPStateControlAck|_OWPStateStopSessions)
 
-#define _OWPStateFetch          (0x0200)   /* during fetch-session */
 
 #define	_OWPStateIsInitial(c)	(!(c)->state)
 #define	_OWPStateIsSetup(c)	(!(_OWPStateSetup ^ (c)->state))
@@ -98,7 +119,8 @@
 #define	_OWPStateIsRequest(c)	_OWPStateIs(_OWPStateRequest,c)
 #define	_OWPStateIsReading(c)	_OWPStateIs((_OWPStateReading),c)
 #define _OWPStateIsPending(c)	_OWPStateIs(_OWPStatePending,c)
-#define _OWPStateIsFetch(c)	_OWPStateIs(_OWPStateFetch,c)
+#define _OWPStateIsFetchSession(c)	_OWPStateIs(_OWPStateFetchSession,c)
+#define _OWPStateIsFetching(c)	_OWPStateIs(_OWPStateFetching,c)
 #define	_OWPStateIsTest(c)	_OWPStateIs(_OWPStateTest,c)
 
 /*
@@ -114,9 +136,13 @@ typedef struct OWPContextRec OWPContextRec;
 typedef struct OWPAddrRec OWPAddrRec;
 typedef struct OWPControlRec OWPControlRec;
 
+#define _OWP_CONTEXT_TABLE_SIZE	64
+#define _OWP_CONTEXT_MAX_KEYLEN	64
+
 struct OWPContextRec{
-	OWPInitializeConfigRec	cfg;
 	OWPBoolean		lib_eh;
+	I2ErrHandle		eh;
+	I2Table			table;
 	I2RandomSource		rand_src;
 	OWPControlRec		*cntrl_list;
 };
@@ -149,7 +175,11 @@ struct OWPControlRec{
 	 */
 	OWPContext		ctx;
 
-	void			*app_data;
+	/*
+	 * Hash for maintaining Policy state data.
+	 */
+	I2Table			table;
+
 	/*
 	 * Control connection state information.
 	 */
@@ -157,18 +187,15 @@ struct OWPControlRec{
 	int			state;	/* current state of connection */
 	OWPSessionMode		mode;
 
-	struct timeval		delay_bound;
-					/* Very rough upper bound estimate of
-					 * rtt.
-					 * this is only used to try and make
-					 * a rough guess as to how long after
-					 * the last packet of a test session
-					 * we can reasonably expect all the
-					 * packets to have been received.
-					 * (Bookkeeping can then start
-					 * without too adversely effecting
-					 * performace of test.)
-					 */
+				/*
+				 * Very rough upper bound estimate of
+				 * rtt.
+				 * Used by clients to estimate a
+				 * good "start" time for tests that
+				 * is just beyond the amount of time
+				 * it takes to request the test.
+				 */
+	OWPNum64		rtt_bound;
 	/*
 	 * This field is initialized to zero and used for comparisons
 	 * to ensure AES is working.
@@ -191,8 +218,9 @@ struct OWPControlRec{
 	/*
 	 * Encryption fields
 	 */
-	char			*kid; /* null if not set - else kid_buffer */
-	char			kid_buffer[17];
+				/* null if not set - else userid_buffer */
+	u_int8_t		*userid;
+	OWPUserID		userid_buffer;
 	keyInstance             encrypt_key;
 	keyInstance             decrypt_key;
 	u_int8_t		session_key[16];
@@ -203,18 +231,68 @@ struct OWPControlRec{
 	OWPTestSession		tests;
 };
 
+typedef struct OWPLostPacketRec OWPLostPacketRec, *OWPLostPacket;
+struct OWPLostPacketRec{
+	u_int64_t	seq;
+	OWPBoolean	hit;
+	OWPNum64	relative;
+	struct timespec	absolute;	/* absolute time */
+	OWPLostPacket	next;
+};
+
+
+/*
+ * This type holds all the information needed for an endpoint to be
+ * managed.
+ */
+typedef struct OWPEndpointRec{
+	OWPControl		cntrl;
+	OWPTestSession		tsession;
+
+#ifndef	NDEBUG
+	I2Boolean		childwait;
+#endif
+
+	OWPAcceptType		acceptval;
+	pid_t			child;
+	int			wopts;
+	OWPBoolean		send;
+	int			sockfd;
+	OWPAddr			remoteaddr;
+
+	char			fname[PATH_MAX];
+	FILE			*userfile;	/* from _OWPOpenFile */
+	FILE			*datafile;	/* correct buffering */
+	char			*fbuff;
+
+	struct timespec		start;
+	u_int8_t		*payload;
+
+	size_t			len_payload;
+
+	OWPLostPacket		freelist;
+	OWPLostPacket		begin;
+	OWPLostPacket		end;
+	u_int64_t		numalist;
+	I2Table			lost_packet_buffer;
+
+} OWPEndpointRec, *OWPEndpoint;
+
+#define _OWPSLOT_BUFSIZE	10
 struct OWPTestSessionRec{
 	OWPControl			cntrl;
 	OWPSID				sid;
 	OWPAddr				sender;
 	OWPAddr				receiver;
-	OWPBoolean			send_local;
-	OWPBoolean			recv_local;
-	void				*send_end_data;
-	void				*recv_end_data;
+	OWPBoolean			conf_sender;
+	OWPBoolean			conf_receiver;
 	OWPTestSpec			test_spec;
-	OWPnum64			*schedule;
-	OWPnum64			last;
+	OWPSlot				slot_buffer[_OWPSLOT_BUFSIZE];
+
+	OWPEndpoint			endpoint;
+	void				*closure; /* per/test app data */
+
+	OWPScheduleContext		sctx;
 	OWPTestSession			next;
 };
 
@@ -229,13 +307,6 @@ _OWPAddrAlloc(
 extern OWPAddr
 _OWPAddrCopy(
 	OWPAddr		from
-	);
-
-extern OWPControl
-_OWPControlAlloc(
-	OWPContext	ctx,
-	void		*app_data,	/* set app_data for this conn */
-	OWPErrSeverity	*err_ret
 	);
 
 extern OWPTestSession
@@ -259,21 +330,45 @@ _OWPCreateSID(
 	OWPTestSession	tsession
 	);
 
+#define	_OWP_SESSION_FIN_ERROR	0
+#define	_OWP_SESSION_FIN_NORMAL	1
+#define _OWP_SESSION_FIN_INCOMPLETE	2
+
 extern int
-_OWPTestSessionCreateSchedule(
-		OWPTestSession	tsession
+_OWPWriteDataHeaderFinished(
+		OWPContext	ctx,
+		FILE		*fp,
+		u_int32_t	finished
+		);
+
+extern int
+_OWPReadDataHeaderInitial(
+		OWPContext	ctx,
+		FILE		*fp,
+		u_int32_t	*ver,
+		u_int32_t	*fin,	/* only set if (*ver >= 2) */
+		off_t		*hdr_off,
+		struct stat	*stat_buf
 		);
 
 /*
  * io.c prototypes
  */
 extern int
-_OWPConnect(
-	int		fd,
-	struct sockaddr	*ai_addr,
-	size_t		ai_addr_len,
-	struct timeval	*tm_out
-	   );
+_OWPSendBlocksIntr(
+	OWPControl	cntrl,
+	u_int8_t	*buf,
+	int		num_blocks,
+	int		*retn_on_intr
+	      );
+
+extern int
+_OWPReceiveBlocksIntr(
+	OWPControl	cntrl,
+	u_int8_t	*buf,
+	int		num_blocks,
+	int		*retn_on_intr
+		);
 
 extern int
 _OWPSendBlocks(
@@ -333,7 +428,8 @@ extern OWPErrSeverity
 _OWPWriteServerGreeting(
 	OWPControl	cntrl,
 	u_int32_t	avail_modes,
-	u_int8_t	*challenge	/* [16] */
+	u_int8_t	*challenge,	/* [16] */
+	int		*retn_on_intr
 	);
 
 extern OWPErrSeverity
@@ -354,13 +450,16 @@ _OWPReadClientGreeting(
 	OWPControl	cntrl,
 	u_int32_t	*mode,
 	u_int8_t	*token,		/* [32] - return	*/
-	u_int8_t	*clientIV	/* [16] - return	*/
+	u_int8_t	*clientIV,	/* [16] - return	*/
+	int		*retn_on_intr
 	);
 
 extern OWPErrSeverity
 _OWPWriteServerOK(
 	OWPControl	cntrl,
-	OWPAcceptType	code
+	OWPAcceptType	code,
+	OWPNum64	uptime,
+	int		*retn_on_intr
 	);
 
 extern OWPErrSeverity
@@ -369,13 +468,14 @@ _OWPReadServerOK(
 	OWPAcceptType	*acceptval	/* ret	*/
 	);
 
-extern int
-OWPReadRequestType(
-	OWPControl	cntrl
+extern OWPErrSeverity
+_OWPReadServerUptime(
+	OWPControl	cntrl,
+	OWPNum64	*uptime_ret
 	);
 
 extern int
-_OWPEncodeV3TestRequest(
+_OWPEncodeTestRequestPreamble(
 	OWPContext	ctx,
 	u_int32_t	*msg,
 	u_int32_t	*len_ret,
@@ -384,11 +484,11 @@ _OWPEncodeV3TestRequest(
 	OWPBoolean	server_conf_sender,
 	OWPBoolean	server_conf_receiver,
 	OWPSID		sid,
-	OWPTestSpec	*test_spec
+	OWPTestSpec	*tspec
 	);
 
 extern OWPErrSeverity
-_OWPDecodeV3TestRequest(
+_OWPDecodeTestRequestPreamble(
 	OWPContext	ctx,
 	u_int32_t	*msg,
 	u_int32_t	msg_len,
@@ -401,7 +501,17 @@ _OWPDecodeV3TestRequest(
 	OWPSID		sid,
 	OWPTestSpec	*test_spec
 	);
-	
+
+extern OWPErrSeverity
+_OWPEncodeSlot(
+	u_int32_t	*msg,	/* [4] - one block/ 16 bytes 32 bit aligned */
+	OWPSlot		*slot
+	);
+extern OWPErrSeverity
+_OWPDecodeSlot(
+	OWPSlot		*slot,
+	u_int32_t	*msg	/* [4] - one block/ 16 bytes 32 bit aligned */
+	);
 
 extern OWPErrSeverity
 _OWPWriteTestRequest(
@@ -414,22 +524,38 @@ _OWPWriteTestRequest(
 	OWPTestSpec	*test_spec
 );
 
+/*
+ * This function can be called from a server or client context. From the
+ * server it is reading an actual new request. From the client it is part
+ * of a FetchSession response. The server code MUST set the accept_ret
+ * pointer to a valid OWPAcceptType record. This record will be filled
+ * in with the appropriate AcceptType value for a response. The client
+ * code MUST set this to NULL.
+ */
 extern OWPErrSeverity
 _OWPReadTestRequest(
 	OWPControl	cntrl,
-	struct sockaddr	*sender,
-	struct sockaddr	*receiver,
-	socklen_t	*socklen,
-	u_int8_t	*ipvn,
-	OWPBoolean	*server_conf_sender,
-	OWPBoolean	*server_conf_receiver,
-	OWPSID		sid,
-	OWPTestSpec	*test_spec
-);
+	int		*retn_on_intr,
+	OWPTestSession	*test_session,
+	OWPAcceptType	*accept_ret
+	);
+
+extern OWPBoolean
+_OWPEncodeDataRecord(
+	u_int8_t	buf[24],
+	OWPDataRec	*rec
+	);
+
+extern OWPBoolean
+_OWPDecodeDataRecord(
+	OWPDataRec	*rec,
+	u_int8_t	buf[24]
+	);
 
 extern OWPErrSeverity
 _OWPWriteTestAccept(
 	OWPControl	cntrl,
+	int		*retn_on_intr,
 	OWPAcceptType	acceptval,
 	u_int16_t	port,
 	OWPSID		sid
@@ -450,23 +576,26 @@ _OWPWriteStartSessions(
 
 extern OWPErrSeverity
 _OWPReadStartSessions(
-	OWPControl	cntrl
+	OWPControl	cntrl,
+	int		*retn_on_intr
 );
 
 extern OWPErrSeverity
 _OWPWriteStopSessions(
 	OWPControl	cntrl,
+	int		*retn_on_intr,
 	OWPAcceptType	acceptval
 	);
 
 extern OWPErrSeverity
 _OWPReadStopSessions(
 	OWPControl	cntrl,
+	int		*retn_on_intr,
 	OWPAcceptType	*acceptval
 );
 
 extern OWPErrSeverity
-_OWPWriteRetrieveSession(
+_OWPWriteFetchSession(
 	OWPControl	cntrl,
 	u_int32_t	begin,
 	u_int32_t	end,
@@ -474,8 +603,9 @@ _OWPWriteRetrieveSession(
 	);
 
 extern OWPErrSeverity
-_OWPReadRetrieveSession(
+_OWPReadFetchSession(
 	OWPControl	cntrl,
+	int		*retn_on_intr,
 	u_int32_t	*begin,
 	u_int32_t	*end,
 	OWPSID		sid
@@ -484,6 +614,7 @@ _OWPReadRetrieveSession(
 extern OWPErrSeverity
 _OWPWriteControlAck(
 	OWPControl	cntrl,
+	int		*retn_on_intr,
 	OWPAcceptType	acceptval
 	);
 
@@ -494,23 +625,32 @@ _OWPReadControlAck(
 );
 
 extern OWPErrSeverity
-_OWPReadFetchHeader(
+_OWPWriteFetchRecordsHeader(
 	OWPControl	cntrl,
-	u_int32_t	*num_rec,
-	u_int8_t	*typeP
+	int		*retn_on_intr,
+	u_int64_t	num_rec
 	);
 
-/*
- * TODO:Send session data functions...
- */
+extern OWPErrSeverity
+_OWPReadFetchRecordsHeader(
+	OWPControl	cntrl,
+	u_int64_t	*num_rec
+	);
 
 /*
  * context.c
  */
+
+extern OWPControl
+_OWPControlAlloc(
+	OWPContext	ctx,
+	OWPErrSeverity	*err_ret
+	);
+
 extern OWPBoolean
 _OWPCallGetAESKey(
-	OWPControl	cntrl,		/* control record	*/
-	const char	*kid,		/* identifies key	*/
+	OWPContext	ctx,		/* context record	*/
+	const char	*userid,	/* identifies key	*/
 	u_int8_t	*key_ret,	/* key - return		*/
 	OWPErrSeverity	*err_ret	/* error - return	*/
 );
@@ -519,7 +659,7 @@ extern OWPBoolean
 _OWPCallCheckControlPolicy(
 	OWPControl	cntrl,		/* control record		*/
 	OWPSessionMode	mode,		/* requested mode       	*/
-	const char	*kid,		/* key identity			*/
+	const char	*userid,	/* key identity			*/
 	struct sockaddr	*local_sa_addr,	/* local addr or NULL		*/
 	struct sockaddr	*remote_sa_addr,/* remote addr			*/
 	OWPErrSeverity	*err_ret	/* error - return		*/
@@ -531,53 +671,81 @@ _OWPCallCheckTestPolicy(
 	OWPBoolean	local_sender,	/* Is local send or recv	*/
 	struct sockaddr	*local,		/* local endpoint		*/
 	struct sockaddr	*remote,	/* remote endpoint		*/
+	socklen_t	sa_len,		/* saddr sizes			*/
 	OWPTestSpec	*test_spec,	/* test requested		*/
+	void		**closure,	/* app data/per test		*/
 	OWPErrSeverity	*err_ret	/* error - return		*/
 );
 
+extern void
+_OWPCallTestComplete(
+	OWPTestSession	tsession,
+	OWPAcceptType	aval
+	);
+
+/*
+ * non-NULL closure indicates "receiver" - NULL indicates R/O Fetch.
+ */
+extern FILE *
+_OWPCallOpenFile(
+	OWPControl	cntrl,		/* control handle		*/
+	void		*closure,	/* app data/per test		*/
+	OWPSID		sid,		/* sid for datafile		*/
+	char		fname_ret[PATH_MAX+1]
+	);
+
+extern void
+_OWPCallCloseFile(
+	OWPControl	cntrl,
+	void		*closure,
+	FILE		*fp,
+	OWPAcceptType	aval
+	);
+
+
+/* endpoint.c */
+
+/*
+ * The endpoint init function is responsible for opening a socket, and
+ * allocating a local port number.
+ * If this is a recv endpoint, it is also responsible for allocating a
+ * session id.
+ */
 extern OWPBoolean
-_OWPCallEndpointInit(
-        OWPControl	cntrl,
+_OWPEndpointInit(
+	OWPControl	cntrl,
 	OWPTestSession	tsession,
 	OWPAddr		localaddr,
-	FILE		*fp,	/* only used if localaddr!=tsession->sender */
-	void		**end_data_ret,
+	FILE		*fp,
 	OWPErrSeverity	*err_ret
 );
 
 extern OWPBoolean
-_OWPCallEndpointInitHook(
+_OWPEndpointInitHook(
         OWPControl      cntrl,
 	OWPTestSession	tsession,
-	void            **end_data,
 	OWPErrSeverity  *err_ret
 );
 
 extern OWPBoolean
-_OWPCallEndpointStart(
-	OWPTestSession	tsession,
-	void		**end_data,
+_OWPEndpointStart(
+	OWPEndpoint	ep,
 	OWPErrSeverity	*err_ret
 	);
 
 extern OWPBoolean
-_OWPCallEndpointStatus(
-	OWPTestSession	tsession,
-	void		**end_data,
+_OWPEndpointStatus(
+	OWPEndpoint	ep,
 	OWPAcceptType	*aval,
 	OWPErrSeverity	*err_ret
 	);
 
 extern OWPBoolean
-_OWPCallEndpointStop(
-	OWPTestSession	tsession,
-	void		**end_data,
+_OWPEndpointStop(
+	OWPEndpoint	ep,
 	OWPAcceptType	aval,
 	OWPErrSeverity	*err_ret
 	);
-
-extern OWPContext
-OWPGetContext(OWPControl cntrl);
 
 /*
  * error.c
@@ -594,20 +762,27 @@ _OWPFailControlSession(
 
 /*
  * En/DecodeTimeStamp functions do not assume any alignment requirements
- * for buf.
+ * for buf. (Most functions in protocol.c assume u_int32_t alignment.)
  */
 extern void
-OWPEncodeTimeStamp(
+_OWPEncodeTimeStamp(
 	u_int8_t	buf[8],
 	OWPTimeStamp	*tstamp
 	);
+extern OWPBoolean
+_OWPEncodeTimeStampErrEstimate(
+	u_int8_t	buf[2],
+	OWPTimeStamp	*tstamp
+	);
 extern void
-OWPDecodeTimeStamp(
+_OWPDecodeTimeStamp(
 	OWPTimeStamp	*tstamp,
 	u_int8_t	buf[8]
 	);
-
-extern void owp_print_sockaddr(FILE *fp, struct sockaddr *sock);
-extern void owp_print_owpaddr(FILE *fp, OWPAddr addr);
+extern OWPBoolean
+_OWPDecodeTimeStampErrEstimate(
+	OWPTimeStamp	*tstamp,
+	u_int8_t	buf[2]
+	);
 
 #endif	/* OWAMPP_H */

@@ -14,14 +14,10 @@
 #	Author:		Anatoly Karp
 #			Internet2
 #
-#	Date:		Mon Sep 9 17:53:58 EDT 2002
+#	Date:		Fri Oct 18 17:53:58 EDT 2002
 #
-#	Description:	Makefile.am
-
-INCLUDES	= $(OWPINCS) $(I2UTILINCS)
-AM_CFLAGS	= $(OWP_PREFIX_CFLAGS)
-
-bin_PROGRAMS	 = owdigest
-owdigest_SOURCES = owdigest.c 
-owdigest_LDADD	 = $(OWPLIBS) $(I2UTILLIBS) $(MALLOCDEBUGLIBS)
-owdigest_DEPENDENCIES = $(OWPLIBDEPS) $(I2UTILLIBDEPS)
+#	Description:	constructing owamp conf files from templates
+#		This doesn't really do this yet - it just provides
+#		examples.
+noinst_DATA	= owampd.conf owampd.passwd owampd.limits
+EXTRA_DIST	= owampd.conf owampd.passwd owampd.limits

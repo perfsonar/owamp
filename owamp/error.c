@@ -34,8 +34,9 @@ OWPError_(
 	va_list		ap;
 
 	va_start(ap,fmt);
-	if(ctx && ctx->cfg.eh){
-		I2ErrLogVT(ctx->cfg.eh,(int)severity,etype,fmt,ap);
+
+	if(ctx && ctx->eh){
+		I2ErrLogVT(ctx->eh,(int)severity,etype,fmt,ap);
 	}
 	else{
 		char		buff[_OWP_ERR_MAXSTRING];

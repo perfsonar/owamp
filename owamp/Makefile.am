@@ -22,13 +22,14 @@ INCLUDES		= $(OWPINCS) $(I2UTILINCS)
 
 lib_LIBRARIES		= libowamp.a
 libowamp_a_SOURCES	= api.c capi.c sapi.c context.c error.c owampP.h \
-			protocol.c io.c \
-			endpoint.h endpoint.c time.c \
-			arithm64.h arithm64.c \
+			protocol.c io.c endpoint.c time.c arithm64.c \
 			rijndael-alg-fst.c rijndael-alg-fst.h \
 			rijndael-api-fst.c rijndael-api-fst.h \
-			util.c unixtime.c \
-			access2.c read_class2limits.c defaults.c print.c
+			util.c unixtime.c schedule.c
+#			policy.h policy.c
+#			access2.c read_class2limits.c defaults.c print.c
+
+EXTRA_DIST		= owamp.h
 
 # Need to rewrite this test slightly before making it a build test...
 #TESTS			= rijndael-test-fst

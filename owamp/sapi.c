@@ -22,16 +22,12 @@
  *	This file contains the api functions typically called from an
  *	owamp server application.
  */
+#include <stdlib.h>
+#include <assert.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 
 #include <owamp/owampP.h>
-/*
- * TODO: conndata shouldn't be accessed here - need to take the
- * conndata out of FetchSession and create an endpoint_open_session_file
- * function that returns the fd.
- */
-#include "conndata.h"
 
 static OWPAddr
 AddrByWildcard(
@@ -126,11 +122,12 @@ AddrSetSAddr(
 	OWPErrSeverity	*err_ret
 	)
 {
-	int		so_type;
-	socklen_t	so_typesize = sizeof(so_type);
-	struct sockaddr	*saddr=NULL;
-	struct addrinfo	*ai=NULL;
-	int		gai;
+	int			so_type;
+	socklen_t		so_typesize = sizeof(so_type);
+	struct sockaddr		*saddr=NULL;
+	struct addrinfo		*ai=NULL;
+	struct sockaddr_in	v4addr;
+	int			gai;
 
 	*err_ret = OWPErrOK;
 
@@ -149,14 +146,51 @@ AddrSetSAddr(
 		goto error;
 	}
 
-	if( !(saddr = malloc(fromaddrlen)) ||
+	if( !(saddr = malloc(sizeof(struct sockaddr_storage))) ||
 				!(ai = malloc(sizeof(struct addrinfo)))){
 		OWPError(addr->ctx,OWPErrFATAL,errno,"malloc():%s",
 				strerror(errno));
 		goto error;
 	}
 
-	memcpy((void*)saddr,(void*)fromaddr,fromaddrlen);
+	switch(fromaddr->sa_family){
+#ifdef	AF_INET6
+		struct sockaddr_in6	*v6addr;
+
+		case AF_INET6:
+			/*
+			 * If this is a mapped addr - create a sockaddr_in
+			 * for it instead. (This is so addr matching will
+			 * work later - and make sense for users attempting
+			 * to use v4.) Use this to reset fromaddr - then
+			 * fall through to INET case to memcpy.
+			 */
+			v6addr = (struct sockaddr_in6*)fromaddr;
+			if(IN6_IS_ADDR_V4MAPPED(&v6addr->sin6_addr)){
+				memset(&v4addr,0,sizeof(v4addr));
+#ifdef	HAVE_STRUCT_SOCKADDR_SA_LEN
+				v4addr.sin_len = sizeof(v4addr);
+#endif
+				v4addr.sin_family = AF_INET;
+				v4addr.sin_port = v6addr->sin6_port;
+				memcpy(&v4addr.sin_addr.s_addr,
+					&v6addr->sin6_addr.s6_addr[12],4);
+				fromaddr = (struct sockaddr*)&v4addr;
+				fromaddrlen = sizeof(v4addr);
+
+			}
+#endif
+			/* fall through */
+		case AF_INET:
+			memcpy((void*)saddr,(void*)fromaddr,fromaddrlen);
+			break;
+		default:
+			OWPError(addr->ctx,OWPErrFATAL,OWPErrINVALID,
+					"Invalid addr family");
+			goto error;
+			break;
+	}
+
 	ai->ai_flags = 0;
 	ai->ai_family = saddr->sa_family;
 	ai->ai_socktype = so_type;
@@ -393,7 +427,8 @@ OWPControlAccept(
 	struct sockaddr	*connsaddr,	/* connected socket addr	*/
 	socklen_t	connsaddrlen,	/* connected socket addr len	*/
 	u_int32_t	mode_offered,	/* advertised server mode	*/
-	void		*app_data,	/* set app_data for this conn	*/
+	OWPNum64	uptime,		/* uptime for server		*/
+	int		*retn_on_intr,	/* if *retn_on_intr return	*/
 	OWPErrSeverity	*err_ret	/* err - return			*/
 )
 {
@@ -402,11 +437,17 @@ OWPControlAccept(
 	u_int8_t	rawtoken[32];
 	u_int8_t	token[32];
 	int		rc;
-	struct timeval	tval;
+	struct timeval	tvalstart,tvalend;
+	int		ival=0;
+	int		*intr = &ival;
+
+	if(retn_on_intr){
+		intr = retn_on_intr;
+	}
 
 	*err_ret = OWPErrOK;
 
-	if ( !(cntrl = _OWPControlAlloc(ctx, app_data, err_ret)))
+	if ( !(cntrl = _OWPControlAlloc(ctx,err_ret)))
 		goto error;
 
 	cntrl->sockfd = connfd;
@@ -444,28 +485,41 @@ OWPControlAccept(
 		goto error;
 	}
 
-	if(gettimeofday(&tval,NULL)!=0){
+	if(gettimeofday(&tvalstart,NULL)!=0){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"gettimeofday():%M");
 		*err_ret = OWPErrFATAL;
 		goto error;
 	}
 	if( (rc = _OWPWriteServerGreeting(cntrl,mode_offered,
-						challenge)) < OWPErrOK){
+					challenge,intr)) < OWPErrOK){
 		*err_ret = (OWPErrSeverity)rc;
 		goto error;
 	}
 
-	if( (rc=_OWPReadClientGreeting(cntrl,&cntrl->mode,rawtoken,
-				       cntrl->readIV)) < OWPErrOK){
+	/*
+	 * If no mode offered, immediately close socket after sending
+	 * server greeting.
+	 */
+	if(!mode_offered){
+		OWPError(cntrl->ctx,OWPErrINFO,OWPErrPOLICY,
+	"Control request to (%s:%s) denied from (%s:%s): mode == 0",
+			 cntrl->local_addr->node,cntrl->local_addr->port,
+			 cntrl->remote_addr->node,cntrl->remote_addr->port);
+		goto error;
+	}
+
+	if((rc = _OWPReadClientGreeting(cntrl,&cntrl->mode,rawtoken,
+				       cntrl->readIV,intr)) < OWPErrOK){
 		*err_ret = (OWPErrSeverity)rc;
 		goto error;
 	}
-	if(gettimeofday(&cntrl->delay_bound,NULL)!=0){
+	if(gettimeofday(&tvalend,NULL)!=0){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"gettimeofday():%M");
 		*err_ret = OWPErrFATAL;
 		goto error;
 	}
-	tvalsub(&cntrl->delay_bound,&tval);
+	tvalsub(&tvalend,&tvalstart);
+	OWPTimevalToNum64(&cntrl->rtt_bound,&tvalend);
 
 	/* insure that exactly one mode is chosen */
 	if(	(cntrl->mode != OWP_MODE_OPEN) &&
@@ -481,25 +535,27 @@ OWPControlAccept(
 			 cntrl->local_addr->node,cntrl->local_addr->port,
 			 cntrl->remote_addr->node,
 			 cntrl->remote_addr->port,cntrl->mode);
-		if( (rc = _OWPWriteServerOK(cntrl, OWP_CNTRL_REJECT))<OWPErrOK)
+		if( (rc = _OWPWriteServerOK(cntrl,OWP_CNTRL_REJECT,0,intr)) <
+								OWPErrOK){
 			*err_ret = (OWPErrSeverity)rc;
+		}
 		goto error;
 	}
 	
 	if(cntrl->mode & (OWP_MODE_AUTHENTICATED|OWP_MODE_ENCRYPTED)){
-		u_int8_t binKey[16];
+		u_int8_t	binKey[16];
+		OWPBoolean	getkey_success;
 		
 		/* Fetch the encryption key into binKey */
-		if(!_OWPCallGetAESKey(cntrl,cntrl->kid_buffer,binKey,err_ret)){
-			if(*err_ret == OWPErrOK){
-				OWPError(cntrl->ctx,OWPErrINFO,OWPErrPOLICY,
-					"Unknown kid (%s)",cntrl->kid_buffer);
-				(void)_OWPWriteServerOK(cntrl,
-							OWP_CNTRL_REJECT);
-			}else{
-				(void)_OWPWriteServerOK(cntrl,
-						OWP_CNTRL_FAILURE);
-			}
+		/*
+		 * go through the motions of decrypting token even if
+		 * getkey fails to find username to minimize vulnerability
+		 * to timing attacks.
+		 */
+		getkey_success = _OWPCallGetAESKey(cntrl->ctx,
+				cntrl->userid_buffer,binKey,err_ret);
+		if(!getkey_success && (*err_ret != OWPErrOK)){
+			(void)_OWPWriteServerOK(cntrl,OWP_CNTRL_FAILURE,0,intr);
 			goto error;
 		}
 		
@@ -508,52 +564,60 @@ OWPControlAccept(
 					OWPErrUNKNOWN,
 					"Encryption state problem?!?!");
 			(void)_OWPWriteServerOK(cntrl,
-						OWP_CNTRL_FAILURE);
+						OWP_CNTRL_FAILURE,0,intr);
 			*err_ret = OWPErrFATAL;
 			goto error;
 		}
 		
 		/* Decrypted challenge is in the first 16 bytes */
-		if (memcmp(challenge,token,16) != 0){
-			OWPError(cntrl->ctx,OWPErrINFO,OWPErrPOLICY,
+		if((memcmp(challenge,token,16) != 0) || !getkey_success){
+			if(!getkey_success){
+				OWPError(cntrl->ctx,OWPErrINFO,OWPErrPOLICY,
+					"Unknown userid (%s)",
+					cntrl->userid_buffer);
+			}
+			else{
+				OWPError(cntrl->ctx,OWPErrINFO,OWPErrPOLICY,
  "Control request to (%s:%s) denied from (%s:%s):Invalid challenge encryption",
-			       cntrl->local_addr->node,cntrl->local_addr->port,
-				cntrl->remote_addr->node,
-				cntrl->remote_addr->port);
-			(void)_OWPWriteServerOK(cntrl,OWP_CNTRL_REJECT);
+					cntrl->local_addr->node,
+					cntrl->local_addr->port,
+					cntrl->remote_addr->node,
+					cntrl->remote_addr->port);
+			}
+			(void)_OWPWriteServerOK(cntrl,OWP_CNTRL_REJECT,0,intr);
 			goto error;
 		}
-		
+
 		/* Authentication ok - set encryption fields */
-		cntrl->kid = cntrl->kid_buffer;
+		cntrl->userid = cntrl->userid_buffer;
 		if(I2RandomBytes(cntrl->ctx->rand_src,cntrl->writeIV,16) != 0){
 			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 					"Unable to fetch randomness...");
-			(void)_OWPWriteServerOK(cntrl,OWP_CNTRL_FAILURE);
+			(void)_OWPWriteServerOK(cntrl,OWP_CNTRL_FAILURE,0,intr);
 			goto error;
 		}
 		memcpy(cntrl->session_key,&token[16],16);
 		_OWPMakeKey(cntrl,cntrl->session_key); 
 	}
 
-	if(!_OWPCallCheckControlPolicy(cntrl,cntrl->mode,cntrl->kid, 
+	if(!_OWPCallCheckControlPolicy(cntrl,cntrl->mode,cntrl->userid, 
 		  cntrl->local_addr->saddr,cntrl->remote_addr->saddr,err_ret)){
 		if(*err_ret > OWPErrWARNING){
 			OWPError(ctx,OWPErrINFO,OWPErrPOLICY,
-	       "ControlSession request to (%s:%s) denied from kid(%s):(%s:%s)",
-			       cntrl->local_addr->node,cntrl->local_addr->port,
-				(cntrl->kid)?cntrl->kid:"nil",
+       "ControlSession request to (%s:%s) denied from userid(%s):(%s:%s)",
+				cntrl->local_addr->node,cntrl->local_addr->port,
+				(cntrl->userid)?cntrl->userid:(u_int8_t*)"nil",
 				cntrl->remote_addr->node,
 				cntrl->remote_addr->port);
 			/*
 			 * send mode of 0 to client, and then close.
 			 */
-			(void)_OWPWriteServerOK(cntrl,OWP_CNTRL_REJECT);
+			(void)_OWPWriteServerOK(cntrl,OWP_CNTRL_REJECT,0,intr);
 		}
 		else{
 			OWPError(ctx,*err_ret,OWPErrUNKNOWN,
 						"Policy function failed.");
-			(void)_OWPWriteServerOK(cntrl, OWP_CNTRL_FAILURE);
+			(void)_OWPWriteServerOK(cntrl,OWP_CNTRL_FAILURE,0,intr);
 		}
 		goto error;
 	}
@@ -561,14 +625,15 @@ OWPControlAccept(
 	/*
 	 * Made it through the gauntlet - accept the control session!
 	 */
-	if( (rc = _OWPWriteServerOK(cntrl,OWP_CNTRL_ACCEPT)) < OWPErrOK){
+	if( (rc = _OWPWriteServerOK(cntrl,OWP_CNTRL_ACCEPT,uptime,intr)) <
+								OWPErrOK){
 		*err_ret = (OWPErrSeverity)rc;
 		goto error;
 	}
 	OWPError(ctx,OWPErrINFO,OWPErrPOLICY,
-		"ControlSession to ([%s]:%s) accepted from kid(%s):([%s]:%s)",
+		"ControlSession([%s]:%s) accepted from userid(%s):([%s]:%s)",
 		cntrl->local_addr->node,cntrl->local_addr->port,
-		(cntrl->kid)?cntrl->kid:"nil",
+		(cntrl->userid)?cntrl->userid:(u_int8_t*)"nil",
 		cntrl->remote_addr->node,
 		cntrl->remote_addr->port);
 	
@@ -579,119 +644,50 @@ error:
 	return NULL;
 }
 
-static OWPAddr
-AddrBySAddrRef(
-	OWPContext	ctx,
-	struct sockaddr	*saddr,
-	socklen_t	saddrlen
-	)
-{
-	OWPAddr		addr;
-	struct addrinfo	*ai=NULL;
-	int		gai;
-
-	if(!saddr){
-		OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
-				"AddrBySAddrRef:Invalid saddr");
-		return NULL;
-	}
-
-	if(!(addr = _OWPAddrAlloc(ctx)))
-		return NULL;
-
-	if(!(ai = malloc(sizeof(struct addrinfo)))){
-		OWPError(addr->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"malloc():%s",strerror(errno));
-		(void)OWPAddrFree(addr);
-		return NULL;
-	}
-
-	if(!(addr->saddr = malloc(saddrlen))){
-		OWPError(addr->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"malloc():%s",strerror(errno));
-		(void)OWPAddrFree(addr);
-		(void)free(ai);
-		return NULL;
-	}
-	memcpy(addr->saddr,saddr,saddrlen);
-	ai->ai_addr = addr->saddr;
-	addr->saddrlen = saddrlen;
-	ai->ai_addrlen = saddrlen;
-
-	ai->ai_flags = 0;
-	ai->ai_family = saddr->sa_family;
-	ai->ai_socktype = SOCK_DGRAM;
-	ai->ai_protocol = IPPROTO_IP;	/* reasonable default.	*/
-	ai->ai_canonname = NULL;
-	ai->ai_next = NULL;
-
-	addr->ai = ai;
-	addr->ai_free = True;
-	addr->so_type = SOCK_DGRAM;
-	addr->so_protocol = IPPROTO_IP;
-
-	if( (gai = getnameinfo(addr->saddr,addr->saddrlen,
-				addr->node,sizeof(addr->node),
-				addr->port,sizeof(addr->port),
-				NI_NUMERICHOST | NI_NUMERICSERV)) != 0){
-		OWPError(addr->ctx,OWPErrWARNING,OWPErrUNKNOWN,
-				"getnameinfo(): %s",gai_strerror(gai));
-		strncpy(addr->node,"unknown",sizeof(addr->node));
-		strncpy(addr->port,"unknown",sizeof(addr->port));
-	}
-	addr->node_set = True;
-	addr->port_set = True;
-
-	return addr;
-}
-
 OWPErrSeverity
 OWPProcessTestRequest(
-	OWPControl	cntrl
+	OWPControl	cntrl,
+	int		*retn_on_intr
 		)
 {
-	struct sockaddr_storage	sendaddr_rec;
-	struct sockaddr_storage	recvaddr_rec;
-	struct sockaddr	*sendaddr = (struct sockaddr*)&sendaddr_rec;
-	struct sockaddr *recvaddr = (struct sockaddr*)&recvaddr_rec;
-	socklen_t	addrlen = sizeof(sendaddr_rec);
-	OWPAddr		SendAddr=NULL;
-	OWPAddr		RecvAddr=NULL;
-	int		af_family;
-	u_int8_t	ipvn;
-	OWPBoolean	conf_sender;
-	OWPBoolean	conf_receiver;
-	OWPSID		sid;
-	OWPTestSpec	tspec;
 	OWPTestSession	tsession = NULL;
 	OWPErrSeverity	err_ret=OWPErrOK;
 	u_int32_t	offset;
-	u_int16_t	*sendport;
-	u_int16_t	*recvport;
 	u_int16_t	port;
 	int		rc;
 	OWPAcceptType	acceptval = OWP_CNTRL_FAILURE;
+	int		ival=0;
+	int		*intr = &ival;
 
-	memset(sendaddr,0,sizeof(struct sockaddr_storage));
-	memset(recvaddr,0,sizeof(struct sockaddr_storage));
-
-	/*
-	 * TODO: In v5 this will just read the TestRequest header - then
-	 * another function will have to read the slots and compute the
-	 * schedule.
-	 */
-	if( (rc = _OWPReadTestRequest(cntrl,sendaddr,recvaddr,&addrlen,
-				      &ipvn,&conf_sender,&conf_receiver,sid,
-				      &tspec)) < OWPErrOK){
-		err_ret = (OWPErrSeverity)rc;
-		goto error;
+	if(retn_on_intr){
+		intr = retn_on_intr;
 	}
 
-	switch (ipvn){
-#ifdef	AF_INET6
+	/*
+	 * Read the TestRequest and alloate tsession to hold the information.
+	 */
+	if((rc = _OWPReadTestRequest(cntrl,intr,&tsession,&acceptval)) !=
+								OWPErrOK){
+		switch(acceptval){
+			case OWP_CNTRL_INVALID:
+				 return OWPErrFATAL;
+			case OWP_CNTRL_FAILURE:
+			case OWP_CNTRL_UNSUPPORTED:
+				return OWPErrWARNING;
+			default:
+				/* NOTREACHED */
+				abort();
+		}
+	}
 
-		case 6:
-			af_family = AF_INET6;
+	assert(tsession);
+
+	/*
+	 * Determine how to decode the socket addresses.
+	 */
+	switch (tsession->sender->saddr->sa_family){
+#ifdef	AF_INET6
+		case AF_INET6:
 			/* compute offset of port field */
 			offset =
 			(((char*)&(((struct sockaddr_in6*)NULL)->sin6_port)) -
@@ -699,55 +695,33 @@ OWPProcessTestRequest(
 
 			break;
 #endif
-		case 4:
-			af_family = AF_INET;
+		case AF_INET:
 			/* compute offset of port field */
 			offset =
 			(((char*)&(((struct sockaddr_in*)NULL)->sin_port)) -
 				((char*)NULL));
 			break;
 		default:
-			af_family = AF_UNSPEC;
+			/* shouldn't really happen... */
+			acceptval = OWP_CNTRL_UNSUPPORTED;
+			goto error;
 			break;
 	}
 
-	if((af_family == AF_UNSPEC) || (sendaddr->sa_family != af_family)
-			|| (recvaddr->sa_family != af_family)){
-		OWPError(cntrl->ctx,OWPErrINFO,OWPErrPOLICY,
-				"Test Denied:unsupported ipvn %d",ipvn);
-		err_ret = OWPErrINFO;
-		acceptval = OWP_CNTRL_UNSUPPORTED;
-		goto error;
-	}
-
-	SendAddr = AddrBySAddrRef(cntrl->ctx,sendaddr,addrlen);
-	sendport = (u_int16_t *)((u_int8_t*)SendAddr->saddr + offset);
-	RecvAddr = AddrBySAddrRef(cntrl->ctx,recvaddr,addrlen);
-	recvport = (u_int16_t *)((u_int8_t*)RecvAddr->saddr + offset);
-
-	if( !(tsession = _OWPTestSessionAlloc(cntrl,SendAddr,conf_sender,
-					RecvAddr,conf_receiver,&tspec))){
+	if(tsession->conf_receiver && (_OWPCreateSID(tsession) != 0)){
 		err_ret = OWPErrWARNING;
 		acceptval = OWP_CNTRL_FAILURE;
 		goto error;
 	}
 
-	if(conf_receiver){
-		if(_OWPCreateSID(tsession) != 0){
-			err_ret = OWPErrWARNING;
-			acceptval = OWP_CNTRL_FAILURE;
-			goto error;
-		}
-	}else{
-		memcpy(tsession->sid,sid,sizeof(sid));
-	}
-
 	/*
-	 * TODO: In v5, alloc space for slots and read them in, then use
-	 * them to compute the schedule.
+	 * Now that we know the SID we can create the schedule
+	 * context.
 	 */
-
-	if(_OWPTestSessionCreateSchedule(tsession) != 0){
+	if(!(tsession->sctx = OWPScheduleContextCreate(cntrl->ctx,
+					tsession->sid,&tsession->test_spec))){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+					"Unable to init schedule generator");
 		err_ret = OWPErrWARNING;
 		acceptval = OWP_CNTRL_FAILURE;
 		goto error;
@@ -756,10 +730,28 @@ OWPProcessTestRequest(
 	/*
 	 * if conf_receiver - open port and get SID.
 	 */
-	if(conf_receiver){
+	if(tsession->conf_receiver){
+		if(tsession->conf_sender){
+			/*
+			 * NOTE:
+			 * This implementation only configures "local" test
+			 * endpoints. For a more distributed implementation
+			 * where a single control server could manage multiple
+			 * endpoints - this check would be removed, and
+			 * conf_sender and conf_receiver could make
+			 * sense together.
+			 */
+			acceptval = OWP_CNTRL_UNSUPPORTED;
+			err_ret = OWPErrWARNING;
+			goto error;
+		}
 
-		if(!_OWPCallCheckTestPolicy(cntrl,False,recvaddr,sendaddr,
-							&tspec,&err_ret)){
+		if(!_OWPCallCheckTestPolicy(cntrl,False,
+				tsession->receiver->saddr,
+				tsession->sender->saddr,
+				tsession->sender->saddrlen,
+				&tsession->test_spec,&tsession->closure,
+				&err_ret)){
 			if(err_ret < OWPErrOK)
 				goto error;
 			OWPError(cntrl->ctx,OWPErrINFO,OWPErrPOLICY,
@@ -770,24 +762,41 @@ OWPProcessTestRequest(
 		}
 
 		/* receiver first (sid comes from there) */
-		if(!_OWPCallEndpointInit(cntrl,tsession,tsession->receiver,NULL,
-					&tsession->recv_end_data,&err_ret)){
+		if(!_OWPEndpointInit(cntrl,tsession,tsession->receiver,NULL,
+								&err_ret)){
 			err_ret = OWPErrWARNING;
 			acceptval = OWP_CNTRL_FAILURE;
 			goto error;
 		}
 	}
 
-	if(conf_sender){
+	if(tsession->conf_sender){
 		/*
-		 * TODO: Check for a local sender being used for DOS?
-		 *  -or can we rely on TestPolicy function?
-		 *
-		 * if(!conf_receiver && (receiver_address != control_address))
-		 * 	deny test
+		 * Check for possible DoS as advised in Section 7 of owdp
+		 * spec.
+		 * (control-client MUST be receiver if openmode.)
 		 */
-		if(!_OWPCallCheckTestPolicy(cntrl,True,sendaddr,
-					    recvaddr, &tspec, &err_ret)){
+		if(!(cntrl->mode & OWP_MODE_DOCIPHER) &&
+				(I2SockAddrEqual(cntrl->remote_addr->saddr,
+					 cntrl->remote_addr->saddrlen,
+					 tsession->receiver->saddr,
+					 tsession->receiver->saddrlen,
+					 I2SADDR_ADDR) <= 0)){
+			OWPError(cntrl->ctx,OWPErrINFO,OWPErrPOLICY,
+		"Test Denied: OpenMode recieve_addr(%s) != control_client(%s)",
+					tsession->receiver->node,
+					cntrl->remote_addr->node);
+			acceptval = OWP_CNTRL_REJECT;
+			err_ret = OWPErrINFO;
+			goto error;
+		}
+
+		if(!_OWPCallCheckTestPolicy(cntrl,True,
+					tsession->sender->saddr,
+					tsession->receiver->saddr,
+					tsession->receiver->saddrlen,
+					&tsession->test_spec,
+					&tsession->closure,&err_ret)){
 			if(err_ret < OWPErrOK)
 				goto error;
 			OWPError(cntrl->ctx, OWPErrINFO, OWPErrPOLICY,
@@ -796,35 +805,47 @@ OWPProcessTestRequest(
 			err_ret = OWPErrINFO;
 			goto error;
 		}
-		if(!_OWPCallEndpointInit(cntrl,tsession,tsession->sender,NULL,
-					&tsession->send_end_data,&err_ret)){
+		if(!_OWPEndpointInit(cntrl,tsession,tsession->sender,NULL,
+								&err_ret)){
 			err_ret = OWPErrWARNING;
 			acceptval = OWP_CNTRL_FAILURE;
 			goto error;
 		}
-		if(!_OWPCallEndpointInitHook(cntrl,tsession,
-					&tsession->send_end_data,&err_ret)){
+		if(!_OWPEndpointInitHook(cntrl,tsession,&err_ret)){
 			err_ret = OWPErrWARNING;
 			acceptval = OWP_CNTRL_FAILURE;
 			goto error;
 		}
-		port = *sendport;
+		/*
+		 * set port to the port number fetched from the saddr.
+		 * (This ugly code decodes the network ordered port number
+		 * from the saddr using the port "offset" computed earlier.
+		 */
+		port = ntohs(*(u_int16_t*)
+				((u_int8_t*)tsession->sender->saddr+offset)
+				);
 	}
 
-	if(conf_receiver){
-		if(!_OWPCallEndpointInitHook(cntrl,tsession,
-					&tsession->recv_end_data,&err_ret)){
+	if(tsession->conf_receiver){
+		if(!_OWPEndpointInitHook(cntrl,tsession,&err_ret)){
 			err_ret = OWPErrWARNING;
 			acceptval = OWP_CNTRL_FAILURE;
 			goto error;
 		}
-		port = *recvport;
+		/*
+		 * set port to the port number fetched from the saddr.
+		 * (This ugly code decodes the network ordered port number
+		 * from the saddr using the port "offset" computed earlier.
+		 */
+		port = ntohs(*(u_int16_t*)
+				((u_int8_t*)tsession->receiver->saddr+offset)
+				);
 	}
 
-	if( (rc = _OWPWriteTestAccept(cntrl,OWP_CNTRL_ACCEPT,
+	if( (rc = _OWPWriteTestAccept(cntrl,intr,OWP_CNTRL_ACCEPT,
 				      port,tsession->sid)) < OWPErrOK){
 		err_ret = (OWPErrSeverity)rc;
-		goto done;
+		goto err2;
 	}
 
 	/*
@@ -841,53 +862,41 @@ error:
 	 * send negative accept.
 	 */
 	if(err_ret >= OWPErrWARNING)
-		(void)_OWPWriteTestAccept(cntrl,acceptval,0,NULL);
+		(void)_OWPWriteTestAccept(cntrl,intr,acceptval,0,NULL);
 
-done:
+err2:
 	if(tsession)
 		_OWPTestSessionFree(tsession,OWP_CNTRL_FAILURE);
-	else{
-		if(SendAddr)
-			OWPAddrFree(SendAddr);
-		else
-			free(sendaddr);
-		if(RecvAddr)
-			OWPAddrFree(RecvAddr);
-		else
-			free(recvaddr);
-	}
+
 	return err_ret;
 }
 
 OWPErrSeverity
 OWPProcessStartSessions(
-	OWPControl	cntrl
+	OWPControl	cntrl,
+	int		*retn_on_intr
 	)
 {
 	int		rc;
 	OWPTestSession	tsession;
 	OWPErrSeverity	err,err2=OWPErrOK;
+	int		ival=0;
+	int		*intr = &ival;
 
-	if( (rc = _OWPReadStartSessions(cntrl)) < OWPErrOK)
+	if(retn_on_intr){
+		intr = retn_on_intr;
+	}
+
+	if( (rc = _OWPReadStartSessions(cntrl,intr)) < OWPErrOK)
 		return _OWPFailControlSession(cntrl,rc);
 
-	if( (rc = _OWPWriteControlAck(cntrl,OWP_CNTRL_ACCEPT)) < OWPErrOK)
+	if( (rc = _OWPWriteControlAck(cntrl,intr,OWP_CNTRL_ACCEPT)) < OWPErrOK)
 		return _OWPFailControlSession(cntrl,rc);
 
 	for(tsession = cntrl->tests;tsession;tsession = tsession->next){
-		if(tsession->recv_end_data){
-			if(!_OWPCallEndpointStart(tsession,
-						&tsession->recv_end_data,&err)){
-				(void)_OWPWriteStopSessions(cntrl,
-							    OWP_CNTRL_FAILURE);
-				return _OWPFailControlSession(cntrl,err);
-			}
-			err2 = MIN(err,err2);
-		}
-		if(tsession->send_end_data){
-			if(!_OWPCallEndpointStart(tsession,
-						&tsession->send_end_data,&err)){
-				(void)_OWPWriteStopSessions(cntrl,
+		if(tsession->endpoint){
+			if(!_OWPEndpointStart(tsession->endpoint,&err)){
+				(void)_OWPWriteStopSessions(cntrl,intr,
 							    OWP_CNTRL_FAILURE);
 				return _OWPFailControlSession(cntrl,err);
 			}
@@ -898,380 +907,336 @@ OWPProcessStartSessions(
 	return err2;
 }
 
-static
-OWPErrSeverity
-_OWPSendDataHeader(
-	OWPControl	cntrl,
-	u_int32_t	num_records
-	)
-{
-	u_int8_t	buf[_OWP_RIJNDAEL_BLOCK_SIZE];
-
-	/*
-	 * Send data header information.
-	 * TODO: v5 - need to send the original Test-Request record.
-	 */
-	memset(buf,0,sizeof(buf));
-	*(u_int32_t*)&buf[0] = htonl(num_records);
-	*(u_int32_t*)&buf[4] = htonl(0);	/* bogus typeP */
-	if (_OWPSendBlocks(cntrl,buf,1) != 1)
-		return OWPErrFATAL;
-	return OWPErrOK;
-}
-
-/*
-** Read records from the given descriptor and send it to the OWPControl socket.
-*/
-static OWPErrSeverity
-OWPSendFullDataFile(
-	OWPControl	cntrl,
-	FILE		*fp,
-	u_int32_t	nrecs
-	)
-{
-	/*
-	 * buf is 80 because:
-	 * (80) == (_OWP_RIJNDAEL_BLOCK_SIZE*5) == (_OWP_TS_REC_SIZE*4)
-	 */
-#if	(80 != (_OWP_RIJNDAEL_BLOCK_SIZE*5))
-#error "Block-sizes have changed! Fix this function."
-#endif
-#if	(80 != (_OWP_TS_REC_SIZE*4))
-#error "Record sizes have changed! Fix this function."
-#endif
-	u_int8_t	buf[80];
-	u_int32_t	num_records;
-	int		blks;
-
-	memset(buf,0,sizeof(buf));
-
-	/*
-	 * Now start sending data blocks. (4 records at a time)
-	 */
-	for(num_records=nrecs;num_records >= 4;num_records-=4){
-		if(fread(buf,_OWP_TS_REC_SIZE,4,fp) < 4)
-			return _OWPFailControlSession(cntrl,OWPErrFATAL);
-		if(_OWPSendBlocks(cntrl,buf,5) != 5)
-			return _OWPFailControlSession(cntrl,OWPErrFATAL);
-	}
-
-	memset(buf,0,sizeof(buf)); /* ensure zero padding */
-
-	if(num_records){
-		/*
-		 * Now do remaining records if necessary - less than 4 left.
-		 */
-		if(fread(buf,_OWP_TS_REC_SIZE,num_records,fp) < num_records)
-			return _OWPFailControlSession(cntrl,OWPErrFATAL);
-		/*
-		 * Determine number of AES blocks needed to hold remaining
-		 * records. (earlier memset ensures zero padding for
-		 * the remainder of the last block)
-		 */
-		blks = num_records*_OWP_TS_REC_SIZE/_OWP_RIJNDAEL_BLOCK_SIZE+1;
-		if(_OWPSendBlocks(cntrl,buf,blks) != blks)
-			return _OWPFailControlSession(cntrl,OWPErrFATAL);
-	}
-
-	/*
-	 * Send 1 block of complete zero pad to finalize transaction.
-	 */
-	if(_OWPSendBlocks(cntrl,&buf[64],1) != 1)
-		return _OWPFailControlSession(cntrl,OWPErrFATAL);
-
-	return OWPErrOK;
-}
-
-
-/*
-** Check if the 20-byte timestamp data record has sequence number
-** between the given boundaries. Return 1 if yes, 0 otherwise.
-** <begin> and <end> are in host byte order.
-*/
-static int
-_OWPRecordIsInRange(u_int8_t *record, u_int32_t begin, u_int32_t end)
-{
-	u_int32_t seq_no;
-
-	/*
-	 * Must memcpy because record memory is not aligned for
-	 * "long" access.
-	 */
-	memcpy(&seq_no,record,sizeof(u_int32_t));
-	seq_no = ntohl(seq_no);
-	
-	return ((seq_no >= begin) && (seq_no <= end))? 1 : 0;
-}
-
-#define OWP_COUNT 0
-#define OWP_SEND  1
-
-/*
-** Read timestamp data records from the descriptor and count or send them
-** to Control socket depending on <type>. Error code is returned via 
-** <*err_ret> and must be checked by caller. When <type> is OWP_COUNT,
-** returns the number of records within the given range (and when
-** <type> is OWP_SEND the return value can be ignored).
-*/
-static u_int32_t
-OWPProcessRecordsInRange(OWPControl	cntrl, 
-			 FILE		*fp,
-			 u_int32_t	nrecs,
-			 u_int32_t	begin,
-			 u_int32_t	end,
-			 int		type,       /* OWP_COUNT, OWP_SEND */
-			 OWPErrSeverity	*err_ret
-)
-{
-	/*
-	 * sbuf is 80 because:
-	 * 80 == (_OWP_RIJNDAEL_BLOCK_SIZE*5) == (_OWP_TS_REC_SIZE*4)
-	 * Make sure record sizes have not changed since 80 was figured.
-	 */
-#if	(80 != (_OWP_RIJNDAEL_BLOCK_SIZE*5))
-#error "Block-sizes have changed! Fix this function."
-#endif
-#if	(80 != (_OWP_TS_REC_SIZE*4))
-#error "Record sizes have changed! Fix this function."
-#endif
-	u_int8_t	rbuf[_OWP_TS_REC_SIZE];
-	u_int8_t	sbuf[80];
-	int		sbufi=0;
-	u_int32_t	num_records;
-	u_int32_t	count=0;
-
-	for(num_records = nrecs;num_records > 0; num_records--){
-		if(fread(rbuf,_OWP_TS_REC_SIZE,1,fp) < 1)
-			goto readerr;
-		if(!_OWPRecordIsInRange(rbuf,begin,end))
-			continue;
-		count++;
-		if(type != OWP_SEND)
-			continue;
-		/*
-		 * copy this record to the send buffer
-		 */
-		memcpy(&sbuf[_OWP_TS_REC_SIZE*sbufi++],rbuf,_OWP_TS_REC_SIZE);
-
-		/*
-		 * If the send buffer is full, send it and reset sbufi
-		 */
-		if(sbufi < 4)
-			continue;
-		if(_OWPSendBlocks(cntrl,sbuf,5) != 5)
-			goto senderr;
-		sbufi = 0;
-	}
-
-	/*
-	 * If there are any remaining records in the send buffer - send them.
-	 */
-	if((type == OWP_SEND) && sbufi){
-		int blks;
-
-		/* fill remainder of buffer with 0's */
-		memset(&sbuf[_OWP_TS_REC_SIZE*sbufi],0,
-					sizeof(sbuf)-_OWP_TS_REC_SIZE*sbufi);
-		/*
-		 * Send as many blocks as is necessary to send remaining
-		 * records - incomplete blocks are padded with 0's.
-		 * (+2 - 1: round up incomplete block
-		 * 	 1: full AES block of MBZ
-		 */
-		blks = sbufi*_OWP_TS_REC_SIZE/_OWP_RIJNDAEL_BLOCK_SIZE+2;
-		if(_OWPSendBlocks(cntrl,sbuf,blks) != blks)
-			goto senderr;
-	}
-
-	return count;
-
-readerr:
-	OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"OWPSendRecordsInRange:fread():%M");
-	*err_ret = OWPErrFATAL;
-	return 0;
-
-senderr:
-	OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN, 
-		 "OWPSendRecordsInRange: _OWPSendBlocks failure");
-	*err_ret = _OWPFailControlSession(cntrl,OWPErrFATAL);
-	return 0;
-}
-
-
-OWPErrSeverity
-OWPProcessRetrieveSession(
-	OWPControl	cntrl
-	)
-{
-	int		rc;
-	OWPSID		sid;
-	u_int32_t	filerecs;
+struct DoDataState{
+	OWPControl	cntrl;
+	OWPErrSeverity	err;
+	OWPBoolean	send;
 	u_int32_t	begin;
 	u_int32_t	end;
+	u_int32_t	inbuf;
+	u_int64_t	count;
+	u_int32_t	maxiseen;
+	int		*intr;
+};
 
-	char            path[PATH_MAX];  /* path for data file */
-	char		sid_name[(sizeof(OWPSID)*2)+1];
-	FILE		*fp;
-	char*           datadir;
-	OWPErrSeverity  err;
-	u_int32_t	hdr_len;
-
-	if( (rc = _OWPReadRetrieveSession(cntrl, &begin, &end,sid)) < OWPErrOK)
-		return _OWPFailControlSession(cntrl, rc);
+static int
+DoDataRecords(
+	OWPDataRec	*rec,
+	void		*udata
+	)
+{
+	struct DoDataState	*dstate = (struct DoDataState *)udata;
+	OWPControl		cntrl = dstate->cntrl;
+	u_int8_t		*buf = (u_int8_t*)cntrl->msg;
 
 	/*
-	 * TODO: All this path/file opening code should be combined
-	 * with the similar code in endpoint.c (receiver) somehow.
+	 * If this record is not in range - return 0 to continue on.
 	 */
+	if((rec->seq_no < dstate->begin) || (rec->seq_no > dstate->end)){
+		return 0;
+	}
 
-	/* Construct the base pathname */
-	datadir = ((OWPPerConnData)(cntrl->app_data))->link_data_dir;
-	if(!datadir)
-		goto denied;
+	dstate->count++;
 
-	strcpy(path, datadir);
-	strcat(path, OWP_PATH_SEPARATOR);
-	OWPHexEncode(sid_name, sid, sizeof(OWPSID));
-	strcat(path, sid_name);
+	/*
+	 * Save largest index seen that is not lost.
+	 * (This allows this data to be parsed again to count only those
+	 * records before this index for the purposes of fetching a
+	 * partial valid session even if it was unable to terminate
+	 * properly.)
+	 */
+	if((rec->seq_no > dstate->maxiseen) && !OWPIsLostRecord(rec)){
+		dstate->maxiseen = rec->seq_no;
+	}
 
-	/* First look for incomplete file */
-	strcat(path, OWP_INCOMPLETE_EXT);
-
-try_incomplete_file:
-	if( !(fp = fopen(path,"r"))){
-		if(errno == EINTR )
-			goto try_incomplete_file;
-		if(errno != ENOENT){
-			OWPError(cntrl->ctx,OWPErrFATAL,errno,"fopen(%s):%M",
-					path);
-			goto failed;
+	if(dstate->send){
+		/*
+		 * Encode this record into cntrl->msg buffer.
+		 */
+		if(!_OWPEncodeDataRecord(&buf[dstate->inbuf*_OWP_TESTREC_SIZE],
+									rec)){
+			return -1;
 		}
+		dstate->inbuf++;
 
-		/* If not found - look for the completed one. */
-		path[strlen(path) - strlen(OWP_INCOMPLETE_EXT)] = '\0';
-		
-try_complete_file:
-		if( !(fp = fopen(path,"r"))){
-			if (errno == EINTR )
-				goto try_complete_file;
-			if(errno != ENOENT){
-				OWPError(cntrl->ctx,OWPErrFATAL,errno,
-						"fopen(%s):%M",path);
-				goto failed;
+		/*
+		 * If the buffer is full enough to send, do so.
+		 */
+		if(dstate->inbuf == _OWP_FETCH_TESTREC_BLOCKS){
+			if(_OWPSendBlocksIntr(cntrl,buf,_OWP_FETCH_AES_BLOCKS,
+					dstate->intr) != _OWP_FETCH_AES_BLOCKS){
+				dstate->err = OWPErrFATAL;
+				_OWPFailControlSession(cntrl,OWPErrFATAL);
+				return -1;
 			}
-			OWPError(cntrl->ctx,OWPErrINFO,OWPErrPOLICY,
-		              "FetchRequest for non-existant SID:%s",sid_name);
-			goto denied;
+			dstate->inbuf = 0;
 		}
 	}
 
+	return 0;
+}
+
+OWPErrSeverity
+OWPProcessFetchSession(
+	OWPControl	cntrl,
+	int		*retn_on_intr
+	)
+{
+	u_int8_t		*buf = (u_int8_t*)cntrl->msg;
+	OWPErrSeverity  	err;
+	OWPAcceptType		acceptval = OWP_CNTRL_REJECT;
+	u_int32_t		begin;
+	u_int32_t		end;
+	OWPSID			sid;
+
+	FILE			*fp;
+	char			fname[PATH_MAX];
+
+	u_int32_t		ver;
+	u_int32_t		fin;
+	off_t			hdr_off,tr_off,tr_size;
+	struct stat		stat_buf;
+
+	u_int64_t		filerecs;
+	u_int64_t		sendrecs;
+	struct DoDataState	dodata;
+
+	int			ival=0;
+	int			*intr = &ival;
+
+	if(retn_on_intr){
+		intr = retn_on_intr;
+	}
+
 	/*
-	 * TODO:v5 - the fourth arg to ReadDataHeader will read the
-	 * header info so we can send it on to the client here.
+	 * Read the complete FetchSession request.
 	 */
-	if( !(filerecs = OWPReadDataHeader(cntrl->ctx,fp,&hdr_len,NULL))){
+	if((err = _OWPReadFetchSession(cntrl,intr,&begin,&end,sid)) < OWPErrOK){
+		return _OWPFailControlSession(cntrl, err);
+	}
+
+	/*
+	 * Try and open the file containing sid information.
+	 */
+	if( !(fp = _OWPCallOpenFile(cntrl,NULL,sid,fname))){
+		goto reject;
+	}
+
+	/*
+	 * Read the file header - fp will end up at beginning of
+	 * TestRequest record.
+	 */
+	if(_OWPReadDataHeaderInitial(cntrl->ctx,fp,&ver,&fin,&hdr_off,
+								&stat_buf)){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-						"OWPReadDataHeader():%M");
+				"_OWPReadDataHeaderInitial(\"%s\"): %M",fname);
 		goto failed;
 	}
 
-	if ((begin == 0) && (end == 0xFFFFFFFF)) /* complete session  */ {
-		if((rc = _OWPWriteControlAck(cntrl,OWP_CNTRL_ACCEPT))<OWPErrOK)
-			return _OWPFailControlSession(cntrl,rc);
-		if((rc = _OWPSendDataHeader(cntrl,filerecs)) < OWPErrOK)
-			return _OWPFailControlSession(cntrl,rc);
-		return OWPSendFullDataFile(cntrl,fp,filerecs);
-	} else {                        /* range of sequence numbers */
-		u_int32_t numrec; 
-
-		/*
-		 * First pass - OWPReadDataHeader has the fp positioned,
-		 * find out how many records are in range.
-		 */
-		numrec = OWPProcessRecordsInRange(cntrl,fp,filerecs,begin,end,
-								OWP_COUNT,&err);
-		if (err != OWPErrOK)
-			goto failed;
-
-		/* 
-		 * Ready to start the second pass through the file
-		 * to actually send records.
-		 * Start right at the offset
-		 */
-		if(fseek(fp,hdr_len,SEEK_SET) != 0){
-			OWPError(cntrl->ctx,OWPErrFATAL,errno,"fseek():%M");
-			goto failed;
-		}
-
-		if( (rc=_OWPWriteControlAck(cntrl,OWP_CNTRL_ACCEPT))<OWPErrOK)
-			return _OWPFailControlSession(cntrl,rc);
-		if( (rc = _OWPSendDataHeader(cntrl,numrec)) < OWPErrOK)
-			return _OWPFailControlSession(cntrl,rc);
-		
-		(void)OWPProcessRecordsInRange(cntrl,fp,filerecs,begin,end,
-								OWP_SEND,&err);
-		return err;
-		
+	/*
+	 * Only version 2 files can be used to produce valid v5 Fetch
+	 * response messages.
+	 */
+	if(ver < 2){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+		"OWPProcessFetchSession(\"%s\"): Invalid file version: %d",
+			fname,ver);
+		goto failed;
 	}
 
-denied:
-	if( (rc = _OWPWriteControlAck(cntrl,OWP_CNTRL_REJECT)) < OWPErrOK)
-		return _OWPFailControlSession(cntrl,rc);
-	return OWPErrOK;
-
-failed:
-	if( (rc = _OWPWriteControlAck(cntrl, OWP_CNTRL_FAILURE)) < OWPErrOK)
-		return _OWPFailControlSession(cntrl,rc);
-	return OWPErrOK;
-}
-
-/*
- * TODO: Add timeout so ProcessRequests can break out if no request
- * comes in some configurable fixed time.
- */
-OWPErrSeverity
-OWPProcessRequests(
-	OWPControl	cntrl
-		)
-{
-	OWPErrSeverity	rc;
-	int		msgtype;
-
-	while((msgtype = OWPReadRequestType(cntrl)) > 0){
-		switch (msgtype){
-				/* TestRequest */
-			case 1:
-				rc = OWPProcessTestRequest(cntrl);
-				break;
-			case 2:
-				rc = OWPProcessStartSessions(cntrl);
-				if(rc <= OWPErrFATAL)
-					break;
-
-				/* rc gives us all the return info we need */
-				rc = OWPErrOK;
-				(void)OWPStopSessionsWait(cntrl,NULL,NULL,&rc);
-				break;
-			case 4:
-				rc = OWPProcessRetrieveSession(cntrl);
-				break;
-			default:
-				OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-		"Invalid msgtype (%d) returned from OWPReadRequestType",
-					msgtype);
-				rc = OWPErrFATAL;
-		}
-
-		if(rc <= OWPErrFATAL)
-			return rc;
+	if(fin == _OWP_SESSION_FIN_ERROR){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+			"OWPProcessFetchSession(\"%s\"): Invalid file!",
+			fname);
+		goto failed;
 	}
 
 	/*
-	 * Normal socket close
+	 * If a "complete" session was requested, and the test did not
+	 * terminate normally - we MUST deny here.
 	 */
-	if(msgtype == 0)
-		return OWPErrOK;
+	if((begin == 0) && (end == 0xFFFFFFFF) &&
+					(fin != _OWP_SESSION_FIN_NORMAL)){
+		goto reject;
+	}
 
-	return OWPErrFATAL;
+	/*
+	 * Determine size of TestReq - then check that the TestReq is
+	 * non-zero and a multiple of AES blocksize.
+	 */
+	if( (tr_off = ftello(fp)) < 0){
+		OWPError(cntrl->ctx,OWPErrFATAL,errno,"ftello(): %M");
+		goto failed;
+	}
+	tr_size = hdr_off - tr_off;
+	if((tr_off >= hdr_off) || (tr_size % _OWP_RIJNDAEL_BLOCK_SIZE)){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+		"OWPProcessFetchSession(\"%s\"): Invalid record offsets");
+		goto failed;
+	}
+
+	/*
+	 * Determine number of records in the file.
+	 */
+	filerecs = (stat_buf.st_size-hdr_off)/_OWP_TESTREC_SIZE;
+
+	/*
+	 * setup the state record for parsing the records.
+	 */
+	dodata.cntrl = cntrl;
+	dodata.intr = intr;
+	dodata.err = OWPErrOK;
+	dodata.send = False;
+	dodata.begin = begin;
+	dodata.end = end;
+	dodata.inbuf = 0;
+	dodata.count = 0;
+	dodata.maxiseen = 0;
+
+	/*
+	 * Now - count the number of records that will be sent.
+	 * short-cut the count if full session is requested.
+	 */
+	if((fin == _OWP_SESSION_FIN_NORMAL) &&
+					(begin == 0) && (end == 0xFFFFFFFF)){
+		sendrecs = filerecs;
+	}
+	else{
+		/* forward pointer to data records for counting */
+		if(fseeko(fp,hdr_off,SEEK_SET)){
+			OWPError(cntrl->ctx,OWPErrFATAL,errno,"fseeko(): %M");
+			goto failed;
+		}
+		/*
+		 * Now, count the records in range.
+		 */
+		if(OWPParseRecords(cntrl->ctx,fp,filerecs,ver,
+					DoDataRecords,&dodata) != OWPErrOK){
+			goto failed;
+		}
+		sendrecs = dodata.count;
+		dodata.count = 0;
+
+		/* set pointer back to beginning of TestReq */
+		if(fseeko(fp,tr_off,SEEK_SET)){
+			OWPError(cntrl->ctx,OWPErrFATAL,errno,"fseeko(): %M");
+			goto failed;
+		}
+
+		/*
+		 * If the session did not complete normally, redo the
+		 * count ignoring all "missing" packets after the
+		 * last seen one.
+		 */
+		if((fin != 1) && (dodata.maxiseen != end)){
+			dodata.end = dodata.maxiseen;
+			dodata.maxiseen = 0;
+
+			if(OWPParseRecords(cntrl->ctx,fp,filerecs,ver,
+					DoDataRecords,&dodata) != OWPErrOK){
+				goto failed;
+			}
+			sendrecs = dodata.count;
+			dodata.count = 0;
+
+			/* set pointer back to beginning of TestReq */
+			if(fseeko(fp,tr_off,SEEK_SET)){
+				OWPError(cntrl->ctx,OWPErrFATAL,errno,
+							"fseeko(): %M");
+				goto failed;
+			}
+		}
+	}
+
+	/*
+	 * Now accept the FetchRequest.
+	 */
+	acceptval = OWP_CNTRL_ACCEPT;
+	if((err = _OWPWriteControlAck(cntrl,intr,acceptval)) < OWPErrOK){
+		_OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
+		return _OWPFailControlSession(cntrl,err);
+	}
+
+	/*
+	 * Read the TestReq from the file and write it to the socket.
+	 * (after this loop - fp is positioned at hdr_off.
+	 */
+	while((tr_size > 0) &&
+			(fread(buf,1,_OWP_RIJNDAEL_BLOCK_SIZE,fp) ==
+			 			_OWP_RIJNDAEL_BLOCK_SIZE)){
+		if(_OWPSendBlocksIntr(cntrl,buf,1,intr) != 1){
+			_OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
+			return _OWPFailControlSession(cntrl,OWPErrFATAL);
+		}
+		tr_size -= _OWP_RIJNDAEL_BLOCK_SIZE;
+	}
+
+	/*
+	 * Send the number of records.
+	 */
+	if((err = _OWPWriteFetchRecordsHeader(cntrl,intr,sendrecs)) < OWPErrOK){
+		_OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
+		return _OWPFailControlSession(cntrl,err);
+	}
+
+	/*
+	 * Now, send the data!
+	 */
+	dodata.send = True;
+	if( (OWPParseRecords(cntrl->ctx,fp,filerecs,ver,
+			DoDataRecords,&dodata) != OWPErrOK) ||
+						(dodata.count != sendrecs)){
+		_OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
+		return _OWPFailControlSession(cntrl,err);
+	}
+
+	/*
+	 * We are done reading from the file - close it.
+	 */
+	_OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_ACCEPT);
+
+	/*
+	 * zero pad any "incomplete" records...
+	 */
+	assert(dodata.inbuf < _OWP_FETCH_TESTREC_BLOCKS);
+	/* zero out any partial data blocks */
+	while(dodata.inbuf && (dodata.inbuf < _OWP_FETCH_TESTREC_BLOCKS)){
+		memset(&buf[dodata.inbuf*_OWP_TESTREC_SIZE],0,
+							_OWP_TESTREC_SIZE);
+		dodata.inbuf++;
+	}
+
+	/* send final data blocks */
+	if(dodata.inbuf &&
+		(_OWPSendBlocksIntr(cntrl,buf,_OWP_FETCH_AES_BLOCKS,intr) !=
+							_OWP_FETCH_AES_BLOCKS)){
+		return _OWPFailControlSession(cntrl,err);
+	}
+
+	/* now send final Zero Integrity Block */
+	if(_OWPSendBlocksIntr(cntrl,cntrl->zero,1,intr) != 1){
+		return _OWPFailControlSession(cntrl,err);
+	}
+
+	/*
+	 * reset state to request.
+	 */
+	cntrl->state &= ~_OWPStateFetching;
+	cntrl->state |= _OWPStateRequest;
+
+	return OWPErrOK;
+
+failed:
+	acceptval = OWP_CNTRL_FAILURE;
+reject:
+	if(fp){
+		_OWPCallCloseFile(cntrl,NULL,fp,acceptval);
+	}
+
+	if( (err = _OWPWriteControlAck(cntrl,intr,acceptval)) < OWPErrOK){
+		return _OWPFailControlSession(cntrl,err);
+	}
+
+	return OWPErrINFO;
+
 }

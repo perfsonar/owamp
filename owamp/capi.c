@@ -33,8 +33,24 @@
 #include <string.h>
 #include <assert.h>
 
-
-
+/*
+ * Function:	_OWPClientBind
+ *
+ * Description:	
+ * 	This function attempts to bind the fd to a local address allowing
+ * 	the client socket to have the source addr bound.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * 	True if successful, False if unsuccessful.
+ * 	Additionally err_ret will be set to OWPErrFATAL if there was a
+ * 	problem with the local_addr.
+ * Side Effect:	
+ */
 static OWPBoolean
 _OWPClientBind(
 	OWPControl	cntrl,
@@ -46,6 +62,11 @@ _OWPClientBind(
 {
 	struct addrinfo	*ai;
 
+	*err_ret = OWPErrOK;
+
+	/*
+	 * Ensure local_addr is not from a fd.
+	 */
 	if(local_addr->fd > -1){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 						"Invalid local_addr - ByFD");
@@ -53,6 +74,10 @@ _OWPClientBind(
 		return False;
 	}
 
+	/*
+	 * if getaddrinfo has not been called for this OWPAddr, then call
+	 * it.
+	 */
 	if(!local_addr->ai){
 		/*
 		 * Call getaddrinfo to find useful addresses
@@ -86,6 +111,11 @@ _OWPClientBind(
 		local_addr->ai = airet;
 	}
 
+	/*
+	 * Now that we have a valid addrinfo list for this address, go
+	 * through each of those addresses and try to bind the first
+	 * one that matches addr family and socktype.
+	 */
 	for(ai=local_addr->ai;ai;ai = ai->ai_next){
 		if(ai->ai_family != remote_addrinfo->ai_family)
 			continue;
@@ -96,6 +126,24 @@ _OWPClientBind(
 			local_addr->saddr = ai->ai_addr;
 			local_addr->saddrlen = ai->ai_addrlen;
 			return True;
+		}else{
+			switch(errno){
+				/* report these errors */
+				case EAGAIN:
+				case EBADF:
+				case ENOTSOCK:
+				case EADDRNOTAVAIL:
+				case EADDRINUSE:
+				case EACCES:
+				case EFAULT:
+					OWPError(cntrl->ctx,OWPErrFATAL,errno,
+							"bind(): %M");
+					break;
+				/* ignore all others */
+				default:
+					break;
+			}
+			return False;
 		}
 
 	}
@@ -106,6 +154,21 @@ _OWPClientBind(
 	return False;
 }
 
+/*
+ * Function:	SetClientAddrInfo
+ *
+ * Description:	
+ * 	PRIVATE function for initializing the addrinfo portion of
+ * 	the given OWPAddr.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
 static OWPBoolean
 SetClientAddrInfo(
 	OWPControl	cntrl,
@@ -155,9 +218,24 @@ SetClientAddrInfo(
 }
 
 /*
- * -1: error
- *  0: success
- *  1: keep trying
+ * Function:	TryAddr
+ *
+ * Description:	
+ * 	This function attempts to connect to the given ai description of
+ * 	the "server" addr possibly binding to "local" addr.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ *	-1: error - future trys are unlikely to succeed - terminate upward.
+ *	 0: success - wahoo!
+ *	 1: keep trying - this one didn't work, probably addr mismatch.
+ * Side Effect:	
+ */
+/*
  */
 static int
 TryAddr(
@@ -186,8 +264,7 @@ TryAddr(
 	/*
 	 * Call connect - if it succeeds, return else try again.
 	 */
-	if(_OWPConnect(fd,ai->ai_addr,ai->ai_addrlen,&cntrl->ctx->cfg.tm_out)
-									== 0){
+	if(connect(fd,ai->ai_addr,ai->ai_addrlen) == 0){
 		server_addr->fd = fd;
 		server_addr->saddr = ai->ai_addr;
 		server_addr->saddrlen = ai->ai_addrlen;
@@ -205,6 +282,25 @@ cleanup:
 	return 1;
 }
 
+/*
+ * Function:	_OWPClientConnect
+ *
+ * Description:	
+ * 	This function attempts to create a socket connection between
+ * 	the local client and the server. Each specified with OWPAddr
+ * 	records. If the local_addr is not specified, then the source
+ * 	addr is not bound. The server_addr is used to get a valid list
+ * 	of addrinfo records and each addrinfo description record is
+ * 	tried until one succeeds. (IPV6 is prefered over IPV4)
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
 static int
 _OWPClientConnect(
 	OWPControl	cntrl,
@@ -229,6 +325,9 @@ _OWPClientConnect(
 		return 0;
 	}
 
+	/*
+	 * Initialize addrinfo portion of server_addr record.
+	 */
 	if(!SetClientAddrInfo(cntrl,server_addr,err_ret))
 		goto error;
 
@@ -263,6 +362,10 @@ _OWPClientConnect(
 			goto error;
 	}
 
+	/*
+	 * Unable to connect! If we have a server name report it in
+	 * the error message.
+	 */
 	if(server_addr->node_set)
 		tstr = server_addr->node;
 	else
@@ -288,6 +391,7 @@ error:
  * 		verified the server at this point.
  *
  * Returns:	
+ * 		A valid OWPControl pointer or NULL.
  * Side Effect:	
  */
 OWPControl
@@ -296,8 +400,8 @@ OWPControlOpen(
 	OWPAddr		local_addr,	/* local addr or null	*/
 	OWPAddr		server_addr,	/* server addr		*/
 	u_int32_t	mode_req_mask,	/* requested modes	*/
-	const char	*kid,		/* kid or NULL		*/
-	void		*app_data,	/* set app_data for this conn	*/
+	OWPUserID	userid,		/* userid or NULL	*/
+	OWPNum64	*uptime_ret,	/* server uptime - ret	*/
 	OWPErrSeverity	*err_ret	/* err - return		*/
 )
 {
@@ -309,25 +413,36 @@ OWPControlOpen(
 	u_int8_t	token[32];
 	u_int8_t	*key=NULL;
 	OWPAcceptType	acceptval;
-	struct timeval	tval;
+	struct timeval	tvalstart,tvalend;
+	OWPNum64	uptime;
 
 	*err_ret = OWPErrOK;
 
-	if( !(cntrl = _OWPControlAlloc(ctx,app_data,err_ret)))
+	/*
+	 * First allocate memory for the control state.
+	 */
+	if( !(cntrl = _OWPControlAlloc(ctx,err_ret)))
 		goto error;
 
+	/*
+	 * Initialize server record for address we are connecting to.
+	 */
 	if((!server_addr) &&
 		!(server_addr = OWPAddrByNode(cntrl->ctx,"localhost"))){
 		goto error;
 	}
 
 	/*
+	 * Connect to the server.
 	 * Address policy check happens in here.
 	 */
 	if(_OWPClientConnect(cntrl,local_addr,server_addr,err_ret) != 0)
 		goto error;
 
-	if( (rc=_OWPReadServerGreeting(cntrl,&mode_avail,challenge)) < OWPErrOK){
+	/*
+	 * Read the server greating.
+	 */
+	if((rc=_OWPReadServerGreeting(cntrl,&mode_avail,challenge)) < OWPErrOK){
 		*err_ret = (OWPErrSeverity)rc;
 		goto error;
 	}
@@ -340,13 +455,14 @@ OWPControlOpen(
 	/*
 	 * retrieve key if needed
 	 */
-	if(kid &&
-		(mode_avail & _OWP_DO_CIPHER)){
-		strncpy(cntrl->kid_buffer,kid,sizeof(cntrl->kid_buffer)-1);
-		if(_OWPCallGetAESKey(cntrl,cntrl->kid_buffer,key_value,
+	if(userid &&
+		(mode_avail & OWP_MODE_DOCIPHER)){
+		strncpy(cntrl->userid_buffer,userid,
+					sizeof(cntrl->userid_buffer)-1);
+		if(_OWPCallGetAESKey(cntrl->ctx,cntrl->userid_buffer,key_value,
 								err_ret)){
 			key = key_value;
-			cntrl->kid = cntrl->kid_buffer;
+			cntrl->userid = cntrl->userid_buffer;
 		}
 		else{
 			if(*err_ret != OWPErrOK)
@@ -357,21 +473,23 @@ OWPControlOpen(
 	 * If no key, then remove auth/crypt modes
 	 */
 	if(!key)
-		mode_avail &= ~_OWP_DO_CIPHER;
+		mode_avail &= ~OWP_MODE_DOCIPHER;
 
 	/*
 	 * Pick "highest" level mode still available to this server.
 	 */
 	if((mode_avail & OWP_MODE_ENCRYPTED) &&
 			_OWPCallCheckControlPolicy(cntrl,OWP_MODE_ENCRYPTED,
-				cntrl->kid,(local_addr)?local_addr->saddr:NULL,
+				cntrl->userid,
+				(local_addr)?local_addr->saddr:NULL,
 				server_addr->saddr,err_ret)){
 		cntrl->mode = OWP_MODE_ENCRYPTED;
 	}
 	else if((*err_ret == OWPErrOK) &&
 			(mode_avail & OWP_MODE_AUTHENTICATED) &&
 			_OWPCallCheckControlPolicy(cntrl,OWP_MODE_AUTHENTICATED,
-				cntrl->kid,(local_addr)?local_addr->saddr:NULL,
+				cntrl->userid,
+				(local_addr)?local_addr->saddr:NULL,
 				server_addr->saddr,err_ret)){
 		cntrl->mode = OWP_MODE_AUTHENTICATED;
 	}
@@ -394,30 +512,56 @@ OWPControlOpen(
 	/*
 	 * Initialize all the encryption values as necessary.
 	 */
-	if(cntrl->mode & _OWP_DO_CIPHER){
+	if(cntrl->mode & OWP_MODE_DOCIPHER){
+		/*
+		 * Create "token" for ClientGreeting message.
+		 * Section 4.1 of owamp spec:
+		 * 	AES(concat(challenge(16),sessionkey(16)))
+		 */
 		unsigned char	buf[32];
 
+		/*
+		 * copy challenge
+		 */
 		memcpy(buf,challenge,16);
+
+		/*
+		 * Create random session key
+		 */
 		if(I2RandomBytes(ctx->rand_src,cntrl->session_key,16) != 0)
 			goto error;
-
+		/*
+		 * concat session key to buffer
+		 */
 		memcpy(&buf[16],cntrl->session_key,16);
 
+		/*
+		 * Initialize AES structures for use with this
+		 * key. (ReadBlock/WriteBlock functions will automatically
+		 * use this key for this cntrl connection.
+		 */
 		_OWPMakeKey(cntrl,cntrl->session_key);
 
-
+		/*
+		 * Encrypt the token as specified by Section 4.1
+		 */
 		if(OWPEncryptToken(key,buf,token) != 0)
 			goto error;
-	}
-	else{
-		if(I2RandomBytes(ctx->rand_src,token,32) != 0)
+
+		/*
+		 * Create random writeIV
+		 */
+		if(I2RandomBytes(ctx->rand_src,cntrl->writeIV,16) != 0)
 			goto error;
 	}
-	if(I2RandomBytes(ctx->rand_src,cntrl->writeIV,16) != 0)
+
+	/*
+	 * Get current time before sending client greeting - used
+	 * for very rough estimate of RTT. (upper bound)
+	 */
+	if(gettimeofday(&tvalstart,NULL)!=0)
 		goto error;
 
-	if(gettimeofday(&tval,NULL)!=0)
-		goto error;
 	/*
 	 * Write the client greeting, and see if the Server agree's to it.
 	 */
@@ -433,14 +577,38 @@ OWPControlOpen(
 		goto denied;
 	}
 
-	if(gettimeofday(&cntrl->delay_bound,NULL)!=0)
+	/*
+	 * Get current time after response from server and set the RTT
+	 * in the "rtt_bound" field of cntrl.
+	 */
+	if(gettimeofday(&tvalend,NULL)!=0)
 		goto error;
-	tvalsub(&cntrl->delay_bound,&tval);
+	tvalsub(&tvalend,&tvalstart);
+	OWPTimevalToNum64(&cntrl->rtt_bound,&tvalend);
 
+	if((rc=_OWPReadServerUptime(cntrl,&uptime)) < OWPErrOK){
+		*err_ret = (OWPErrSeverity)rc;
+		goto error;
+	}
+
+	if(uptime_ret){
+		*uptime_ret = uptime;
+	}
+
+	/*
+	 * Done - return!
+	 */
 	return cntrl;
 
+	/*
+	 * If there was an error - set err_ret, then cleanup memory and return.
+	 */
 error:
 	*err_ret = OWPErrFATAL;
+
+	/*
+	 * If access was denied - cleanup memory and return.
+	 */
 denied:
 	if(cntrl->local_addr != local_addr)
 		OWPAddrFree(local_addr);
@@ -450,6 +618,21 @@ denied:
 	return NULL;
 }
 
+/*
+ * Function:	SetEndpointAddrInfo
+ *
+ * Description:	
+ * 	Initialize the OWPAddr record's addrinfo section for an Endpoint
+ * 	of a test. (UDP test with no fixed port number.)
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
 static OWPBoolean
 SetEndpointAddrInfo(
 	OWPControl	cntrl,
@@ -467,15 +650,26 @@ SetEndpointAddrInfo(
 	char			*port=NULL;
 	int			rc;
 
+	/*
+	 * Must specify an addr record to this function.
+	 */
 	if(!addr){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
 						"Invalid test address");
 		return False;
 	}
 
+	/*
+	 * Already done!
+	 */
 	if(addr->ai)
 		return True;
 
+	/*
+	 * Addr was passed in as a fd so application created the
+	 * socket itself - determine as much information about the
+	 * socket as we can.
+	 */
 	if(addr->fd > -1){
 
 		/*
@@ -556,20 +750,45 @@ SetEndpointAddrInfo(
 		addr->ai = ai;
 
 	}else{
+		/*
+		 * Empty OWPAddr record - report error.
+		 */
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
 						"Invalid test address");
 		goto error;
 	}
 
+	/*
+	 * success!
+	 */
 	return True;
 
 error:
+	/*
+	 * Failed - free memory and return negative.
+	 */
 	if(saddr) free(saddr);
 	if(ai) free(ai);
 	*err_ret = OWPErrFATAL;
 	return FALSE;
 }
 
+/*
+ * Function:	_OWPClientRequestTestReadResponse
+ *
+ * Description:	
+ * 	This function is used to request a test from the server and
+ * 	return the response.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * 	0 on success
+ * Side Effect:	
+ */
 static int
 _OWPClientRequestTestReadResponse(
 	OWPControl	cntrl,
@@ -585,14 +804,14 @@ _OWPClientRequestTestReadResponse(
 	int		rc;
 	OWPAcceptType	acceptval;
 	struct sockaddr	*set_addr=NULL;
-	u_int16_t	*port_ret=NULL;
+	u_int16_t	port_ret=NULL;
 	u_int8_t	*sid_ret=NULL;
 
 	if((rc = _OWPWriteTestRequest(cntrl, sender->saddr, receiver->saddr,
 				      server_conf_sender, server_conf_receiver,
 				      sid, test_spec)) < OWPErrOK){
 		*err_ret = (OWPErrSeverity)rc;
-		return -1;
+		return 1;
 	}
 
 	/*
@@ -604,10 +823,20 @@ _OWPClientRequestTestReadResponse(
 	else if(!server_conf_sender && server_conf_receiver)
 		set_addr = receiver->saddr;
 
+	if(server_conf_receiver)
+		sid_ret = sid;
+
+	if((rc = _OWPReadTestAccept(cntrl,&acceptval,&port_ret,sid_ret)) <
+								OWPErrOK){
+		*err_ret = (OWPErrSeverity)rc;
+		return 1;
+	}
+
 	/*
-	 * If it was determined that the server will be returning port,
-	 * figure out the correct offset into set_addr for they type
-	 * of sockaddr, and set port_ret to that address.
+	 * If it was determined that the server returned a port,
+	 * figure out the correct offset into set_addr for the type
+	 * of sockaddr, and set  the port in the saddr to the
+	 * port_ret value.
 	 * (Don't you just love the joy's of supporting multiple AF's?)
 	 */
 	if(set_addr){
@@ -618,12 +847,12 @@ _OWPClientRequestTestReadResponse(
 
 			case AF_INET6:
 				saddr6 = (struct sockaddr_in6*)set_addr;
-				port_ret = &saddr6->sin6_port;
+				saddr6->sin6_port = htons(port_ret);
 				break;
 #endif
 			case AF_INET:
 				saddr4 = (struct sockaddr_in*)set_addr;
-				port_ret = &saddr4->sin_port;
+				saddr4->sin_port = htons(port_ret);
 				break;
 			default:
 				OWPError(cntrl->ctx,
@@ -633,25 +862,34 @@ _OWPClientRequestTestReadResponse(
 		}
 	}
 
-	if(server_conf_receiver)
-		sid_ret = sid;
-
-	if((rc = _OWPReadTestAccept(cntrl,&acceptval,port_ret,sid_ret)) < OWPErrOK){
-		*err_ret = (OWPErrSeverity)rc;
-		return -1;
-	}
 
 	if(acceptval == OWP_CNTRL_ACCEPT)
 		return 0;
 
-	/*
-	 * TODO: report addresses for test here.
-	 */
-	OWPError(cntrl->ctx,OWPErrINFO,OWPErrPOLICY,"Server denied test:");
+	OWPError(cntrl->ctx,OWPErrINFO,OWPErrPOLICY,"Server denied test");
+
 	*err_ret = OWPErrOK;
 	return 1;
 }
 
+/*
+ * Function:	OWPAddrByLocalControl
+ *
+ * Description:	
+ * 	Create an OWPAddr record for the local address based upon the
+ * 	control socket connection. (This is used to make a test request
+ * 	to to the same address that the control connection is coming from -
+ * 	it is very useful when you allow the local connection to wildcard
+ * 	since the test connection cannot wildcard.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
 OWPAddr
 OWPAddrByLocalControl(
 		   OWPControl	cntrl
@@ -660,16 +898,18 @@ OWPAddrByLocalControl(
 	struct addrinfo		*ai=NULL;
 	OWPAddr			addr;
 	struct sockaddr_storage	saddr_rec;
-	struct sockaddr		*oaddr=NULL;
+	struct sockaddr		*oaddr=(struct sockaddr*)&saddr_rec;
 	socklen_t		len;
 	u_int16_t		*port=NULL;
 
+	/*
+	 * copy current socketaddr into saddr_rec
+	 */
 	if(cntrl->local_addr && cntrl->local_addr->saddr){
-		oaddr = cntrl->local_addr->saddr;
 		len = cntrl->local_addr->saddrlen;
+		memcpy(&saddr_rec,cntrl->local_addr->saddr,len);
 	}else{
 		memset(&saddr_rec,0,sizeof(saddr_rec));
-		oaddr = (struct sockaddr*)&saddr_rec;
 		len = sizeof(saddr_rec);
 		if(getsockname(cntrl->sockfd,oaddr,&len) != 0){
 			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
@@ -678,9 +918,15 @@ OWPAddrByLocalControl(
 		}
 	}
 
+	/*
+	 * If copy was unsuccessful return error.
+	 */
 	if(!len)
 		return NULL;
 
+	/*
+	 * decode v4 and v6 sockaddrs.
+	 */
 	switch(oaddr->sa_family){
 		struct sockaddr_in	*saddr4;
 #ifdef	AF_INET6
@@ -702,6 +948,9 @@ OWPAddrByLocalControl(
 	}
 	*port = 0;
 
+	/*
+	 * Allocate an OWPAddr record to assign the data into.
+	 */
 	if( !(addr = _OWPAddrAlloc(cntrl->ctx)))
 		return NULL;
 
@@ -711,6 +960,9 @@ OWPAddrByLocalControl(
 		goto error;
 	}
 
+	/*
+	 * Assign all the fields.
+	 */
 	memcpy(addr->saddr,oaddr,len);
 	ai->ai_addr = addr->saddr;
 	addr->saddrlen = len;
@@ -739,6 +991,23 @@ error:
 	return NULL;
 }
 
+/*
+ * Function:	OWPSessionRequest
+ *
+ * Description:	
+ * 	Public function used to request a test from the server.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * 	True/False based upon acceptance from server. If False is returned
+ * 	check err_ret to see if an error condition exists. (If err_ret is
+ * 	not OWPErrOK, the control connection is probably no longer valid.)
+ * Side Effect:	
+ */
 OWPBoolean
 OWPSessionRequest(
 	OWPControl	cntrl,
@@ -747,8 +1016,8 @@ OWPSessionRequest(
 	OWPAddr		receiver,
 	OWPBoolean	server_conf_receiver,
 	OWPTestSpec	*test_spec,
-	OWPSID		sid_ret,
 	FILE		*fp,
+	OWPSID		sid_ret,
 	OWPErrSeverity	*err_ret
 )
 {
@@ -771,6 +1040,9 @@ OWPSessionRequest(
 		goto error;
 	}
 
+	/*
+	 * If NULL passed in for recv address - fill it in with local
+	 */
 	if(!receiver){
 		if(server_conf_receiver)
 			receiver = OWPAddrByNode(cntrl->ctx,"localhost");
@@ -780,6 +1052,9 @@ OWPSessionRequest(
 			goto error;
 	}
 
+	/*
+	 * If NULL passed in for send address - fill it in with local
+	 */
 	if(!sender){
 		if(server_conf_sender)
 			sender = OWPAddrByNode(cntrl->ctx,"localhost");
@@ -832,6 +1107,9 @@ OWPSessionRequest(
 	goto error;
 
 foundaddr:
+	/*
+	 * Fill OWPAddr records with "selected" addresses for test.
+	 */
 	receiver->saddr = rai->ai_addr;
 	receiver->saddrlen = rai->ai_addrlen;
 	receiver->so_type = rai->ai_socktype;
@@ -845,9 +1123,26 @@ foundaddr:
 	 * Create a structure to store the stuff we need to keep for
 	 * later calls.
 	 */
-	if( !(tsession = _OWPTestSessionAlloc(cntrl,sender,!server_conf_sender,
-				receiver,!server_conf_receiver,test_spec)))
+	if( !(tsession = _OWPTestSessionAlloc(cntrl,sender,server_conf_sender,
+				receiver,server_conf_receiver,test_spec)))
 		goto error;
+
+	/*
+	 * This section initializes the two endpoints for the test.
+	 * EndpointInit is used to create a local socket and allocate
+	 * a port for the local side of the test.
+	 *
+	 * EndpointInitHook is used to set the information for the
+	 * remote side of the test and then the Endpoint process
+	 * is forked off.
+	 *
+	 * The request to the server is interwoven in based upon which
+	 * side needs to happen first. (The receiver needs to be initialized
+	 * first because the SID comes from there - so, if conf_receiver
+	 * then the request is sent to the server, and then other work
+	 * happens. If the client is the receiver, then the local
+	 * initialization needs to happen before sending the request.)
+	 */
 
 	/*
 	 * Configure receiver first since the sid comes from there.
@@ -860,10 +1155,23 @@ foundaddr:
 			/*
 			 * create the local sender
 			 */
-			if(!_OWPCallEndpointInit(cntrl,tsession,sender,NULL,
-					&tsession->send_end_data,err_ret))
+			if(!_OWPEndpointInit(cntrl,tsession,sender,NULL,
+								err_ret)){
 				goto error;
+			}
 		}
+		else{
+			/*
+			 * This request will fail with the sample implementation
+			 * owampd. owampd is not prepared to configure both
+			 * endpoints - but let the test request go through
+			 * here anyway.  It will allow a client of the
+			 * sample implementation to be used with a possibly
+			 * more robust server.
+			 */
+			;
+		}
+
 		/*
 		 * Request the server create the receiver & possibly the
 		 * sender.
@@ -876,10 +1184,15 @@ foundaddr:
 		}
 
 		/*
-		 * Now that we know the SID we can create the schedule.
+		 * Now that we know the SID we can create the schedule
+		 * context.
 		 */
-		if(_OWPTestSessionCreateSchedule(tsession) != 0)
+		if(!(tsession->sctx = OWPScheduleContextCreate(cntrl->ctx,
+					tsession->sid,&tsession->test_spec))){
+			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+					"Unable to init schedule generator");
 			goto error;
+		}
 
 		/*
 		 * If sender is local, complete it's initialization now that
@@ -894,37 +1207,51 @@ foundaddr:
 			 */
 			if(!_OWPCallCheckTestPolicy(cntrl,True,
 					sender->saddr,receiver->saddr,
-					test_spec,err_ret)){
+					sender->saddrlen,
+					test_spec,&tsession->closure,err_ret)){
 				OWPError(cntrl->ctx,*err_ret,OWPErrPOLICY,
 					"Test not allowed");
 				goto error;
 			}
 
-			if(!_OWPCallEndpointInitHook(cntrl,tsession,
-					&tsession->send_end_data,err_ret))
+			if(!_OWPEndpointInitHook(cntrl,tsession,err_ret)){
 				goto error;
+			}
 		}
 	}
 	else{
 		/*
 		 * local receiver - create SID and compute schedule.
 		 */
-		if(_OWPCreateSID(tsession) ||
-				_OWPTestSessionCreateSchedule(tsession))
+		if(_OWPCreateSID(tsession) != 0){
 			goto error;
+		}
+
+		/*
+		 * Now that we know the SID we can create the schedule
+		 * context.
+		 */
+		if(!(tsession->sctx = OWPScheduleContextCreate(cntrl->ctx,
+					tsession->sid,&tsession->test_spec))){
+			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+					"Unable to init schedule generator");
+			goto error;
+		}
 
 		/*
 		 * Local receiver - first check policy, then create.
 		 */
 		if(!_OWPCallCheckTestPolicy(cntrl,False,receiver->saddr,
-					sender->saddr,test_spec,err_ret)){
+					sender->saddr,sender->saddrlen,
+					test_spec,
+					&tsession->closure,err_ret)){
 			OWPError(cntrl->ctx,*err_ret,OWPErrPOLICY,
 					"Test not allowed");
 			goto error;
 		}
-		if(!_OWPCallEndpointInit(cntrl,tsession,receiver,fp,
-					&tsession->recv_end_data,err_ret))
+		if(!_OWPEndpointInit(cntrl,tsession,receiver,fp,err_ret)){
 			goto error;
+		}
 
 
 		/*
@@ -937,45 +1264,43 @@ foundaddr:
 					test_spec,tsession->sid,err_ret)) != 0){
 				goto error;
 			}
-		}else{
+		}
+		else{
 			/*
-			 * Otherwise create sender: check policy,then init.
-			 *
-			 * btw - this is a VERY strange situation - the
+			 * This is a VERY strange situation - the
 			 * client is setting up a test session without
 			 * making a request to the server...
 			 *
-			 * Should almost just return an error here...
+			 * Just return an error here...
 			 */
-			if(!_OWPCallCheckTestPolicy(cntrl,True,sender->saddr,
-					receiver->saddr,test_spec,err_ret)){
-				OWPError(cntrl->ctx,*err_ret,OWPErrPOLICY,
+			OWPError(cntrl->ctx,*err_ret,OWPErrPOLICY,
 					"Test not allowed");
-				goto error;
-			}
-			if(!_OWPCallEndpointInit(cntrl,tsession,sender,NULL,
-						&tsession->send_end_data,
-						err_ret))
-				goto error;
-			if(!_OWPCallEndpointInitHook(cntrl,tsession,
-					&tsession->send_end_data,err_ret))
-				goto error;
-		}
-		if(!_OWPCallEndpointInitHook(cntrl,tsession,
-					&tsession->recv_end_data,err_ret))
 			goto error;
+		}
+		if(!_OWPEndpointInitHook(cntrl,tsession,err_ret)){
+			goto error;
+		}
 	}
 
+	/*
+	 * Server accepted our request, and we were able to initialize our
+	 * side of the test. Add this "session" to the tests list for this
+	 * control connection.
+	 */
 	tsession->next = cntrl->tests;
 	cntrl->tests = tsession;
 
+	/*
+	 * return the SID for this session to the caller.
+	 */
 	memcpy(sid_ret,tsession->sid,sizeof(OWPSID));
 
 	return True;
 
 error:
-	if(tsession)
+	if(tsession){
 		_OWPTestSessionFree(tsession,OWP_CNTRL_FAILURE);
+	}
 	else{
 		/*
 		 * If tsession exists - the addr's will be free'd as part
@@ -988,6 +1313,21 @@ error:
 	return False;
 }
 
+/*
+ * Function:	OWPStartSessions
+ *
+ * Description:	
+ * 	This function is used by applications to send the StartSessions
+ * 	message to the server and to kick of it's side of all sessions.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
 OWPErrSeverity
 OWPStartSessions(
 	OWPControl	cntrl
@@ -998,14 +1338,21 @@ OWPStartSessions(
 	OWPTestSession	tsession;
 	OWPAcceptType	acceptval;
 
+	/*
+	 * Must pass valid cntrl record.
+	 */
 	if(!cntrl){
 		OWPError(NULL,OWPErrFATAL,OWPErrINVALID,
 		"OWPStartSessions called with invalid cntrl record");
 		return OWPErrFATAL;
 	}
 
-	if((rc = _OWPWriteStartSessions(cntrl)) < OWPErrOK)
+	/*
+	 * Send the StartSessions message to the server
+	 */
+	if((rc = _OWPWriteStartSessions(cntrl)) < OWPErrOK){
 		return _OWPFailControlSession(cntrl,rc);
+	}
 
 	/*
 	 * Small optimization... - start local receivers while waiting for
@@ -1013,23 +1360,30 @@ OWPStartSessions(
 	 * to send packets unless control-ack comes back positive.)
 	 */
 	for(tsession = cntrl->tests;tsession;tsession = tsession->next){
-		if(tsession->recv_end_data){
-			if(!_OWPCallEndpointStart(tsession,
-						&tsession->recv_end_data,&err))
+		if(tsession->endpoint && !tsession->endpoint->send){
+			if(!_OWPEndpointStart(tsession->endpoint,&err)){
 				return _OWPFailControlSession(cntrl,err);
+			}
 			err2 = MIN(err,err2);
 		}
 	}
 
+	/*
+	 * Read the server response.
+	 */
 	if(((rc = _OWPReadControlAck(cntrl,&acceptval)) < OWPErrOK) ||
-					(acceptval != OWP_CNTRL_ACCEPT))
+					(acceptval != OWP_CNTRL_ACCEPT)){
 		return _OWPFailControlSession(cntrl,OWPErrFATAL);
+	}
 
+	/*
+	 * Now start local senders.
+	 */
 	for(tsession = cntrl->tests;tsession;tsession = tsession->next){
-		if(tsession->send_end_data){
-			if(!_OWPCallEndpointStart(tsession,
-						&tsession->send_end_data,&err))
+		if(tsession->endpoint && tsession->endpoint->send){
+			if(!_OWPEndpointStart(tsession->endpoint,&err)){
 				return _OWPFailControlSession(cntrl,err);
+			}
 			err2 = MIN(err,err2);
 		}
 	}
@@ -1038,118 +1392,160 @@ OWPStartSessions(
 }
 
 /*
-** Compute delay in seconds
-*/
+ * Function:	OWPDelay
+ *
+ * Description:	
+ * 	Compute delay between two timestamps.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
 double
-owp_delay(OWPTimeStamp *send_time, OWPTimeStamp *recv_time)
+OWPDelay(
+	OWPTimeStamp	*send_time,
+	OWPTimeStamp	*recv_time
+	)
 {
-	/*
-	 * num64 is encoded as 32.32 (sec.frac) - so divide by 2^32
-	 * to return scaled to "seconds".
-	 * (Do subtraction in u_int64_t space to maintain precision.)
-	 */
-	static double scale = ((u_int64_t)1<<32);
-	OWPnum64 t1, t2;
-
-	assert(send_time);
-	assert(recv_time);
-	t1 = OWPTimeStamp2num64(send_time);
-	t2 = OWPTimeStamp2num64(recv_time);
-
-	/* Return negative quantity if send_time is before recv_time. 
-	   Yes weird, -  but possible with bad clocks. */
-	return (t2 > t1)? (double)(t2 - t1)/scale : (double)(t1 - t2)/(-scale);
+	return OWPNum64ToDouble(
+			OWPNum64Diff(send_time->owptime,recv_time->owptime));
 }
 
 /*
- * Returns the number of data records in the file. If < 1, check err_ret to
- * find out if it was an error condition: ErrOK just means the request
- * was denied by the server.
+ * Function:	OWPFetchSession
  *
- * (If the caller doesn't really want to save the information, they can
- * open a file to /dev/null so everything gets thrown away. We need to
- * download the entire session in any case, so it doesn't make sense
- * to split the api.)
+ * Description:	
+ *	This function is used to request that the data for the TestSession
+ *	identified by sid be fetched from the server and copied to the
+ *	file pointed at by fp. This function assumes fp is currently pointing
+ *	at an open file, and that fp is ready to write at the begining of the
+ *	file.
  *
- * TODO: In v5 OWPSessionHeader should be filled in with the SessionRequest
- * information. For now, if hdr_ret is passed in, set hdr_ret->header = False.
+ *	To request an entire session set begin = 0, and end = 0xFFFFFFFF.
+ *	(This is only valid if the session is complete - otherwise the server
+ *	should deny this request.)
+ *	Otherwise, "begin" and "end" refer to sequence numbers in the test
+ *	session.
+ *	The number of records returned will not necessarily be end-begin due
+ *	to possible loss and/or duplication.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ *	The number of data records in the file. If < 1, check err_ret to
+ *	find out if it was an error condition: ErrOK just means the request
+ *	was denied by the server. ErrWARNING means there was a local
+ *	problem (fp not writeable etc...) and the control connection is
+ *	still valid.
+ * Side Effect:	
  */
-int
+u_int64_t
 OWPFetchSession(
 	OWPControl		cntrl,
 	FILE			*fp,
 	u_int32_t		begin,
 	u_int32_t		end,
 	OWPSID			sid,
-	OWPSessionHeader	hdr_ret,
 	OWPErrSeverity		*err_ret
 	)
 {
-	/*
-	 * buf is 80 because:
-	 * 80 == (_OWP_RIJNDAEL_BLOCK_SIZE*5) == (_OWP_TS_REC_SIZE*4)
-	 * if this changes, this routine must change.
-	 */
-#if	(80 != (_OWP_RIJNDAEL_BLOCK_SIZE*5))
-#error "Block-sizes have changed! Fix this function."
-#endif
-#if     (80 != (_OWP_TS_REC_SIZE*4))
-#error "Record sizes have changed! Fix this function."
-#endif
-	OWPAcceptType	acc_type;
-	u_int32_t	num_rec,n;
-	u_int8_t	buf[80];
-	int		i;
+	OWPAcceptType		acceptval;
+	OWPTestSession		tsession = NULL;
+	OWPSessionHeaderRec	hdr;
+	u_int64_t		num_rec,n;
+	u_int8_t		buf[_OWP_FETCH_BUFFSIZE];
+	int			i;
+	OWPBoolean		dowrite = True;
+
+	*err_ret = OWPErrOK;
+
+	if(!fp){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+						"OWPFetchSession: Invalid fp");
+		*err_ret = OWPErrFATAL;
+		return 0;
+	}
 
 	/*
 	 * Make the request of the server.
 	 */
-	if((*err_ret = _OWPWriteRetrieveSession(cntrl,begin,end,sid)) <
+	if((*err_ret = _OWPWriteFetchSession(cntrl,begin,end,sid)) <
 								OWPErrWARNING)
 		goto failure;
 
 	/*
 	 * Read the response
 	 */
-	if((*err_ret = _OWPReadControlAck(cntrl, &acc_type)) < OWPErrWARNING)
+	if((*err_ret = _OWPReadControlAck(cntrl, &acceptval)) < OWPErrWARNING)
 		goto failure;
 	
 	/*
 	 * If the server didn't accept, we are done.
 	 */
-	if(acc_type != OWP_CNTRL_ACCEPT)
+	if(acceptval != OWP_CNTRL_ACCEPT)
 		return 0;
 
-	/*
-	 * Read the DataHeader from the server.
-	 * (Currently the only useful info is num_rec - in v5 this will
-	 * return full session info on this sid's session.)
-	 */
-	if((*err_ret=_OWPReadFetchHeader(cntrl,&num_rec,NULL)) < OWPErrWARNING)
-		goto failure;
-
-	if(hdr_ret)
-		hdr_ret->header = False;
-
-	/*
-	 * Currently write boring header - again, in v5 this will
-	 * need to save more interesting information. (Basically we fill
-	 * in an OWPSessionHeader structure with the ReadFetchHeader function,
-	 * and pass that into this function. (And set hdr_ret with it.)
-	 */
-	if(OWPWriteDataHeader(cntrl->ctx,fp,NULL) != 0){
-		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-						"OWPWriteDataHeader():%M");
+	if((*err_ret = _OWPReadTestRequest(cntrl,NULL,&tsession,NULL)) !=
+								OWPErrOK){
 		goto failure;
 	}
 
-	for(n=num_rec;n>=4;n-=4){
-		if(_OWPReceiveBlocks(cntrl,buf,5) != 5)
+	/*
+	 * Write the file header now. First encode the tsession into
+	 * a SessionHeader.
+	 */
+
+	assert(sizeof(hdr.addr_sender) >= tsession->sender->saddrlen);
+	memcpy(&hdr.addr_sender,tsession->sender->saddr,
+						tsession->sender->saddrlen);
+	memcpy(&hdr.addr_receiver,tsession->receiver->saddr,
+						tsession->receiver->saddrlen);
+
+	hdr.conf_sender = tsession->conf_sender;
+	hdr.conf_receiver = tsession->conf_receiver;
+
+	memcpy(hdr.sid,tsession->sid,sizeof(hdr.sid));
+		/* hdr.test_spec will now point at same slots memory. */
+	hdr.test_spec = tsession->test_spec;
+
+	if(OWPWriteDataHeader(cntrl->ctx,fp,&hdr) != 0){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+				"OWPFetchSession: OWPWriteDataHeader(): %M");
+		*err_ret = OWPErrWARNING;
+		(void)_OWPTestSessionFree(tsession,OWP_CNTRL_INVALID);
+		dowrite = True;
+	}
+
+	/*
+	 * Read the RecordsHeader from the server. Just the number of
+	 * data records that will follow.
+	 */
+	if((*err_ret = _OWPReadFetchRecordsHeader(cntrl,&num_rec)) <
+								OWPErrWARNING)
+		goto failure;
+
+
+	for(n=num_rec;
+			n >= _OWP_FETCH_TESTREC_BLOCKS;
+				n -= _OWP_FETCH_TESTREC_BLOCKS){
+		if(_OWPReceiveBlocks(cntrl,buf,_OWP_FETCH_AES_BLOCKS) !=
+							_OWP_FETCH_AES_BLOCKS){
+			*err_ret = OWPErrFATAL;
 			goto failure;
-		if(fwrite(buf,_OWP_TS_REC_SIZE,4,fp) < 4){
+		}
+		if(dowrite && (fwrite(buf,_OWP_TESTREC_SIZE,
+					_OWP_FETCH_TESTREC_BLOCKS,fp) !=
+						_OWP_FETCH_TESTREC_BLOCKS)){
 			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-						"OWPFetchSession:fwrite():%M");
-			goto failure;
+					"OWPFetchSession: fwrite(): %M");
+			dowrite = False;
 		}
 	}
 
@@ -1157,22 +1553,25 @@ OWPFetchSession(
 		/*
 		 * Read enough AES blocks to get remaining records.
 		 */
-		int	blks = n*_OWP_TS_REC_SIZE/_OWP_RIJNDAEL_BLOCK_SIZE + 1;
+		int	blks = n*_OWP_TESTREC_SIZE/_OWP_RIJNDAEL_BLOCK_SIZE + 1;
 
-		if(_OWPReceiveBlocks(cntrl,buf,blks) != blks)
-			goto failure;
-		if(fwrite(buf,_OWP_TS_REC_SIZE,n,fp) < n){
-			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-						"OWPFetchSession:fwrite():%M");
+		if(_OWPReceiveBlocks(cntrl,buf,blks) != blks){
+			*err_ret = OWPErrFATAL;
 			goto failure;
 		}
-		/* check MBZ padding */
-		for(i=(n*_OWP_TS_REC_SIZE);
-					i < (blks*_OWP_RIJNDAEL_BLOCK_SIZE);i++)
+		if(dowrite && (fwrite(buf,_OWP_TESTREC_SIZE,n,fp) != n)){
+			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+					"OWPFetchSession: fwrite(): %M");
+			dowrite = False;
+		}
+		/* check zero padding */
+		for(i=(n*_OWP_TESTREC_SIZE);
+				i < (blks*_OWP_RIJNDAEL_BLOCK_SIZE);i++){
 			if(buf[i] != 0){
-				OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"OWPFetchSession:MBZ padding corrupt");
+				OWPError(cntrl->ctx,OWPErrINFO,OWPErrUNKNOWN,
+				"OWPFetchSession: record padding non-zero");
 			}
+		}
 	}
 
 	fflush(fp);
@@ -1180,8 +1579,11 @@ OWPFetchSession(
 	/*
 	 * Read final MBZ AES block to finalize transaction.
 	 */
-	if(_OWPReceiveBlocks(cntrl,buf,1) != 1)
+	if(_OWPReceiveBlocks(cntrl,buf,1) != 1){
+		*err_ret = OWPErrFATAL;
 		goto failure;
+	}
+
 	if(memcmp(cntrl->zero,buf,_OWP_RIJNDAEL_BLOCK_SIZE)){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 				"OWPFetchSession:Final MBZ block corrupt");
@@ -1189,6 +1591,16 @@ OWPFetchSession(
 		goto failure;
 	}
 
+	/*
+	 * reset state to request.
+	 */
+	cntrl->state &= ~_OWPStateFetching;
+	cntrl->state |= _OWPStateRequest;
+
+	if(!dowrite){
+		*err_ret = OWPErrWARNING;
+		num_rec = 0;
+	}
 
 	return num_rec;
 

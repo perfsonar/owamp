@@ -18,6 +18,8 @@
 #
 #	Description:	install scripts/OWP files
 
-plibdir = $(bindir)/OWP
+#plibdir = $(bindir)/OWP
 
-plib_DATA = Archive.pm Conf.pm Digest.pm RawIO.pm Syslog.pm Utils.pm
+#plib_DATA = Archive.pm Conf.pm Digest.pm RawIO.pm Syslog.pm Utils.pm
+noinst_SCRIPTS = Archive.pm Conf.pm Digest.pm RawIO.pm Syslog.pm Utils.pm
+EXTRA_DIST = $(noinst_SCRIPTS)

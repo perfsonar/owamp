@@ -41,6 +41,7 @@
  */
 #define	POWLOCK	".powlock"
 #define	POWTMPFILEFMT	"pow.XXXXXX"
+#define INCOMPLETE_EXT	".i"
 
 /*
  * Application "context" structure
@@ -62,8 +63,8 @@ typedef	struct {
 #endif
 
 		u_int32_t	numPackets;       /* -c */
-		u_int32_t	lossThreshold;    /* -L (seconds) */
-		float		meanWait;        /* -i  (seconds) */
+		double		lossThreshold;    /* -L (seconds) */
+		double		meanWait;        /* -i  (seconds) */
 		u_int32_t	padding;          /* -s */
 
 		char		*savedir;	/* -d */
@@ -88,27 +89,34 @@ typedef struct pow_session_rec{
 	FILE		*fp;
 	char		*fname;
 	char		fname_mem[PATH_MAX];
-	OWPnum64	end;
+	OWPNum64	end;
 } pow_session_rec, *pow_session;
 
 typedef struct pow_cntrl_rec{
-	OWPControl	cntrl;
-	OWPSID		sid;
-	OWPTimeStamp	*sessionStart;
-	OWPTimeStamp	tstamp_mem;
-	FILE		*fp;
-	char		fname[PATH_MAX];
-	u_int32_t	numPackets;
+	OWPControl		cntrl;
+	OWPScheduleContext	sctx;
+	OWPSID			sid;
+	OWPNum64		*sessionStart;
+	OWPNum64		owptime_mem;
+	FILE			*fp;
+	char			fname[PATH_MAX];
+	u_int32_t		numPackets;
 } pow_cntrl_rec, *pow_cntrl;
 
+typedef struct pow_seen_rec{
+	OWPNum64	sendtime;	/* presumed send time. */
+	OWPBoolean	seen;
+} pow_seen_rec, *pow_seen;
+
 struct pow_parse_rec{
+	OWPContext		ctx;
 	u_int32_t		i;
 	FILE			*fp;
 	u_int32_t		first;
 	u_int32_t		last;
 	off_t			begin;
 	off_t			next;
-	u_int8_t		*seen;
+	pow_seen		seen;
 	OWPSessionHeader	hdr;
 };
 #endif

@@ -43,7 +43,7 @@ typedef	struct {
 		char		*identity;        /* -u */
 		u_int32_t	numPackets;       /* -c */
 
-		u_int32_t	lossThreshold;    /* -l */
+		double		lossThreshold;    /* -l */
 		float           percentile;       /* -a */
 
 		char		*passwd;          /* -P */

@@ -29,107 +29,9 @@
 
 #include "./owampP.h"
 
-static OWPInitializeConfigRec	def_cfg = {
-	/* tm_out.tv_sec		*/	{0,
-	/* tm_out.tv_usec		*/	0},
-	/* eh				*/	NULL,
-	/* get_aes_key			*/	NULL,
-	/* check_control_func		*/	NULL,
-	/* check_test_func		*/	NULL,
-	/* rand_type			*/	I2RAND_DEV,
-	/* rand_data			*/	NULL
-};
-
-OWPContext
-OWPContextInitialize(
-	OWPInitializeConfig	config
-)
-{
-	struct sigaction	act;
-	I2LogImmediateAttr	ia;
-	OWPContext		ctx = calloc(1,sizeof(OWPContextRec));
-
-	if(!ctx){
-		OWPError(NULL,
-			OWPErrFATAL,ENOMEM,":calloc(1,%d):%M",
-						sizeof(OWPContextRec));
-		return NULL;
-	}
-
-	if(config)
-		ctx->cfg = *config;
-	else
-		ctx->cfg = def_cfg;
-
-	if(!ctx->cfg.eh){
-		ctx->lib_eh = True;
-		ia.line_info = (I2NAME|I2MSG);
-		ia.fp = stderr;
-		ctx->cfg.eh = I2ErrOpen("libowamp",I2ErrLogImmediate,&ia,
-				NULL,NULL);
-		if(!ctx->cfg.eh){
-			OWPError(NULL,OWPErrFATAL,OWPErrUNKNOWN,
-					"Cannot init error module");
-			free(ctx);
-			return NULL;
-		}
-	}
-	else
-		ctx->lib_eh = False;
-
-	if(ctx->cfg.rand_type == 0){
-		ctx->cfg.rand_type = I2RAND_DEV;
-		ctx->cfg.rand_data = NULL;
-	}
-
-	if( !(ctx->rand_src = I2RandomSourceInit(ctx->cfg.eh,
-			       ctx->cfg.rand_type,
-			       ctx->cfg.rand_data))){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-			     "Failed to initialize randomness sources");
-		OWPContextFree(ctx);
-		return NULL;
-	}
-
-	/*
-	 * Do NOT exit on SIGPIPE. To defeat this in the least intrusive
-	 * way only set SIG_IGN if SIGPIPE is currently set to SIG_DFL.
-	 * Presumably if someone actually set a SIGPIPE handler, they
-	 * knew what they were doing...
-	 */
-	sigemptyset(&act.sa_mask);
-	act.sa_handler = SIG_DFL;
-	act.sa_flags = 0;
-	if(sigaction(SIGPIPE,NULL,&act) != 0){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"sigaction(): %M");
-		OWPContextFree(ctx);
-		return NULL;
-	}
-	if(act.sa_handler == SIG_DFL){
-		act.sa_handler = SIG_IGN;
-		if(sigaction(SIGPIPE,&act,NULL) != 0){
-			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"sigaction(): %M");
-			OWPContextFree(ctx);
-			return NULL;
-		}
-	}
-
-	return ctx;
-}
-
-void
-OWPContextFree(
-	OWPContext	ctx
-)
-{
-	if(ctx->lib_eh)
-		I2ErrClose(ctx->cfg.eh);
-	I2RandomSourceClose(ctx->rand_src);
-	free(ctx);
-
-	return;
-}
+#ifndef EFTYPE
+#define	EFTYPE	ENOSYS
+#endif
 
 OWPAddr
 _OWPAddrAlloc(
@@ -147,9 +49,9 @@ _OWPAddrAlloc(
 	addr->ctx = ctx;
 
 	addr->node_set = 0;
-	addr->node[0] = '\0';
+	strncpy(addr->node,"unknown",sizeof(addr->node));
 	addr->port_set = 0;
-	addr->port[0] = '\0';
+	strncpy(addr->port,"unknown",sizeof(addr->port));
 	addr->ai_free = 0;
 	addr->ai = NULL;
 
@@ -443,48 +345,43 @@ OWPAddrSockLen(
 	return addr->saddrlen;
 }
 
-OWPControl
-_OWPControlAlloc(
-	OWPContext		ctx,
-	void			*app_data,
-	OWPErrSeverity		*err_ret
-)
+/*
+ * Function:	OWPGetContext
+ *
+ * Description:	
+ * 	Returns the context pointer that was referenced when the
+ * 	given control connection was created.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
+OWPContext
+OWPGetContext(
+	OWPControl	cntrl
+	)
 {
-	OWPControl	cntrl;
-	
-	if( !(cntrl = calloc(1,sizeof(OWPControlRec)))){
-		OWPError(ctx,OWPErrFATAL,errno,
-				":calloc(1,%d)",sizeof(OWPControlRec));
-		*err_ret = OWPErrFATAL;
-		return NULL;
-	}
-
-	/*
-	 * Init state fields
-	 */
-	cntrl->ctx = ctx;
-
-	cntrl->app_data = app_data;
-
-	/*
-	 * Init addr fields
-	 */
-	cntrl->sockfd = -1;
-
-	/*
-	 * Init encryption fields
-	 */
-	memset(cntrl->kid_buffer,'\0',sizeof(cntrl->kid_buffer));
-
-	/*
-	 * Put this control record on the ctx list.
-	 */
-	cntrl->next = ctx->cntrl_list;
-	ctx->cntrl_list = cntrl;
-
-	return cntrl;
+	return cntrl->ctx;
 }
 
+/*
+ * Function:	OWPGetMode
+ *
+ * Description:	
+ * 	Returns the "mode" of the control connection.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
 OWPSessionMode
 OWPGetMode(
 	OWPControl	cntrl
@@ -494,7 +391,28 @@ OWPGetMode(
 }
 
 /*
- * Function:	OWPGetDelay
+ * Function:	OWPControlFD
+ *
+ * Description:	
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
+int
+OWPControlFD(
+	OWPControl	cntrl
+	)
+{
+	return cntrl->sockfd;
+}
+
+/*
+ * Function:	OWPGetRTTBound
  *
  * Description:	Returns a very rough estimate of the upper-bound rtt to
  * 		the server.
@@ -505,29 +423,23 @@ OWPGetMode(
  *
  * Scope:	
  * Returns:	
+ * 		bound or 0 if unavailable
  * Side Effect:	
  */
-struct timeval*
-OWPGetDelay(
-	OWPControl	cntrl,
-	struct timeval	*tval
+OWPNum64
+OWPGetRTTBound(
+	OWPControl	cntrl
 	)
 {
-	if(!tval)
-		return NULL;
-	*tval = cntrl->delay_bound;
-
-	return tval;
+	return cntrl->rtt_bound;
 }
 
 /*
- * Function:	OWPGetAESkeyInstance
+ * Function:	_OWPFailControlSession
  *
  * Description:	
- * 		Return the keyInstance associated with the "which" key.
- * 		which:
- * 			0: Decryption key
- * 			1: Encryption key
+ * 	Simple convienience to set the state and return the failure at
+ * 	the same time.
  *
  * In Args:	
  *
@@ -537,27 +449,6 @@ OWPGetDelay(
  * Returns:	
  * Side Effect:	
  */
-keyInstance*
-OWPGetAESkeyInstance(
-		OWPControl	cntrl,
-		int		which
-		)
-{
-	if(!cntrl)
-		return NULL;
-
-	switch(which){
-		case 0:
-			return &cntrl->decrypt_key;
-			break;
-		case 1:
-			return &cntrl->encrypt_key;
-			break;
-		default:
-			return NULL;
-	}
-}
-
 OWPErrSeverity
 _OWPFailControlSession(
 	OWPControl	cntrl,
@@ -568,18 +459,36 @@ _OWPFailControlSession(
 	return (OWPErrSeverity)level;
 }
 
+/*
+ * Function:	_OWPTestSessionAlloc
+ *
+ * Description:	
+ * 	This function is used to allocate/initialize the memory record used
+ * 	to maintain state information about a "configured" test.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
 OWPTestSession
 _OWPTestSessionAlloc(
 	OWPControl	cntrl,
 	OWPAddr		sender,
-	OWPBoolean	send_local,
+	OWPBoolean	conf_sender,
 	OWPAddr		receiver,
-	OWPBoolean	recv_local,
+	OWPBoolean	conf_receiver,
 	OWPTestSpec	*test_spec
 )
 {
 	OWPTestSession	test;
 
+	/*
+	 * Address records must exist.
+	 */
 	if(!sender || ! receiver){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
 				"_OWPTestSessionAlloc:Invalid Addr arg");
@@ -588,20 +497,64 @@ _OWPTestSessionAlloc(
 
 	if(!(test = calloc(1,sizeof(OWPTestSessionRec)))){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"calloc(1,OWPTestSessionRec):%M");
+				"calloc(1,OWPTestSessionRec): %M");
 		return NULL;
 	}
 
+	/*
+	 * Initialize address records and test description record fields.
+	 */
 	test->cntrl = cntrl;
 	test->sender = sender;
-	test->send_local = send_local;
+	test->conf_sender = conf_sender;
 	test->receiver = receiver;
-	test->recv_local = recv_local;
+	test->conf_receiver = conf_receiver;
 	memcpy(&test->test_spec,test_spec,sizeof(OWPTestSpec));
+
+	/*
+	 * Allocate memory for slot records if they won't fit in the
+	 * pre-allocated "buffer" already associated with the TestSession
+	 * record. Then copy the slot records.
+	 * (From the server side, slots will be 0 at this point - the
+	 * SessionRecord is allocated before reading the slots off the
+	 * socket so the SessionRecord slot "buffer" can potentially be used.)
+	 */
+	if(test->test_spec.slots){
+		if(test->test_spec.nslots > _OWPSLOT_BUFSIZE){
+			if(!(test->test_spec.slots =
+						calloc(test->test_spec.nslots,
+							sizeof(OWPSlot)))){
+				OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+						"calloc(%d,OWPSlot): %M",
+						test->test_spec.nslots);
+				free(test);
+				return NULL;
+			}
+		}else{
+			test->test_spec.slots = test->slot_buffer;
+		}
+		memcpy(test->test_spec.slots,test_spec->slots,
+					test_spec->nslots*sizeof(OWPSlot));
+	}
 
 	return test;
 }
 
+/*
+ * Function:	_OWPTestSessionFree
+ *
+ * Description:	
+ * 	This function is used to free the memory associated with a "configured"
+ * 	test session.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
 OWPErrSeverity
 _OWPTestSessionFree(
 	OWPTestSession	tsession,
@@ -609,36 +562,45 @@ _OWPTestSessionFree(
 )
 {
 	OWPTestSession	*sptr;
-	OWPErrSeverity	err=OWPErrOK,err2=OWPErrOK;
+	OWPErrSeverity	err=OWPErrOK;
 
-	if(!tsession)
+	if(!tsession){
 		return OWPErrOK;
+	}
 
 	/*
 	 * remove this tsession from the cntrl->tests lists.
 	 */
-	for(sptr = &tsession->cntrl->tests;*sptr;sptr = &(*sptr)->next)
+	for(sptr = &tsession->cntrl->tests;*sptr;sptr = &(*sptr)->next){
 		if(*sptr == tsession){
 			*sptr = tsession->next;
 			break;
 		}
+	}
 
-	if(tsession->recv_end_data)
-		(void)_OWPCallEndpointStop(tsession,&tsession->recv_end_data,
-					   aval,&err);
-	if(tsession->send_end_data)
-		(void)_OWPCallEndpointStop(tsession,&tsession->send_end_data,
-					   aval,&err2);
+	if(tsession->endpoint){
+		(void)_OWPEndpointStop(tsession->endpoint,aval,&err);
+	}
+
+	if(tsession->closure){
+		_OWPCallTestComplete(tsession,aval);
+	}
 
 	OWPAddrFree(tsession->sender);
 	OWPAddrFree(tsession->receiver);
 
-	if(tsession->schedule)
-		free(tsession->schedule);
+	if(tsession->sctx){
+		OWPScheduleContextFree(tsession->sctx);
+	}
+
+	if(tsession->test_spec.slots &&
+			(tsession->test_spec.slots != tsession->slot_buffer)){
+		free(tsession->test_spec.slots);
+	}
 
 	free(tsession);
 
-	return MIN(err,err2);
+	return err;
 }
 
 
@@ -689,7 +651,7 @@ _OWPCreateSID(
 	memcpy(&tsession->sid[0],aptr,4);
 
 	(void)OWPGetTimeOfDay(&tstamp);
-	OWPEncodeTimeStamp(&tsession->sid[4],&tstamp);
+	_OWPEncodeTimeStamp(&tsession->sid[4],&tstamp);
 
 	if(I2RandomBytes(tsession->cntrl->ctx->rand_src,&tsession->sid[12],4)
 									!= 0){
@@ -699,119 +661,41 @@ _OWPCreateSID(
 	return 0;
 }
 
-int
-_OWPTestSessionCreateSchedule(
-	OWPTestSession	tsession
-	)
-{
-	OWPrand_context64	*rand_ctx;
-	OWPnum64		InvLambda,sum,val;
-	u_int64_t		i;
-
-	if(!tsession)
-		return 1;
-
-	if(tsession->schedule){
-		OWPError(tsession->cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-			"_OWPTestSessionCreateSchedule:schedule present");
-		return 1;
-	}
-
-	if(tsession->test_spec.test_type != OWPTestPoisson){
-		OWPError(tsession->cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-				"Incorrect test type");
-		return 1;
-	}
-
-	if( !(rand_ctx = OWPrand_context64_init(tsession->sid))){
-		OWPError(tsession->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"Unable to init random context for exp dist");
-		return 1;
-	}
-
-	if( !(tsession->schedule =
-		malloc(sizeof(OWPnum64)*tsession->test_spec.any.npackets))){
-
-		OWPError(tsession->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-								"malloc():%M");
-		OWPrand_context64_free(rand_ctx);
-		return 1;
-	}
-
-	sum = OWPulong2num64(0);
-	InvLambda = OWPusec2num64(tsession->test_spec.poisson.InvLambda);
-	for(i=0;i<tsession->test_spec.any.npackets;i++){
-		val = OWPexp_rand64(rand_ctx);
-		val = OWPnum64_mul(val,InvLambda);
-		sum = OWPnum64_add(sum,val);
-		tsession->schedule[i] = sum;
-	}
-	OWPrand_context64_free(rand_ctx);
-
-	tsession->last = sum;
-
-	return 0;
-}
-
-
-OWPErrSeverity
-OWPControlClose(OWPControl cntrl)
-{
-	OWPErrSeverity	err = OWPErrOK;
-	OWPErrSeverity	lerr = OWPErrOK;
-	OWPControl	*list = &cntrl->ctx->cntrl_list;
-	OWPAcceptType	acceptval = OWP_CNTRL_ACCEPT;
-
-	/*
-	 * remove all test sessions
-	 */
-	while(cntrl->tests){
-		lerr = _OWPTestSessionFree(cntrl->tests,acceptval);
-		err = MIN(err,lerr);
-	}
-
-	/*
-	 * Remove cntrl from ctx list.
-	 */
-	while(*list && (*list != cntrl))
-		list = &(*list)->next;
-	if(*list == cntrl)
-		*list = cntrl->next;
-
-	/*
-	 * these functions will close the control socket if it is open.
-	 */
-	lerr = OWPAddrFree(cntrl->remote_addr);
-	err = MIN(err,lerr);
-	lerr = OWPAddrFree(cntrl->local_addr);
-	err = MIN(err,lerr);
-
-	free(cntrl);
-
-	return err;
-}
-
 OWPErrSeverity
 OWPStopSessions(
 	OWPControl	cntrl,
-	OWPAcceptType	*acceptval	/* in/out	*/
+	int		*retn_on_intr,
+	OWPAcceptType	*acceptval_ret	/* in/out	*/
 		)
 {
 	OWPErrSeverity	err,err2=OWPErrOK;
-	int		msgtype;
+	OWPRequestType	msgtype;
 	OWPAcceptType	aval=OWP_CNTRL_ACCEPT;
+	OWPAcceptType	*acceptval=&aval;
+	int		ival=0;
+	int		*intr=&ival;
 
-	if(!cntrl){
-		OWPError(NULL,OWPErrFATAL,OWPErrINVALID,
-		"OWPStopSessions called with invalid cntrl record");
-		return OWPErrFATAL;
+	if(acceptval_ret){
+		acceptval = acceptval_ret;
 	}
 
-	if(acceptval)
-		aval = *acceptval;
+	if(retn_on_intr){
+		intr = retn_on_intr;
+	}
+
+	/*
+	 * TODO: v6 - fetch "last" sequence sent/received for encoding
+	 * in StopSession message.
+	 * (To do this - this loop needs to call "stop" on each endpoint,
+	 * but not free the structures. Somehow "stop" needs to fetch the
+	 * last sequence number from the endpoint when it exits. Receive
+	 * is easy... Send it not as simple. Should I create a socketpair
+	 * before forking off sender endpoints so the last seq number
+	 * can be sent up the pipe?)
+	 */
 
 	while(cntrl->tests){
-		err = _OWPTestSessionFree(cntrl->tests,aval);
+		err = _OWPTestSessionFree(cntrl->tests,*acceptval);
 		err2 = MIN(err,err2);
 	}
 
@@ -820,39 +704,44 @@ OWPStopSessions(
 	 * endpoints failed, send failure acceptval instead and return error.
 	 * (The endpoint_stop_func should have reported the error.)
 	 */
-	if(!aval && (err2 < OWPErrWARNING))
-		aval = OWP_CNTRL_FAILURE;
+	if(!*acceptval && (err2 < OWPErrWARNING)){
+		*acceptval = OWP_CNTRL_FAILURE;
+	}
 
-	err = (OWPErrSeverity)_OWPWriteStopSessions(cntrl,aval);
+	err = (OWPErrSeverity)_OWPWriteStopSessions(cntrl,intr,*acceptval);
 	if(err < OWPErrWARNING)
 		return _OWPFailControlSession(cntrl,OWPErrFATAL);
 	err2 = MIN(err,err2);
 
-	msgtype = OWPReadRequestType(cntrl);
-	if(msgtype == 0){
+	msgtype = OWPReadRequestType(cntrl,intr);
+	if(msgtype == OWPReqSockClose){
 		OWPError(cntrl->ctx,OWPErrFATAL,errno,
 				"OWPStopSessions:Control socket closed: %M");
 		return _OWPFailControlSession(cntrl,OWPErrFATAL);
 	}
-	if(msgtype != 3){	/* 3 is StopSessions message */
+	if(msgtype != OWPReqStopSessions){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
 				"Invalid protocol message received...");
 		return _OWPFailControlSession(cntrl,OWPErrFATAL);
 	}
 
-	err = _OWPReadStopSessions(cntrl,&aval);
+	err = _OWPReadStopSessions(cntrl,acceptval,intr);
+
+	/*
+	 * TODO: v6 - use "last seq number" messages from
+	 * in StopSession message to remove "missing" packets from the
+	 * end of session files. The "last seq number" in the file should
+	 * be MIN(last seq number sent,last seq number in file{missing or not}).
+	 */
 
 	cntrl->state &= ~_OWPStateTest;
-
-	if(acceptval)
-		*acceptval = aval;
 
 	return MIN(err,err2);
 }
 
 OWPPacketSizeT
 OWPTestPayloadSize(
-		int		mode, 
+		OWPSessionMode	mode, 
 		u_int32_t	padding
 		)
 {
@@ -860,13 +749,11 @@ OWPTestPayloadSize(
 
 	switch (mode) {
 	case OWP_MODE_OPEN:
-		msg_size = 12;
+		msg_size = 14;
 		break;
 	case OWP_MODE_AUTHENTICATED:
-		msg_size = 24;
-		break;
 	case OWP_MODE_ENCRYPTED:
-		msg_size = 16;
+		msg_size = 32;
 		break;
 	default:
 		return 0;
@@ -876,9 +763,52 @@ OWPTestPayloadSize(
 	return msg_size + padding;
 }
 
-#define OWP_IP4_HDR_SIZE	20
-#define OWP_IP6_HDR_SIZE	40
-#define OWP_UDP_HDR_SIZE	8
+/*
+ * Function:	OWPTestPacketRate
+ *
+ * Description:	
+ * 	This function returns the # packets/ second as a double.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
+double
+OWPTestPacketRate(
+	OWPContext	ctx,
+	OWPTestSpec	*tspec
+		)
+{
+	OWPNum64	duration = OWPULongToNum64(0);
+	u_int32_t	i;
+
+	if(!tspec){
+		OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
+				"OWPTestPacketRate: Invalid tspec arg");
+		return 0;
+	}
+
+	if(!tspec->nslots || !tspec->slots){
+		OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
+			"OWPTestPacketRate: Invalid empty test specification");
+		return 0;
+	}
+
+	for(i=0;i<tspec->nslots;i++){
+		duration = OWPNum64Add(duration,tspec->slots[i].any.mean_delay);
+	}
+
+	return (double)tspec->nslots / OWPNum64ToDouble(duration);
+}
+
+/* These lengths assume no IP options. */
+#define OWP_IP4_HDR_SIZE	20	/* rfc 791 */
+#define OWP_IP6_HDR_SIZE	40	/* rfc 2460 */
+#define OWP_UDP_HDR_SIZE	8	/* rfc 768 */
 
 /*
 ** Given the protocol family, OWAMP mode and packet padding,
@@ -887,7 +817,7 @@ OWPTestPayloadSize(
 OWPPacketSizeT
 OWPTestPacketSize(
 		int		af,    /* AF_INET, AF_INET6 */
-		int		mode, 
+		OWPSessionMode	mode, 
 		u_int32_t	padding
 		)
 {
@@ -912,55 +842,70 @@ OWPTestPacketSize(
 }
 
 /*
- * Return 0 for non-existant SID's.
+ * Function:	OWPTestPacketBandwidth
+ *
+ * Description:	
+ * 	returns the average bandwidth requirements of the given test using
+ * 	the given address family, and authentication mode.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
  */
-OWPnum64
-OWPSessionDuration(
-		OWPControl	cntrl,
-		OWPSID		sid
-		)
+double
+OWPTestPacketBandwidth(
+	OWPContext	ctx,
+	int		af,
+	OWPSessionMode	mode, 
+	OWPTestSpec	*tspec
+	)
 {
-	OWPTestSession	tsession;
+	if(!tspec){
+		OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
+				"OWPTestPacketBandwidth: Invalid tspec arg");
+		return 0;
+	}
 
-	for(tsession=cntrl->tests;tsession;tsession=tsession->next)
-		if(memcmp(sid,tsession->sid,sizeof(OWPSID)) == 0)
-			return tsession->last;
-
-	return (OWPnum64)0;
+	return OWPTestPacketRate(ctx,tspec) *
+			OWPTestPacketSize(af,mode,tspec->packet_size_padding);
 }
 
 /*
- * Return NULL for non-existant SID's
- * This memory is NOT a copy - it is used internally by the library, and
- * free'd when the session is declared over by the OWPStopSessionsWait
- * or OWPStopSessions functions.
+ * Function:	OWPSessionStatus
+ *
+ * Description:	
+ * 	This function returns the "status" of the test session identified
+ * 	by the sid. "send" indicates which "side" of the test to retrieve
+ * 	information about.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	True if status was available, False otherwise.
+ * 		aval contains the actual "status":
+ * 			<0	Test is not yet complete
+ * 			>=0	Valid OWPAcceptType - see enum for meaning.
+ * Side Effect:	
  */
-OWPnum64*
-OWPSessionSchedule(
-		OWPControl	cntrl,
-		OWPSID		sid
-		)
-{
-	OWPTestSession	tsession;
-
-	for(tsession=cntrl->tests;tsession;tsession=tsession->next)
-		if(memcmp(sid,tsession->sid,sizeof(OWPSID)) == 0)
-			return tsession->schedule;
-
-	return NULL;
-}
-
 OWPBoolean
 OWPSessionStatus(
 		OWPControl	cntrl,
 		OWPSID		sid,
-		OWPBoolean	send,
 		OWPAcceptType	*aval
 		)
 {
 	OWPTestSession	tsession;
 	OWPErrSeverity	err;
 
+	/*
+	 * First find the tsession record for this test.
+	 */
 	for(tsession=cntrl->tests;tsession;tsession=tsession->next)
 		if(memcmp(sid,tsession->sid,sizeof(OWPSID)) == 0)
 			goto found;
@@ -968,12 +913,10 @@ OWPSessionStatus(
 	return False;
 
 found:
-	if(send && tsession->send_end_data)
-		return _OWPCallEndpointStatus(tsession,&tsession->send_end_data,
-								aval,&err);
-	if(!send && tsession->recv_end_data)
-		return _OWPCallEndpointStatus(tsession,&tsession->recv_end_data,
-								aval,&err);
+	if(tsession->endpoint){
+		return _OWPEndpointStatus(tsession->endpoint,aval,&err);
+	}
+
 	return False;
 }
 
@@ -990,15 +933,9 @@ OWPSessionsActive(
 	OWPErrSeverity	err;
 
 	for(tsession = cntrl->tests;tsession;tsession = tsession->next){
-		if((tsession->recv_end_data) && _OWPCallEndpointStatus(tsession,
-					&tsession->recv_end_data,&laval,&err)){
-			if(laval < 0)
-				n++;
-			else
-				raval = MAX(laval,raval);
-		}
-		if((tsession->send_end_data) && _OWPCallEndpointStatus(tsession,
-					&tsession->send_end_data,&laval,&err)){
+		if((tsession->endpoint) &&
+				_OWPEndpointStatus(tsession->endpoint,
+								&laval,&err)){
 			if(laval < 0)
 				n++;
 			else
@@ -1015,8 +952,9 @@ OWPSessionsActive(
 int
 OWPStopSessionsWait(
 	OWPControl	cntrl,
-	OWPTimeStamp	*wake,
-	OWPAcceptType	*acceptval,
+	OWPNum64	*wake,
+	int		*retn_on_intr,
+	OWPAcceptType	*acceptval_ret,
 	OWPErrSeverity	*err_ret
 	)
 {
@@ -1028,9 +966,20 @@ OWPStopSessionsWait(
 	int		rc;
 	int		msgtype;
 	OWPErrSeverity	err2=OWPErrOK;
-	OWPAcceptType	aval=OWP_CNTRL_ACCEPT;
+	OWPAcceptType	aval;
+	OWPAcceptType	*acceptval=&aval;
+	int		ival=0;
+	int		*intr=&ival;
 
 	*err_ret = OWPErrOK;
+	if(acceptval_ret){
+		acceptval = acceptval_ret;
+	}
+	*acceptval = OWP_CNTRL_ACCEPT;
+
+	if(retn_on_intr){
+		intr = retn_on_intr;
+	}
 
 	if(!cntrl || cntrl->sockfd < 0){
 		*err_ret = OWPErrFATAL;
@@ -1040,25 +989,41 @@ OWPStopSessionsWait(
 	/*
 	 * If there are no active sessions, get the status and return.
 	 */
-	if(!OWPSessionsActive(cntrl,NULL)){
+	if(!OWPSessionsActive(cntrl,acceptval) || (*acceptval)){
 		/*
 		 * Sessions are complete - send StopSessions message.
 		 */
-		*err_ret = OWPStopSessions(cntrl,acceptval);
+		*err_ret = OWPStopSessions(cntrl,intr,acceptval);
 		return 0;
 	}
 
 	if(wake){
+		OWPTimeStamp	wakestamp;
+
+		/*
+		 * convert abs wake time to timeval
+		 */
+		wakestamp.owptime = *wake;
+		OWPTimestampToTimeval(&reltime,&wakestamp);
+
+		/*
+		 * get current time.
+		 */
 		if(gettimeofday(&currtime,NULL) != 0){
 			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 					"gettimeofday():%M");
 			return -1;
 		}
-		OWPCvtTimestamp2Timeval(&reltime,wake);
-		if(tvalcmp(&currtime,&reltime,<))
+
+		/*
+		 * compute relative wake time from current time and abs wake.
+		 */
+		if(tvalcmp(&currtime,&reltime,<)){
 			tvalsub(&reltime,&currtime);
-		else
+		}
+		else{
 			tvalclear(&reltime);
+		}
 
 		waittime = &reltime;
 	}
@@ -1078,20 +1043,24 @@ AGAIN:
 			*err_ret = OWPErrFATAL;
 			return -1;
 		}
-		if(waittime)
+		if(waittime || *intr){
 			return 2;
+		}
 
 		/*
-		 * If there are tests still happening - go back to select
-		 * and wait for them to complete.
+		 * If there are tests still happening, and no tests have
+		 * ended in error - go back to select and wait for the
+		 * rest of the tests to complete.
 		 */
-		if(OWPSessionsActive(cntrl,NULL))
+		if(OWPSessionsActive(cntrl,acceptval) && !*acceptval){
 			goto AGAIN;
+		}
 
 		/*
 		 * Sessions are complete - send StopSessions message.
 		 */
-		*err_ret = OWPStopSessions(cntrl,acceptval);
+		*err_ret = OWPStopSessions(cntrl,intr,acceptval);
+
 		return 0;
 	}
 	if(rc == 0)
@@ -1101,45 +1070,40 @@ AGAIN:
 					!FD_ISSET(cntrl->sockfd,&exceptfds)){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 					"select():cntrl fd not ready?:%M");
-		*err_ret = OWPErrFATAL;
+		*err_ret = _OWPFailControlSession(cntrl,OWPErrFATAL);
 		return -1;
 	}
 
-	msgtype = OWPReadRequestType(cntrl);
+	msgtype = OWPReadRequestType(cntrl,intr);
 	if(msgtype == 0){
 		OWPError(cntrl->ctx,OWPErrFATAL,errno,
-				"OWPStopSessions:Control socket closed: %M");
-		return _OWPFailControlSession(cntrl,OWPErrFATAL);
+			"OWPStopSessionsWait: Control socket closed: %M");
+		*err_ret = _OWPFailControlSession(cntrl,OWPErrFATAL);
+		return -1;
 	}
 	if(msgtype != 3){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
 				"Invalid protocol message received...");
-		*err_ret = OWPErrFATAL;
-		cntrl->state = _OWPStateInvalid;
+		*err_ret = _OWPFailControlSession(cntrl,OWPErrFATAL);
 		return -1;
 	}
 
-	*err_ret = _OWPReadStopSessions(cntrl,acceptval);
-	if(*err_ret < OWPErrOK){
+	*err_ret = _OWPReadStopSessions(cntrl,intr,acceptval);
+	if(*err_ret != OWPErrOK){
 		cntrl->state = _OWPStateInvalid;
 		return -1;
 	}
-
-	if(acceptval)
-		aval = *acceptval;
 
 	while(cntrl->tests){
-		err2 = _OWPTestSessionFree(cntrl->tests,aval);
+		err2 = _OWPTestSessionFree(cntrl->tests,*acceptval);
 		*err_ret = MIN(*err_ret,err2);
 	}
 
 	if(*err_ret < OWPErrWARNING){
-		aval = OWP_CNTRL_FAILURE;
-		if(acceptval)
-			*acceptval = OWP_CNTRL_FAILURE;
+		*acceptval = OWP_CNTRL_FAILURE;
 	}
 
-	err2 = _OWPWriteStopSessions(cntrl,aval);
+	err2 = _OWPWriteStopSessions(cntrl,intr,*acceptval);
 	cntrl->state &= ~_OWPStateTest;
 
 	*err_ret = MIN(*err_ret, err2);
@@ -1147,46 +1111,186 @@ AGAIN:
 }
 
 /*
-** Convert sockaddr to numeric name
-*/
+ * Function:	OWPAddrNodeName
+ *
+ * Description:	
+ * 	This function gets a char* node name for a given OWPAddr.
+ * 	The len parameter is an in/out parameter.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
 void
-OWPAddr2string(OWPAddr addr, char *buf, size_t len)
+OWPAddrNodeName(
+	OWPAddr	addr,
+	char	*buf,
+	size_t	*len
+	)
 {
-	assert(len > 0);
+	assert(buf);
+	assert(len);
+	assert(*len > 0);
+
 	if(!addr){
-		buf[0] = '\0';
-		return;
+		goto bail;
+	}
+
+	if(!addr->node_set && addr->saddr &&
+			getnameinfo(addr->saddr,addr->saddrlen,
+				addr->node,sizeof(addr->node),
+				addr->port,sizeof(addr->port),
+				NI_NUMERICHOST|NI_NUMERICSERV) == 0){
+		addr->node_set = 1;
+		addr->port_set = 1;
 	}
 
 	if(addr->node_set){
-		strncpy(buf,addr->node,MIN(sizeof(addr->node),len));
+		*len = MIN(*len,sizeof(addr->node));
+		strncpy(buf,addr->node,*len);
 		return;
 	}
 
-	if(!(addr->saddr) ||
-		getnameinfo(addr->saddr, addr->saddrlen, buf, len, NULL, 0,
-							   NI_NUMERICHOST))
-		strcpy(buf, "");
+bail:
+	*len = 0;
+	buf[0] = '\0';
+	return;
 }
 
 /*
-** Functions for writing and reading headers. The format varies
-** according to the version. In all cases the files starts
-** with 4 bytes of magic number, 4 bytes of version, and
-** 4 bytes of total header length (version and header length
-** fields given in network byte order). The rest depends on
-** the version as follows:
-**
-** Version 0: nothing - data records follow.
-** Version 1: 96 bytes of Session Request as per version 3 of the protocol
-** Version 2: XX bytes of Session Request as per version 5 of the protocol
-*/
+ * Function:	OWPAddrNodeService
+ *
+ * Description:	
+ * 	This function gets a char* service name for a given OWPAddr.
+ * 	The len parameter is an in/out parameter.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
+void
+OWPAddrNodeService(
+	OWPAddr	addr,
+	char	*buf,
+	size_t	*len
+	)
+{
+	assert(buf);
+	assert(len);
+	assert(*len > 0);
+
+	if(!addr){
+		goto bail;
+	}
+
+	if(!addr->port_set && addr->saddr &&
+			getnameinfo(addr->saddr,addr->saddrlen,
+				addr->node,sizeof(addr->node),
+				addr->port,sizeof(addr->port),
+				NI_NUMERICHOST|NI_NUMERICSERV) == 0){
+		addr->node_set = 1;
+		addr->port_set = 1;
+	}
+
+	if(addr->port_set){
+		*len = MIN(*len,sizeof(addr->port));
+		strncpy(buf,addr->port,*len);
+		return;
+	}
+
+bail:
+	*len = 0;
+	buf[0] = '\0';
+	return;
+}
 
 /*
-** Write data header to the file. <len> is the length of the buffer - 
-** any other fields have to be accounted for separately in the
-** header length value.
-*/
+ * Functions for writing and reading headers. The format varies
+ * according to the version. In all cases the files starts
+ * with 4 bytes of magic number, 4 bytes of version, and
+ * 4 bytes of total header length (version and header length
+ * fields given in network byte order). The rest depends on
+ * the version as follows:
+ *
+ * Version 0: nothing - data records follow "hdr length".
+ * Version 2: Session Request as per version 5 of the protocol (use hdr len
+ * 	to skip session request, or read it using the format described
+ * 	below. (All values are in network byte order.)
+ *
+ * File format is as follows:
+ *
+ * 
+ * 	   0                   1                   2                   3
+ * 	   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	00|       "O"     |       "w"     |       "A"     |       \0      |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	04|                        Version                                |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	08|                      hdr length (unsigned 64bit)              |
+ *	12|                                                               |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	16|                        Finished                               |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	20|                                                               |
+ *	  ...                 TestRequestPreamble (protocol.c)          ...
+ *     128|                                                               |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *     132|	                                                          |
+ *     136|                   Slot(1) definitions (16 octets each)        |
+ *     140|                                                               |
+ *     144|                                                               |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *     148:(148+(16*(nslots-1)) (16 octets for each additional slot)
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	  |                                                               |
+ *	  |                   Zero Integrity Padding (16 octets)          |
+ *	  |                                                               |
+ *	  |                                                               |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *
+ * Then individual packet records start. (hdr_len should point to here.)
+ * The format for individual packet records is:
+ *
+ * 	   0                   1                   2                   3
+ * 	   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	00|                   Sequence Number                             |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	04|                                                               |
+ *	08|                   Send Timestamp                              |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	12|  Send Error Estimate          |                               |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+                               +
+ *	16|                   Recv Timestamp                              |
+ *	  +                               +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	20|                               |       Recv Error Estimate     |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *
+ */
+
+/*
+ * Function:	OWPWriteDataHeader
+ *
+ * Description:	
+ *	Write data header to the file.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
 int
 OWPWriteDataHeader(
 	OWPContext		ctx,
@@ -1196,217 +1300,807 @@ OWPWriteDataHeader(
 {
 	static char	magic[] = _OWP_MAGIC_FILETYPE;
 	u_int32_t	ver;
-	u_int32_t	hdr_len;
-	u_int32_t	msg[_OWP_MAX_MSG/sizeof(u_int32_t)];
+	u_int32_t	finished = 2; /* 2 means unknown */
+	u_int64_t	hdr_len;
+	u_int64_t	hdr_len_net;
+	u_int8_t	*ptr;
+	off_t		hdr_off;
+			/* use u_int32_t for proper alignment */
+	u_int32_t	msg[_OWP_TEST_REQUEST_PREAMBLE_SIZE/sizeof(u_int32_t)];
 	u_int32_t	len = sizeof(msg);
+	u_int32_t	i;
 
-	if(hdr && hdr->header){
-		if(_OWPEncodeV3TestRequest(ctx,msg,&len,
+	if(hdr){
+		if(_OWPEncodeTestRequestPreamble(ctx,msg,&len,
 				(struct sockaddr*)&hdr->addr_sender,
 				(struct sockaddr*)&hdr->addr_receiver,
 				hdr->conf_sender,hdr->conf_receiver,
 				hdr->sid,&hdr->test_spec) != 0){
 			return 1;
 		}
-		ver = htonl(1);
+		ver = htonl(2);
+		/*
+		 * Compute the offset to the data records:
+		 * 	MAGIC+Version+HdrLen+Finished+TestRequestPramble+Slots
+		 */
+		hdr_len = sizeof(magic)+sizeof(ver)+sizeof(hdr_len)+
+			sizeof(finished)+len+16*(hdr->test_spec.nslots+1);
 	}
 	else{
 		len = 0;
 		ver = htonl(0);
+		hdr = NULL;
+		hdr_len = sizeof(magic)+sizeof(ver)+sizeof(hdr_len);
 	}
 
 
-	hdr_len = htonl(sizeof(magic)+sizeof(ver)+sizeof(hdr_len)+len);
+	hdr_off = (off_t)hdr_len;
+	if(hdr_len != (u_int64_t)hdr_off){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+	"OWPWriteDataHeader: Header too large for format representation (%llu)",
+							hdr_len);
+		return 1;
+	}
+	ptr = (u_int8_t*)&hdr_len_net;
+	/*
+	 * copy low-order word (net order) to last 4 bytes of hdr_len_net
+	 */
+	*(u_int32_t*)&ptr[4] = htonl((hdr_len & 0xFFFFFFFFUL));
+	/*
+	 * copy high-order word (net order) to first 4 bytes of hdr_len_net
+	 */
+	hdr_len >>= 32;
+	*(u_int32_t*)&ptr[0] = htonl((hdr_len & 0xFFFFFFFFUL));
 
-	if(fwrite(magic, 1, sizeof(magic), fp) < sizeof(magic))
+	/*
+	 * write magic
+	 */
+	if(fwrite(magic, 1, sizeof(magic), fp) != sizeof(magic)){
 		return 1;
-	if(fwrite(&ver, sizeof(ver), 1, fp) < 1)
-		return 1;
-	if(fwrite(&hdr_len, sizeof(hdr_len), 1, fp) < 1)
-		return 1;
+	}
 
-	if(len > 0)
-		if(fwrite(msg,1,len,fp) < len)
+	/*
+	 * write version
+	 */
+	if(fwrite(&ver, 1, sizeof(ver), fp) != sizeof(ver)){
+		return 1;
+	}
+
+	/*
+	 * write hdr_len - first high order word, then low order word.
+	 * Each word in network byte order.
+	 */
+	if(fwrite(&hdr_len_net,1,sizeof(hdr_len_net),fp)!=sizeof(hdr_len_net)){
+		return 1;
+	}
+
+	/*
+	 * write dynmic header
+	 */
+	if(len > 0){
+		/*
+		 * write finished
+		 */
+		if(hdr){
+			switch(hdr->finished){
+				case 0:
+				case 1:
+					finished = hdr->finished;
+					break;
+				default:
+					break;
+			}
+		}
+		finished = htonl(finished);
+		if(fwrite(&finished,1,sizeof(finished),fp) != sizeof(finished)){
 			return 1;
+		}
+
+		/*
+		 * write TestRequest preamble
+		 */
+		if(fwrite(msg,1,len,fp) != len){
+			return 1;
+		}
+
+		/*
+		 * write slots
+		 */
+		for(i=0;i<hdr->test_spec.nslots;i++){
+			/*
+			 * Each slot is one block (16 bytes)
+			 */
+			if(_OWPEncodeSlot(msg,&hdr->test_spec.slots[i]) !=
+								OWPErrOK){
+				OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
+				"OWPWriteDataHeader: Invalid slot record");
+				return 1;
+			}
+			if(fwrite(msg,1,16,fp) != 16){
+				return 1;
+			}
+		}
+		/*
+		 * write 16 Zero Integrity bytes
+		 */
+		memset(msg,0,16);
+		if(fwrite(msg,1,16,fp) != 16){
+			return 1;
+		}
+	}
 
 	fflush(fp);
 	return 0;
-
 }
 
-#define OWP_BUFSIZ 960 /* must be divisible by 20 */
+/*
+ * Function:	OWPTestDiskspace
+ *
+ * Description:	
+ * 	Returns the size of file a given testspec will require.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
+u_int64_t
+OWPTestDiskspace(
+	OWPTestSpec	*tspec
+	)
+{
+	static char	magic[] = _OWP_MAGIC_FILETYPE;
+	u_int32_t	ver;
+	u_int32_t	finished;
+	u_int64_t	hdr_len;
+
+	hdr_len = sizeof(magic)+sizeof(ver)+sizeof(hdr_len)+
+			sizeof(finished)+_OWP_TEST_REQUEST_PREAMBLE_SIZE+
+			16*(tspec->nslots+1);
+	return hdr_len + tspec->npackets*_OWP_TESTREC_SIZE;
+}
 
 /*
- * Mirror of WriteDataHeader
- * This one is complicated by the fact that it should understand all file
- * versions...
+ * Function:	_OWPWriteDataHeaderFinished
  *
+ * Description:	
+ *	Write a new "finished" word into the file. This function seeks to
+ *	the correct offset for a version 2 file.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
+int
+_OWPWriteDataHeaderFinished(
+	OWPContext		ctx,
+	FILE			*fp,
+	u_int32_t		finished
+	)
+{
+	int		err;
+	off_t		offset;
+	static char	magic[] = _OWP_MAGIC_FILETYPE;
+	u_int32_t	ver;
+	u_int64_t	hdr_len;
+
+	if(finished > 2){
+		OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
+			"_OWPWriteDataHeaderFinished: Invalid \"finished\"");
+		return 1;
+	}
+
+	if(fflush(fp) != 0){
+		err = errno;
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fflush(): %M");
+		errno = err;
+		return 1;
+	}
+
+	offset = sizeof(magic)+sizeof(ver)+sizeof(hdr_len);
+	if(fseeko(fp,offset,SEEK_SET)){
+		err = errno;
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fseeko(): %M");
+		errno = err;
+		return 1;
+	}
+
+	finished = htonl(finished);
+	if(fwrite(&finished,1,sizeof(finished),fp) != sizeof(finished)){
+		err = errno;
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fwrite(): %M");
+		errno = err;
+		return 1;
+	}
+
+	if(fflush(fp) != 0){
+		err = errno;
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fflush(): %M");
+		errno = err;
+		return 1;
+	}
+
+	return 0;
+}
+
+/*
+ * Function:	OWPWriteDataRecord
+ *
+ * Description:	
+ * 	Write a single data record described by rec to file fp.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
+int
+OWPWriteDataRecord(
+	OWPContext	ctx,
+	FILE		*fp,
+	OWPDataRec	*rec
+	)
+{
+	u_int8_t	buf[_OWP_TESTREC_SIZE];
+
+	if(!_OWPEncodeDataRecord(buf,rec)){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+			"OWPWriteDataRecord: Unable to encode data record");
+		return -1;
+	}
+
+	/*
+	 * write data record
+	 */
+	if(fwrite(buf,1,_OWP_TESTREC_SIZE,fp) != _OWP_TESTREC_SIZE){
+		OWPError(ctx,OWPErrFATAL,errno,
+			"OWPWriteDataRecord: fwrite(): %M");
+		return -1;
+	}
+
+	return 0;
+}
+
+/*
+ * Function:	_OWPReadDataHeaderInitial
+ *
+ * Description:	
+ * 	Read the "header" of the owp file and determine the layout
+ * 	and validity of the file.
+ * 	The fp will be placed at the beginning of the TestRequest
+ * 	data for version 2 files, and at the beginning of the data records
+ * 	for version 0 files.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	non-zero on failure (errno will be set too.)
+ * Side Effect:	
+ */
+int
+_OWPReadDataHeaderInitial(
+	OWPContext	ctx,
+	FILE		*fp,
+	u_int32_t	*ver,
+	u_int32_t	*fin,
+	off_t		*hdr_off,
+	struct stat	*stat_buf
+	)
+{
+	static char	magic[] = _OWP_MAGIC_FILETYPE;
+	char		read_magic[sizeof(magic)];
+	u_int64_t	hlen,hlen_net;
+	u_int8_t	*ptr;
+	u_int32_t	t32;
+	int		err;
+	off_t		treq_size;
+
+	/*
+	 * Stat the file to get the size and check that it is really there.
+	 */
+	if(fstat(fileno(fp),stat_buf) < 0){
+		err = errno;
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fstat(): %M");
+		errno = err;
+		return 1;
+	}
+
+	/*
+	 * Position fp to beginning of file.
+	 */
+	if(fseeko(fp,0,SEEK_SET)){
+		err = errno;
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fseeko(): %M");
+		errno = err;
+		return 1;
+	}
+
+	/*
+	 * File must be at least as big as the initial header information.
+	 * 16 bytes is magic+version+hdr_length
+	 */
+	if(stat_buf->st_size < (off_t)16){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+			"_OWPReadDataHeaderInitial: Invalid owp file");
+		/*
+		 * TODO: Check validity of this errno... May need to
+		 * use ENOSYS...
+		 */
+		errno = EFTYPE;
+		return 1;
+	}
+
+	/*
+	 * Read and check "magic".
+	 * 4 bytes
+	 */
+	if(fread(read_magic, 1, 4, fp) != 4){
+		err = errno;
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fread(): %M");
+		errno = err;
+		return 1;
+	}
+	if(memcmp(read_magic,magic,4) != 0){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+		"_OWPReadDataHeaderInitial: Invalid owp file:wrong magic");
+		/*
+		 * TODO: Check validity of this errno... May need to
+		 * use ENOSYS...
+		 */
+		errno = EFTYPE;
+		return 1;
+	}
+
+	/*
+	 * Get the file "version".
+	 * 4 byte "network long" quantity
+	 */
+	if(fread(ver, 1, 4, fp) != 4){
+		err = errno;
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fread(): %M");
+		errno = err;
+		return 1;
+	}
+	*ver = ntohl(*ver);
+
+	/*
+	 * This code only supports version 0 and 2 owp files.
+	 */
+	if((*ver != 0) && (*ver != 2)){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+		"_OWPReadDataHeaderInitial: Unknown file version (%d)",*ver);
+		errno = ENOSYS;
+		return 1;
+	}
+
+	/*
+	 * Read the header length. 8 byte/64 bit field. network byte order.
+	 * (Defined by rfc791 - Appendix B.)
+	 */
+	if(fread(&hlen_net, 1, 8, fp) != 8){
+		err = errno;
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fread(): %M");
+		errno = err;
+		return 1;
+	}
+
+	/*
+	 * - Decode the 64 bit header length -
+	 *
+	 * ptr will use hlen_net as a 64 bit buffer.
+	 */
+	ptr = (u_int8_t*)&hlen_net;
+
+	/*
+	 * High order 4 bytes
+	 */
+	t32 = ntohl(*(u_int32_t*)&ptr[0]);
+	hlen = t32 & 0xFFFFFFFF;
+	hlen <<= 32;
+	/*
+	 * Low order 4 bytes
+	 */
+	t32 = ntohl(*(u_int32_t*)&ptr[4]);
+	hlen |= (t32 & 0xFFFFFFFF);
+
+	/*
+	 * place 64 bit data in off_t variable - then ensure the value is
+	 * representable on this system.
+	 */
+	*hdr_off = (off_t)hlen;
+	if(hlen != (u_int64_t)*hdr_off){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+			"_OWPReadDataHeaderInitial: Header too larger (%llu)",
+			hlen);
+		/*
+		 * TODO: Check validity of this errno... May need to
+		 * use ENOSYS...
+		 */
+		errno = EOVERFLOW;
+		return 1;
+	}
+
+	if(*ver != 0){
+		/*
+		 * Get the file "finished" status. Just tells us what
+		 * the recv process thought about the status.
+		 * 0: questionable termination
+		 * 1: completed normal test
+		 * 2: in-progress or unknown (recv died?)
+		 *
+		 * 4 byte "network long" quantity
+		 */
+		if(fread(fin,1,4,fp) != 4){
+			err = errno;
+			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fread(): %M");
+			errno = err;
+			return 0;
+		}
+		*fin = ntohl(*fin);
+		/*
+		 * Compute the size for the test req portion within the file for
+		 * a sanity check. 20 offset to begining of TestRequest.
+		 */
+		treq_size = *hdr_off - 20;
+	}
+	else{
+		*fin = 2; /* unknown */
+		treq_size = 0;
+	}
+
+
+	/*
+	 * Ensure the file is valid with respect to the reported header
+	 * size.
+	 */
+	if((*hdr_off > stat_buf->st_size) ||
+					(treq_size % _OWP_RIJNDAEL_BLOCK_SIZE)){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+			"_OWPReadDataHeaderInitial: corrupt header");
+		/*
+		 * TODO: Check validity of this errno... May need to
+		 * use ENOSYS...
+		 */
+		errno = EFTYPE;
+		return 1;
+	}
+
+	return 0;
+}
+
+/*
+ * Function:	OWPReadDataHeader
+ *
+ * Description:	
  * Version 0: nothing - data records follow.
- * Version 1: 96 bytes of Session Request as per version 3 of the protocol
- * Version 2: ?? bytes of Session Request as per version 5 of the protocol
+ * Version 2: Session Request as per version 5 of the protocol
+ * 	This function does NOT read the slots into the hdr_ret->test_spec.
+ * 	A separate function OWPReadDataHeaderSlots has been provided to do
+ * 	that. (Memory for the slots must be provided by the caller.)
  *
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
  */
 u_int32_t
 OWPReadDataHeader(
 	OWPContext		ctx,
 	FILE			*fp,
-	u_int32_t		*hdr_len,
+	off_t			*hdr_len,
 	OWPSessionHeader	hdr_ret
 	)
 {
-	static char	magic[] = _OWP_MAGIC_FILETYPE;
-	char		read_magic[sizeof(magic)];
+	int		err;
 	u_int32_t	ver;
-	u_int32_t	hlen;
+	u_int32_t	fin;
+	off_t		hdr_off;
 	struct stat	stat_buf;
+			/* buffer for TestRequest 32 bit aligned */
+	u_int32_t	msg[_OWP_TEST_REQUEST_PREAMBLE_SIZE/sizeof(u_int32_t)];
 
 	if(hdr_len)
 		*hdr_len = 0;
 	if(hdr_ret)
 		hdr_ret->header = 0;
 
-	if(fstat(fileno(fp),&stat_buf) < 0){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fstat():%M");
-		return 0;
-	}
-	if(fseek(fp,0,SEEK_SET)){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fseek():%M");
+	if(_OWPReadDataHeaderInitial(ctx,fp,&ver,&fin,&hdr_off,&stat_buf)){
 		return 0;
 	}
 
-	if(stat_buf.st_size < (off_t)(sizeof(magic)+sizeof(ver)+sizeof(hlen))){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"OWPReadDataHeader:Invalid owp file");
-		return 0;
-	}
-	if(fread(read_magic, 1, sizeof(magic), fp) < sizeof(magic)){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fread():%M");
-		return 0;
-	}
-	if(memcmp(read_magic,magic,sizeof(magic)) != 0){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-			"OWPReadDataHeader:Invalid owp file:wrong magic");
-		return 0;
-	}
-
-	if(fread(&ver, sizeof(ver), 1, fp) < 1){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fread():%M");
-		return 0;
-	}
-	ver = ntohl(ver);
-
-	if(fread(&hlen, sizeof(hlen), 1, fp) < 1){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fread():%M");
-		return 0;
-	}
-	hlen = ntohl(hlen);
+	/*
+	 * return hdr_off in hdr_len if it is not NULL.
+	 */
 	if(hdr_len)
-		*hdr_len = hlen;
+		*hdr_len = hdr_off;
 
-	if((ver==0) || ((ver==1) && !hdr_ret)){
-		if(fseek(fp,hlen,SEEK_SET)){
-			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fread():%M");
-			return 0;
-		}
-		return (stat_buf.st_size-hlen)/_OWP_TS_REC_SIZE;
-	}
-	else{
-		u_int32_t	msg[_OWP_MAX_MSG/sizeof(u_int32_t)];
-		u_int32_t	size = hlen - sizeof(magic) - sizeof(ver) -
-								sizeof(hlen);
+	/*
+	 * Decode the header if present(version 2), and wanted (hdr_ret).
+	 */
+	if((ver==2) && hdr_ret){
+
+		hdr_ret->finished = fin;
+
 		/*
-		 * hdr is required after upgrading code to v5 of protocol.
-		 * (Should only see ver==0,1 until then.)
+		 * read TestRequestPreamble
 		 */
-		if(!hdr_ret){
-			OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
-				"OWPReadDataHeader:invalid hdr parameter");
+		if(fread(msg,1,_OWP_TEST_REQUEST_PREAMBLE_SIZE,fp) !=
+					_OWP_TEST_REQUEST_PREAMBLE_SIZE){
+			err = errno;
+			OWPError(ctx,OWPErrFATAL,errno,"fread(): %M");
+			errno = err;
 			return 0;
 		}
-		if(fread(msg,1,size,fp) < size){
-			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fread():%M");
-			return 0;
-		}
-		switch(ver){
-			socklen_t	slen;
-			u_int8_t	ipvn;
 
-			case 1:
-			slen = sizeof(hdr_ret->addr_sender);
-			if(_OWPDecodeV3TestRequest(ctx,msg,size,
+		hdr_ret->addr_len = sizeof(hdr_ret->addr_sender);
+		/*
+		 * Now decode it into the hdr_ret variable.
+		 */
+		if(_OWPDecodeTestRequestPreamble(ctx,msg,
+				_OWP_TEST_REQUEST_PREAMBLE_SIZE,
 				(struct sockaddr*)&hdr_ret->addr_sender,
 				(struct sockaddr*)&hdr_ret->addr_receiver,
-				&slen,&ipvn,
+				&hdr_ret->addr_len,&hdr_ret->ipvn,
 				&hdr_ret->conf_sender,&hdr_ret->conf_receiver,
 				hdr_ret->sid,&hdr_ret->test_spec) != OWPErrOK){
-				return 0;
-			}
-			hdr_ret->header = True;
-			hdr_ret->rec_size = 20;
-			break;
-
-			default:
-			OWPError(ctx,OWPErrINFO,OWPErrUNKNOWN,
-				"OWPReadDataHeader:Unknown file version(%d)",
-				ver);
+			/*
+			 * TODO: Check validity of this errno... May need to
+			 * use ENOSYS...
+			 */
+			errno = EFTYPE;
 			return 0;
-			break;
+		}
+
+		hdr_ret->header = True;
+	}
+
+	if(hdr_ret){
+		hdr_ret->version = ver;
+		hdr_ret->rec_size = _OWP_TESTREC_SIZE;
+	}
+
+	/*
+	 * Forward fp to data records.
+	 */
+	if(fseeko(fp,hdr_off,SEEK_SET)){
+		err = errno;
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fseeko(): %M");
+		errno = err;
+		return 0;
+	}
+	return (stat_buf.st_size-hdr_off)/_OWP_TESTREC_SIZE;
+}
+
+/*
+ * Function:	OWPReadDataHeaderSlots
+ *
+ * Description:	
+ * 	This function will read all the slot records out of the
+ * 	file fp. slots is assumed to be an array of OWPSlot records of
+ * 	length nslots.
+ *
+ * 	This function will position the fp to the beginning of the data
+ * 	records.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
+OWPErrSeverity
+OWPReadDataHeaderSlots(
+	OWPContext		ctx,
+	FILE			*fp,
+	u_int32_t		nslots,
+	OWPSlot			*slots
+	)
+{
+	int		err;
+	u_int32_t	ver;
+	u_int32_t	fin;
+	u_int32_t	fileslots;
+	u_int32_t	i;
+	off_t		hdr_off;
+	off_t		slot_off = 132; /* see above layout of bytes */
+	struct stat	stat_buf;
+			/* buffer for Slots 32 bit aligned */
+	u_int32_t	msg[16/sizeof(u_int32_t)];
+	u_int32_t	zero[16/sizeof(u_int32_t)];
+
+	/*
+	 * validate array.
+	 */
+	assert(slots);
+
+	/*
+	 * Stat the file and get the "initial" fields from the header.
+	 */
+	if(_OWPReadDataHeaderInitial(ctx,fp,&ver,&fin,&hdr_off,&stat_buf)){
+		return 0;
+	}
+
+	/*
+	 * this function is currently only supported for version 2 files.
+	 */
+	if(ver != 2){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+			"OWPReadDataHeaderSlots: Invalid file version (%d)",
+			ver);
+		errno = ENOSYS;
+		return OWPErrFATAL;
+	}
+
+	/*
+	 * validate nslots passed in with what is in the file.
+	 * hdr_off should point to the offset in the file where the slots
+	 * are finished and the 1 block of zero padding is finished.
+	 */
+	fileslots = hdr_off - slot_off; /* bytes for slots */
+
+	/*
+	 * bytes for slots/zero padding must be of block size 16
+	 */
+	if(fileslots%16){
+		OWPError(ctx,OWPErrFATAL,EINVAL,
+			"OWPReadDataHeaderSlots: Invalid hdr_offset (%llu)",
+			hdr_off);
+		/*
+		 * TODO: Check validity of this errno... May need to
+		 * use ENOSYS...
+		 */
+		errno = EFTYPE;
+		return OWPErrFATAL;
+	}
+
+	/*
+	 * Convert bytes to number of slots. Divide by block size, then
+	 * subtract 1 for zero integrity block.
+	 */
+	fileslots/=16;
+	fileslots--;
+
+	if(fileslots != nslots){
+		OWPError(ctx,OWPErrFATAL,EINVAL,
+"OWPReadDataHeaderSlots: nslots mismatch with file: fileslots(%d), nslots(%d)",
+			fileslots,nslots);
+		/*
+		 * TODO: Check validity of this errno... May need to
+		 * use ENOSYS...
+		 */
+		errno = EINVAL;
+		return OWPErrFATAL;
+	}
+
+	/*
+	 * Position fp to beginning of slot records.
+	 */
+	if(fseeko(fp,slot_off,SEEK_SET)){
+		err = errno;
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fseeko(): %M");
+		errno = err;
+		return OWPErrFATAL;
+	}
+
+	for(i=0;i<nslots;i++){
+		
+		/*
+		 * Read slot into buffer.
+		 */
+		if(fread(msg,1,16,fp) != 16){
+			err = errno;
+			OWPError(ctx,OWPErrFATAL,errno,"fread(): %M");
+			errno = err;
+			return OWPErrFATAL;
+		}
+
+		/*
+		 * Decode slot buffer into slot record.
+		 */
+		if(_OWPDecodeSlot(&slots[i],msg) != OWPErrOK){
+			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+				"OWPReadDataHeaderSlots: Invalid Slot record");
+			errno = EFTYPE;
+			return OWPErrFATAL;
 		}
 	}
 
-	return (stat_buf.st_size-hlen)/_OWP_TS_REC_SIZE;
-}
-
-/*
-** Parse the 20-byte timestamp data record for application to use.
-*/
-static void
-OWPDecodeV3DataRecord(
-		u_int8_t	*buf, 
-		OWPDataRec	*rec
-		)
-{
 	/*
-	 * Have to memcpy buf because it is not 32bit aligned.
+	 * Read block of Zero Integrity bytes into buffer.
 	 */
-	memcpy(&rec->seq_no,buf,4);
-	rec->seq_no = ntohl(rec->seq_no);
+	if(fread(msg,1,16,fp) != 16){
+		err = errno;
+		OWPError(ctx,OWPErrFATAL,errno,"fread(): %M");
+		errno = err;
+		return OWPErrFATAL;
+	}
 
-	OWPDecodeTimeStamp(&rec->send,&buf[4]);
-	OWPDecodeTimeStamp(&rec->recv,&buf[12]);
+	/*
+	 * check to make sure Zero bytes are zero.
+	 */
+	memset(zero,0,16);
+	if(memcmp(zero,msg,16) != 0){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+			"OWPReadDataHeaderSlots: Invalid zero padding");
+		errno = EFTYPE;
+		return OWPErrFATAL;
+	}
+
+	return OWPErrOK;
 }
 
 /*
-** "Fetching" data from local disk. Get <num_rec> many records
-** from data file, parse each one and call user-provided
-*/
+ * Function:	OWPParseRecords
+ *
+ * Description:	
+ * 	Fetch num_rec records from disk calling the record proc function
+ * 	on each record.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
 OWPErrSeverity
 OWPParseRecords(
+	OWPContext		ctx,
 	FILE			*fp,
 	u_int32_t		num_rec,
-	OWPSessionHeader	hdr,
+	u_int32_t		file_version,
 	OWPDoDataRecord		proc_rec,
 	void			*app_data
 	)
 {
-	u_int8_t	rbuf[_OWP_TS_REC_SIZE];
+	u_int8_t	rbuf[_OWP_TESTREC_SIZE];
 	u_int32_t	i;
 	OWPDataRec	rec;
 	int		rc;
 
 	/*
-	 * hdr will eventually let this function determine how to parse
-	 * records - i.e. version info. For now, only V3 records are
-	 * supported. which is assumed if !hdr or hdr->rec_size == 20.
+	 * Someday this function may need to deal with multiple datafile
+	 * versions. Currently it only supports 0 and 2. (both of which
+	 * require the same 24 octet data records.)
 	 */
-	if(hdr && hdr->rec_size != _OWP_TS_REC_SIZE)
+	if((file_version != 0) && (file_version != 2)){
+		OWPError(ctx,OWPErrFATAL,EINVAL,
+				"OWPParseRecords: Invalid file version (%d)",
+				file_version);
 		return OWPErrFATAL;
+	}
 
 	for(i=0;i<num_rec;i++){
-		if(fread(rbuf,_OWP_TS_REC_SIZE,1,fp) < 1)
+		if(fread(rbuf,_OWP_TESTREC_SIZE,1,fp) < 1){
+			OWPError(ctx,OWPErrFATAL,errno,"fread(): %M");
 			return OWPErrFATAL;
-		OWPDecodeV3DataRecord(rbuf,&rec);
-		rc = proc_rec(app_data,&rec);
+		}
+		if(!_OWPDecodeDataRecord(&rec,rbuf)){
+			errno = EFTYPE;
+			OWPError(ctx,OWPErrFATAL,errno,
+				"OWPParseRecords: Invalid Data Record: %M");
+			return OWPErrFATAL;
+		}
+		rc = proc_rec(&rec,app_data);
 		if(!rc) continue;
 		if(rc < 0)
 			return OWPErrFATAL;
@@ -1417,8 +2111,26 @@ OWPParseRecords(
 	return OWPErrOK;
 }
 
+/*
+ * Function:	OWPIsLostRecord
+ *
+ * Description:	
+ * 	Returns true if the given DataRec indicates a "lost" packet. This
+ * 	is determined by looking at the recv timestamp. If it is a string
+ * 	of zero bits, then it is lost.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
 OWPBoolean
-OWPIsLostRecord(OWPDataRecPtr rec)
+OWPIsLostRecord(
+	OWPDataRec *rec
+	)
 {
-	return (rec->recv.frac_sec || rec->recv.sec)? False : True;
+	return (rec->recv.owptime & 0xFFFFFFFFFFFFFFFFULL)? False : True;
 }

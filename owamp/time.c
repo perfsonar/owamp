@@ -28,18 +28,29 @@
  *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *	00|                Integer part of seconds			  |
  *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
- *	04|     Fractional part of seconds                |S|U| Prec      |
+ *	04|              Fractional part of seconds                       |
  *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *
+ *	The format for an Error Estimate is:
+ *	   0                   1           
+ *	   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	00|S|Z|   Scale   |   Multiplier  |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *
  */
 #include <string.h>
+#include <assert.h>
 #include <owamp/owamp.h>
 
 /*
- * Function:	OWPEncodeTimeStamp
+ * Function:	_OWPEncodeTimeStamp
  *
  * Description:	
+ * 		Takes an OWPTimeStamp structure and encodes the time
+ * 		value from that structure to the byte array in network
+ * 		byte order appropriate for sending the value over the wire.
+ * 		(See above format diagram.)
  *
  * In Args:	
  *
@@ -50,133 +61,193 @@
  * Side Effect:	
  */
 void
-OWPEncodeTimeStamp(
+_OWPEncodeTimeStamp(
 	u_int8_t	buf[8],
 	OWPTimeStamp	*tstamp
 	)
 {
 	u_int32_t	t32;
 
+	assert(tstamp);
+	assert(buf);
+
 	/*
-	 * seconds is straight forward.
+	 * seconds - Most Significant 32 bits hold the seconds in
+	 * host byte order. Set t32 to this value in network byte order,
+	 * then copy them to bytes 0-4 in buf.
 	 */
-	t32 = htonl(tstamp->sec);
+	t32 = htonl((tstamp->owptime >> 32) & 0xFFFFFFFF);
 	memcpy(&buf[0],&t32,4);
 
 	/*
-	 * frac_sec: to get byte ordering correct - need to convert to big
-	 * endien, then copy 3 high order bytes.
+	 * frac seconds - Least significant 32 bits hold the fractional
+	 * seconds in host byte order. Set t32 to this value in network
+	 * byte order, then copy them to bytes 5-8 in buf.
 	 */
-	t32 = htonl((u_int32_t)tstamp->frac_sec);
-	memcpy(&buf[4],((u_int8_t*)&t32),3);
-
-	/*
-	 * Now, fill in the last byte with the prec/sync values.
-	 */
-	buf[7] = tstamp->prec;
-	if(tstamp->sync)
-		buf[7] |= 0x80;
-	else
-		buf[7] &= 0x7F;
+	t32 = htonl(tstamp->owptime & 0xFFFFFFFF);
+	memcpy(&buf[4],&t32,4);
 
 	return;
 }
 
+/*
+ * Function:	_OWPEncodeTimeStampErrEstimate
+ *
+ * Description:	
+ * 		Takes an OWPTimeStamp structure and encodes the time
+ * 		error estimate value from that structure to the byte array
+ * 		in network order as appropriate for sending the value over
+ * 		the wire. (See above format diagram.)
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
+OWPBoolean
+_OWPEncodeTimeStampErrEstimate(
+	u_int8_t        buf[2],
+	OWPTimeStamp    *tstamp
+	)
+{
+	assert(tstamp);
+	assert(buf);
+
+	/*
+	 * If multiplier is 0, this is an invalid error estimate.
+	 */
+	if(!tstamp->multiplier){
+		return False;
+	}
+
+	/*
+	 * Scale is 6 bit quantity, and first 2 bits MUST be zero here.
+	 */
+	buf[0] = tstamp->scale & 0x3F;
+
+	/*
+	 * Set the first bit for sync.
+	 */
+	if(tstamp->sync){
+		buf[0] |= 0x80;
+	}
+
+	buf[1] = tstamp->multiplier;
+
+	return True;
+}
+
+/*
+ * Function:	_OWPDecodeTimeStamp
+ *
+ * Description:	
+ * 		Takes a buffer of 8 bytes of owamp protocol timestamp
+ * 		information and saves it in the OWPTimeStamp structure
+ * 		in the owptime OWPNum64 field. (See above format diagram
+ * 		for owamp protocol timestamp format, and owamp.h header
+ * 		file for a description of the OWPNum64 type.)
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
 void
-OWPDecodeTimeStamp(
+_OWPDecodeTimeStamp(
 	OWPTimeStamp	*tstamp,
 	u_int8_t	buf[8]
 	)
 {
-	u_int32_t	t32 = 0;
+	u_int32_t	t32;
+
+	assert(tstamp);
+	assert(buf);
 
 	/*
-	 * seconds is straight forward.
+	 * First clear owptime.
 	 */
-	memcpy(&tstamp->sec,&buf[0],4);
-	tstamp->sec = ntohl(tstamp->sec);
+	memset(&tstamp->owptime,0,8);
 
 	/*
-	 * network order is big endian - so copy 24 bit fraction to high
-	 * order 3 bytes of t32 in big endian ordering, then use the
-	 * ntohl macro to covert it to the correct byte ordering for
-	 * the host.
+	 * seconds is first 4 bytes in network byte order.
+	 * copy to a 32 bit int, correct the byte order, then assign
+	 * to the most significant 32 bits of owptime.
 	 */
-	memcpy(((u_int8_t*)&t32),&buf[4],3);
-	tstamp->frac_sec = ntohl(t32);
+	memcpy(&t32,&buf[0],4);
+	tstamp->owptime = (OWPNum64)(ntohl(t32)) << 32;
 
-	tstamp->sync = (buf[7] & 0x80)?1:0;
-	tstamp->prec = buf[7] & 0x3F;
+	/*
+	 * fractional seconds are the next 4 bytes in network byte order.
+	 * copy to a 32 bit int, correct the byte order, then assign to
+	 * the least significant 32 bits of owptime.
+	 */
+	memcpy(&t32,&buf[4],4);
+	tstamp->owptime |= (ntohl(t32) & 0xFFFFFFFF);
 
 	return;
 }
 
 /*
- * Function:	OWPCvtTVtoTS
+ * Function:	_OWPDecodeTimeStampErrEstimate
  *
  * Description:	
- * 	Precision in the timestamp is set only taking into account the
- * 	loss of precision from usec to fractional seconds and does not
- * 	address the precision of how the struct timeval was determined.
- * 	It is the responsibility of the caller to adjust the precision/sync
- * 	bits as needed by the actual implementation.
+ * 		Takes a buffer of 2 bytes of owamp protocol timestamp
+ * 		error estimate information and saves it in the OWPTimeStamp
+ * 		structure. (See above format diagram for owamp protocol
+ * 		timestamp error estimate format, and owamp.h header
+ * 		file for a description of the OWPNum64 type.)
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * 		True if the ErrEstimate is valid, False if it is not.
+ * Side Effect:	
  */
-OWPTimeStamp *
-OWPCvtTimeval2Timestamp(
+OWPBoolean
+_OWPDecodeTimeStampErrEstimate(
 	OWPTimeStamp	*tstamp,
-	struct timeval	*tval
-)
-{
-	if(!tstamp || !tval)
-		return NULL;
-
-	tstamp->sec = tval->tv_sec + OWPJAN_1970;
-	tstamp->frac_sec = ((u_int64_t)tval->tv_usec << 32)/1000000 &
-								0xFFFFFFFF;
-	tstamp->prec = 19+32; /* usec is 20 bits of prec - 1(rounding errors)*/
-	tstamp->sync = 0;
-
-	return(tstamp);
-}
-
-struct timeval *
-OWPCvtTimestamp2Timeval(
-	struct timeval	*tval,
-	OWPTimeStamp	*tstamp
+	u_int8_t	buf[2]
 	)
 {
-	u_int32_t	frac;
-	u_int32_t	shift;
+	assert(tstamp);
+	assert(buf);
 
-	if(!tval || !tstamp)
-		return NULL;
-
-	frac = tstamp->frac_sec & 0xFFFFF;
-	if(tstamp->prec < 33)
-		frac = 0;
-	else{
-		/* shift for num sig digits in frac */
-		shift = 24 - (MIN(56,tstamp->prec) - 32);
-		frac = ((frac>>shift)<<shift);
+	/*
+	 * If multiplier is 0, this is an invalid timestamp. From here, just
+	 * set sync and scale to 0 as well.
+	 */
+	if(!buf[1]){
+		buf[0] = 0;
 	}
 
-	tval->tv_sec = tstamp->sec - OWPJAN_1970;
-	tval->tv_usec =((u_int64_t)tstamp->frac_sec * 1000000) >> 32;
+	tstamp->sync = (buf[0] & 0x80)?1:0;
+	tstamp->scale = buf[0] & 0x3F;
+	tstamp->multiplier = buf[1];
 
-	return tval;
+	return (tstamp->multiplier != 0);
 }
 
-
 /*
- * Function:	OWPCvtTimespec2Timestamp
+ * Function:	OWPTimevalToTimestamp
  *
  * Description:	
- * 	If errest (error estimate) is not set:
- * 	Precision in the timestamp is set only taking into account the
- * 	loss of precision from nsec to fractional seconds and does not
- * 	address the precision of how the struct timespec was determined.
- * 	It is the responsibility of the caller to adjust the precision/sync
- * 	bits as needed by the actual implementation.
+ * 	This function takes a struct timeval and converts the time value
+ * 	to an OWPTimeStamp. This function assumes the struct timeval is
+ * 	an absolute time offset from unix epoch (0h Jan 1, 1970), and converts
+ * 	the time to an OWPTimeStamp which uses time similar to the description
+ * 	in RFC 1305 (NTP). i.e. epoch is 0h Jan 1, 1900.
+ *
+ * 	The Error Estimate of the OWPTimeStamp structure is invalidated
+ * 	in this function. (A struct timeval gives no indication of the error.)
  *
  * In Args:	
  *
@@ -187,93 +258,266 @@ OWPCvtTimestamp2Timeval(
  * Side Effect:	
  */
 OWPTimeStamp *
-OWPCvtTimespec2Timestamp(
+OWPTimevalToTimestamp(
+	OWPTimeStamp	*tstamp,
+	struct timeval	*tval
+)
+{
+	/*
+	 * Ensure valid tstamp, tval - and ensure scale of tv_nsec is valid
+	 */
+	if(!tstamp || !tval)
+		return NULL;
+
+	/*
+	 * Now convert representation.
+	 */
+	OWPTimevalToNum64(&tstamp->owptime,tval);
+
+	/*
+	 * Convert "epoch"'s - must do after conversion or there is the risk
+	 * of overflow since time_t is a 32bit signed quantity instead of
+	 * unsigned.
+	 */
+	tstamp->owptime = OWPNum64Add(tstamp->owptime,
+				OWPULongToNum64(OWPJAN_1970));
+
+	return tstamp;
+}
+
+/*
+ * Function:	OWPTimestampToTimeval
+ *
+ * Description:	
+ * 	This function takes an OWPTimeStamp structure and returns a
+ * 	valid struct timeval based on the time value encoded in it.
+ * 	This function assumees the OWPTimeStamp is holding an absolute
+ * 	time value, and is not holding a relative time. i.e. It assumes
+ * 	the time value is relative to NTP epoch.
+ *
+ * 	The Error Estimate of the OWPTimeStamp structure is ignored by
+ * 	this function. (A struct timeval gives no indication of the error.)
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
+struct timeval *
+OWPTimestampToTimeval(
+	struct timeval	*tval,
+	OWPTimeStamp	*tstamp
+	)
+{
+	if(!tval || !tstamp)
+		return NULL;
+
+	/*
+	 * Convert "epoch"'s - must do before conversion or there is the risk
+	 * of overflow since time_t is a 32bit signed quantity instead of
+	 * unsigned.
+	 */
+	tstamp->owptime = OWPNum64Sub(tstamp->owptime,
+				OWPULongToNum64(OWPJAN_1970));
+	OWPNum64ToTimeval(tval,tstamp->owptime);
+
+	return tval;
+}
+
+/*
+ * Function:	OWPTimespecToTimestamp
+ *
+ * Description:	
+ * 	This function takes a struct timespec and converts it to an
+ * 	OWPTimeStamp. The timespec is assumed to be an absolute time
+ * 	relative to unix epoch. The OWPTimeStamp will be an absolute
+ * 	time relative to 0h Jan 1, 1900.
+ *
+ * 	If errest is not set, then parts of the OWPTimeStamp that deal
+ * 	with the error estimate. (scale, multiplier, sync) will be
+ * 	set to 0.
+ *
+ * 	If errest is set, sync will be unmodified. (An errest of 0 is
+ * 	NOT valid, and will be treated as if errest was not set.)
+ *
+ * 	Scale and Multiplier will be set from the value of errest.
+ *
+ * 	If last_errest is set, then Scale and Multiplier will be left
+ * 	unmodified if (*errest == *last_errest).
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
+OWPTimeStamp *
+OWPTimespecToTimestamp(
 	OWPTimeStamp	*tstamp,
 	struct timespec	*tval,
 	u_int32_t	*errest,	/* usec's */
 	u_int32_t	*last_errest
 	)
 {
-	u_int64_t	err_frac;
-
+	/*
+	 * Ensure valid tstamp, tval - and ensure scale of tv_nsec is valid
+	 */
 	if(!tstamp || !tval)
 		return NULL;
 
-	tstamp->sec = tval->tv_sec + OWPJAN_1970;
-	tstamp->frac_sec = ((u_int64_t)tval->tv_nsec << 32)/1000000000 &
-								0xFFFFFFFF;
-	if(errest){
+	/*
+	 * Now convert representation.
+	 */
+	OWPTimespecToNum64(&tstamp->owptime,tval);
+
+	/*
+	 * Convert "epoch"'s - must do after conversion or there is the risk
+	 * of overflow since time_t is a 32bit signed quantity instead of
+	 * unsigned.
+	 */
+	tstamp->owptime = OWPNum64Add(tstamp->owptime,
+				OWPULongToNum64(OWPJAN_1970));
+
+	/*
+	 * If errest is set, and is non-zero.
+	 */
+	if(errest && *errest){
 		/*
 		 * If last_errest is set, and the error hasn't changed,
 		 * then we don't touch the prec portion assuming it is
 		 * already correct.
 		 */
 		if(!last_errest || (*errest != *last_errest)){
-			tstamp->prec = 56;
-			err_frac = OWPusec2num64(*errest);
+			OWPNum64	err;
 
 			/*
-			 * count digits in err_frac to determine how many digits
-			 * must be discounted from precision.
+			 * First normalize errest to 32bit fractional seconds.
 			 */
-			err_frac >>= 8;	/* lowest 8 don't count. */
-			while(err_frac){
-				tstamp->prec--;
-				err_frac >>= 1;
+			err = OWPUsecToNum64(*errest);
+
+			/*
+			 * Just in the unlikely event that err is represented
+			 * by a type larger than 64 bits...
+			 * (This ensures that scale will not overflow the
+			 * 6 bits available to it.)
+			 */
+			err &= (u_int64_t)0xFFFFFFFFFFFFFFFFULL;
+
+			/*
+			 * Now shift err until it will fit in an 8 bit
+			 * multiplier (after adding one for rounding err: this
+			 * is the reason a value of 0xFF is shifted one last
+			 * time), counting the shifts to set the scale.
+			 */
+			tstamp->scale = 0;
+			while(err >= 0xFF){
+				err >>= 1;
+				tstamp->scale++;
 			}
+			err++;	/* rounding error:represents shifted off bits */
+			tstamp->multiplier = 0xFF & err;
 		}
-		tstamp->sync = 1;
 	}
 	else{
-		tstamp->prec = 56;
 		tstamp->sync = 0;
+		tstamp->scale = 0;
+		tstamp->multiplier = 0;
 	}
 
 	return tstamp;
 }
 
+/*
+ * Function:	OWPTimestampToTimespec
+ *
+ * Description:	
+ * 	This function takes an OWPTimeStamp structure and returns a
+ * 	valid struct timespec based on the time value encoded in it.
+ * 	This function assumees the OWPTimeStamp is holding an absolute
+ * 	time value, and is not holding a relative time. i.e. It assumes
+ * 	the time value is relative to NTP epoch.
+ *
+ * 	The Error Estimate of the OWPTimeStamp structure is ignored by
+ * 	this function. (A struct timespec gives no indication of the error.)
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
 struct timespec *
-OWPCvtTimestamp2Timespec(
+OWPTimestampToTimespec(
 	struct timespec	*tval,
 	OWPTimeStamp	*tstamp
 	)
 {
-	u_int64_t	frac;
-	u_int32_t	shift;
-
 	if(!tval || !tstamp)
 		return NULL;
 
-	frac = tstamp->frac_sec & 0xFFFFF;
-	if(tstamp->prec < 33)
-		frac = 0;
-	else{
-		/* shift for num sig digits in frac */
-		shift = 24 - (MIN(56,tstamp->prec) - 32);
-		frac = ((frac>>shift)<<shift);
-	}
-
-	tval->tv_sec = tstamp->sec - OWPJAN_1970;
-	tval->tv_nsec =((u_int64_t)tstamp->frac_sec * 1000000000) >> 32;
+	/*
+	 * Convert "epoch"'s - must do before conversion or there is the risk
+	 * of overflow since time_t is a 32bit signed quantity instead of
+	 * unsigned.
+	 */
+	tstamp->owptime = OWPNum64Sub(tstamp->owptime,
+				OWPULongToNum64(OWPJAN_1970));
+	OWPNum64ToTimespec(tval,tstamp->owptime);
 
 	return tval;
 }
 
+/*
+ * Function:	OWPGetTimeStampError
+ *
+ * Description:	
+ * 	Retrieve the timestamp error estimate as a double in seconds.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
 double
-owp_bits2prec(int nbits)
+OWPGetTimeStampError(
+	OWPTimeStamp	*tstamp
+	)
 {
-	return (nbits >= 32)? 1.0/(1 << (nbits - 32)) 
-		: (double)(1 << (32 - nbits));
-}
+	OWPNum64	err;
+	u_int8_t	scale;
 
-double
-OWPPrecision(OWPDataRecPtr rec)
-{
-	return owp_bits2prec(rec->send.prec) + owp_bits2prec(rec->recv.prec);
-}
+	if(!tstamp)
+		return 0.0;
 
-u_int8_t
-OWPGetPrecBits(OWPDataRecPtr rec)
-{
-	return MIN(rec->send.prec, rec->recv.prec);
+	/*
+	 * Place multiplier in 64bit int large enough to hold full value.
+	 * (Due to the interpretation of OWPNum64 being 32 bits of seconds,
+	 * and 32 bits of "fraction", this effectively divides by 2^32.)
+	 */
+	err = tstamp->multiplier & 0xFF;
+
+	/*
+	 * Now shift it based on the "scale".
+	 * (This affects the 2^scale multiplication.)
+	 */
+	scale = tstamp->scale & 0x3F;
+	while(scale>0){
+		err <<= 1;
+		scale--;
+	}
+
+	/*
+	 * Return the OWPNum64 value as a double.
+	 */
+	return OWPNum64ToDouble(err);
 }

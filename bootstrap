@@ -21,6 +21,11 @@
 #			This script is used to bootstrap the autobuild
 #			process.
 #
+#			RUNNING THIS SCRIPT IS NOT RECOMMENDED
+#			(You should just use the "configure" script
+#			that was bundled with the distribution if
+#			at all possible.)
+#
 
 if test -x I2util/bootstrap; then
 	echo

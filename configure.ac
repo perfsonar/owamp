@@ -27,9 +27,9 @@
 #
 #	Options:
 # Process this file with autoconf to produce a configure script.
-AC_INIT(owamp, 1.0, owamp-bugs@internet2.edu)
+AC_INIT(owamp, 1.6a, owamp-bugs@internet2.edu)
 AC_CONFIG_AUX_DIR(config)
-AM_INIT_AUTOMAKE(owamp, 1.0, [no-define])
+AM_INIT_AUTOMAKE(owamp, 1.6a, [no-define])
 AC_CONFIG_SRCDIR(owamp/context.c)
 AM_CONFIG_HEADER(owamp/config.h)
 
@@ -38,6 +38,31 @@ TOP_BUILD_DIRS=""
 #
 # add configure options.
 #
+AC_ARG_WITH(efence,
+		AC_HELP_STRING([--with-efence=<path/libefence.a>],
+				[yes means use -L/usr/local/lib -lefence]),
+		with_efence=$withval, with_efence=no)
+
+
+#
+# setup efence
+#
+MALLOCDEBUGLIBS=""
+if test "$with_efence" != "no"; then
+	if test "$with_efence" = "yes"; then
+		MALLOCDEBUGLIBS="-L/usr/local/lib -lefence"
+	else
+		efence_dir=`dirname $with_efence`
+		efence_file=`basename $with_efence`
+		case $efence_dir in
+			/*) ;; # already absolute path
+			*) efence_dir="`pwd`/$efence_dir" ;;
+		esac
+		MALLOCDEBUGLIBS="$efence_dir/$efence_file"
+	fi
+fi
+AC_SUBST(MALLOCDEBUGLIBS)
+
 AC_ARG_WITH(I2util,
 		AC_HELP_STRING([--with-I2util=<dir>],
 				[defaults to building I2util under owamp if exists]),
@@ -56,7 +81,7 @@ if test "$with_I2util" != "no"; then
 		I2util_dir=`dirname $with_I2util`
 		case $I2util_dir in
 			/*) ;; # already an absolute path
-			*) $I2util_dir="`pwd`/$I2util_dir" ;;
+			*) I2util_dir="`pwd`/$I2util_dir" ;;
 		esac
 		I2UTILINCS="-I$I2util_dir/include $I2UTILINCS"
 		I2UTILLDFLAGS="-L$I2util_dir/lib $I2UTILLDFLAGS"
@@ -135,7 +160,6 @@ AC_CHECK_DECLS([fseeko])
 # AC_CONFIG_FILES([Makefile owamp/Makefile])
 
 AC_SUBST(ac_aux_dir)
-
-AC_OUTPUT([Makefile owamp/Makefile owampd/Makefile owping/Makefile powstream/Makefile owdigest/Makefile scripts/Makefile scripts/OWP/Makefile],
+AC_OUTPUT([Makefile owamp/Makefile owampd/Makefile owping/Makefile powstream/Makefile owdigest/Makefile scripts/Makefile scripts/OWP/Makefile conf/Makefile],
 	[test -z "$CONFIG_HEADERS" || echo timestamp > owamp/stamp-h.in])
 

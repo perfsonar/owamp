@@ -58,7 +58,7 @@ sub merge {
 	$buckets[$_] = 0;
     }
 
-    my ($worst_prec, $final_min) = (64, 99999.0);
+    my ($worst_prec, $final_min) = (0.0, 99999.0);
     my ($total_sent, $total_lost, $total_dup) = (0, 0, 0);
 
     my ($magic, $version, $hdr_len);
@@ -74,12 +74,23 @@ sub merge {
 	($magic, $version, $hdr_len) = unpack "a8xCC", $buf;
 	my $remain_bytes = $hdr_len - $pre;
 
-	die "Currently only work with version 1: $file" unless ($version == 1);
+	die "Currently only work with version 1 and 2: $file: $version"
+		unless (($version == 1) || ($version == 2));
+
 	die "Cannot read header"
 		if (read(FH, $buf, $remain_bytes) != $remain_bytes);
-	($prec, $sent, $lost, $dup, $min) = unpack "CLLLd", $buf;
 
-	if ($prec < $worst_prec) {
+	if($version == 1){
+		($prec, $sent, $lost, $dup, $min) = unpack "CLLLd", $buf;
+		$prec = (2**(32 - $prec)) * 2;
+	}
+	else{
+		# currently only version 2 is encoded this way, but
+		# leave as "default".
+		($prec, $sent, $lost, $dup, $min) = unpack "dLLLd", $buf;
+	}
+
+	if ($prec > $worst_prec) {
 	    $worst_prec = $prec;
 	}
 
@@ -122,11 +133,14 @@ sub merge {
 	warn "DEBUG: sent == 0 upon merge into $newname";
     }
 
+    # migrate all files to version 2 over time.
+
+    $version = 2;
     # Trick to compute header length and place it within the header itself.
-    my $header = pack "a8xCCCLLLd", MAGIC, $version, $hdr_len, $worst_prec,
+    my $header = pack "a8xCCdLLLd", MAGIC, $version, $hdr_len, $worst_prec,
 	    $total_sent, $total_lost, $total_dup, $final_min;
     $hdr_len = length($header);
-    $header = pack "a8xCCCLLLd", MAGIC, $version, $hdr_len, $worst_prec,
+    $header = pack "a8xCCdLLLd", MAGIC, $version, $hdr_len, $worst_prec,
 	    $total_sent, $total_lost, $total_dup, $final_min;
 
     print OUT $header;

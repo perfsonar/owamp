@@ -298,7 +298,7 @@ sub plot_resolution {
     }
 
     my $got_data = 0;
-    my $worst_prec = 64;
+    my $worst_prec = 0.0;
 
     foreach my $file (@all) {
 	my $ofile = $file;
@@ -318,7 +318,7 @@ sub plot_resolution {
 		@{get_buck_ref($dat_fh, $datafile)};
 	undef $dat_fh;
 
-	$worst_prec = $prec if $prec < $worst_prec;
+	$worst_prec = $prec if $prec > $worst_prec;
 
 	print "DEBUG: loop: worst_prec = $worst_prec\n" if DEBUG;
 
@@ -359,7 +359,7 @@ sub plot_resolution {
     }
 
     # Compute the worst error in ms
-    my $err = sprintf "%.3f", ((2**(32 - $worst_prec)) * 2) * THOUSAND;
+    my $err = sprintf "%.3f", $worst_prec * THOUSAND;
 
     close GNU_INF_MED;
     close GNU_INF_NINETY;
@@ -522,6 +522,7 @@ sub printlist {
 
 sub code2unit {
     my $t = $_[0];
+
     $t eq 'H' && return 'hour';
     $t eq 'M' && return 'minute';
     $t eq 'S' && return 'second';
@@ -551,10 +552,22 @@ sub get_buck_ref {
 
     my $remain_bytes = $hdr_len - $pre;
 
-    die "Currently only work with version 1: $fname" unless ($version == 1);
+    die "Currently only work with version 1 or 2: $fname"
+    	unless (($version == 2) || ($version == 1));
     die "Cannot read header"
-	    if (read($fh, $buf, $remain_bytes) != $remain_bytes);
-    ($prec, $sent, $lost, $dup, $min) = unpack "CLLLd", $buf;
+	if (read($fh, $buf, $remain_bytes) != $remain_bytes);
+
+    if($version == 1){
+	    ($prec, $sent, $lost, $dup, $min) = unpack "CLLLd", $buf;
+	    # convert "bits" representation of err to double.
+	    $prec = (2**(32 - $prec)) * 2;
+    }
+    elsif($version == 2){
+	    ($prec, $sent, $lost, $dup, $min) = unpack "dLLLd", $buf;
+    }
+    else{
+    	die "Invalid file version: $version";
+    }
 
     $min *= THOUSAND; # convert from sec to ms
     $min = sprintf "%.3f", $min;

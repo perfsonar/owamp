@@ -34,8 +34,6 @@
 
 #include <I2util/util.h>
 #include <owamp/owamp.h>
-#include <owamp/conndata.h>
-#include <owamp/access.h>
 
 #include "./owpingP.h"
 
@@ -73,20 +71,6 @@ OWPingErrFunc(
 }
 #endif
 	
-/*
- * Library initialization structure;
- */
-static	OWPInitializeConfigRec	OWPCfg = {{
-	/* tm_out.tv_sec		*/	0,
-	/* tm_out.tv_usec		*/	0},
-	/* eh				*/	NULL,
-	/* get_aes_key			*/	owp_get_aes_key,
-	/* check_control_func		*/	NULL,
-	/* check_test_func		*/	NULL,
-	/* rand_type                    */      I2RAND_DEV,
-	/* rand_data                    */      NULL
-};
-
 static void
 print_conn_args()
 {
@@ -191,7 +175,6 @@ FailSession(
 #define OWP_WIN_WIDTH   64
 
 #define OWP_MAX_N           100  /* N-reordering statistics parameter */
-#define OWP_LOOP(x)         ((x) >= 0? (x): (x) + OWP_MAX_N)
 
 /*
 ** Generic state to be maintained by client during Fetch.
@@ -212,10 +195,10 @@ typedef struct fetch_state {
 	char         *to;
 	u_int32_t    count_out;        /* number of printed packets          */
 
-	/* worst case precision is determined by the lexicographically
-	   smallest pair of precision bits */
-	int          bits_low;
-	int          bits_high;
+	/*
+	 * Worst error for all packets in test.
+	 */
+	double		errest;
 	int          sync;           /* flag set if never saw unsync packets */
 
 	/* N-reodering state variables. */
@@ -228,7 +211,6 @@ typedef struct fetch_state {
 } fetch_state, *fetch_state_ptr;
 
 #define OWP_CMP(a,b) ((a) < (b))? -1 : (((a) == (b))? 0 : 1)
-#define OWP_MIN(a,b) ((a) < (b))? (a) : (b)
 
 /*
 ** The function returns -1. 0 or 1 if the first record's sequence
@@ -236,7 +218,10 @@ typedef struct fetch_state {
 ** of the second.
 */
 int
-owp_seqno_cmp(OWPDataRecPtr a, OWPDataRecPtr b)
+owp_seqno_cmp(
+	OWPDataRec	*a,
+	OWPDataRec	*b
+	)
 {
 	assert(a); assert(b);
 	return OWP_CMP(a->seq_no, b->seq_no);
@@ -248,8 +233,10 @@ owp_seqno_cmp(OWPDataRecPtr a, OWPDataRecPtr b)
 ** record in the state window}, or -1 if no such index is found.
 */
 int
-look_for_spot(fetch_state_ptr state,
-	      OWPDataRecPtr rec)
+look_for_spot(
+	fetch_state_ptr	state,
+	OWPDataRec	*rec
+	)
 {
 	int i;
 	assert(state->cur_win_size);
@@ -268,7 +255,10 @@ look_for_spot(fetch_state_ptr state,
 ** as encoded in <state>.
 */
 void
-owp_record_out(fetch_state_ptr state, OWPDataRecPtr rec)
+owp_record_out(
+	fetch_state_ptr	state,
+	OWPDataRec	*rec
+	)
 {
 	double delay;
 
@@ -285,29 +275,30 @@ owp_record_out(fetch_state_ptr state, OWPDataRecPtr rec)
 		       (state->from)? state->from : "***", 
 		       (state->to)?  state->to : "***");
 
-	delay = owp_delay(&rec->send, &rec->recv);
+	delay = OWPDelay(&rec->send, &rec->recv);
 	if (ping_ctx.opt.full) {
 		char		sendbuf[OWP_TSTAMPCHARS+1];
 		char		recvbuf[OWP_TSTAMPCHARS+1];
 
 		snprintf(sendbuf,sizeof(sendbuf),OWP_TSTAMPFMT,
-						OWPTimeStamp2num64(&rec->send));
+							rec->send.owptime);
 		snprintf(recvbuf,sizeof(recvbuf),OWP_TSTAMPFMT,
-						OWPTimeStamp2num64(&rec->recv));
+							rec->recv.owptime);
 		fprintf(state->fp, 
-				"#%-10u send=%s %u%c     recv=%s %u%c\n",
+				"#%-10u send=%s %c%.5g     recv=%s %c%.5g\n",
 				rec->seq_no,
-				sendbuf, rec->send.prec,
-				(rec->send.sync)? 'S' : 'U', 
-				recvbuf, rec->recv.prec,
-				(rec->recv.sync)? 'S' : 'U');
+				sendbuf,(rec->send.sync)? 'S' : 'U', 
+				(float)OWPGetTimeStampError(&rec->send),
+				recvbuf,(rec->recv.sync)? 'S' : 'U',
+				(float)OWPGetTimeStampError(&rec->recv)
+				);
 		return;
 	}
 
 	if (!OWPIsLostRecord(rec)) {
 		if (rec->send.sync && rec->recv.sync) {
-			double prec = owp_bits2prec(rec->send.prec) 
-				+ owp_bits2prec(rec->recv.prec);
+			double prec = OWPGetTimeStampError(&rec->send) +
+				OWPGetTimeStampError(&rec->recv);
 			fprintf(state->fp, 
 	       "seq_no=%-10u delay=%.3f ms       (sync, precision %.3f ms)\n", 
 				rec->seq_no, delay*THOUSAND, 
@@ -318,7 +309,10 @@ owp_record_out(fetch_state_ptr state, OWPDataRecPtr rec)
 				rec->seq_no, delay*THOUSAND);
 		return;
 	}
+
 	fprintf(state->fp, "seq_no=%-10u *LOST*\n", rec->seq_no);
+
+	return;
 }
 
 #define OWP_MAX_BUCKET  (OWP_NUM_LOW + OWP_NUM_MID + OWP_NUM_HIGH - 1)
@@ -356,9 +350,14 @@ owp_bucket(double delay)
 }
 
 void
-owp_update_stats(fetch_state_ptr state, OWPDataRecPtr rec) {
+owp_update_stats(
+	fetch_state_ptr	state,
+	OWPDataRec	*rec
+	)
+{
 	double delay;  
-	int bucket, low, high;
+	double errest;
+	int bucket;
 
 	assert(state); assert(rec);
 
@@ -374,14 +373,13 @@ owp_update_stats(fetch_state_ptr state, OWPDataRecPtr rec) {
 		return;
 	state->num_received++;
 
-	delay =  owp_delay(&rec->send, &rec->recv);
+	delay =  OWPDelay(&rec->send, &rec->recv);
 
-	low = MIN(rec->send.prec, rec->recv.prec);
-	high = MAX(rec->send.prec, rec->recv.prec);
-	if ((low < state->bits_low) 
-	    || ((low == state->bits_low) && (high < state->bits_high))) {
-		state->bits_low = low;
-		state->bits_high = high;
+	errest = OWPGetTimeStampError(&rec->send);
+	errest += OWPGetTimeStampError(&rec->recv);
+
+	if(errest > state->errest){
+		state->errest = errest;
 	}
 
 	if (!rec->send.sync || !rec->send.sync)
@@ -428,29 +426,17 @@ owp_get_percentile(fetch_state_ptr state, double alpha)
 	return 0.0;
 }
 
-/* True if the first timestamp is earlier than the second. */
-#define OWP_EARLIER_THAN(a, b)                                \
-( ((a).sec < (b).sec)                                         \
-  || ( ((a).sec == (b).sec)                                   \
-       && ((a).frac_sec < (b).frac_sec)                       \
-     )                                                        \
-) 
-
-#define OWP_OUT_OF_ORDER(new, last_out)                       \
-(                                                             \
-((new)->seq_no < (last_out)->seq_no)                          \
-|| (                                                          \
-      ((new)->seq_no == (last_out)->seq_no)                   \
-      && OWP_EARLIER_THAN(((new)->recv), ((last_out)->recv))  \
-   )                                                          \
-)
-
 /*
 ** Processs a single record, updating statistics and internal state.
 ** Return 0 on success, or -1 on failure, 1 to stop parsing data.
 */
-int
-do_single_record(void *calldata, OWPDataRecPtr rec) 
+#define OWP_LOOP(x)         ((x) >= 0? (x): (x) + OWP_MAX_N)
+
+static int
+do_single_record(
+	OWPDataRec	*rec,
+	void		*calldata
+	) 
 {
 	int i;
 	fetch_state_ptr state = (fetch_state_ptr)calldata;
@@ -460,17 +446,17 @@ do_single_record(void *calldata, OWPDataRecPtr rec)
 
 	owp_record_out(state, rec); /* Output is done in all cases. */
 
-	if (OWPIsLostRecord(rec)) {
+	if(OWPIsLostRecord(rec)) {
 		owp_update_stats(state, rec);
 		return 0;       /* May do something better later. */
 	}
 
 	/* If ordering is important - handle it here. */
-	if (state->order_disrupted)
+	if(state->order_disrupted)
 		return 0;
 	
 	/* Update N-reordering state. */
-	for (j = 0; j < OWP_MIN(state->l, OWP_MAX_N); j++) { 
+	for(j = 0; j < MIN(state->l, OWP_MAX_N); j++) { 
 		 if(rec->seq_no 
 		       >= state->ring[OWP_LOOP((int)(state->r - j - 1))])
 			 break;
@@ -480,28 +466,33 @@ do_single_record(void *calldata, OWPDataRecPtr rec)
 	state->l++;
 	state->r = (state->r + 1) % OWP_MAX_N;
 
-	if (state->cur_win_size < OWP_WIN_WIDTH){/* insert - no stats updates*/
-		if (state->cur_win_size) { /* Grow window. */
+	if(state->cur_win_size < OWP_WIN_WIDTH){/* insert - no stats updates*/
+		if(state->cur_win_size) { /* Grow window. */
 			int num_records_to_move;
 			i = look_for_spot(state, rec);
 			num_records_to_move = state->cur_win_size - i - 1;
 
 			/* Cut and paste if needed - then insert. */
-			if (num_records_to_move) 
+			if(num_records_to_move) 
 				memmove(&state->window[i+2], 
 					&state->window[i+1], 
 					num_records_to_move*sizeof(*rec));
 			memcpy(&state->window[i+1], rec, sizeof(*rec)); 
-		}  else /* Initialize window. */
+		}
+		else{
+			/* Initialize window. */
 			memmove(&state->window[0], rec, sizeof(*rec));
+		}
 		state->cur_win_size++;
-	} else { /* rotate - update state*/
-		OWPDataRecPtr out_rec = rec;		
-		if (state->num_received
-		    && OWP_OUT_OF_ORDER(rec, &(state->last_out))) {
-				state->order_disrupted = 1;
-				/* terminate parsing */
-				return 1; 
+	}
+	else{
+		/* rotate - update state*/
+		OWPDataRec	*out_rec = rec;		
+		if(state->num_received &&
+				(rec->seq_no < state->last_out.seq_no)) {
+			state->order_disrupted = 1;
+			/* terminate parsing */
+			return 1; 
 		}
 
 		i = look_for_spot(state, rec);
@@ -532,15 +523,9 @@ owp_do_summary(fetch_state_ptr state)
 	u_int32_t sent = state->max_seqno + 1;
 	u_int32_t lost = state->dup_packets + sent - state->num_received; 
 	double percent_lost = (100.0*(double)lost)/(double)sent;
-	int j, nonempty = 0;
+	int j;
 
 	assert(state); assert(state->fp);
-
-	for (j = 0; j <= OWP_MAX_BUCKET; j++) {
-		if (state->buckets[j]) 
-			nonempty++;
-	}
-	fprintf(state->fp, "%d nonempty buckets\n", nonempty);
 
 	fprintf(state->fp, "\n--- owping statistics from %s to %s ---\n",
 		       (state->from)? state->from : "***", 
@@ -558,10 +543,9 @@ owp_do_summary(fetch_state_ptr state)
 
 	if (state->sync)
 		fprintf(state->fp, 
-	     "one-way delay min/median = %.3f/%.3f ms  (precision %.3f ms)\n", 
+	     "one-way delay min/median = %.3f/%.3f ms  (precision %.5g s)\n", 
 		min, owp_get_percentile(state, 0.5)*THOUSAND,
-		(owp_bits2prec(state->bits_low)
-		+ owp_bits2prec(state->bits_high))*THOUSAND);
+		state->errest);
 	else
 		fprintf(state->fp, 
 	     "one-way delay min/median = %.3f/%.3f ms  (unsync)\n", 
@@ -612,8 +596,10 @@ do_records_all(
 		char		*to
 		)
 {
-	int		i, num_buckets;
-	u_int32_t	num_rec,hdr_len;
+	int			i, num_buckets;
+	u_int32_t		num_rec;
+	OWPSessionHeaderRec	hdr;
+	off_t			hdr_len;
 
 	/*
 	  Initialize fields of state to keep track of.
@@ -629,7 +615,7 @@ do_records_all(
 	state->to = to;
 	state->count_out = 0;
 
-	state->bits_low = state->bits_high = 56;
+	state->errest = 0.0;
 	state->sync = 1;
 
 	/* N-reodering fields/ */
@@ -648,16 +634,12 @@ do_records_all(
 	for (i = 0; i <= OWP_MAX_BUCKET; i++)
 		state->buckets[i] = 0;
 
-	/*
-	 * In v5 - passing in the hdr so that it can be passed to
-	 * Parse will be manditory.
-	 */
-	if(!(num_rec = OWPReadDataHeader(ctx,fp,&hdr_len,NULL))){
+	if(!(num_rec = OWPReadDataHeader(ctx,fp,&hdr_len,&hdr))){
 		I2ErrLog(eh, "OWPReadDataHeader:Empty file?");
 		return -1;
 	}
 	
-	if(OWPParseRecords(fp,num_rec,NULL,do_single_record,state)
+	if(OWPParseRecords(ctx,fp,num_rec,hdr.version,do_single_record,state)
 							< OWPErrWARNING){
 		I2ErrLog(eh,"OWPParseRecords():%M");
 		return -1;
@@ -740,12 +722,8 @@ owp_fetch_sid(
 
 	/*
 	 * Ask for complete session 
-	 * TODO: In v5 this function will return interesting info about
-	 * the session. For now, it just returns the number of records.
-	 * (6th arg)
 	 */
-	num_rec = OWPFetchSession(cntrl,fp,0,(u_int32_t)0xFFFFFFFF,sid,NULL,
-									&rc);
+	num_rec = OWPFetchSession(cntrl,fp,0,(u_int32_t)0xFFFFFFFF,sid,&rc);
 	if(!num_rec){
 		if(path)
 			(void)unlink(path);
@@ -779,12 +757,15 @@ owp_fetch_sid(
 */
 void
 owp_set_auth(ow_ping_trec *pctx, 
-	     owp_policy_data **policy, 
 	     char *progname,
 	     OWPContext ctx)
 {
+#if	NOT
 	OWPErrSeverity err_ret;
 
+	/*
+	 * TODO: fix policy.
+	 */
 	if(pctx->opt.identity){
 		/*
 		 * Eventually need to modify the policy init for the
@@ -798,6 +779,7 @@ owp_set_auth(ow_ping_trec *pctx,
 			exit(1);
 		};
 	}
+#endif
 
 
 	/*
@@ -847,12 +829,12 @@ main(
 	char			*progname;
 	OWPErrSeverity		err_ret = OWPErrOK;
 	I2LogImmediateAttr	ia;
-	owp_policy_data		*policy;
 	OWPContext		ctx;
-	OWPTestSpecPoisson	test_spec;
-	struct timeval		delay_tval;
+	OWPTimeStamp		start_time;
+	OWPTestSpec		tspec;
+	OWPSlot			slot;
+	OWPNum64		rtt_bound;
 	OWPSID			tosid, fromsid;
-	OWPPerConnDataRec	conndata;
 	OWPAcceptType		acceptval;
 	OWPErrSeverity		err;
 	fetch_state             state;
@@ -890,13 +872,11 @@ main(
 		fprintf(stderr, "%s : Couldn't init error module\n", progname);
 		exit(1);
 	}
-	OWPCfg.eh = eh;
 
-	OWPCfg.tm_out.tv_sec = 60;   /* just for now */
 	/*
 	 * Initialize library with configuration functions.
 	 */
-	if( !(ping_ctx.lib_ctx = OWPContextInitialize(&OWPCfg))){
+	if( !(ping_ctx.lib_ctx = OWPContextCreate(eh))){
 		I2ErrLog(eh, "Unable to initialize OWP library.");
 		exit(1);
 	}
@@ -909,7 +889,7 @@ main(
 		= ping_ctx.opt.identity = ping_ctx.opt.passwd 
 		= ping_ctx.opt.srcaddr = ping_ctx.opt.authmode = NULL;
 	ping_ctx.opt.numPackets = 100;
-	ping_ctx.opt.lossThreshold = 10;
+	ping_ctx.opt.lossThreshold = 0.0;
 	ping_ctx.opt.percentile = 50.0;
 	ping_ctx.opt.mean_wait = (float)0.1;
 	ping_ctx.opt.padding = 0;
@@ -991,7 +971,7 @@ main(
 		     }
                      break;
              case 'i':
-		     ping_ctx.opt.mean_wait = (float)(strtod(optarg, &endptr));
+		     ping_ctx.opt.mean_wait = (float)strtod(optarg, &endptr);
 		     if (*endptr != '\0') {
 			     usage(progname, 
 			   "Invalid value. Positive floating number expected");
@@ -1007,10 +987,11 @@ main(
 		     }
                      break;
              case 'L':
-		     ping_ctx.opt.lossThreshold = strtoul(optarg, &endptr, 10);
-		     if (*endptr != '\0') {
+		     ping_ctx.opt.lossThreshold = strtod(optarg,&endptr);
+		     if((*endptr != '\0') ||
+				    	 (ping_ctx.opt.lossThreshold < 0.0)){
 			     usage(progname, 
-				   "Invalid value. Positive integer expected");
+			   "Invalid \'-L\' value. Positive float expected");
 			     exit(1);
 		     }
                      break;
@@ -1037,9 +1018,11 @@ main(
 			     exit(1);
 		     }
 		     break;
+#ifndef	NDEBUG
 	     case 'w':
 		     ping_ctx.opt.childwait = True;
                      break;
+#endif
 
 		     /* Generic options.*/
              case 'h':
@@ -1086,28 +1069,22 @@ main(
 			exit(0);
 		}
 
-		owp_set_auth(&ping_ctx, &policy, progname, ctx); 
-
-		
-		test_spec.test_type = OWPTestPoisson;
-		test_spec.npackets = ping_ctx.opt.numPackets;
-		
 		/*
-		 * TODO: Figure out typeP...
+		 * TODO: fix policy
 		 */
-		test_spec.typeP = 0;      /* so it's in host byte order then */
-		test_spec.packet_size_padding = ping_ctx.opt.padding;
-		
-		/* InvLambda is mean wait time in usec */
-		test_spec.InvLambda 
-			= (double)1000000.0 * ping_ctx.opt.mean_wait;
-		
-		conndata.pipefd = -1;
-		conndata.policy = policy; /* or NULL ??? */
-		conndata.node = NULL;
-#ifndef	NDEBUG
-		conndata.childwait = ping_ctx.opt.childwait;
-#endif
+		owp_set_auth(&ping_ctx, progname, ctx); 
+
+
+		/*
+		 * Setup debugging of child processes.
+		 */
+		if(ping_ctx.opt.childwait &&
+				!OWPContextConfigSet(ctx,
+					OWPChildWait,
+					(void*)ping_ctx.opt.childwait)){
+			     I2ErrLog(eh,
+			"OWPContextConfigSet(): Unable to set OWPChildWait?!");
+		}
 		
 		/*
 		 * Open connection to owampd.
@@ -1116,61 +1093,76 @@ main(
 		ping_ctx.cntrl = OWPControlOpen(ctx, 
 			OWPAddrByNode(ctx, ping_ctx.opt.srcaddr),
 			OWPAddrByNode(ctx, ping_ctx.remote_serv),
-			ping_ctx.auth_mode, 
-			ping_ctx.opt.identity,
-			(void*)&conndata, &err_ret);
+			ping_ctx.auth_mode,ping_ctx.opt.identity,
+			NULL,&err_ret);
 		if (!ping_ctx.cntrl){
 			I2ErrLog(eh, "Unable to open control connection.");
 			exit(1);
 		}
 
-		(void)OWPGetDelay(ping_ctx.cntrl,&delay_tval);
+		rtt_bound = OWPGetRTTBound(ping_ctx.cntrl);
 		/*
 		 * Set the loss threshold to 2 seconds longer then the
 		 * rtt delay estimate. 2 is just a guess for a good number
-		 * based upon how impatient a command-line user gets for
-		 * results. For the results to have any statistical relevance
-		 * the lossThreshold should be specified on the command
-		 * line.
-		 *
-		 * TODO:
-		 * (The lossThreshold turns into the "timeout" parameter
-		 * of the actual test request in the next version of the
-		 * protocol.)
+		 * based upon how impatient this command-line user gets for
+		 * results. Caveat: For the results to have any statistical
+		 * relevance the lossThreshold should be specified on the
+		 * command line. (You have to wait until this long after
+		 * the end of a test to declare the test over in order to
+		 * be confident that you have accepted all "duplicates"
+		 * that could come in during the test.)
 		 */
-		if(!ping_ctx.opt.lossThreshold){
-			ping_ctx.opt.lossThreshold = delay_tval.tv_sec + 2;
+		if(ping_ctx.opt.lossThreshold <= 0.0){
+			ping_ctx.opt.lossThreshold =
+					OWPNum64ToDouble(rtt_bound) + 2.0;
 		}
-		conndata.lossThreshold = ping_ctx.opt.lossThreshold;
 
 		/*
 		 * TODO: create a "start" option?
 		 *
-		 * For now, start test ~4 rtt (rounded to seconds + 1 sec)
-		 * from now.
-		 * 2 session requests, 1 startsessions command, 1 later.
+		 * For now estimate a start time that allows both sides to
+		 * setup the session before that time:
+		 * 	~3 rtt + 1sec from now
+		 * 		2 session requests, 1 startsessions command,
+		 *		then one second extra to allow for setup
+		 *		delay.
 		 */
-		if(!OWPGetTimeOfDay(&test_spec.start_time)){
+		if(!OWPGetTimeOfDay(&start_time)){
 			I2ErrLogP(eh,errno,"Unable to get current time:%M");
 			exit(1);
 		}
-		tvaladd(&delay_tval,&delay_tval);
-		tvaladd(&delay_tval,&delay_tval);
-		test_spec.start_time.sec += delay_tval.tv_sec+1;
+		tspec.start_time = OWPNum64Add(start_time.owptime,
+					OWPNum64Add(
+						OWPNum64Mult(rtt_bound,
+							OWPULongToNum64(3)),
+						OWPULongToNum64(1)));
+
+		tspec.loss_timeout =
+				OWPDoubleToNum64(ping_ctx.opt.lossThreshold);
+
+		tspec.typeP = 0;
+		tspec.packet_size_padding = ping_ctx.opt.padding;
+		tspec.npackets = ping_ctx.opt.numPackets;
+		
+		/*
+		 * TODO: Generalize commandline to allow multiple
+		 * slots. For now, use one rand exp slot.
+		 */
+		tspec.nslots = 1;
+		slot.slot_type = OWPSlotRandExpType;
+		slot.rand_exp.mean = OWPDoubleToNum64(ping_ctx.opt.mean_wait);
+		tspec.slots = &slot;
 
 		/*
 		 * Prepare paths for datafiles. Unlink if not keeping data.
 		 */
-		
 		if(ping_ctx.opt.to) {
 			if (!OWPSessionRequest(ping_ctx.cntrl, NULL, False,
 				       OWPAddrByNode(ctx,ping_ctx.remote_test),
-				       True, (OWPTestSpec*)&test_spec, tosid, 
-				       NULL, &err_ret))
+				       True,(OWPTestSpec*)&tspec,
+				       NULL,tosid,&err_ret))
 			FailSession(ping_ctx.cntrl);
 		}
-
-
 
 		if(ping_ctx.opt.from) {
 
@@ -1205,9 +1197,8 @@ main(
 
 			if (!OWPSessionRequest(ping_ctx.cntrl,
 				       OWPAddrByNode(ctx,ping_ctx.remote_test),
-				       True, NULL, False, 
-				       (OWPTestSpec*)&test_spec, fromsid,
-				       fromfp, &err_ret))
+				       True, NULL, False,(OWPTestSpec*)&tspec,
+				       fromfp,fromsid,&err_ret))
 				FailSession(ping_ctx.cntrl);
 		}
 		
@@ -1222,16 +1213,19 @@ main(
 		 * killed and lost - might be reasonable to keep it that
 		 * way...)
 		 */
-		if(OWPStopSessionsWait(ping_ctx.cntrl,NULL,&acceptval,&err))
+		if(OWPStopSessionsWait(ping_ctx.cntrl,NULL,NULL,&acceptval,
+									&err)){
 			exit(1);
+		}
 
 		if (acceptval != 0) {
 			I2ErrLog(eh, "Test session(s) Questionable...");
 		}
 
 		if (ping_ctx.opt.to || ping_ctx.opt.from) {
-			char *ptr;
-			OWPAddr2string(local, local_str, sizeof(local_str));
+			char	*ptr;
+			size_t	local_strlen = sizeof(local_str);
+			OWPAddrNodeName(local,local_str,&local_strlen);
 			remote = strdup(ping_ctx.remote_test);
 			if (!remote) {
 			   I2ErrLog(eh, "Failed to copy remote host name: %M");
@@ -1262,8 +1256,9 @@ main(
 	}
 
 	if (!strcmp(progname, "owstats")) {
-		FILE	*fp;
-		u_int32_t hdr_len, num_rec;
+		FILE		*fp;
+		u_int32_t	num_rec;
+		off_t		hdr_len;
 
 		if(!(fp = fopen(argv[0],"rb"))){
 			I2ErrLog(eh,"fopen(%s):%M",argv[0]);
@@ -1293,8 +1288,13 @@ main(
 		argv++;
 		argc--;
 
-		owp_set_auth(&ping_ctx, &policy, progname, ctx); 
+		/*
+		 * TODO: fix policy
+		 */
+		owp_set_auth(&ping_ctx, progname, ctx); 
+#if	NOT
 		conndata.policy = policy;
+#endif
 
 		/*
 		 * Open connection to owampd.
@@ -1302,9 +1302,8 @@ main(
 		ping_ctx.cntrl = OWPControlOpen(ctx, 
 			OWPAddrByNode(ctx, ping_ctx.opt.srcaddr),
 			OWPAddrByNode(ctx, ping_ctx.remote_serv),
-			ping_ctx.auth_mode, 
-			ping_ctx.opt.identity,
-			(void*)&conndata, &err_ret);
+			ping_ctx.auth_mode,ping_ctx.opt.identity,
+			NULL,&err_ret);
 		if (!ping_ctx.cntrl){
 			I2ErrLog(eh, "Unable to open control connection.");
 			exit(1);

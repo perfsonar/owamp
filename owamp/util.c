@@ -42,10 +42,20 @@ OWPHexEncode(
 }
 
 /*
-** In:  buff.
-** Out: bytes
-*/
-void
+ * Function:	OWPHexDecode
+ *
+ * Description:	
+ * 	Decode hex chars into bytes. Return True on success, False on error.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
+OWPBoolean
 OWPHexDecode(
 	char		*buff,
 	u_int8_t	*bytes,
@@ -65,10 +75,14 @@ OWPHexDecode(
 					*bytes |= offset;
 					if(!j)
 						*bytes <<= 4;
-					break;
+					goto byteset;
 				}
 			}
+			return False;
+byteset:
 		}
 	}
+
+	return True;
 }
 

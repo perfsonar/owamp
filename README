@@ -1,17 +1,26 @@
 $Id$
 
-			owamp
+	owamp
 
 owamp [One Way Active Measurement Protocol] is a sample implementation of
-draft-ietf-ippm-owdp-03.txt(name to change).
+draft-ietf-ippm-owdp-05.txt(name to change).
 
 It is organized as follows:
 
+config/		holds autoconf junk.
+I2util/		convienient utility functions... Error reporting, hash funcs...
 owamp/		directory for owamp api - a high level abstraction for
 		speaking the owamp protocol.
-I2util/		convienient utility functions... Error reporting, hash funcs...
 owampd/		An owamp server implementation.
 owping/		A command line owamp client (one way ping).
-powstream/	A client-daemon for continuous one-way tests.
 owdigest/	A program to create digests of delay data from full session
 		files.
+
+powstream/	A client-daemon for continuous one-way tests. (not installed)
+scripts/	Support scripts - (not installed). (There are the beginnings
+		of example init.d scripts to start up owampd here...)
+
+	The powstream application is a one-off application that Internet2
+is using to run continuous tests on a mesh of Abilene measuremetn nodes.
+There are support scripts for this measurement "mesh" application in the
+scripts directory.

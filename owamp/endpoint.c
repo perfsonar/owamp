@@ -30,61 +30,38 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 
-#include "access.h"
 #include "owampP.h"
-#include "endpoint.h"
-#include "conndata.h"
 
 /*
- * This type holds all the information needed for an endpoint to be
- * managed by these functions.
+ * Function:	EndpointAlloc
+ *
+ * Description:	
+ * 	Allocate a record to keep track of the state information for
+ * 	this endpoint. (Much of this state is also in the control record
+ * 	and the TestSession record... May simplify this in the future
+ * 	to just reference the other records.)
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
  */
-typedef struct _EndpointRec{
-	OWPContext		ctx;
-	I2RandomSource		rand_src;
-	OWPTestSpec		test_spec;
-	OWPSessionMode		mode;
-	keyInstance		*aeskey;
-	u_int32_t		lossThreshold;
-	struct timespec		delay;
-#ifndef	NDEBUG
-	I2Boolean		childwait;
-#endif
-
-	OWPAcceptType		acceptval;
-	pid_t			child;
-	int			wopts;
-	OWPBoolean		send;
-	int			sockfd;
-	OWPAddr			remoteaddr;
-
-	FILE			*datafile;
-	char			*filepath;
-	char			*linkpath;
-	char			*fbuff;
-
-	struct timespec		start;
-	u_int8_t		*payload;
-	u_int8_t		*clr_buffer;
-
-	size_t			len_payload;
-	struct timespec		*relative_offsets;
-	u_int8_t		*received_packets;
-} _EndpointRec, *_Endpoint;
-
-static _Endpoint
+static OWPEndpoint
 EndpointAlloc(
-	OWPContext	ctx
+	OWPControl	cntrl
 	)
 {
-	_Endpoint	ep = calloc(1,sizeof(_EndpointRec));
+	OWPEndpoint	ep = calloc(1,sizeof(OWPEndpointRec));
 
 	if(!ep){
-		OWPError(ctx,OWPErrFATAL,errno,"malloc(EndpointRec)");
+		OWPError(cntrl->ctx,OWPErrFATAL,errno,"malloc(EndpointRec)");
 		return NULL;
 	}
 
-	ep->test_spec.test_type = OWPTestUnspecified;
+	ep->cntrl = cntrl;
 	ep->sockfd = -1;
 	ep->acceptval = OWP_CNTRL_INVALID;
 	ep->wopts = WNOHANG;
@@ -92,9 +69,25 @@ EndpointAlloc(
 	return ep;
 }
 
+/*
+ * Function:	EndpointClear
+ *
+ * Description:	
+ * 	Clear out any resources that are used in the Endpoint record
+ * 	that are not needed in the parent process after the endpoint
+ * 	forks off to do the actual test.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
 static void
 EndpointClear(
-	_Endpoint	ep
+	OWPEndpoint	ep
 	)
 {
 	if(!ep)
@@ -108,42 +101,37 @@ EndpointClear(
 		fclose(ep->datafile);
 		ep->datafile = NULL;
 	}
-	if(ep->filepath){
-		free(ep->filepath);
-		ep->filepath = NULL;
-	}
-	if(ep->linkpath){
-		free(ep->linkpath);
-		ep->linkpath = NULL;
-	}
 	if(ep->fbuff){
 		free(ep->fbuff);
 		ep->fbuff = NULL;
 	}
+
 	if(ep->payload){
 		free(ep->payload);
 		ep->payload = NULL;
-	}
-	if(ep->clr_buffer){
-		free(ep->clr_buffer);
-		ep->clr_buffer = NULL;
-	}
-
-	if(ep->relative_offsets){
-		free(ep->relative_offsets);
-		ep->relative_offsets = NULL;
-	}
-	if(ep->received_packets){
-		free(ep->received_packets);
-		ep->received_packets = NULL;
 	}
 
 	return;
 }
 
+/*
+ * Function:	EndpointFree
+ *
+ * Description:	
+ * 	completely free all resoruces associated with an endpoint record.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
 static void
 EndpointFree(
-	_Endpoint	ep
+	OWPEndpoint	ep,
+	OWPAcceptType	aval
 	)
 {
 	if(!ep)
@@ -151,11 +139,34 @@ EndpointFree(
 
 	EndpointClear(ep);
 
+	if(ep->userfile){
+		_OWPCallCloseFile(ep->cntrl,ep->tsession->closure,ep->userfile,
+									aval);
+		ep->userfile = NULL;
+	}
+
 	free(ep);
 
 	return;
 }
 
+/*
+ * Function:	reopen_datafile
+ *
+ * Description:	
+ * 	This function takes a fp and creates a new fp to the same file
+ * 	record. This is used to ensure that the fp used for the actual
+ * 	test is buffered properly. And - allows the test to write to the
+ * 	same file without modifying a fp passed in by an application.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
 static FILE*
 reopen_datafile(
 		OWPContext	ctx,
@@ -171,7 +182,7 @@ reopen_datafile(
 		return NULL;
 	}
 
-	if( !(fp = fdopen(newfd,"ab"))){
+	if( !(fp = fdopen(newfd,"wb"))){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN, "fdopen(%d): %M",newfd);
 		return NULL;
 	}
@@ -179,115 +190,46 @@ reopen_datafile(
 	return fp;
 }
 
-static FILE *
-opendatafile(
-	OWPContext		ctx,
-	OWPPerConnData		cdata,
-	_Endpoint		ep,
-	OWPSID			sid
-)
-{
-	FILE	*fp;
-	char	sid_name[(sizeof(OWPSID)*2)+1];
-
-	OWPHexEncode(sid_name,sid,sizeof(OWPSID));
-
-	/*
-	 * Ensure real_data_dir exists.
-	 */
-	if((mkdir(cdata->real_data_dir,0755) != 0) && (errno != EEXIST)){
-		 OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"mkdir(%s): %M",
-						  cdata->real_data_dir);
-		 return NULL;
-	}
-
-	if(cdata->link_data_dir){
-		/*
-		 * Ensure link_data_dir exists.
-		 */
-		if((mkdir(cdata->link_data_dir,0755) != 0) &&
-							(errno != EEXIST)){
-			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"Unable to mkdir(%s): %M",
-					cdata->link_data_dir);
-			return NULL;
-		}
-
-		/*
-		 * Now complete the filename for the linkpath.
-		 */
-		if( !(ep->linkpath 
-			      = (char *)malloc(strlen(cdata->link_data_dir)
-				       + OWP_PATH_SEPARATOR_LEN
-				       + sizeof(OWPSID)*2
-				       + strlen(OWP_INCOMPLETE_EXT) + 1))) {
-			OWPError(ctx,OWPErrFATAL,errno,"malloc(): %M");
-			return NULL;
-		}
-
-		strcpy(ep->linkpath, cdata->link_data_dir);
-		strcat(ep->linkpath,OWP_PATH_SEPARATOR);
-		strcat(ep->linkpath,sid_name);
-		strcat(ep->linkpath, OWP_INCOMPLETE_EXT);
-	}
-
-	/*
-	 * 1 for the final '\0'.
-	 */
-	if (!(ep->filepath = (char *)malloc(strlen(cdata->real_data_dir)
-				    + OWP_PATH_SEPARATOR_LEN
-				    + sizeof(OWPSID)*2
-				    + strlen(OWP_INCOMPLETE_EXT) + 1))) {
-		OWPError(ctx, OWPErrFATAL, errno, 
-				 "FATAL: opendatafile: malloc failed");
-		goto error;
-	}
-
-	strcpy(ep->filepath,cdata->real_data_dir);
-	strcat(ep->filepath,OWP_PATH_SEPARATOR);
-	strcat(ep->filepath,sid_name);
-	strcat(ep->filepath, OWP_INCOMPLETE_EXT);	/* in-progress	*/
-
-	fp = fopen(ep->filepath,"wb");
-	if(!fp){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"Unable to open datafile(%s): %M",ep->filepath);
-		goto error;
-	}
-
-	if(ep->linkpath && (symlink(ep->filepath,ep->linkpath) != 0)){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"symlink(): %M");
-		goto error;
-	}
-
-	return fp;
-
-error:
-	if(ep->linkpath){
-		free(ep->linkpath);
-		ep->linkpath = NULL;
-	}
-
-	if(ep->filepath){
-		free(ep->filepath);
-		ep->filepath = NULL;
-	}
-
-	if(fp)
-		fclose(fp);
-
-	return NULL;
-}
-
-
 /*
+ * Function:	InitNTP
+ *
+ * Description:	
+ * 	Initialize NTP. Make sure it is working and that the endpoint
+ * 	can access it.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ *
  * If STA_NANO is defined, we insist it is set, this way we can be sure that
  * ntp_gettime is returning a timespec and not a timeval.
+ *
+ * TODO: The correct way to fix this is:
+ * 1. If ntptimeval contains a struct timespec - then use nano's period.
+ * 2. else if STA_NANO is set, then use nano's.
+ * 3. else ???(mills solution requires root - ugh)
+ *    will this work?
+ *    (do a timing test:
+ * 		gettimeofday(A);
+ * 		getntptime(B);
+ * 		nanosleep(1000);
+ * 		getntptime(C);
+ * 		gettimeofday(D);
+ *
+ * 		1. Interprete B and C as usecs
+ * 			if(D-A < C-B)
+ * 				nano's
+ * 			else
+ * 				usecs
  */
 static int
 InitNTP(
-		OWPContext	ctx	__attribute__((unused))
-		)
+	OWPContext	ctx
+	)
 {
 	struct timex	ntp_conf;
 
@@ -328,6 +270,13 @@ GetTimespec(
 	*esterr = (u_int32_t)ntv.esterror;
 	assert((long)*esterr == ntv.esterror);
 
+	/*
+	 * Error estimate should never be 0, but I've seen ntp do it!
+	 */
+	if(!*esterr){
+		*esterr = 1;
+	}
+
 #ifdef	STA_NANO
 	*ts = ntv.time;
 #else
@@ -342,83 +291,119 @@ GetTimespec(
 }
 
 /*
+ * Function:	CmpLostPacket
+ *
+ * Description:	
+ * 	Used to compare the 64 bit keys for the OWPLostPacket records.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
+static int
+CmpLostPacket(
+	I2Datum	x,
+	I2Datum	y
+	)
+{
+	u_int64_t	*xn = (u_int64_t*)x.dptr;
+	u_int64_t	*yn = (u_int64_t*)y.dptr;
+
+	return !(*xn == *yn);
+}
+
+/*
+ * Function:	HashLostPacket
+ *
+ * Description:	
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
+u_int32_t
+HashLostPacket(
+	I2Datum	k
+	)
+{
+	u_int64_t	*kn = (u_int64_t*)k.dptr;
+
+	return *kn & 0xFFFFFFFFUL;
+}
+
+/*
  * The endpoint init function is responsible for opening a socket, and
  * allocating a local port number.
  * If this is a recv endpoint, it is also responsible for allocating a
  * session id.
  */
-OWPErrSeverity
+OWPBoolean
 _OWPEndpointInit(
-	void		*app_data,
+	OWPControl	cntrl,
 	OWPTestSession	tsession,
 	OWPAddr		localaddr,
 	FILE		*fp,
-	void		**end_data_ret
+	OWPErrSeverity	*err_ret
 )
 {
-	OWPPerConnData		cdata = (OWPPerConnData)app_data;
 	struct sockaddr_storage	sbuff;
 	socklen_t		sbuff_len=sizeof(sbuff);
-	OWPContext		ctx = OWPGetContext(tsession->cntrl);
-	_Endpoint		ep;
+	OWPEndpoint		ep;
 	OWPPacketSizeT		tpsize;
 	int			sbuf_size;
 	int			sopt;
 	socklen_t		opt_size;
+	u_int64_t		i;
+	OWPTimeStamp		tstamp;
 
-	*end_data_ret = NULL;
+	*err_ret = OWPErrFATAL;
 
-	if(InitNTP(ctx) != 0){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+	if(InitNTP(cntrl->ctx) != 0){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 				"Unable to initialize clock interface.");
-		return OWPErrFATAL;
+		return False;
 	}
 
-	if( !(ep=EndpointAlloc(ctx)))
-		return OWPErrFATAL;
+	if( !(ep=EndpointAlloc(cntrl)))
+		return False;
 
 	ep->send = (localaddr == tsession->sender);
 
-	ep->test_spec = tsession->test_spec;
-	ep->mode = OWPGetMode(tsession->cntrl);
-	ep->aeskey = OWPGetAESkeyInstance(tsession->cntrl,ep->send);
-	ep->lossThreshold = cdata->lossThreshold;
-	ep->ctx = ctx;
-	ep->rand_src = ctx->rand_src;
-	OWPGetDelay(tsession->cntrl,(struct timeval*)&ep->delay);
-	ep->delay.tv_nsec *= 1000;
-
-#ifndef	NDEBUG
-	ep->childwait = cdata->childwait;
-#endif
+	ep->tsession = tsession;
+	ep->cntrl = cntrl;
 
 	tpsize = OWPTestPacketSize(localaddr->saddr->sa_family,
-			ep->mode,tsession->test_spec.any.packet_size_padding);
+		ep->cntrl->mode,tsession->test_spec.packet_size_padding);
 	tpsize += 128;	/* Add fuzz space for IP "options" */
 	sbuf_size = tpsize;
 	if((OWPPacketSizeT)sbuf_size != tpsize){
-		OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
 				"Packet size overflow - invalid padding");
 		goto error;
 	}
 
-	if(!(ep->relative_offsets = malloc(sizeof(struct timespec) *
-					tsession->test_spec.any.npackets))){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"malloc(): %M");
-		goto error;
+	ep->len_payload = OWPTestPayloadSize(ep->cntrl->mode,
+				ep->tsession->test_spec.packet_size_padding);
+	if(ep->len_payload < _OWP_TESTREC_SIZE){
+		ep->len_payload = _OWP_TESTREC_SIZE;
 	}
-
-	ep->len_payload = OWPTestPayloadSize(ep->mode,
-				ep->test_spec.any.packet_size_padding);
-	if(ep->len_payload < 20) ep->len_payload = 20;
 	ep->payload = malloc(ep->len_payload);
-	ep->clr_buffer = malloc(16);	/* one block - dynamic for alignment */
 
-	if(!ep->payload || !ep->clr_buffer){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"malloc(): %M");
+	if(!ep->payload){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,"malloc(): %M");
 		goto error;
 	}
 
+	tstamp.owptime = ep->tsession->test_spec.start_time;
+	(void)OWPTimestampToTimespec(&ep->start,&tstamp);
 
 	/*
 	 * Create the socket.
@@ -426,7 +411,7 @@ _OWPEndpointInit(
 	ep->sockfd = socket(localaddr->saddr->sa_family,localaddr->so_type,
 						localaddr->so_protocol);
 	if(ep->sockfd<0){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"socket(): %M");
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,"socket(): %M");
 		goto error;
 	}
 
@@ -434,7 +419,7 @@ _OWPEndpointInit(
 	 * bind it to the local address getting an ephemeral port number.
 	 */
 	if(bind(ep->sockfd,localaddr->saddr,localaddr->saddrlen) != 0){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 			"bind([%s]:%s): %M",localaddr->node,localaddr->port);
 		goto error;
 	}
@@ -444,7 +429,7 @@ _OWPEndpointInit(
 	 */
 	memset(&sbuff,0,sizeof(sbuff));
 	if(getsockname(ep->sockfd,(void*)&sbuff,&sbuff_len) != 0){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"getsockname(): %M");
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,"getsockname(): %M");
 		goto error;
 	}
 
@@ -460,44 +445,119 @@ _OWPEndpointInit(
 	 */
 	if(!ep->send){
 		size_t		size;
+		struct stat	statbuf;
+		OWPLostPacket	alist;
 
 		/*
-		 * Array to keep track of "seen" packets.
+		 * pre-allocate nodes for lost_packet buffer.
+		 * (estimate number of nodes needed to hold enough
+		 * packets for 2*Loss-timeout)
+		 * TODO: determine a reasonable number instead of (2).
+		 * (2 is just a guess... exp distribution probably
+		 * converges to 0 fast enough that we could get away
+		 * with a much smaller number... say 1.2)
+		 *
+		 * It is possible that the actual distribution will make
+		 * it necessary to hold more than this many nodes in the
+		 * buffer - but it is highly unlikely. If that happens,
+		 * another dynamic allocation will happen. This should
+		 * at least minimize the dynamic allocations during the
+		 * test.
 		 */
-		if(!(ep->received_packets = calloc(sizeof(u_int8_t),
-						ep->test_spec.any.npackets))){
-			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"calloc(): %M");
+#define PACKBUFFALLOCFACTOR	2
+
+		ep->freelist=NULL;
+		ep->numalist = OWPTestPacketRate(cntrl->ctx,
+						&tsession->test_spec) *
+				OWPNum64ToDouble(
+					tsession->test_spec.loss_timeout) *
+				PACKBUFFALLOCFACTOR;
+		ep->numalist = MAX(ep->numalist,100);
+
+		if(!(alist = calloc(sizeof(OWPLostPacketRec),ep->numalist))){
+			OWPError(cntrl->ctx,OWPErrFATAL,errno,"calloc(): %M");
 			goto error;
 		}
 
+		for(i=0;i<ep->numalist;i++){
+			alist[i].next = ep->freelist;
+			ep->freelist = &alist[i];
+		}
 
-		if(fp)
-			ep->datafile = reopen_datafile(ctx,fp);
-		else
-			ep->datafile = opendatafile(ctx,cdata,ep,tsession->sid);
 
-		if(!ep->datafile){
-			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"Unable to open session file: %M");
+		if(!(ep->lost_packet_buffer = I2HashInit(cntrl->ctx->eh,
+					ep->numalist*PACKBUFFALLOCFACTOR,
+					CmpLostPacket,HashLostPacket))){
+			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+		"_OWPEndpointInit: Unable to initialize lost packet buffer");
+			goto error;
+		}
+
+		ep->fname[0] = '\0';
+		if(!fp){
+			ep->userfile = fp = _OWPCallOpenFile(cntrl,
+						tsession->closure,
+						tsession->sid,
+						ep->fname);
+		}
+
+		if(!fp){
+			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+				"Unable to open session file(%s): %M",
+						ep->fname);
 			goto error;
 		}
 
 		/*
-		 * set file buffer such that ~ 1 second of data will fit
-		 * in buffer.
-		 * TODO: (This will change with the new generalized
-		 * time distribution, but for now just use lambda and 1 sec.)
+		 * This function dup's the fd/fp so that any seeks on
+		 * the fd in the parent do not effect the child reference.
+		 * (It also ensures that no file i/o have happened on the
+		 * ep->datafile which makes it much more likely that the
+		 * call to setvbuf will work...)
 		 */
-		size = 1000000.0/ep->test_spec.poisson.InvLambda*20;
-		size = MIN(size,8192);
-		if(size < 128)
-			size = 20;	/* buffer a single record */
-		ep->fbuff = malloc(size);
-		if(!ep->fbuff)
-			size = 0;
-		
-		if(size)
-			setvbuf(ep->datafile,ep->fbuff,_IOFBF,size);
+		if( !(ep->datafile = reopen_datafile(cntrl->ctx,fp))){
+			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+				"Unable to re-open session file(%s): %M",
+						ep->fname);
+			goto error;
+		}
+
+		/*
+		 * Determine "optimal" file buffer size. To allow "Fetch"
+		 * clients to access ongoing tests - we define "optimal" as
+		 * approximately 1 second of buffering. (Or 1 record - whichever
+		 * takes longer.)
+		 */
+
+		/* stat to find out st_blksize */
+		if(fstat(fileno(ep->datafile),&statbuf) != 0){
+			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+					"fstat(): %M");
+			goto error;
+		}
+
+		/*
+		 * Determine data rate. i.e. size/second.
+		 */
+		size = OWPTestPacketRate(cntrl->ctx,&ep->tsession->test_spec) *
+							_OWP_TESTREC_SIZE;
+
+		/*
+		 * Don't make buffer larger than "default"
+		 */
+		size = MIN(size,statbuf.st_blksize);
+
+		/*
+		 * buffer needs to be at least as large as one record.
+		 */
+		if(size < _OWP_TESTREC_SIZE){
+			size = _OWP_TESTREC_SIZE;
+		}
+		if( !(ep->fbuff = malloc(size))){
+			OWPError(cntrl->ctx,OWPErrFATAL,errno,"malloc(): %M");
+			goto error;
+		}
+		setvbuf(ep->datafile,ep->fbuff,_IOFBF,size);
 
 		/*
 		 * receiver - need to set the recv buffer size large
@@ -507,7 +567,7 @@ _OWPEndpointInit(
 		opt_size = sizeof(sopt);
 		if(getsockopt(ep->sockfd,SOL_SOCKET,SO_RCVBUF,
 					(void*)&sopt,&opt_size) < 0){
-			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 				"getsockopt(RCVBUF): %M");
 			goto error;
 		}
@@ -516,7 +576,7 @@ _OWPEndpointInit(
 			sopt = sbuf_size;
 			if(setsockopt(ep->sockfd,SOL_SOCKET,SO_RCVBUF,
 				 (void*)&sopt,sizeof(sopt)) < 0){
-				OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+				OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 					"setsockopt(RCVBUF=%d): %M",sopt);
 				goto error;
 			}
@@ -532,7 +592,7 @@ _OWPEndpointInit(
 		opt_size = sizeof(sopt);
 		if(getsockopt(ep->sockfd,SOL_SOCKET,SO_SNDBUF,
 					(void*)&sopt,&opt_size) < 0){
-			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 				"getsockopt(SNDBUF): %M");
 			goto error;
 		}
@@ -541,36 +601,68 @@ _OWPEndpointInit(
 			sopt = sbuf_size;
 			if(setsockopt(ep->sockfd,SOL_SOCKET,SO_SNDBUF,
 				 (void*)&sopt,sizeof(sopt)) < 0){
-				OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+				OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 						"setsockopt(RCVBUF=%d): %M",
 						sopt);
 				goto error;
 			}
 		}
 
+		/*
+		 * Use Type-P to set DSCP
+		 * (This is currently the only Type-P currently supported by
+		 * this implementation.)
+		 *
+		 * TODO: Verify this works! (I am highly suspicious of using
+		 * IP_TOS for IPv6... I have seen IP_CLASS as a possible
+		 * replacement...)
+		 */
+		if(ep->tsession->test_spec.typeP &&
+				!(ep->tsession->test_spec.typeP & ~0x3F)){
+			int	optname = IP_TOS;
+			int	optlevel = IP_TOS;
+			switch(localaddr->saddr->sa_family){
+			case AF_INET:
+				optlevel = IPPROTO_IP;
+				optname = IP_TOS;
+				break;
+#ifdef	AF_INET6
+			case AF_INET6:
+				optlevel = IPPROTO_IPV6;
+				optname = IP_TOS;
+				break;
+#endif
+			default:
+				/*NOTREACHED*/
+				break;
+			}
+
+			sopt = ep->tsession->test_spec.typeP << 2;
+			if(setsockopt(ep->sockfd,optlevel,optname,
+					 (void*)&sopt,sizeof(sopt)) < 0){
+				OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+					"setsockopt(%s,%s=%d): %M",
+					((optlevel==IPPROTO_IP)?
+					 	"IPPROTO_IP":"IPPROTO_IPV6"),
+					((optname==IP_TOS)?"IP_TOS":"IP_CLASS"),
+					sopt);
+				goto error;
+			}
+		}
 	}
 
-	*(_Endpoint*)end_data_ret = ep;
-
-	return OWPErrOK;
+	tsession->endpoint = ep;
+	*err_ret = OWPErrOK;
+	return True;
 
 error:
-	if(ep->filepath && (unlink(ep->filepath) != 0) && (errno != ENOENT)){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"unlink(%s): %M",ep->filepath);
-	}
-	if(ep->linkpath && (unlink(ep->linkpath) != 0) && (errno != ENOENT)){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"unlink(%s): %M",ep->linkpath);
-	}
-	EndpointFree(ep);
-	return OWPErrFATAL;
+	EndpointFree(ep,OWP_CNTRL_FAILURE);
+	return False;
 }
 
 static int owp_usr1;
 static int owp_usr2;
 static int owp_int;
-static int owp_alrm;
 
 /*
  * This sighandler is used to ensure SIGCHLD events are sent to this process.
@@ -607,12 +699,11 @@ sig_catch(
 			owp_int = 1;
 			break;
 		case SIGALRM:
-			owp_alrm = 1;
 			break;
 		default:
 			OWPError(NULL,OWPErrFATAL,OWPErrUNKNOWN,
 					"sig_catch:Invalid signal(%d)",signo);
-			exit(OWP_CNTRL_FAILURE);
+			_exit(OWP_CNTRL_FAILURE);
 	}
 
 	return;
@@ -635,10 +726,10 @@ sig_catch(
  */
 static void
 run_sender(
-		_Endpoint	ep
+		OWPEndpoint	ep
 		)
 {
-	u_int32_t	i=0;
+	u_int32_t	i;
 	struct timespec	currtime;
 	struct timespec	nexttime;
 	struct timespec	sleeptime;
@@ -647,32 +738,39 @@ run_sender(
 	int		sync;
 	ssize_t		sent;
 	u_int32_t	*seq;
-	u_int8_t	*clr_buffer;
+	u_int8_t	clr_buffer[32];
+	u_int8_t	zeroiv[16];
 	u_int8_t	*payload;
 	u_int8_t	*tstamp;
+	u_int8_t	*tstamperr;
 	OWPTimeStamp	owptstamp;
+	OWPNum64	nextoffset;
 
 	/*
 	 * Initialize pointers to various positions in the packet buffer,
 	 * for data that changes for each packet. Also set zero padding.
 	 */
-	switch(ep->mode){
+	switch(ep->cntrl->mode){
 		case OWP_MODE_OPEN:
-			seq = (u_int32_t*)ep->payload;
+			seq = (u_int32_t*)&ep->payload[0];
 			tstamp = &ep->payload[4];
-			payload = &ep->payload[12];
+			tstamperr = &ep->payload[12];
+			payload = &ep->payload[14];
 			break;
 		case OWP_MODE_AUTHENTICATED:
-			seq = (u_int32_t*)ep->clr_buffer;
+			seq = (u_int32_t*)&clr_buffer[0];
 			tstamp = &ep->payload[16];
-			payload = &ep->payload[24];
-			memset(&ep->clr_buffer[4],0,12);
+			tstamperr = &ep->payload[24];
+			payload = &ep->payload[32];
+			memset(clr_buffer,0,32);
 			break;
 		case OWP_MODE_ENCRYPTED:
-			seq = (u_int32_t*)ep->clr_buffer;
-			tstamp = &ep->clr_buffer[4];
-			payload = &ep->payload[16];
-			memset(&ep->clr_buffer[12],0,4);
+			seq = (u_int32_t*)&clr_buffer[0];
+			tstamp = &clr_buffer[16];
+			tstamperr = &clr_buffer[24];
+			payload = &ep->payload[32];
+			memset(clr_buffer,0,32);
+			memset(zeroiv,0,16);
 			break;
 		default:
 			/*
@@ -687,67 +785,121 @@ run_sender(
 	 * set random bits.
 	 */
 #if	defined(OWP_ZERO_TEST_PAYLOAD)
-	memset(payload,0,ep->test_spec.any.packet_size_padding);
+	memset(payload,0,ep->tsession->test_spec.packet_size_padding);
 #elif	!defined(OWP_VARY_TEST_PAYLOAD)
 	/*
 	 * Ignore errors here - it isn't that critical that it be random.
 	 * (just trying to defeat modem compression and the like.)
 	 */
-	(void)I2RandomBytes(ep->rand_src,payload,
-			    ep->test_spec.any.packet_size_padding);
+	(void)I2RandomBytes(ep->cntrl->ctx->rand_src,payload,
+			    ep->tsession->test_spec.packet_size_padding);
 #endif
+
+	/*
+	 * initialize nextoffset (running sum of next sendtime relative to
+	 * start.
+	 */
+	nextoffset = OWPULongToNum64(0);
+	i=0;
+	/*
+	 * Ensure schedule generation is starting at first packet in
+	 * series.
+	 */
+	if(OWPScheduleContextReset(ep->tsession->sctx,NULL,NULL) != OWPErrOK){
+		OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+					"ScheduleContextReset FAILED!");
+		exit(OWP_CNTRL_FAILURE);
+	}
 
 	do{
 		/*
 		 * First setup "this" packet.
 		 */
 #if	defined(OWP_VARY_TEST_PAYLOAD) && !defined(OWP_ZERO_TEST_PAYLOAD)
-		(void)I2RandomBytes(ep->rand_src,payload,
-				    ep->test_spec.any.packet_size_padding);
+		(void)I2RandomBytes(ep->cntrl->ctx->rand_src,payload,
+			    ep->tsession->test_spec.packet_size_padding);
 #endif
-		nexttime = ep->start;
-		timespecadd(&nexttime,&ep->relative_offsets[i]);
+		nextoffset = OWPNum64Add(nextoffset,
+			OWPScheduleContextGenerateNextDelta(
+							ep->tsession->sctx));
+		OWPNum64ToTimespec(&nexttime,nextoffset);
+		timespecadd(&nexttime,&ep->start);
 		*seq = htonl(i);
-		
+
 		/*
-		 * For AUTH mode, we can encrypt before fetching the timestamp.
+		 * Encrypt first block. (for MODE_AUTH we are done with AES -
+		 * for MODE_ENCRYPT we will need to CBC the second block.
 		 */
-		if(ep->mode == OWP_MODE_AUTHENTICATED)
-			rijndaelEncrypt(ep->aeskey->rk,ep->aeskey->Nr,
-					       &clr_buffer[0],&ep->payload[0]);
+		if(ep->cntrl->mode & OWP_MODE_DOCIPHER){
+			rijndaelEncrypt(ep->cntrl->encrypt_key.rk,
+						ep->cntrl->encrypt_key.Nr,
+						&clr_buffer[0],&ep->payload[0]);
+			memset(&clr_buffer[16],0,16);
+		}
 
 AGAIN:
-		if(owp_int)
+		if(owp_int){
 			exit(OWP_CNTRL_FAILURE);
-		if(owp_usr2)
+		}
+		if(owp_usr2){
+			/*
+			 * TODO: v6 - send (i-1) to control process
+			 * for inclusion in StopSessions message...
+			 */
 			exit(OWP_CNTRL_ACCEPT);
+		}
 
 		if(!GetTimespec(&currtime,&esterror,&sync)){
-			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+			OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 				"Problem retrieving time");
 			exit(OWP_CNTRL_FAILURE);
 		}
 
-		if(timespeccmp(&nexttime,&currtime,<)){
+		if(timespeccmp(&currtime,&nexttime,>)){
 			/* send-packet */
 
-			(void)OWPCvtTimespec2Timestamp(&owptstamp,&currtime,
+			(void)OWPTimespecToTimestamp(&owptstamp,&currtime,
 						       &esterror,&lasterror);
 			lasterror = esterror;
 			owptstamp.sync = sync;
-			OWPEncodeTimeStamp(tstamp,&owptstamp);
+			_OWPEncodeTimeStamp(tstamp,&owptstamp);
+			if(!_OWPEncodeTimeStampErrEstimate(tstamperr,
+								&owptstamp)){
+				OWPError(ep->cntrl->ctx,OWPErrFATAL,
+						OWPErrUNKNOWN,
+						"Invalid Timestamp Error");
+				owptstamp.multiplier = 0xFF;
+				owptstamp.scale = 0x3F;
+				owptstamp.sync = 0;
+				(void)_OWPEncodeTimeStampErrEstimate(tstamperr,
+								   &owptstamp);
+			}
 
 			/*
-			 * For ENCRYPTED mode, we have to encrypt after
-			 * fetching the timestamp.
+			 * For ENCRYPTED mode, we have to encrypt the second
+			 * block after fetching the timestamp. (CBC mode)
 			 */
-			if(ep->mode == OWP_MODE_ENCRYPTED)
-				rijndaelEncrypt(ep->aeskey->rk,ep->aeskey->Nr,
-					&clr_buffer[0],&ep->payload[0]);
+			if(ep->cntrl->mode == OWP_MODE_ENCRYPTED){
+				/*
+				 * For now - do CBC mode directly here.
+				 * TODO: remove AES hacks in local copy of
+				 * AES code - use "standard" version. This
+				 * becomes easier. (OWPSendBlocks becomes more
+				 * involved...)
+				 */
+				((u_int32_t*)clr_buffer)[4] =
+		((u_int32_t*)clr_buffer)[4] ^ ((u_int32_t*)&ep->payload)[0];
+				((u_int32_t*)clr_buffer)[5] =
+		((u_int32_t*)clr_buffer)[5] ^ ((u_int32_t*)&ep->payload)[1];
+				((u_int32_t*)clr_buffer)[6] =
+		((u_int32_t*)clr_buffer)[6] ^ ((u_int32_t*)&ep->payload)[2];
+				((u_int32_t*)clr_buffer)[7] =
+		((u_int32_t*)clr_buffer)[7] ^ ((u_int32_t*)&ep->payload)[3];
+				rijndaelEncrypt(ep->cntrl->encrypt_key.rk,
+					ep->cntrl->encrypt_key.Nr,
+					&clr_buffer[16],&ep->payload[16]);
+			}
 
-			/*
-			 * TODO: Print address in send error messages!
-			 */
 			if( (sent = sendto(ep->sockfd,ep->payload,
 						ep->len_payload,0,
 						ep->remoteaddr->saddr,
@@ -763,7 +915,8 @@ AGAIN:
 					case ENOTSOCK:
 					case EFAULT:
 					case EAGAIN:
-						OWPError(ep->ctx,OWPErrFATAL,
+						OWPError(ep->cntrl->ctx,
+							OWPErrFATAL,
 							OWPErrUNKNOWN,
 					"Unable to send([%s]:%s:(#%d): %M",
 							ep->remoteaddr->node,
@@ -776,10 +929,11 @@ AGAIN:
 				}
 
 				/* but do note it as INFO for debugging */
-				OWPError(ep->ctx,OWPErrINFO,OWPErrUNKNOWN,
+				OWPError(ep->cntrl->ctx,OWPErrINFO,
+					OWPErrUNKNOWN,
 					"Unable to send([%s]:%s:(#%d): %M",
-							ep->remoteaddr->node,
-							ep->remoteaddr->port,i);
+					ep->remoteaddr->node,
+					ep->remoteaddr->port,i);
 			}
 
 			i++;
@@ -795,26 +949,26 @@ AGAIN:
 							(errno == EINTR)){
 				goto AGAIN;
 			}
-			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+			OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 				"nanosleep(%u.%u,nil): %M",
 					sleeptime.tv_sec,sleeptime.tv_nsec);
 			exit(OWP_CNTRL_FAILURE);
 		}
 
-	} while(i<ep->test_spec.any.npackets);
+	} while(i < ep->tsession->test_spec.npackets);
 
 	/*
 	 * Wait until lossthresh after last packet or
 	 * for a signal to exit.
+	 * (nexttime currently holds the time for the last packet send, so
+	 * just add loss_timeout. Round up to the next second since I'm lazy.)
 	 */
-	nexttime = ep->start;
-	timespecadd(&nexttime,
-			&ep->relative_offsets[ep->test_spec.any.npackets-1]);
-	nexttime.tv_sec += ep->lossThreshold;
+	nexttime.tv_sec += (int)OWPNum64ToDouble(
+					ep->tsession->test_spec.loss_timeout)+1;
 
 	while(!owp_usr2 && !owp_int){
 		if(!GetTimespec(&currtime,&esterror,&sync)){
-			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+			OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 					"Problem retrieving time");
 			exit(OWP_CNTRL_FAILURE);
 		}
@@ -827,7 +981,7 @@ AGAIN:
 		if(nanosleep(&sleeptime,NULL) == 0)
 			break;
 		if(errno != EINTR){
-			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+			OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 					"nanosleep(%u.%u,nil): %M",
 					sleeptime.tv_sec,sleeptime.tv_nsec);
 			exit(OWP_CNTRL_FAILURE);
@@ -837,50 +991,226 @@ AGAIN:
 	exit(OWP_CNTRL_ACCEPT);
 }
 
+
+static OWPLostPacket
+alloc_node(
+		OWPEndpoint	ep,
+		u_int64_t	seq
+		)
+{
+	OWPLostPacket	node;
+	I2Datum		k,v;
+
+	if((seq >= ep->tsession->test_spec.npackets) ||
+			(ep->end && (seq <= ep->end->seq))){
+		OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+				"Invalid seq number for OWPLostPacket buf");
+		return NULL;
+	}
+
+	if(!ep->freelist){
+		u_int64_t	i;
+
+		OWPError(ep->cntrl->ctx,OWPErrINFO,OWPErrUNKNOWN,
+	"get_node: Allocating additional nodes for lost-packet-buffer!");
+		if(!(node = calloc(sizeof(OWPLostPacketRec),ep->numalist))){
+			OWPError(ep->cntrl->ctx,OWPErrFATAL,errno,
+							"calloc(): %M");
+			return NULL;
+		}
+
+		for(i=0;i<ep->numalist;i++){
+			node[i].next = ep->freelist;
+			ep->freelist = &node[i];
+		}
+	}
+
+	node = ep->freelist;
+	ep->freelist = ep->freelist->next;
+
+	node->seq = seq;
+	node->hit = 0;
+	node->next = NULL;
+
+	k.dptr = &node->seq;
+	k.dsize = sizeof(node->seq);
+	v.dptr = node;
+	v.dsize = sizeof(*node);
+
+	if(I2HashStore(ep->lost_packet_buffer,k,v) != 0){
+		return NULL;
+	}
+
+	return node;
+}
+
+static void
+free_node(
+		OWPEndpoint	ep,
+		OWPLostPacket	node
+		)
+{
+	I2Datum	k;
+
+	k.dptr = &node->seq;
+	k.dsize = sizeof(node->seq);
+
+	if(I2HashDelete(ep->lost_packet_buffer,k) != 0){
+		OWPError(ep->cntrl->ctx,OWPErrWARNING,OWPErrUNKNOWN,
+	"I2HashDelete: Unable to remove seq #%llu from lost-packet hash",
+			node->seq);
+	}
+
+	node->next = ep->freelist;
+	ep->freelist = node;
+
+	return;
+}
+
+static OWPLostPacket
+get_node(
+		OWPEndpoint	ep,
+		u_int64_t	seq
+		)
+{
+	OWPLostPacket	node;
+	I2Datum		k,v;
+
+	/*
+	 * optimize for most frequent case.
+	 */
+	if(seq == ep->end->seq){
+		return ep->end;
+	}
+
+	/*
+	 * Need to build the list from current "end" to this number.
+	 */
+	if(seq > ep->end->seq){
+		node = ep->end;
+
+		while(node->seq < seq){
+			OWPTimeStamp	abs;
+
+			node->next = alloc_node(ep,node->seq+1);
+			node->next->relative = OWPNum64Add(node->relative,
+					OWPScheduleContextGenerateNextDelta(
+							ep->tsession->sctx));
+			node = node->next;
+
+			abs.owptime = OWPNum64Add(node->relative,
+					ep->tsession->test_spec.start_time);
+			(void)OWPTimestampToTimespec(&node->absolute,&abs);
+		}
+
+		ep->end = node;
+
+		return node;
+	}
+
+	/*
+	 * Shouldn't be requesting this seq number... It should already
+	 * be loss_timeout in the past.
+	 */
+	if(seq < ep->begin->seq){
+		OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+			"Invalid seq number request");
+		return NULL;
+	}
+
+	/*
+	 * seq requested in within the begin<->end range, just fetch from
+	 * hash.
+	 */
+	k.dptr = &seq;
+	k.dsize = sizeof(seq);
+
+	if(!I2HashFetch(ep->lost_packet_buffer,k,&v)){
+		OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+				"Unable to fetch from lost-packet-buffer");
+		return NULL;
+	}
+
+	return (OWPLostPacket)v.dptr;
+}
+
 static void
 run_receiver(
-		_Endpoint	ep,
+		OWPEndpoint	ep,
 		struct timespec	*signal_time
 		)
 {
+	double			fudge;
 	struct timespec		currtime;
-	struct timespec		last;
-	struct timespec		final;
-	struct timespec		expecttime;
-	struct timespec		sendtime;
-	struct timespec		tmptime;
-	struct timespec		losstime;
+	struct timespec		fudgespec;
+	struct timespec		lostspec;
+	struct timespec		expectspec;
 	struct itimerval	wake;
 	u_int32_t		seq_num;
 	u_int32_t		*seq;
 	u_int8_t		*tstamp;
-	u_int8_t		*zero;
-	int			zero_len;
+	u_int8_t		*tstamperr;
+	u_int8_t		*z1,*z2;
+	u_int8_t		zero[12];
+	u_int8_t		iv[16];
+	u_int8_t		recvbuf[10];
 	u_int32_t		esterror,lasterror=0;
 	int			sync;
-	OWPTimeStamp		owptstamp;
-	int			i;
+	OWPTimeStamp		sendstamp,recvstamp;
+	OWPTimeStamp		expecttime;
+	OWPSessionHeaderRec	hdr;
+	u_int8_t		lostrec[_OWP_TESTREC_SIZE];
+	OWPLostPacket		node;
+	int			owp_intr;
+	u_int32_t		npackets;
+	u_int32_t		finished = _OWP_SESSION_FIN_NORMAL;
 
 	/*
-	 * Initialize pointers to various positions in the packet buffer,
-	 * for data that changes for each packet. Also set zero padding.
+	 * Prepare the file header - had to wait until now so we could
+	 * get the real starttime.
 	 */
-	seq = (u_int32_t*)ep->payload;
-	switch(ep->mode){
+	hdr.header = True;
+	hdr.finished = _OWP_SESSION_FIN_ERROR;
+	memcpy(&hdr.sid,ep->tsession->sid,sizeof(hdr.sid));
+	memcpy(&hdr.addr_sender,ep->tsession->sender->saddr,
+					ep->tsession->sender->saddrlen);
+	memcpy(&hdr.addr_receiver,ep->tsession->receiver->saddr,
+					ep->tsession->receiver->saddrlen);
+	hdr.conf_sender = ep->tsession->conf_sender;
+	hdr.conf_receiver = ep->tsession->conf_receiver;
+	hdr.test_spec = ep->tsession->test_spec;
+
+	/*
+	 * update TestReq section to have "real" starttime.
+	 */
+	(void)OWPTimespecToTimestamp(&expecttime,&ep->start,NULL,NULL);
+	hdr.test_spec.start_time =
+		ep->tsession->test_spec.start_time = expecttime.owptime;
+
+	/*
+	 * Write the file header.
+	 */
+	if(OWPWriteDataHeader(ep->cntrl->ctx,ep->datafile,&hdr) != 0){
+		exit(OWP_CNTRL_FAILURE);
+	}
+
+	/*
+	 * Initialize pointers to various positions in the packet buffer.
+	 * (useful for the different "modes".)
+	 */
+	seq = (u_int32_t*)&ep->payload[0];
+	switch(ep->cntrl->mode){
 		case OWP_MODE_OPEN:
-			zero = NULL;
-			zero_len = 0;
 			tstamp = &ep->payload[4];
+			tstamperr = &ep->payload[12];
 			break;
 		case OWP_MODE_ENCRYPTED:
-			zero = &ep->payload[12];
-			zero_len = 4;
-			tstamp = &ep->payload[4];
-			break;
 		case OWP_MODE_AUTHENTICATED:
-			zero = &ep->payload[4];
-			zero_len = 12;
 			tstamp = &ep->payload[16];
+			tstamperr = &ep->payload[24];
+			z1 = &ep->payload[4];	/* 12 octets Zero Integrity */
+			z2 = &ep->payload[26];	/* 6 octets Zero Integrity */
+			memset(zero,0,sizeof(zero));
 			break;
 		default:
 			/*
@@ -891,60 +1221,97 @@ run_receiver(
 			exit(OWP_CNTRL_FAILURE);
 	}
 
-	losstime.tv_sec = ep->lossThreshold;
-	losstime.tv_nsec = 0;
-
-	last = ep->relative_offsets[ep->test_spec.any.npackets-1];
-	timespecadd(&last, &ep->start);
-
-	final = last;
-	final.tv_sec += ep->lossThreshold;
+	/*
+	 * Initialize the buffer we use to report "lost" packets.
+	 */
+	memset(lostrec,0,_OWP_TESTREC_SIZE);
 
 	/*
-	 * Set the wake timer one second beyond our final time.
-	 * One second padding should be plenty to ensure our process gets
-	 * some processing time between when we estimate the last packet will
-	 * arrive, and when this timer will go off. (This ensures the last
-	 * packet has time to be processed.)
+	 * Get the "average" packet interval. I will use this
+	 * to set the wake up timer to MIN(2*packet_interval,1) past the
+	 * time it can be declared lost. (lets call this fudgespec)
+	 * With luck, this will allow the next received packet to be the
+	 * event that wakes up the process, instead of the timer. However,
+	 * I never let this be greater than 1 second so that small
+	 * packet rates still produce data at the expected rate.
+	 * (This basically sets things up so the recv process will wake up
+	 * 1 second past the "end-of-test" to declare it over. In most cases,
+	 * the sender will already have sent the StopSession message, so
+	 * that event will actually wake the process up instead of the
+	 * timer.)
 	 */
-	tvalclear(&wake.it_value);
-	timespecadd((struct timespec*)&wake.it_value,&final);
-	timespecsub((struct timespec*)&wake.it_value,signal_time);
-	wake.it_value.tv_sec++;
-	wake.it_value.tv_usec /= 1000;	/* convert nsec to usec	*/
-	tvalclear(&wake.it_interval);
+	fudge = 2.0/OWPTestPacketRate(ep->cntrl->ctx,&ep->tsession->test_spec);
+	fudge = MIN(fudge,1.0);
+	/* just using expecttime as a temp var here. */
+	expecttime.owptime = OWPDoubleToNum64(fudge);
+	OWPNum64ToTimespec(&fudgespec,expecttime.owptime);
 
 	/*
-	 * Set timer for just past expected end of test.
+	 * get a timespec version of loss_timeout
 	 */
-	if(setitimer(ITIMER_REAL,&wake,NULL) != 0){
-		OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,"setitimer(): %M");
+	OWPNum64ToTimespec(&lostspec,ep->tsession->test_spec.loss_timeout);
+
+	/*
+	 * Ensure schedule generation is starting at first packet in
+	 * series.
+	 */
+	if(OWPScheduleContextReset(ep->tsession->sctx,NULL,NULL) != OWPErrOK){
+		OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+					"ScheduleContextReset FAILED!");
+		exit(OWP_CNTRL_FAILURE);
+	}
+	/*
+	 * Initialize list with first node
+	 */
+	ep->begin = ep->end = alloc_node(ep,0);
+	if(!ep->begin){
 		goto error;
 	}
+	ep->begin->relative = OWPScheduleContextGenerateNextDelta(
+							ep->tsession->sctx);
+	/* just using expecttime as a temp var here. */
+	expecttime.owptime = OWPNum64Add(ep->begin->relative,
+					ep->tsession->test_spec.start_time);
+	(void)OWPTimestampToTimespec(&ep->begin->absolute,&expecttime);
+
+	/*
+	 * initialize  currtime to the time we were signaled to start.
+	 */
+	currtime = *signal_time;
 
 	while(1){
 		struct sockaddr_storage	peer_addr;
 		socklen_t		peer_addr_len;
 again:
 		/*
-		 * ALARM indicates it is time to declare a packet
-		 * lost, or if there are no remaining lost packets to
-		 * deal with, the test is over.
+		 * set itimer to go off just past loss_timeout after the time
+		 * for the last seq number in the list. Adding "fudge" so we
+		 * don't wake up anymore than really necessary.
+		 * (With luck, a received packet will actually wake this up,
+		 * and not the timer.)
 		 */
-		if(owp_alrm){
-			owp_alrm = 0;
+		tvalclear(&wake.it_value);
+		timespecadd((struct timespec*)&wake.it_value,
+							&ep->end->absolute);
+		timespecadd((struct timespec*)&wake.it_value,&lostspec);
+		timespecadd((struct timespec*)&wake.it_value,&fudgespec);
+		timespecsub((struct timespec*)&wake.it_value,&currtime);
 
-			if(!GetTimespec(&currtime,&esterror,&sync)){
-				OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"Problem retrieving time");
-				goto error;
-			}
-			/*
-			 * Test is over.
-			 */
-			if(timespeccmp(&currtime,&final,>))
-				goto test_over;
+		wake.it_value.tv_usec /= 1000;	/* convert nsec to usec	*/
+		tvalclear(&wake.it_interval);
+
+		/*
+		 * Set the timer.
+		 */
+		owp_intr = 0;
+		if(setitimer(ITIMER_REAL,&wake,NULL) != 0){
+			OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+				"setitimer(wake=%d,%d) seq=%llu: %M",
+				wake.it_value.tv_sec,wake.it_value.tv_usec,
+				ep->end->seq);
+			goto error;
 		}
+
 		if(owp_int){
 			goto error;
 		}
@@ -957,10 +1324,15 @@ again:
 		if(recvfrom(ep->sockfd,ep->payload,ep->len_payload,0,
 				(struct sockaddr*)&peer_addr,
 				&peer_addr_len) != (ssize_t)ep->len_payload){
-			if(errno == EINTR)
-				goto again;
-			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-							"recvfrom(): %M");
+			if(errno != EINTR){
+				OWPError(ep->cntrl->ctx,OWPErrFATAL,
+						OWPErrUNKNOWN,"recvfrom(): %M");
+				goto error;
+			}
+			owp_intr = 1;
+		}
+
+		if(owp_int){
 			goto error;
 		}
 
@@ -968,145 +1340,286 @@ again:
 		 * Fetch time before ANYTHING else to minimize time errors.
 		 */
 		if(!GetTimespec(&currtime,&esterror,&sync)){
-			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+			OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 				"Problem retrieving time");
 			goto error;
 		}
 
 		/*
-		 * Verify peer before looking at packet.
+		 * TODO: v6 If owp_usr2 - get the last seq number from other
+		 * side. (Hmmm - how should I going to do this ipc? thinking...)
+		 *
+		 * if(owp_usr2){
+		 * 	fetch last_seq.
+		 * 	if(last_seq & 0xFFFFFFFF){
+		 * 		finished = _OWP_SESSION_FIN_INCOMPLETE;
+		 * 		npackets = ep->end->seq+1;
+		 * 	}
+		 * 	else{
+		 * 		if(last_seq < ep->begin){
+		 * 			CLEAN_PACKET_RECS = TRUE;
+		 * 		}
+		 * 		npackets = last_seq+1;
+		 * 	}
+		 * }
+		 * else{
+		 *	npackets = ep->tsession->test_spec.npackets;
+		 * }
 		 */
-		if(!I2SockAddrEqual(	ep->remoteaddr->saddr,
-					ep->remoteaddr->saddrlen,
-					(struct sockaddr*)&peer_addr,
-					peer_addr_len))
-			goto again;
+		npackets = ep->tsession->test_spec.npackets;
 
 		/*
-		 * Decode the packet
+		 * Flush the missing packet buffer. Output missing packet
+		 * records along the way.
 		 */
-		if(ep->mode & _OWP_DO_CIPHER){
-			rijndaelDecrypt(ep->aeskey->rk,ep->aeskey->Nr,
+		timespecclear(&expectspec);
+		timespecadd(&expectspec,&ep->begin->absolute);
+		timespecadd(&expectspec,&lostspec);
+		while(timespeccmp(&expectspec,&currtime,<)){
+
+			/*
+			 * If !hit - and the seq number is less than
+			 * npackets, then output a "missing packet" record.
+			 * (seq number could be greater than or equal to
+			 * npackets if it takes longer than "timeout" for
+			 * the stopsessions message to get to us. We could
+			 * already have missing packet records in our
+			 * queue.)
+			 */
+			if(!ep->begin->hit && (ep->begin->seq < npackets)){
+				/* encode seq number */
+				*(u_int32_t*)&lostrec[0] =
+						htonl(ep->begin->seq);
+				/* encode presumed sent time */
+				sendstamp.owptime = OWPNum64Add(
+					ep->tsession->test_spec.start_time,
+					ep->begin->relative);
+				_OWPEncodeTimeStamp(&lostrec[4],&sendstamp);
+
+				/*
+				 * Error estimates for "missing" packets is just
+				 * a string of zeros, so don't encode anything
+				 * to the error portion of the packet buffer.
+				 */
+				/* write the record */
+				if(fwrite(lostrec,sizeof(u_int8_t),
+					_OWP_TESTREC_SIZE,ep->datafile) !=
+							_OWP_TESTREC_SIZE){
+					OWPError(ep->cntrl->ctx,OWPErrFATAL,
+						OWPErrUNKNOWN,"fwrite(): %M");
+					goto error;
+				}
+			}
+			/*
+			 * This is not likely... But it is a sure indication
+			 * of problems.
+			 */
+			else if((ep->begin->hit) &&
+					(ep->begin->seq >= npackets)){
+				OWPError(ep->cntrl->ctx,OWPErrFATAL,
+						OWPErrINVALID,
+						"Invalid packet seq received");
+				goto error;
+			}
+
+
+			/*
+			 * Pop the front off the queue.
+			 */
+			node = ep->begin;
+
+			if(ep->begin->next){
+				ep->begin = ep->begin->next;
+			}
+			else if((ep->begin->seq+1) < npackets){
+				ep->begin = get_node(ep,ep->begin->seq+1);
+			}
+			else{
+				free_node(ep,node);
+				ep->begin = ep->end = NULL;
+				goto test_over;
+			}
+			free_node(ep,node);
+
+			timespecclear(&expectspec);
+			timespecadd(&expectspec,&ep->begin->absolute);
+			timespecadd(&expectspec,&lostspec);
+		}
+
+		/*
+		 * Check signals...
+		 */
+		if(owp_int){
+			goto error;
+		}
+		if(owp_usr2){
+			goto test_over;
+		}
+		if(owp_intr){
+			goto again;
+		}
+
+		/*
+		 * Verify peer before looking at packet.
+		 */
+		if(I2SockAddrEqual(	ep->remoteaddr->saddr,
+					ep->remoteaddr->saddrlen,
+					(struct sockaddr*)&peer_addr,
+					peer_addr_len,I2SADDR_ALL) <= 0){
+			goto again;
+		}
+
+		/*
+		 * Decrypt the packet if needed.
+		 */
+		if(ep->cntrl->mode & OWP_MODE_DOCIPHER){
+			if(ep->cntrl->mode & OWP_MODE_ENCRYPTED){
+				/* save encrypted block for CBC */
+				memcpy(iv,&ep->payload[0],16);
+			}
+			rijndaelDecrypt(ep->cntrl->decrypt_key.rk,
+					ep->cntrl->decrypt_key.Nr,
 					&ep->payload[0],&ep->payload[0]);
 			/*
 			 * Check zero bits to ensure valid encryption.
 			 */
-			for(i=0;i<zero_len;i++)
-				if(zero[i])
+			if(!memcmp(z1,zero,12)){
+				goto again;
+			}
+
+			if(ep->cntrl->mode & OWP_MODE_ENCRYPTED){
+				/* second block - do CBC */
+				rijndaelDecrypt(ep->cntrl->decrypt_key.rk,
+					ep->cntrl->decrypt_key.Nr,
+					&ep->payload[16],&ep->payload[16]);
+				((u_int32_t*)&ep->payload)[4] ^=
+							((u_int32_t*)iv)[0];
+				((u_int32_t*)&ep->payload)[5] ^=
+							((u_int32_t*)iv)[1];
+				((u_int32_t*)&ep->payload)[6] ^=
+							((u_int32_t*)iv)[2];
+				((u_int32_t*)&ep->payload)[7] ^=
+							((u_int32_t*)iv)[3];
+				/*
+				 * Check zero bits to ensure valid encryption.
+				 */
+				if(!memcmp(z2,zero,6)){
 					goto again;
+				}
+			 }
 		}
 
 		seq_num = ntohl(*seq);
-		if(seq_num >= ep->test_spec.any.npackets)
+		if(seq_num >= ep->tsession->test_spec.npackets)
+			goto error;
+		/*
+		 * If it is no-longer in the buffer, than we ignore
+		 * it.
+		 */
+		if(seq_num < ep->begin->seq)
 			goto again;
 
 		/*
-		 * Start the validity tests from Section 5.2 of the spec.
+		 * What time did we expect the sender to send the packet?
 		 */
-
+		if(!(node = get_node(ep,seq_num))){
+			goto error;
+		}
+		(void)OWPTimespecToTimestamp(&expecttime,&node->absolute,
+								NULL,NULL);
 		/*
-		 * Set expecttime to the time packet was expected to be sent.
+		 * What time did sender send this packet?
 		 */
-		expecttime = ep->relative_offsets[seq_num];
-		timespecadd(&expecttime, &ep->start);
-
-		/*
-		 * Set sendtime to the time the sender sent the packet.
-		 */
-		OWPDecodeTimeStamp(&owptstamp,tstamp);
-		(void)OWPCvtTimestamp2Timespec(&sendtime,&owptstamp);
-
-		/*
-		 * discard if sent time is not within lossThresh of currtime.
-		 */
-		tmptime = sendtime;
-		timespecdiff(&tmptime,&currtime);
-		if(timespeccmp(&tmptime,&losstime,>))
+		_OWPDecodeTimeStamp(&sendstamp,tstamp);
+		if(!_OWPDecodeTimeStampErrEstimate(&sendstamp,tstamperr)){
 			goto again;
+		}
 
 		/*
-		 * discard if sent time is not within lossThresh of
-		 * expected sent time.
+		 * What time did we recv it?
 		 */
-		tmptime = sendtime;
-		timespecdiff(&tmptime,&expecttime);
-		if(timespeccmp(&tmptime,&losstime,>))
+		(void)OWPTimespecToTimestamp(&recvstamp,&currtime,
+						       &esterror,&lasterror);
+		lasterror = esterror;
+		recvstamp.sync = sync;
+
+		/*
+		 * Encode the recv time to buffer right away to catch
+		 * problems with the esterror.
+		 */
+		_OWPEncodeTimeStamp(&recvbuf[0],&recvstamp);
+		if(!_OWPEncodeTimeStampErrEstimate(&recvbuf[8],&recvstamp)){
+			OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+				"Invalid recv timestamp!");
+			goto error;
+		}
+
+
+		/*
+		 * Now we can start the validity tests from Section 6.1 of
+		 * the spec...
+		 * MUST discard if:
+		 */
+
+		/*
+		 * 1.
+		 * Send timestamp is more than timeout in past or future.
+		 * (i.e. send/recv differ by more than "timeout")
+		 */
+		if(OWPNum64Diff(sendstamp.owptime,recvstamp.owptime) >
+					ep->tsession->test_spec.loss_timeout){
 			goto again;
+		}
 
 		/*
-		 * If recv time(currtime) is later than lossThreshold past
-		 * expecttime discard.
+		 * 2.
+		 * Send timestamp differs by more than "timeout" from
+		 * "scheduled" send time.
 		 */
-		expecttime.tv_sec += ep->lossThreshold;
-		if(timespeccmp(&currtime,&expecttime,>))
+		if(OWPNum64Diff(sendstamp.owptime,expecttime.owptime) >
+					ep->tsession->test_spec.loss_timeout){
 			goto again;
+		}
 
 		/*
-		 * Made it through the Section 5.2 gauntlet! Record the
-		 * packet!
+		 * Made it through all validity tests. Record the packet!
 		 */
-
-		ep->received_packets[seq_num] = True;
+		node->hit = True;
 
 		/* write sequence number */
 		if(fwrite(seq,sizeof(u_int32_t),1,ep->datafile) != 1){
-			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+			OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 					"fwrite(): %M");
 			goto error;
 		}
-		/* write "sent" tstamp */
-		if(fwrite(tstamp,sizeof(u_int8_t),8,ep->datafile) != 8){
-			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-						"fwrite(): %M");
+		/* write "sent" tstamp straight from buffer */
+		if(fwrite(tstamp,sizeof(u_int8_t),10,ep->datafile) != 10){
+			OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+					"fwrite(): %M");
 			goto error;
 		}
 
-		/* encode "recv" tstamp */
-		(void)OWPCvtTimespec2Timestamp(&owptstamp,&currtime,
-						       &esterror,&lasterror);
-		lasterror = esterror;
-		owptstamp.sync = sync;
-		OWPEncodeTimeStamp(ep->clr_buffer,&owptstamp);
-
 		/* write "recv" tstamp */
-		if(fwrite(ep->clr_buffer,sizeof(u_int8_t),8,ep->datafile) !=8){
-			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-						"fwrite(): %M");
+		if(fwrite(recvbuf,sizeof(u_int8_t),10,ep->datafile) != 10){
+			OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+					"fwrite(): %M");
 			goto error;
 		}
 	}
 test_over:
 
 	/*
-	 * Flush missing packets.
+	 * Set the "finished" bit in the file.
 	 */
 	/*
-	 * Use payload buffer to record "missing" packets.
+	 * TODO: V6
+	 * if(CLEAN_PACKET_RECS){
+	 * 	parse file and truncate file after last_seq
+	 * }
 	 */
-	memset(ep->payload,0,20);
-	for(i=0;(unsigned)i<ep->test_spec.any.npackets;i++)
-		if(!ep->received_packets[i]){
-			/* sequence number */
-			*(u_int32_t*)&ep->payload[0] = htonl(i);
-			/* encode presumed sent time */
-			expecttime = ep->relative_offsets[i];
-			timespecadd(&expecttime, &ep->start);
-			(void)OWPCvtTimespec2Timestamp(&owptstamp,&expecttime,
-								NULL,NULL);
-			OWPEncodeTimeStamp(&ep->payload[4],&owptstamp);
-
-			/* write the record */
-			if(fwrite(ep->payload,sizeof(u_int8_t),20,ep->datafile)
-									!= 20){
-				OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-						"fwrite(): %M");
-				goto error;
-			}
-		}
-
-	/*
-	 * Move file from "SID^OWP_INCOMPLETE_EXT" in-progress test to "SID".
-	 */
+	if(_OWPWriteDataHeaderFinished(ep->cntrl->ctx,ep->datafile,finished)){
+		goto error;
+	}
 	fclose(ep->datafile);
 	ep->datafile = NULL;
 
@@ -1114,80 +1627,44 @@ test_over:
 	exit(OWP_CNTRL_ACCEPT);
 
 error:
-	/*
-	 * unlink file - error.
-	 */
+	if(ep->userfile && (strlen(ep->fname) > 0)){
+		unlink(ep->fname);
+	}
 	if(ep->datafile)
 		fclose(ep->datafile);
-	if(ep->linkpath){
-		unlink(ep->linkpath);
-		ep->linkpath = NULL;
-	}
-	if(ep->filepath){
-		unlink(ep->filepath);
-		ep->filepath = NULL;
-	}
+
 	exit(OWP_CNTRL_FAILURE);
 }
 
 /*
  * Note: We explicitly do NOT connect the send udp socket. This is because
  * each individual packet needs to be treated independant of the others. send
- * causes the socket to close if ECONNREFUSED comes back. We specifically do
- * NOT want this behavior.
+ * causes the socket to close if certain ICMP messages come back. We
+ * specifically do NOT want this behavior.
  */
-OWPErrSeverity
+OWPBoolean
 _OWPEndpointInitHook(
-	void		*app_data	__attribute__((unused)),
+	OWPControl	cntrl,
 	OWPTestSession	tsession,
-	void		**end_data
+	OWPErrSeverity	*err_ret
 )
 {
-	OWPContext		ctx = OWPGetContext(tsession->cntrl);
-	_Endpoint		ep=*(_Endpoint*)end_data;
+	OWPContext		ctx = OWPGetContext(cntrl);
+	OWPEndpoint		*end_data = &tsession->endpoint;
+	OWPEndpoint		ep = tsession->endpoint;
 	struct sigaction	act;
 	struct sigaction	chldact,usr1act,usr2act,intact,pipeact,alrmact;
 	sigset_t		sigs,osigs;
-	int			i;
+
+	*err_ret = OWPErrFATAL;
+
+	if(!ep){
+		return False;
+	}
 
 	if(!ep->send){
-		OWPSessionHeaderRec	hdr;
-
-		/*
-		 * Prepare the header -
-		 */
-		hdr.header = True;
-		memcpy(&hdr.sid,tsession->sid,sizeof(hdr.sid));
-		memcpy(&hdr.addr_sender,tsession->sender->saddr,
-						tsession->sender->saddrlen);
-		memcpy(&hdr.addr_receiver,tsession->receiver->saddr,
-						tsession->receiver->saddrlen);
-		hdr.conf_sender = !tsession->send_local;
-		hdr.conf_receiver = !tsession->recv_local;
-		hdr.test_spec = tsession->test_spec;
-
-		if(OWPWriteDataHeader(ctx,ep->datafile,&hdr) != 0){
-			EndpointFree(ep);
-			*end_data = NULL;
-			return OWPErrFATAL;
-		}
 
 		ep->remoteaddr = tsession->sender;
-
-#ifdef	NOT
-		/*
-		 * Connect the socket for recv case - the kernel will
-		 * ensure we are only dealing with packets from the
-		 * sender. This is more efficient.
-		 */
-		if(connect(ep->sockfd,ep->remoteaddr->saddr,
-					ep->remoteaddr->saddrlen) != 0){
-			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"connect(): %M");
-			EndpointFree(ep);
-			*end_data = NULL;
-			return OWPErrFATAL;
-		}
-#endif
 	}
 	else{
 		ep->remoteaddr = tsession->receiver;
@@ -1217,9 +1694,9 @@ _OWPEndpointInitHook(
 	
 	if(sigprocmask(SIG_BLOCK,&sigs,&osigs) != 0){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"sigprocmask(): %M");
-		EndpointFree(ep);
+		EndpointFree(ep,OWP_CNTRL_FAILURE);
 		*end_data = NULL;
-		return OWPErrFATAL;
+		return False;
 	}
 	/*
 	 * set the sig handlers for the currently blocked signals.
@@ -1227,7 +1704,6 @@ _OWPEndpointInitHook(
 	owp_usr1 = 0;
 	owp_usr2 = 0;
 	owp_int = 0;
-	owp_alrm = 0;
 	act.sa_handler = sig_catch;
 	sigemptyset(&act.sa_mask);
 	act.sa_flags = 0;
@@ -1237,17 +1713,17 @@ _OWPEndpointInitHook(
 			(sigaction(SIGINT,&act,&intact) != 0) ||
 			(sigaction(SIGALRM,&act,&alrmact) != 0)){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"sigaction(): %M");
-		EndpointFree(ep);
+		EndpointFree(ep,OWP_CNTRL_FAILURE);
 		*end_data = NULL;
-		return OWPErrFATAL;
+		return False;
 	}
 	
 	act.sa_handler = SIG_IGN;
 	if(		(sigaction(SIGPIPE,&act,&pipeact) != 0)){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"sigaction(): %M");
-		EndpointFree(ep);
+		EndpointFree(ep,OWP_CNTRL_FAILURE);
 		*end_data = NULL;
-		return OWPErrFATAL;
+		return False;
 	}
 
 	/*
@@ -1263,9 +1739,9 @@ _OWPEndpointInitHook(
 	/* fetch current handler */
 	if(sigaction(SIGCHLD,NULL,&chldact) != 0){
 		OWPError(ctx,OWPErrWARNING,OWPErrUNKNOWN,"sigaction(): %M");
-		EndpointFree(ep);
+		EndpointFree(ep,OWP_CNTRL_FAILURE);
 		*end_data = NULL;
-		return OWPErrFATAL;
+		return False;
 	}
 	/* if there is currently no handler - set one. */
 	if(chldact.sa_handler == SIG_DFL){
@@ -1273,9 +1749,9 @@ _OWPEndpointInitHook(
 		if(sigaction(SIGCHLD,&chldact,NULL) != 0){
 			OWPError(ctx,OWPErrWARNING,OWPErrUNKNOWN,
 					"sigaction(DFL) failed: %M");
-			EndpointFree(ep);
+			EndpointFree(ep,OWP_CNTRL_FAILURE);
 			*end_data = NULL;
-			return OWPErrFATAL;
+			return False;
 		}
 	}
 	/* now make sure SIGCHLD won't be masked. */
@@ -1287,9 +1763,9 @@ _OWPEndpointInitHook(
 		/* fork error */
 		(void)sigprocmask(SIG_SETMASK,&osigs,NULL);
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fork(): %M");
-		EndpointFree(ep);
+		EndpointFree(ep,OWP_CNTRL_FAILURE);
 		*end_data = NULL;
-		return OWPErrFATAL;
+		return False;
 	}
 
 	if(ep->child > 0){
@@ -1318,15 +1794,16 @@ _OWPEndpointInitHook(
 
 
 		EndpointClear(ep);
-		return OWPErrOK;
+		*err_ret = OWPErrOK;
+		return True;
 parenterr:
 		kill(ep->child,SIGINT);
 		ep->wopts &= ~WNOHANG;
 		while((waitpid(ep->child,&childstatus,ep->wopts) < 0)
 					&& (errno == EINTR));
-		EndpointFree(ep);
+		EndpointFree(ep,OWP_CNTRL_FAILURE);
 		*end_data = NULL;
-		return OWPErrFATAL;
+		return False;
 	}
 
 	/*
@@ -1339,26 +1816,11 @@ parenterr:
 	 */
 #ifndef	NDEBUG
 	{
-		int	waitfor=ep->childwait;
+		int	waitfor = (int)OWPContextConfigGet(ctx,OWPChildWait);
 
 		while(waitfor);
 	}
 #endif
-
-
-	if(!OWPCvtTimestamp2Timespec(&ep->start,&ep->test_spec.any.start_time)){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					 "TStamp2TSpec conversion?");
-		exit(OWP_CNTRL_FAILURE);
-	}
-
-	/*
-	 * Convert relative offsets in OWPnum64 into timespec.
-	 */
-	assert(tsession->schedule);
-	for(i=0;(unsigned)i<ep->test_spec.poisson.npackets;i++)
-		OWPnum64totimespec(&ep->relative_offsets[i],
-					tsession->schedule[i]);
 
 	/*
 	 * SIGUSR1 is StartSessions
@@ -1379,8 +1841,6 @@ parenterr:
 	 */
 	if(owp_int || owp_usr2){
 		/* cancel the session */
-		if(ep->filepath)
-			unlink(ep->filepath);
 		exit(OWP_CNTRL_REJECT);
 	}else if(owp_usr1){
 		/* start the session */
@@ -1398,13 +1858,19 @@ parenterr:
 		if(!GetTimespec(&currtime,&esterror,&sync)){
 			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
 					"Unable to fetch current time...");
-			if(ep->filepath)
-				unlink(ep->filepath);
 			exit(OWP_CNTRL_FAILURE);
 		}
 
-		if(timespeccmp(&ep->start,&currtime,<))
+		/*
+		 * If start is in the past - effect an immediate start.
+		 */
+		if(timespeccmp(&ep->start,&currtime,<)){
 			ep->start = currtime;
+#ifdef	NOT
+			OWPError(ctx,OWPErrINFO,OWPErrUNKNOWN,
+					"Resetting test start!");
+#endif
+		}
 
 		if(ep->send){
 			run_sender(ep);
@@ -1414,38 +1880,37 @@ parenterr:
 		}
 	}
 
-	/* should not get here. */
+	/*NOTREACHED*/
 	OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
 			"Shouldn't get to this line of code... Hmmpf.");
 	exit(OWP_CNTRL_FAILURE);
 }
 
-OWPErrSeverity
+OWPBoolean
 _OWPEndpointStart(
-	void	*app_data,
-	void	**end_data
+	OWPEndpoint	ep,
+	OWPErrSeverity	*err_ret
 	)
 {
-	OWPPerConnData		cdata = (OWPPerConnData)app_data;
-	_Endpoint		ep=*(_Endpoint*)end_data;
+	*err_ret = OWPErrOK;
 
 	if((ep->acceptval < 0) && ep->child && (kill(ep->child,SIGUSR1) == 0))
-		return OWPErrOK;
-	OWPError(cdata->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+		return True;
+
+	*err_ret = OWPErrFATAL;
+	OWPError(ep->tsession->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 			"EndpointStart:Can't signal child #%d: %M",ep->child);
-	return OWPErrFATAL;
+	return False;
 }
 
-OWPErrSeverity
+OWPBoolean
 _OWPEndpointStatus(
-	void		*app_data	__attribute__((unused)),
-	void		**end_data,
-	OWPAcceptType	*aval		/* out */
+	OWPEndpoint	ep,
+	OWPAcceptType	*aval,		/* out */
+	OWPErrSeverity	*err_ret
 	)
 {
-	_Endpoint		ep=*(_Endpoint*)end_data;
 	pid_t			p;
-	OWPErrSeverity		err=OWPErrOK;
 	int			childstatus;
 
 	if(ep->acceptval < 0){
@@ -1454,38 +1919,48 @@ AGAIN:
 		if(p < 0){
 			if(errno == EINTR)
 				goto AGAIN;
-			OWPError(ep->ctx,OWPErrWARNING,
+			OWPError(ep->cntrl->ctx,OWPErrWARNING,
 				OWPErrUNKNOWN,
 				"_OWPEndpointStatus:Can't query child #%d: %M",
 				ep->child);
 			ep->acceptval = OWP_CNTRL_FAILURE;
-			err = OWPErrWARNING;
+			*err_ret = OWPErrWARNING;
+			return False;
 		}
 		else if(p > 0)
 		       ep->acceptval = (OWPAcceptType)WEXITSTATUS(childstatus);
 	}
 
+	*err_ret = OWPErrOK;
 	*aval = ep->acceptval;
-	return err;
+	return True;
 }
 
 
-OWPErrSeverity
+OWPBoolean
 _OWPEndpointStop(
-	void		*app_data	__attribute__((unused)),
-	void		**end_data,
-	OWPAcceptType	aval
+	OWPEndpoint	ep,
+	OWPAcceptType	aval,
+	OWPErrSeverity	*err_ret
 	)
 {
-	_Endpoint		ep=*(_Endpoint*)end_data;
-	int			sig;
-	int			teststatus;
-	OWPErrSeverity		err;
+	int		sig;
+	int		teststatus;
+	OWPBoolean	retval;
+
+	/*
+	 * TODO: v6 This function should "retrieve" the last seq_no/or
+	 * num_packets sent. From the child and it should take as an arg
+	 * the last_seq from the other side if it is available to send
+	 * to the endpoint if needed.
+	 */
 
 	if((ep->acceptval >= 0) || (ep->child == 0)){
-		err = OWPErrOK;
+		*err_ret = OWPErrOK;
 		goto done;
 	}
+
+	*err_ret = OWPErrFATAL;
 
 	if(aval)
 		sig = SIGINT;
@@ -1504,82 +1979,19 @@ _OWPEndpointStop(
 	 * (Should we add a timer to break out? No - not that paranoid yet.)
 	 */
 	ep->wopts &= ~WNOHANG;
-	err = _OWPEndpointStatus(NULL,end_data,&teststatus);
+	retval = _OWPEndpointStatus(ep,&teststatus,err_ret);
 	if(teststatus >= 0)
 		goto done;
 
 error:
-	OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+	OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 			"EndpointStop:Can't signal child #%d: %M",ep->child);
 done:
-	/*
-	 * To comply with throwing out unresolved sessions...
-	 * If accept is non-zero, the file should be unlinked instead of
-	 * renamed.
-	 * (If the higher level api passed in a fd, then it should pay
-	 * attention to the accept value returned from the StopSessions
-	 * api call, and throw the data out as necessary.)
-	 */
-	if(ep->filepath){
-		size_t			lenpath;
-		char			newpath[PATH_MAX];
-		char			newlink[PATH_MAX];
-
-		/*
-		 * Only relink to "final" name if process ended properly
-		 * (!ep->appecptval) and Stop was acceptable (!aval).
-		 */
-		if(!aval && !ep->acceptval){
-			/*
-			 * First create new link for SID in "nodes" hierarchy.
-			 */
-			lenpath = strlen(ep->filepath);
-			strcpy(newpath,ep->filepath);
-			/* remove the extension from the end. */
-			newpath[lenpath-strlen(OWP_INCOMPLETE_EXT)] = '\0';
-			if(link(ep->filepath,newpath) != 0){
-				OWPError(ep->ctx,OWPErrWARNING,OWPErrUNKNOWN,
-					"link(): %M");
-				err=OWPErrWARNING;
-			}
-			else if(ep->linkpath){
-				/*
-				 * Now add symlink in "sessions" for new SID
-				 * file.
-				 */
-				lenpath = strlen(ep->linkpath);
-				strcpy(newlink,ep->linkpath);
-				/* remove the extension from the end. */
-				newlink[lenpath-strlen(OWP_INCOMPLETE_EXT)] =
-									'\0';
-				if(symlink(newpath,newlink) != 0){
-					OWPError(ep->ctx,OWPErrWARNING,
-						OWPErrUNKNOWN,"symlink(): %M");
-					err=OWPErrWARNING;
-				}
-
-			}
-		}
-
-		/*
-		 * Now remove old  incomplete  files - this is done in this
-		 * order to ensure no race conditions.
-		 */
-		if(ep->linkpath){
-			if((unlink(ep->linkpath) != 0) && (errno != ENOENT)){
-				OWPError(ep->ctx,OWPErrWARNING,OWPErrUNKNOWN,
-							"unlink(): %M");
-				err=OWPErrWARNING;
-			}
-		}
-		if((unlink(ep->filepath) != 0) && (errno != ENOENT)){
-			OWPError(ep->ctx,OWPErrWARNING,OWPErrUNKNOWN,
-								"unlink(): %M");
-			err=OWPErrWARNING;
-		}
+	if(aval < ep->acceptval){
+		aval = ep->acceptval;
 	}
-	EndpointFree(ep);
-	*end_data = NULL;
+	ep->tsession->endpoint = NULL;
+	EndpointFree(ep,aval);
 
-	return err;
+	return retval;
 }

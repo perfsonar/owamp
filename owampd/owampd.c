@@ -40,20 +40,23 @@
 #include <syslog.h>
 
 #include <owamp/owamp.h>
-#include <owamp/conndata.h>
-#include <owamp/access.h>
 
 #include "owampdP.h"
-
-#define OWP_MAX_CLASSNAME_LEN 64 /* temp plug */
+#include "conf.h"
+#include "policy.h"
 
 /* Global variable - the total number of allowed Control connections. */
-static int			sigchld_received = 0;
+static pid_t			mypid;
+static int			owpd_chld = 0;
+static int			owpd_exit = 0;
+static int			owpd_alrm = 0;
+static int			owpd_intr = 0;
 static owampd_opts		opts;
 static I2ErrLogSyslogAttr	syslogattr;
 static I2ErrHandle		errhand;
-static I2table			fdtable=NULL;
-static I2table			pidtable=NULL;
+static I2Table			fdtable=NULL;
+static I2Table			pidtable=NULL;
+static OWPNum64			uptime;
 
 #if defined HAVE_DECL_OPTRESET && !HAVE_DECL_OPTRESET
 int optreset;
@@ -75,13 +78,13 @@ usage(
 		"   -d datadir        Data directory\n"
 		"   -a authmode       Default supported authmodes:[E]ncrypted,[A]uthenticated,[O]pen\n"
 	        "   -S nodename:port  Srcaddr to bind to\n"
-		"   -t tmout          Max time to wait for control connection reads (sec)\n"
-		"   -L timeout        Maximum time to wait for a packet before declaring it lost\n"
 		"      -U/-G options only used if run as root\n"
 		"   -U user           Run as user \"user\" :-uid also valid\n"
 		"   -G group          Run as group \"group\" :-gid also valid\n"
+#ifndef	NDEBUG
 		"   -w                Debugging: busy-wait children after fork to allow attachment\n"
 		"   -Z                Debugging: Run in foreground\n"
+#endif
 			"\n"
 			);
 	return;
@@ -91,74 +94,89 @@ usage(
 ** Handler function for SIG_CHLD. It updates the number
 ** of available Control connections.
 */
-
-void
-sig_chld(
-	int	signo	__attribute__((unused))
+static void
+signal_catch(
+	int	signo
 	)
 {
-	sigchld_received++;
+	switch(signo){
+		case SIGTERM:
+		case SIGINT:
+		case SIGHUP:
+		case SIGUSR1:
+		case SIGUSR2:
+			if(!owpd_exit){
+				owpd_exit = 1;
+			}
+			break;
+		case SIGCHLD:
+			owpd_chld = 1;
+		case SIGALRM:
+			owpd_alrm = 1;
+			break;
+		default:
+			I2ErrLog(errhand,"signal_catch(): Invalid signal(%d)",
+					signo);
+			_exit(OWP_CNTRL_FAILURE);
+	}
+
+	owpd_intr = 1;
+
 	return;
 }
 
 struct ChldStateRec{
-	OWPContext	ctx;
+	OWPDPolicy	policy;
 	pid_t		pid;
 	int		fd;
-	OWPSessionMode	authmode;
-	char		*class;
-	char		classbuf[OWP_MAX_CLASSNAME_LEN];
-	/*
-	 * Put the datum for the key's and value right in this
-	 * structure so we don't have to alloc/free them seperately.
-	 */
-	I2datum		pidkey;
-	I2datum		fdkey;
-	I2datum		value;
+	OWPDPolicyNode	node;
+	OWPDLimRec	used[2];	/* disk/bandwidth */
 };
 
 typedef struct ChldStateRec ChldStateRec, *ChldState;
 
 static ChldState
 AllocChldState(
-	OWPContext	ctx,
+	OWPDPolicy	policy,
 	pid_t		pid,
 	int		fd
 	)
 {
-	ChldState	cstate = malloc(sizeof(*cstate));
+	ChldState	cstate = calloc(1,sizeof(*cstate));
+	I2Datum		k,v;
 
 	if(!cstate){
-		OWPError(ctx,OWPErrFATAL,ENOMEM,"malloc():%M");
+		OWPError(policy->ctx,OWPErrFATAL,ENOMEM,"malloc(): %M");
 		return NULL;
 	}
 
-	cstate->ctx = ctx;
+	cstate->policy = policy;
 	cstate->pid = pid;
 	cstate->fd = fd;
-	cstate->authmode = 0;
-	cstate->class = NULL;
-	cstate->classbuf[0] = '\0';
-
-	/*
-	 * setup datum for hash's.
-	 */
-	cstate->pidkey.dptr = NULL;
-	cstate->pidkey.dsize = (unsigned long)pid;
-	cstate->fdkey.dptr = NULL;
-	cstate->fdkey.dsize = (unsigned long)fd;
-
-	cstate->value.dptr = cstate;
-	cstate->value.dsize = sizeof(*cstate);
 
 	/*
 	 * Add cstate into the hash's.
 	 */
-	assert(!I2hash_fetch(pidtable,&cstate->pidkey));
-	assert(!I2hash_fetch(fdtable,&cstate->fdkey));
+	v.dptr = (void*)cstate;
+	v.dsize = sizeof(*cstate);
 
-	if((I2hash_store(pidtable,&cstate->pidkey,&cstate->value) != 0) ||
-		(I2hash_store(fdtable,&cstate->fdkey,&cstate->value) != 0)){
+	/*
+	 * add cstate to the pidtable hash
+	 */
+	k.dptr = NULL;
+	k.dsize = pid;
+	if(I2HashStore(pidtable,k,v) != 0){
+		free(cstate);
+		return NULL;
+	}
+
+	/*
+	 * add cstate to the fdtable hash
+	 */
+	k.dsize = fd;
+	if(I2HashStore(fdtable,k,v) != 0){
+		k.dsize = pid;
+		I2HashDelete(pidtable,k);
 		free(cstate);
 		return NULL;
 	}
@@ -172,24 +190,38 @@ FreeChldState(
 	fd_set		*readfds
 	)
 {
+	I2Datum	k;
+
+	k.dptr = NULL;
+
 	if(cstate->fd >= 0){
 
 		while((close(cstate->fd) < 0) && (errno == EINTR));
 		FD_CLR(cstate->fd, readfds);
-		if(I2hash_delete(fdtable,&cstate->fdkey) != 0){
-			OWPError(cstate->ctx,OWPErrWARNING,OWPErrUNKNOWN,
+
+		k.dsize = cstate->fd;
+		if(I2HashDelete(fdtable,k) != 0){
+			OWPError(cstate->policy->ctx,OWPErrWARNING,
+					OWPErrUNKNOWN,
 					"fd(%d) not in fdtable!?!",cstate->fd);
 		}
 	}
 
-	if(I2hash_delete(pidtable,&cstate->pidkey) != 0){
-		OWPError(cstate->ctx,OWPErrWARNING,OWPErrUNKNOWN,
+	k.dsize = cstate->pid;
+	if(I2HashDelete(pidtable,k) != 0){
+		OWPError(cstate->policy->ctx,OWPErrWARNING,OWPErrUNKNOWN,
 				"pid(%d) not in pidtable!?!",cstate->pid);
 	}
 
 	/*
-	 * TODO:Do we need to keep track of the number of fd's in use?
-	 * decrement that count here...
+	 * TODO: Release bandwidth resources here if there are any left.
+	 */
+
+
+	/*
+	 * TODO: If exit was not normal... Should we be looking at
+	 * disk usage for this class and adjusting for the fact that
+	 * the file was not completely saved?
 	 */
 	free(cstate);
 
@@ -204,22 +236,22 @@ ReapChildren(
 {
 	int		status;
 	pid_t		child;
-	I2datum		key;
-	I2datum		*val;
+	I2Datum		key;
+	I2Datum		val;
 	ChldState	cstate;
 
-	if(!sigchld_received)
+	if(!owpd_chld)
 		return;
 
 	key.dptr = NULL;
 	while ( (child = waitpid(-1, &status, WNOHANG)) > 0){
 		key.dsize = child;
-		if(!(val = I2hash_fetch(pidtable,&key))){
-			OWPError(cstate->ctx,OWPErrWARNING,
+		if(!I2HashFetch(pidtable,key,&val)){
+			OWPError(cstate->policy->ctx,OWPErrWARNING,
 				OWPErrUNKNOWN,
 				"pid(%d) not in pidtable!?!",child);
 		}
-		cstate = val->dptr;
+		cstate = val.dptr;
 
 		/*
 		 * Let main loop know maxfd needs to be recomputed.
@@ -227,57 +259,82 @@ ReapChildren(
 		if(cstate->fd == *maxfd)
 			*maxfd = -1;
 
-		/*
-		 * TODO: free the resouces allocated to this child from
-		 * the "class" allotment.
-		 */
 		FreeChldState(cstate,readfds);
 	}
 
 
-	sigchld_received = 0;
+	owpd_chld = 0;
 }
 
 struct CleanPipeArgRec{
-	int	*maxfd;
-	fd_set	*avail;
-	fd_set	*readfds;
+	int		*maxfd;
+	fd_set		*avail;
+	fd_set		*readfds;
+	int		nready;
 };
 
 static I2Boolean
 CheckFD(
-	const I2datum	*key	__attribute__((unused)),
-	I2datum		*value,
+	I2Datum		fdkey	__attribute__((unused)),
+	I2Datum		fdval,
 	void		*app_data
 	)
 {
 	struct CleanPipeArgRec	*arg = (struct CleanPipeArgRec *)app_data;
-	ChldState		cstate = value->dptr;
+	ChldState		cstate = fdval.dptr;
+	int			err=1;
 
+	/*
+	 * If this fd is not ready, return.
+	 */
 	if(!FD_ISSET(cstate->fd,arg->avail))
 		return True;
 
 	/*
-	 * child initialization - first message.
+	 * This fd needs processing - reduce the "ready" count.
 	 */
-	if(!cstate->authmode){
-		ssize_t	in,out;
+	arg->nready--;
 
-		in = sizeof(cstate->authmode);
-		if((out = I2Readn(cstate->fd,&cstate->authmode,in)) != in){
-			if(out != 0){
-				OWPError(cstate->ctx,OWPErrWARNING,
-					OWPErrUNKNOWN,"read error:(%M)");
-			}
-			(void)kill(cstate->pid,SIGKILL);
-		}
-		/* TODO: validate authmode received. */
+	/*
+	 * child initialization - first message.
+	 * Get classname and find policy node for that class.
+	 */
+	if(!cstate->node){
+		cstate->node = OWPDReadClass(cstate->policy,cstate->fd,&err);
 	}
 	else{
-		/* TODO:read child request for resources */
+		OWPDMesgT	query;
+		OWPDMesgT	resp;
+		OWPDLimRec	lim;
+
+		/* read child request for resources */
+		if(!OWPDReadQuery(cstate->fd,&query,&lim,&err)){
+			goto done;
+		}
+
+		/*
+		 * parse tree for resource request/release
+		 */
+		resp = OWPDResourceDemand(cstate->node,query,lim) ?
+				OWPDMESGOK : OWPDMESGDENIED;
+
+		/*
+		 * Send response
+		 */
+		err = OWPDSendResponse(cstate->fd,resp);
 	}
 
-	return True;
+done:
+	if(err){
+		OWPError(cstate->policy->ctx,OWPErrWARNING,OWPErrUNKNOWN,
+			"Invalid message from child pid=%d",cstate->pid);
+		(void)kill(cstate->pid,SIGTERM);
+	}
+
+	/*
+	 * Return true if there are more fd's to process.
+	 */
+	return (arg->nready > 0);
 }
 
 /*
@@ -287,9 +344,10 @@ CheckFD(
  */
 static void
 CleanPipes(
-	fd_set	*avail,
-	int	*maxfd,
-	fd_set	*readfds
+	fd_set		*avail,
+	int		*maxfd,
+	fd_set		*readfds,
+	int		nready
 	)
 {
 	struct CleanPipeArgRec	cpargs;
@@ -297,8 +355,9 @@ CleanPipes(
 	cpargs.avail = avail;
 	cpargs.maxfd = maxfd;
 	cpargs.readfds = readfds;
+	cpargs.nready = nready;
 
-	I2hash_iterate(fdtable,CheckFD,&cpargs);
+	I2HashIterate(fdtable,CheckFD,&cpargs);
 
 	return;
 }
@@ -310,11 +369,10 @@ CleanPipes(
  */
 static void
 NewConnection(
-	OWPContext	ctx,
+	OWPDPolicy	policy,
 	OWPAddr		listenaddr,
 	int		*maxfd,
-	fd_set		*readfds,
-	owp_policy_data	*policy
+	fd_set		*readfds
 	)
 {
 	int			connfd;
@@ -337,6 +395,9 @@ ACCEPT:
 				 * Go ahead and reap since it could make
 				 * more free connections.
 				 */
+				if(owpd_exit){
+					return;
+				}
 				ReapChildren(maxfd,readfds);
 				goto ACCEPT;
 				break;
@@ -344,15 +405,15 @@ ACCEPT:
 				return;
 				break;
 			default:
-				OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-						"accept():%M");
+				OWPError(policy->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+						"accept(): %M");
 				return;
 				break;
 		}
 	}
 
-	if (pipe(new_pipe) < 0){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"pipe():%M");
+	if (socketpair(AF_UNIX,SOCK_STREAM,0,new_pipe) < 0){
+		OWPError(policy->ctx,OWPErrFATAL,OWPErrUNKNOWN,"socketpair(): %M");
 		(void)close(connfd);
 		return;
 	}
@@ -361,7 +422,7 @@ ACCEPT:
 
 	/* fork error */
 	if (pid < 0){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fork():%M");
+		OWPError(policy->ctx,OWPErrFATAL,OWPErrUNKNOWN,"fork(): %M");
 		(void)close(new_pipe[0]);
 		(void)close(new_pipe[1]);
 		(void)close(connfd);
@@ -380,7 +441,7 @@ ACCEPT:
 		while((close(new_pipe[1]) < 0) && (errno == EINTR));
 		while((close(connfd) < 0) && (errno == EINTR));
 
-		if(!(chld = AllocChldState(ctx,pid,new_pipe[0]))){
+		if(!(chld = AllocChldState(policy,pid,new_pipe[0]))){
 			(void)close(new_pipe[0]);
 			(void)kill(pid,SIGKILL);
 			return;
@@ -392,36 +453,75 @@ ACCEPT:
 	}
 	/* Child */
 	else{
-		ssize_t			n;
-		OWPPerConnDataRec	conndata;
+		struct itimerval	itval;
+		OWPRequestType		msgtype=OWPReqInvalid;
 
 #ifndef	NDEBUG
 		int		childwait;
 
 		childwait = opts.childwait;
+		/* busy loop to wait for debug-attach */
 		while(childwait);
+		/*
+		 * set OWPChildWait if you want to attach
+		 * to them... (by resetting childwait back to non-zero)
+		 */
+		if(childwait && !OWPContextConfigSet(policy->ctx,OWPChildWait,
+							(void*)childwait)){
+			OWPError(policy->ctx,OWPErrWARNING,OWPErrUNKNOWN,
+			"OWPContextConfigSet(): Unable to set OWPChildWait?!");
+		}
 #endif
+		/*
+		 * TODO: Close all open file descriptors not needed by this
+		 * child?
+		 */
 
 		/*
-		 * TODO: Could check if the class from this IP allows
-		 * open_mode, and modify "mode" if open is not allowed...
-		 * For now, just leave it alone and if open is not allowed
-		 * for this address, then OWPControlAccept will fail when it calls
-		 * the CheckControlPolicy function.
+		 * check/set signal vars.
 		 */
-		memset(&conndata,0,sizeof(conndata));
-		conndata.pipefd = new_pipe[1];
-		conndata.datadir = opts.datadir;
-		conndata.policy = policy;
-		conndata.lossThreshold = opts.lossThreshold;
-		conndata.node = NULL;
-#ifndef	NDEBUG
-		conndata.childwait = opts.childwait;
-#endif
+		if(owpd_exit){
+			exit(0);
+		}
+		owpd_intr = 0;
 
-		cntrl = OWPControlAccept(ctx,connfd,
+		/*
+		 * Initialize itimer struct. The it_value.tv_sec will be
+		 * set to interrupt socket i/o if the message is not received
+		 * within the timeout as described by owdp draft section 4
+		 * (OWAMP-Control).
+		 */
+		memset(&itval,0,sizeof(itval));
+
+		/*
+		 * save the pipe fd in the policy record for the hooks to
+		 * pick it up.
+		 */
+		policy->fd = new_pipe[1];
+
+		/*
+		 * If the daemon is configured to do open_mode, check if
+		 * there is an open_mode limit defined for the given
+		 * address.
+		 */
+		if((mode & OWP_MODE_OPEN) &&
+				!OWPDAllowOpenMode(policy,
+					(struct sockaddr *)&sbuff,&out)){
+			if(out != OWPErrOK){
+				exit(out);
+			}
+			mode &= ~OWP_MODE_OPEN;
+		}
+
+		owpd_intr = 0;
+		itval.it_value.tv_sec = opts.controltimeout;
+		if(setitimer(ITIMER_REAL,&itval,NULL) != 0){
+			I2ErrLog(errhand,"setitimer(): %M");
+			exit(OWPErrFATAL);
+		}
+		cntrl = OWPControlAccept(policy->ctx,connfd,
 					(struct sockaddr *)&sbuff,sbufflen,
-					mode,(void*)&conndata,&out);
+					mode,uptime,&owpd_intr,&out);
 		/*
 		 * session not accepted.
 		 */
@@ -430,27 +530,121 @@ ACCEPT:
 		}
 
 		/*
-		 * Send the mode to the parent.
+		 * Process all requests - return when complete.
 		 */
-		mode = OWPGetMode(cntrl);
-		n = sizeof(mode);
-		if(I2Writen(new_pipe[1],&mode,n) < n){
-			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"Write on pipe failed:(%M)");
-			exit(-1);
+		while(1){
+			OWPErrSeverity	rc;
+
+			rc = OWPErrOK;
+			/*
+			 * reset signal vars
+			 */
+			owpd_intr = owpd_alrm = owpd_chld = 0;
+			itval.it_value.tv_sec = opts.controltimeout;
+			if(setitimer(ITIMER_REAL,&itval,NULL) != 0){
+				I2ErrLog(errhand,"setitimer(): %M");
+				goto done;
+			}
+
+			msgtype = OWPReadRequestType(cntrl,&owpd_intr);
+
+			switch (msgtype){
+
+			case OWPReqTest:
+				rc = OWPProcessTestRequest(cntrl,&owpd_intr);
+				break;
+
+			case OWPReqStartSessions:
+				rc = OWPProcessStartSessions(cntrl,&owpd_intr);
+				if(rc < OWPErrOK){
+					break;
+				}
+				/*
+				 * Test session started - unset timer - wait
+				 * until all sessions are complete, then
+				 * reset the timer and wait for stopsessions
+				 * to complete.
+				 */
+				owpd_intr = 0;
+				itval.it_value.tv_sec = 0;
+				if(setitimer(ITIMER_REAL,&itval,NULL) != 0){
+					I2ErrLog(errhand,"setitimer(): %M");
+					goto done;
+				}
+				while(OWPSessionsActive(cntrl,NULL)){
+					int	wstate;
+
+					rc = OWPErrOK;
+					owpd_intr = 0;
+					wstate = OWPStopSessionsWait(cntrl,NULL,
+							  &owpd_intr,NULL,&rc);
+					if(owpd_exit || (wstate < 0)){
+						goto done;
+					}
+					if(wstate == 0){
+						goto nextreq;
+					}
+				}
+				/*
+				 * Sessions are complete, but StopSessions
+				 * message has not been exchanged - set the
+				 * timer and trade StopSessions messages
+				 */
+				owpd_intr = 0;
+				itval.it_value.tv_sec = opts.controltimeout;
+				if(setitimer(ITIMER_REAL,&itval,NULL) != 0){
+					I2ErrLog(errhand,"setitimer(): %M");
+					goto done;
+				}
+				rc = OWPStopSessions(cntrl,&owpd_intr,NULL);
+
+				break;
+
+			case 4:
+				/*
+				 * TODO: Should the timeout be suspended
+				 * for fetchsession?
+				 * (If session files take longer than
+				 * the timeout - this will fail... The
+				 * default is 30 min. Leave for now.
+				 * (The fix would be to leave the timeout in
+				 * place for completing the fetchsession
+				 * read, and then process the write
+				 * of the session separately.)
+				 */
+				rc = OWPProcessFetchSession(cntrl,&owpd_intr);
+				break;
+
+			case OWPReqSockClose:
+			default:
+				rc = OWPErrFATAL;
+				break;
+			}
+nextreq:
+			if(rc < OWPErrWARNING){
+				break;
+			}
+
 		}
 
-		if(OWPProcessRequests(cntrl) != OWPErrOK){
-			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"Control session terminated abnormally...");
-		}
-
+done:
 		OWPControlClose(cntrl);
 
-		exit(0);
+		if(owpd_exit){
+			exit(0);
+		}
+
+		/*
+		 * Normal socket close
+		 */
+		if(msgtype == OWPReqSockClose){
+			exit(0);
+		}
+
+		I2ErrLog(errhand,"Control session terminated abnormally...");
+
+		exit(1);
 	}
-	
-	return; 
 }
 
 /*
@@ -460,178 +654,87 @@ ACCEPT:
  */
 static int
 intcmp(
-	const I2datum	*x,
-	const I2datum	*y
+	const I2Datum	x,
+	const I2Datum	y
 	)
 {
-	assert(x);
-	assert(y);
-
-	return(x->dsize != y->dsize);
+	return(x.dsize != y.dsize);
 }
 
-static unsigned long
+static u_int32_t
 inthash(
-	const I2datum	*key
+	I2Datum	key
 	)
 {
-	return (unsigned long)key->dsize>>2;
+	return (u_int32_t)key.dsize;
 }
 
 static I2Boolean
 FindMaxFD(
-	const I2datum	*key,
-	I2datum		*value	__attribute__((unused)),
-	void		*app_data
+	I2Datum	key,
+	I2Datum	value	__attribute__((unused)),
+	void	*app_data
 	)
 {
 	int		*maxfd = (int *)app_data;
-	unsigned long	tmp = (unsigned long)*maxfd;
 	
-	if((*maxfd < 0) || (key->dsize > tmp))
-		*maxfd = (int)key->dsize;
+	if((*maxfd < 0) || ((int)key.dsize > *maxfd)){
+		*maxfd = (int)key.dsize;
+	}
 
 	return True;
 }
 
-static int
-ReadConfLine(
-	FILE	*fp,
-	int	rc,
-	char	**line_buf,
-	int	*line_buf_size
+static I2Boolean
+ClosePipes(
+	I2Datum	key,
+	I2Datum	value,
+	void	*app_data	__attribute__((unused))
 	)
 {
-	int	c;
-	char	*line = *line_buf;
-	int	i=0;
+	ChldState	cstate = value.dptr;
 
-	while((c = fgetc(fp)) != EOF){
-		if(c == '\n'){
-			rc++;
-			if(i) break;
-			continue;
-		}
-
-		if(!i && c == '#'){
-			while((c = fgetc(fp)) != EOF)
-				if(c == '\n'){
-					rc++;
-					break;
-				}
-			continue;
-		}
-
-		if(!i && isspace(c))
-			continue;
-
-		if(i+2 > *line_buf_size){
-			*line_buf_size *= 2;
-			*line_buf = realloc(line,sizeof(char) * *line_buf_size);
-			if(!*line_buf){
-				free(line);
-				fprintf(stderr,"malloc(): %s\n",
-							strerror(errno));
-				exit(1);
-			}
-			line = *line_buf;
-		}
-		line[i++] = c;
+	while((close(cstate->fd) < 0) && (errno == EINTR));
+	if(I2HashDelete(fdtable,key) != 0){
+		OWPError(cstate->policy->ctx,OWPErrWARNING,OWPErrUNKNOWN,
+					"fd(%d) not in fdtable!?!",cstate->fd);
 	}
+	cstate->fd = -1;
 
-	line[i] = '\0';
-	if(!i) return 0;
-	if(c==EOF) rc++;
-
-	return rc;
-}
-
-static int
-ReadConfVar(
-	FILE	*fp,
-	int	rc,
-	char	**key,
-	char	**val,
-	int	max
-	)
-{
-	char	*line;
-	char	*lbuf=NULL;
-	int	lbuf_max= MAXPATHLEN;
-	char	*cptr;
-
-	if(!(lbuf = (char*)malloc(sizeof(char)*lbuf_max))){
-		fprintf(stderr,"malloc(): %s\n",strerror(errno));
-		exit(1);
-	}
-
-	if((rc = ReadConfLine(fp,rc,&lbuf,&lbuf_max)) > 0){
-		int	i;
-		
-		line = lbuf;
-
-		i=0;
-		cptr = *key;
-		while(i<(max-1)){
-			if(isspace(*line) || (*line == '\0'))
-				break;
-			*cptr++ = *line++;
-			i++;
-		}
-		if(i >= (max-1)){
-			rc = -rc;
-			goto BADLINE;
-		}
-		*cptr = '\0';
-
-		while(isspace(*line))
-			line++;
-
-		i=0;
-		cptr = *val;
-		while(i<(max-1)){
-			if(*line == '\0')
-				break;
-			*cptr++ = *line++;
-			i++;
-		}
-		if(i >= (max-1)){
-			rc = -rc;
-			goto BADLINE;
-		}
-		*cptr = '\0';
-		/*
-		 * Remove trailing spaces
-		 */
-		while(i>0){
-			cptr--;
-			if(!isspace(*cptr))
-				break;
-			*cptr = '\0';
-		}
-	}
-
-BADLINE:
-	free(lbuf);
-	return rc;
+	return True;
 }
 
 static void
-LoadConfig()
+LoadConfig(
+	char	**lbuf,
+	size_t	*lbuf_max
+	)
 {
 	FILE	*conf;
-	char	conf_file[MAXPATHLEN];
+	char	conf_file[MAXPATHLEN+1];
 	char	keybuf[MAXPATHLEN],valbuf[MAXPATHLEN];
 	char	*key = keybuf;
 	char	*val = valbuf;
 	int	rc=0;
 
 	conf_file[0] = '\0';
+
+	rc = strlen(OWAMPD_CONF_FILE);
+	if(rc > MAXPATHLEN){
+		fprintf(stderr,"strlen(OWAMPD_CONF_FILE) > MAXPATHLEN\n");
+		exit(1);
+	}
 	if(opts.confdir){
+		rc += strlen(opts.confdir) + strlen(OWP_PATH_SEPARATOR);
+		if(rc > MAXPATHLEN){
+			fprintf(stderr,"Path to %s > MAXPATHLEN\n",
+							OWAMPD_CONF_FILE);
+			exit(1);
+		}
 		strcpy(conf_file, opts.confdir);
 		strcat(conf_file, OWP_PATH_SEPARATOR);
 	}
-	strcat(conf_file, "owampd.conf");
+	strcat(conf_file, OWAMPD_CONF_FILE);
 
 	if(!(conf = fopen(conf_file, "r"))){
 		if(opts.confdir){
@@ -642,84 +745,136 @@ LoadConfig()
 		return;
 	}
 
-	while((rc = ReadConfVar(conf,rc,&key,&val,MAXPATHLEN)) > 0){
-		/*
-		 * TODO: eventually set up a table of all opts, types, and
-		 * getopt flags so this is more automatic, but it isn't worth
-		 * it yet.
-		 */
+	while((rc = OWPDReadConfVar(conf,rc,key,val,MAXPATHLEN,lbuf,lbuf_max))
+									> 0){
 
 		/* syslog facility */
-		if(!strncasecmp(key,"facility",8)){
+		if(!strncasecmp(key,"facility",9)){
 			int fac = I2ErrLogSyslogFacility(val);
 			if(fac == -1){
 				fprintf(stderr,
 				"Invalid -e: Syslog facility \"%s\" unknown\n",
 				val);
-				exit(1);
+				rc = -rc;
+				break;
 			}
 			syslogattr.facility = fac;
 		}
-		else if(!strncasecmp(key,"loglocation",11)){
+		else if(!strncasecmp(key,"loglocation",12)){
 			syslogattr.line_info |= I2FILE|I2LINE;
 		}
-		else if(!strncasecmp(key,"datadir",7)){
-		     if(!(opts.datadir = strdup(val))) {
-			     fprintf(stderr,"strdup(): %s\n",strerror(errno));
-			     exit(1);
-		     }
-		}
-		else if(!strncasecmp(key,"user",4)){
-		     if(!(opts.user = strdup(val))) {
-			     fprintf(stderr,"strdup(): %s\n",strerror(errno));
-			     exit(1);
-		     }
-		}
-		else if(!strncasecmp(key,"group",5)){
-		     if(!(opts.group = strdup(val))) {
-			     fprintf(stderr,"strdup(): %s\n",strerror(errno));
-			     exit(1);
-		     }
-		}
-		else if(!strncasecmp(key,"verbose",7)){
-			opts.verbose = True;
-		}
-		else if(!strncasecmp(key,"authmode",8)){
-		     if(!(opts.authmode = strdup(val))) {
-			     fprintf(stderr,"strdup(): %s\n",strerror(errno));
-			     exit(1);
-		     }
-		}
-		else if(!strncasecmp(key,"srcnode",7)){
-		     if(!(opts.srcnode = strdup(val))) {
-			     fprintf(stderr,"strdup(): %s\n",strerror(errno));
-			     exit(1);
-		     }
-		}
-		else if(!strncasecmp(key,"timeout",7)){
-			opts.tmout = strtoul(optarg,NULL,10);
-			if(errno != 0) {
-				fprintf(stderr,
-			"Invalid -t value (%s): Positive integer expected\n",
-					val);
-				exit(1);
+		else if(!strncasecmp(key,"datadir",8)){
+			if(!(opts.datadir = strdup(val))) {
+				fprintf(stderr,"strdup(): %s\n",
+							strerror(errno));
+				rc=-rc;
+				break;
 			}
 		}
-		else if(!strncasecmp(key,"vardir",6)){
-		     if(!(opts.vardir = strdup(val))) {
-			     fprintf(stderr,"strdup(): %s\n",strerror(errno));
-			     exit(1);
-		     }
+		else if(!strncasecmp(key,"user",5)){
+			if(!(opts.user = strdup(val))) {
+				fprintf(stderr,"strdup(): %s\n",
+							strerror(errno));
+				rc=-rc;
+				break;
+			}
+		}
+		else if(!strncasecmp(key,"group",6)){
+			if(!(opts.group = strdup(val))) {
+				fprintf(stderr,"strdup(): %s\n",
+							strerror(errno));
+				rc=-rc;
+				break;
+			}
+		}
+		else if(!strncasecmp(key,"verbose",8)){
+			opts.verbose = True;
+		}
+		else if(!strncasecmp(key,"authmode",9)){
+			if(!(opts.authmode = strdup(val))) {
+				fprintf(stderr,"strdup(): %s\n",
+							strerror(errno));
+				rc=-rc;
+				break;
+			}
+		}
+		else if(!strncasecmp(key,"srcnode",8)){
+			if(!(opts.srcnode = strdup(val))) {
+				fprintf(stderr,"strdup(): %s\n",
+							strerror(errno));
+				rc=-rc;
+				break;
+			}
+		}
+		else if(!strncasecmp(key,"vardir",7)){
+			if(!(opts.vardir = strdup(val))) {
+				fprintf(stderr,"strdup(): %s\n",
+							strerror(errno));
+				rc=-rc;
+				break;
+			}
+		}
+		else if(!strncasecmp(key,"diskfudge",10)){
+			char	*end=NULL;
+			double	tdbl;
+			
+			errno = 0;
+			tdbl = strtod(val,&end);
+			if((end == val) || (errno == ERANGE)){
+				fprintf(stderr,"strtod(): %s\n",
+							strerror(errno));
+				rc=-rc;
+				break;
+			}
+			if((tdbl >= 1.0) && (tdbl <= 10.0)){
+				opts.diskfudge = tdbl;
+			}
+			else{
+				fprintf(stderr,"Invalid diskfudge \"%f\":"
+					"valid values 1.0<=diskfudge<=10.0",
+					tdbl);
+				rc=-rc;
+				break;
+			}
+		}
+		else if(!strncasecmp(key,"dieby",6)){
+			char		*end=NULL;
+			u_int32_t	tlng;
+
+			errno = 0;
+			tlng = strtoul(val,&end,10);
+			if((end == val) || (errno == ERANGE)){
+				fprintf(stderr,"strtoul(): %s\n",
+							strerror(errno));
+				rc=-rc;
+				break;
+			}
+			opts.dieby = tlng;
+		}
+		else if(!strncasecmp(key,"controltimeout",15)){
+			char		*end=NULL;
+			u_int32_t	tlng;
+
+			errno = 0;
+			tlng = strtoul(val,&end,10);
+			if((end == val) || (errno == ERANGE)){
+				fprintf(stderr,"strtoul(): %s\n",
+							strerror(errno));
+				rc=-rc;
+				break;
+			}
+			opts.controltimeout = tlng;
 		}
 		else{
-			fprintf(stderr,"Unknown key=%s in %s\n",key,conf_file);
-			exit(1);
+			fprintf(stderr,"Unknown key=%s\n",key);
+			rc = -rc;
+			break;
 		}
 	}
 
 	if(rc < 0){
-		fprintf(stderr,"Invalid config file! %s line %d\n",
-				conf_file,-rc);
+		fprintf(stderr,"%s:%d Problem parsing conffile\n",
+								conf_file,-rc);
 		exit(1);
 	}
 
@@ -731,47 +886,35 @@ main(int argc, char *argv[])
 {
 	char			*progname;
 	OWPErrSeverity		out = OWPErrFATAL;
-	owp_policy_data		*policy;
-	char			ip2class[MAXPATHLEN],
-				class2limits[MAXPATHLEN],
-		                passwd[MAXPATHLEN],
-                 		pid_file[MAXPATHLEN],
+	char			pid_file[MAXPATHLEN],
 		                info_file[MAXPATHLEN];
 		
 	fd_set			readfds;
 	int			maxfd;    /* max fd in readfds */
 	OWPContext		ctx;
+	OWPDPolicy		policy;
 	OWPAddr			listenaddr = NULL;
 	int			listenfd;
 	int			rc;
-	I2datum			data;
-	pid_t                   mypid;
+	I2Datum			data;
 	struct flock            flk;
 	int                     pid_fd;
 	FILE                    *pid_fp, *info_fp;
 	OWPTimeStamp	        currtime;	
-	OWPnum64	        cnum;
 	int ch;
 	uid_t			setuser=0;
 	gid_t			setgroup=0;
+	char			*lbuf=NULL;
+	size_t			lbuf_max=0;
+
+	struct sigaction	ignact,setact;
+	sigset_t		sigs;
 
 #ifndef NDEBUG
-	char *optstring = "hvc:d:R:a:S:t:L:e:ZU:G:w";
+	char *optstring = "hvc:d:R:a:S:e:ZU:G:w";
 #else	
-	char *optstring = "hvc:d:R:a:S:t:L:e:ZU:G:";
+	char *optstring = "hvc:d:R:a:S:e:ZU:G:";
 #endif
-
-	OWPInitializeConfigRec	cfg  = {
-	/*	tm_out			*/	{0, 
-						0},
-	/*	eh			*/	NULL,
-	/*	get_aes_key_func	*/	owp_get_aes_key,
-	/*	check_control_func	*/	owp_check_control,
-	/*	check_test_func		*/	owp_check_test,
-	/*	rand_type		*/	I2RAND_DEV,
-	/*	rand_data		*/	NULL
-	};
-
 
 	/*
 	* Start an error loggin session for reporting errors to the
@@ -792,10 +935,16 @@ main(int argc, char *argv[])
 	opts.vardir = opts.confdir = opts.datadir = NULL;
 	opts.authmode = NULL; 
 	opts.srcnode = NULL;
-	opts.lossThreshold = 10;
-	opts.tmout = 10;
 	opts.daemon = 1;
 	opts.user = opts.group = NULL;
+	opts.diskfudge = 1.0;
+	opts.dieby = 30;
+	opts.controltimeout = 1800;
+
+	if(!getcwd(opts.cwd,sizeof(opts.cwd))){
+		perror("getcwd()");
+		exit(1);
+	}
 
 	/*
 	 * Fetch config file option if present
@@ -805,7 +954,8 @@ main(int argc, char *argv[])
 		switch (ch){
 		case 'c':	/* -c "Config directory" */
 			if (!(opts.confdir = strdup(optarg))) {
-				I2ErrLog(cfg.eh,"malloc: %M");
+				/* eh isn't setup yet...*/
+				perror("strdup()");
 				exit(1);
 			}
 			break;
@@ -817,17 +967,12 @@ main(int argc, char *argv[])
 
 	/*
 	 * Load Config file.
+	 * lbuf/lbuf_max keep track of a dynamically grown "line" buffer.
+	 * (It is grown using realloc.)
+	 * This will be used throughout all the config file reading and
+	 * should be free'd once all config files have been read.
 	 */
-	LoadConfig();
-
-	/*
-	 * If the confdir wasn't specified on the cmdline above, then
-	 * we set it to "." here so that passwd files etc, are relative
-	 * to current directory.
-	 */
-	if(!opts.confdir)
-		opts.confdir = ".";
-
+	LoadConfig(&lbuf,&lbuf_max);
 
 	/*
 	 * Read cmdline options that effect syslog so the rest of cmdline
@@ -872,8 +1017,7 @@ main(int argc, char *argv[])
 	 * Initialize the context. (Set the error handler to the app defined
 	 * one.)
 	 */
-	cfg.eh = errhand;
-	ctx = OWPContextInitialize(&cfg);
+	ctx = OWPContextCreate(errhand);
 
 	/*
 	 * Now deal with "all" cmdline options.
@@ -886,55 +1030,37 @@ main(int argc, char *argv[])
 			break;
 		case 'd':	/* -d "data directory" */
 			if (!(opts.datadir = strdup(optarg))) {
-				I2ErrLog(cfg.eh,"malloc: %M");
+				I2ErrLog(errhand,"strdup(): %M");
 				exit(1);
 			}
 			break;
 		case 'a':	/* -a "authmode" */
 			if (!(opts.authmode = strdup(optarg))) {
-				I2ErrLog(cfg.eh,"malloc: %M");
+				I2ErrLog(errhand,"strdup(): %M");
 				exit(1);
 			}
 			break;
 		case 'S':  /* -S "src addr" */
 			if (!(opts.srcnode = strdup(optarg))) {
-				I2ErrLog(cfg.eh,"malloc: %M");
-				exit(1);
-			}
-			break;
-		case 't':
-			opts.tmout = strtoul(optarg,NULL,10);
-			if(errno != 0) {
-				I2ErrLog(cfg.eh,
-			"Invalid -t value (%s): Positive integer expected",
-						optarg);
-				exit(1);
-			}
-			break;
-		case 'L':
-			opts.lossThreshold = strtoul(optarg,NULL,10);
-			if(errno != 0) {
-				I2ErrLog(cfg.eh,
-			"Invalid -L value (%s). Positive integer expected",
-					optarg);
+				I2ErrLog(errhand,"strdup(): %M");
 				exit(1);
 			}
 			break;
 		case 'U':
 			if(!(opts.user = strdup(optarg))){
-				I2ErrLog(cfg.eh,"malloc: %M");
+				I2ErrLog(errhand,"strdup(): %M");
 				exit(1);
 			}
 			break;
 		case 'G':
 			if(!(opts.group = strdup(optarg))){
-				I2ErrLog(cfg.eh,"malloc: %M");
+				I2ErrLog(errhand,"strdup(): %M");
 				exit(1);
 			}
 			break;
 		case 'R':	/* -R "var/run directory" */
 			if (!(opts.vardir = strdup(optarg))) {
-				I2ErrLog(cfg.eh,"malloc: %M");
+				I2ErrLog(errhand,"strdup(): %M");
 				exit(1);
 			}
 			break;
@@ -963,11 +1089,12 @@ main(int argc, char *argv[])
 		     exit(1);
 	}
 
-	if(!opts.datadir)
-		opts.datadir = "";
-
 	if(!opts.vardir)
-		opts.vardir = ".";
+		opts.vardir = opts.cwd;
+	if(!opts.confdir)
+		opts.confdir = opts.cwd;
+	if(!opts.datadir)
+		opts.datadir = opts.cwd;
 
 	/*  Get exclusive lock for pid file. */
 	strcpy(pid_file, opts.vardir);
@@ -984,7 +1111,7 @@ main(int argc, char *argv[])
 	flk.l_whence = SEEK_SET; 
 	while((rc=fcntl(pid_fd, F_SETLK, &flk)) < 0 && errno == EINTR);
 	if(rc < 0){
-		I2ErrLog(errhand,"Unable to lock file %s:%M", pid_file);
+		I2ErrLog(errhand,"Unable to lock file %s: %M", pid_file);
 		exit(1);
 	}
 	if ((pid_fp = fdopen(pid_fd, "wr")) == NULL) {
@@ -1060,40 +1187,23 @@ main(int argc, char *argv[])
 	}
 
 	/*
-	 * Setup paths.
+	 * Install policy for "ctx" - and return policy record.
 	 */
-
-	rc = snprintf(ip2class,sizeof(ip2class),"%s%s%s",opts.confdir,
-					OWP_PATH_SEPARATOR,opts.ip2class);
-	if(rc >= (int)sizeof(ip2class)){
-		I2ErrLog(errhand, "Invalid path to ip2class file.");
-		exit(1);
-	}
-
-	rc = snprintf(class2limits,sizeof(class2limits),"%s%s%s",opts.confdir,
-					OWP_PATH_SEPARATOR,opts.class2limits);
-	if(rc >= (int)sizeof(class2limits)){
-		I2ErrLog(errhand, "Invalid path to class2limits file.");
-		exit(1);
-	}
-
-	rc = snprintf(passwd,sizeof(passwd),"%s%s%s",opts.confdir,
-					OWP_PATH_SEPARATOR,opts.passwd);
-	if(rc >= (int)sizeof(passwd)){
-		I2ErrLog(errhand, "Invalid path to passwd file.");
-		exit(1);
-	}
-
-	policy = OWPPolicyInit(ctx, ip2class, class2limits, passwd, &out);
-	if (out != OWPErrOK){
+	if(!(policy = OWPDPolicyInstall(ctx,opts.datadir,opts.confdir,
+					opts.diskfudge,&lbuf,&lbuf_max))){
 		I2ErrLog(errhand, "PolicyInit failed. Exiting...");
 		exit(1);
 	};
 
-#ifdef	NOTYET
-	printf("DEBUG: policy init ok. Printing out ip2class hash...\n");
-	I2hash_print(policy->ip2class, stdout);
-#endif
+	/*
+	 * Done with the line buffer. (reset to 0 for consistancy.)
+	 */
+	if(lbuf){
+		free(lbuf);
+	}
+	lbuf = NULL;
+	lbuf_max = 0;
+
 	/*
 	 * Setup the "default_mode".
 	 */
@@ -1129,10 +1239,6 @@ main(int argc, char *argv[])
 	}
 
 	/*
-	 * setup hash's to keep track of child process state.
-	 */
-
-	/*
 	 * TODO: a config test for this would probably be cleaner...
 	 */
 	{	/* ensure intcmp will work */
@@ -1140,8 +1246,8 @@ main(int argc, char *argv[])
 		assert(psize<=sizeof(data.dsize));
 	}
 
-	pidtable = I2hash_init(errhand,0,intcmp,inthash,NULL);
-	fdtable = I2hash_init(errhand,0,intcmp,inthash,NULL);
+	pidtable = I2HashInit(errhand,0,intcmp,inthash);
+	fdtable = I2HashInit(errhand,0,intcmp,inthash);
 	if(!pidtable || !fdtable){
 		I2ErrLogP(errhand,0,"Unable to setup hash tables...");
 		exit(1);
@@ -1152,17 +1258,18 @@ main(int argc, char *argv[])
 	 */
 	mypid = 0;
 	if(opts.daemon){
+
 		/*
-		 * TODO: Need to think about this one... It would be
-		 * good to chdir to '/' so file systems can be unmounted,
-		 * however... this breaks relative path names.
+		 * chdir to '/' so filesystems can be unmounted.
 		 */
-#if	NOT
 		if(chdir("/") < 0){
 			I2ErrLog(errhand,"Unable to chdir to /: %M");
 			exit(1);
 		}
-#endif
+
+		/*
+		 * reopen stdin/stdout/stderr fd's
+		 */
 		for(rc=0;rc<3;rc++){
 			if(close(rc) == -1 || open("/dev/null",O_RDWR) != rc){
 				I2ErrLog(errhand,"Unable to reopen fd(%d): %M",
@@ -1171,18 +1278,32 @@ main(int argc, char *argv[])
 			}
 		}
 
+		/*
+		 * respawn self to detach from terminal.
+		 */
 		mypid = fork();
 		if(mypid < 0){
 			I2ErrLog(errhand,"Unable to fork: %M");
 			exit(1);
 		}
 		if((mypid == 0) && (setsid() == -1)){
-			I2ErrLog(errhand,"Unable to setsid: %M");
+			I2ErrLog(errhand,"setsid(): %M");
 			exit(1);
 		}
 	}
 	else{
+		/*
+		 * Depending upon the shell that starts this -Z "foreground"
+		 * daemon, this process may or may not be the Process Group
+		 * leader... This will make sure. (Needed so HUP/TERM
+		 * catching can kill the whole process group with one
+		 * kill call.) setsid handles this when daemonizing.
+		 */
 		mypid = getpid();
+		if(setpgid(0,mypid) != 0){
+			I2ErrLog(errhand,"setpgid(): %M");
+			exit(1);
+		}
 	}
 
 	/*
@@ -1220,7 +1341,7 @@ main(int argc, char *argv[])
 		/* Record the start timestamp in the info file. */
 		strcpy(info_file, opts.vardir);
 		strcat(info_file, OWP_PATH_SEPARATOR);
-		strcat(info_file, "owampd.infoi");
+		strcat(info_file, "owampd.info");
 		if ((info_fp = fopen(info_file, "w")) == NULL) {
 			I2ErrLog(errhand, "fopen(%s): %M", info_file);
 			kill(mypid,SIGTERM);
@@ -1228,23 +1349,16 @@ main(int argc, char *argv[])
 		}
 
 		if(!OWPGetTimeOfDay(&currtime)){
-			I2ErrLogP(errhand, errno, "OWPGetTimeOfDay:%M");
+			I2ErrLogP(errhand, errno, "OWPGetTimeOfDay: %M");
 			kill(mypid,SIGTERM);
 			exit(1);
 		}
-		cnum = OWPTimeStamp2num64(&currtime);
-		fprintf(info_fp, "START="OWP_TSTAMPFMT"\n", cnum);
+		uptime = currtime.owptime;
+		fprintf(info_fp, "START="OWP_TSTAMPFMT"\n", currtime.owptime);
 		fprintf(info_fp, "PID=%lld\n", (long long)mypid);
 		while ((rc = fclose(info_fp)) < 0 && errno == EINTR);
 		if(rc < 0){
 			I2ErrLog(errhand,"fclose(): %M");
-			kill(mypid,SIGTERM);
-			exit(1);
-		}
-		strcpy(pid_file,info_file);
-		info_file[strlen(info_file)-1] = '\0'; /* remove trailing "i"*/
-		if(rename(pid_file,info_file) != 0){
-			I2ErrLog(errhand,"rename(): %M");
 			kill(mypid,SIGTERM);
 			exit(1);
 		}
@@ -1284,9 +1398,28 @@ main(int argc, char *argv[])
 	}
 
 	/*
-	 * Set up mechanism to track child state.
+	 * Set up signal handling.
 	 */
-	signal(SIGCHLD, sig_chld);
+	memset(&ignact,0,sizeof(ignact));
+	memset(&setact,0,sizeof(setact));
+
+	ignact.sa_handler = SIG_IGN;
+	setact.sa_handler = signal_catch;
+	sigemptyset(&ignact.sa_mask);
+	sigemptyset(&setact.sa_mask);
+	ignact.sa_flags = setact.sa_flags = 0;
+
+	if(		(sigaction(SIGPIPE,&ignact,NULL) != 0)	||
+			(sigaction(SIGUSR1,&setact,NULL) != 0)	||
+			(sigaction(SIGUSR2,&setact,NULL) != 0)	||
+			(sigaction(SIGINT,&setact,NULL) != 0)	||
+			(sigaction(SIGTERM,&setact,NULL) != 0)	||
+			(sigaction(SIGHUP,&setact,NULL) != 0)	||
+			(sigaction(SIGCHLD,&setact,NULL) != 0)	||
+			(sigaction(SIGALRM,&setact,NULL) != 0)	){
+		I2ErrLog(errhand,"sigaction(): %M");
+		exit(1);
+	}
 
 	listenfd = OWPAddrFD(listenaddr);
 	FD_ZERO(&readfds);
@@ -1298,10 +1431,15 @@ main(int argc, char *argv[])
 		fd_set ready;
 
 		if(maxfd < 0){
-			I2hash_iterate(fdtable,FindMaxFD,&maxfd);
+			I2HashIterate(fdtable,FindMaxFD,&maxfd);
 			maxfd = MAX(maxfd,listenfd);
 		}
 		ready = readfds;
+
+		if(owpd_exit){
+			break;
+		}
+
 		nfound = select(maxfd+1,&ready,NULL,NULL,NULL);
 
 		/*
@@ -1309,10 +1447,13 @@ main(int argc, char *argv[])
 		 */
 		if(nfound < 0){
 			if(errno == EINTR){
+				if(owpd_exit){
+					break;
+				}
 				ReapChildren(&maxfd,&readfds);
 				continue;
 			}
-			OWPError(ctx,OWPErrFATAL,errno,"select():%M");
+			OWPError(ctx,OWPErrFATAL,errno,"select(): %M");
 			exit(1);
 		}
 
@@ -1323,13 +1464,68 @@ main(int argc, char *argv[])
 			continue;
 
 		if(FD_ISSET(listenfd, &ready)){ /* new connection */
-			NewConnection(ctx,listenaddr,&maxfd,&readfds, policy);
+			NewConnection(policy,listenaddr,&maxfd,&readfds);
 		}
-		else
-			CleanPipes(&ready,&maxfd,&readfds);
+		else{
+			CleanPipes(&ready,&maxfd,&readfds,nfound);
+		}
+
+		if(owpd_exit){
+			break;
+		}
 
 		ReapChildren(&maxfd,&readfds);
 	}
+
+	I2ErrLog(errhand,"%s: exiting...",progname);
+	/*
+	 * Close the server socket. reset the readfds/maxfd so they
+	 * can't confuse later ReapChildren calls.
+	 */
+	OWPAddrFree(listenaddr);
+	FD_ZERO(&readfds);
+	maxfd = -1;
+
+	/*
+	 * Signal the process group to exit.
+	 */
+	kill(-mypid,SIGTERM);
+
+	/*
+	 * Set an alarm to exit by even if graceful shutdown doesn't occur.
+	 */
+	owpd_alrm = 0;
+	alarm(opts.dieby);
+
+	/*
+	 * Close all the pipes so pipe i/o can stay simple. (Don't have
+	 * to deal with interrupts for this.)
+	 */
+	I2HashIterate(fdtable,ClosePipes,NULL);
+
+	/*
+	 * Loop until all children have been waited for, or until
+	 * alarm goes off.
+	 */
+	sigemptyset(&sigs);
+	while(!owpd_alrm && (I2HashNumEntries(pidtable) > 0)){
+		if(!owpd_chld){
+			(void)sigsuspend(&sigs);
+		}
+		ReapChildren(&maxfd,&readfds);
+	}
+
+	/*
+	 * If children didn't die, report the error - send SIGKILL and exit.
+	 */
+	if(I2HashNumEntries(pidtable) > 0){
+		I2ErrLog(errhand,
+			"Children still alive... Time for brute force.");
+		kill(-mypid,SIGKILL);
+		exit(1);
+	}
+
+	I2ErrLog(errhand,"%s: exited.",progname);
 
 	exit(0);
 }

@@ -88,7 +88,7 @@ sub setids{
 
 sub daemonize{
 	my(%args)	= @_;
-	my($dnull,$umask) = ('/dev/null','022');
+	my($dnull,$umask) = ('/dev/null',022);
 	my $fh;
 
 	$dnull = $args{'DEVNULL'} if(defined $args{'DEVNULL'});

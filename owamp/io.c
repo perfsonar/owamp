@@ -22,88 +22,61 @@
 #include <owampP.h>
 
 int
-_OWPConnect(
-	int		fd,
-	struct sockaddr	*ai_addr,
-	size_t		ai_addr_len,
-	struct timeval	*tm_out
-)
+_OWPSendBlocksIntr(
+	OWPControl	cntrl,
+	u_int8_t	*buf,
+	int		num_blocks,
+	int		*retn_on_intr
+	)
 {
-	int		flags;
-	int		rc;
-	fd_set		rset,wset;
-	size_t		len;
-	struct timeval	end_time;
-	struct timeval	curr_time;
-	struct timeval	tout;
+	ssize_t		n;
 
-	flags = fcntl(fd, F_GETFL,0);
-	fcntl(fd,F_SETFL,flags|O_NONBLOCK);
+	if (cntrl->mode & OWP_MODE_DOCIPHER)
+		_OWPEncryptBlocks(cntrl, buf, num_blocks, buf);
 
-	rc = connect(fd,ai_addr,ai_addr_len);
-
-	if(rc==0)
-		goto DONE;
-
-	if(errno != EINPROGRESS){
-		return -1;
-	}
-	
-	if(gettimeofday(&curr_time,NULL) != 0)
-		return -1;
-
-	tvalclear(&end_time);
-	tvaladd(&end_time,&curr_time);
-	tvaladd(&end_time,tm_out);
-
-AGAIN:
-	FD_ZERO(&rset);
-	FD_SET(fd,&rset);
-	wset = rset;
-
-	/*
-	 * Set tout to (end_time-curr_time) - curr_time is updated
-	 * when there is an intr, so this still calculates the "time left".
-	 */
-	tvalclear(&tout);
-	tvaladd(&tout,&end_time);
-	tvalsub(&tout,&curr_time);
-	rc = select(fd+1,&rset,&wset,NULL,&tout);
-	if(rc == 0){
-		errno = ETIMEDOUT;
-		return -1;
-	}
-	if(rc < 0){
-		if(errno == EINTR){
-			if(gettimeofday(&curr_time,NULL) != 0)
-				return -1;
-			goto AGAIN;
+	n = I2Writeni(cntrl->sockfd,buf,num_blocks*_OWP_RIJNDAEL_BLOCK_SIZE,
+			retn_on_intr);
+	if(n < 0){
+		if(!*retn_on_intr || (errno != EINTR)){
+			OWPError(cntrl->ctx,OWPErrFATAL,errno,
+							"I2Writeni(): %M");
 		}
 		return -1;
-	}
+	} 
 
-	if(FD_ISSET(fd,&rset) || FD_ISSET(fd,&wset)){
-		len = sizeof(rc);
-		if(getsockopt(fd,SOL_SOCKET,SO_ERROR,(void*)&rc,&len) < 0){
-			return -1;
-		}
-		if(rc != 0){
-			errno = rc;
-			return -1;
-		}
-	}else
-		return -1;
-
-DONE:
-	fcntl(fd,F_SETFL,flags&(~O_NONBLOCK));
-	return 0;
+	return num_blocks;
 }
 
-/*
-** The next two functions send or receive a given number of
-** _OWP_RIJNDAEL_BLOCK_SIZE blocks via the Control connection socket,
-** taking care of encryption/decryption as necessary.
-*/
+int
+_OWPReceiveBlocksIntr(
+	OWPControl	cntrl,
+	u_int8_t	*buf,
+	int		num_blocks,
+	int		*retn_on_intr
+	)
+{
+	ssize_t		n;
+
+	n = I2Readni(cntrl->sockfd,buf,num_blocks*_OWP_RIJNDAEL_BLOCK_SIZE,
+								retn_on_intr);
+	if(n < 0){
+		if(!*retn_on_intr || (errno != EINTR)){
+			OWPError(cntrl->ctx,OWPErrFATAL,errno,"I2Readni(): %M");
+		}
+		return -1;
+	} 
+
+	/*
+	 * Short reads mean socket was closed.
+	 */
+	if(n != (num_blocks*_OWP_RIJNDAEL_BLOCK_SIZE))
+		return 0;
+
+	if (cntrl->mode & OWP_MODE_DOCIPHER)
+		_OWPDecryptBlocks(cntrl, buf, num_blocks, buf);
+
+	return num_blocks;
+}
 
 int
 _OWPSendBlocks(
@@ -112,42 +85,21 @@ _OWPSendBlocks(
 	int		num_blocks
 	)
 {
-	ssize_t		n;
+	int	intr=0;
 
-	if (cntrl->mode & _OWP_DO_CIPHER)
-		_OWPEncryptBlocks(cntrl, buf, num_blocks, buf);
-
-	n = I2Writen(cntrl->sockfd, buf, num_blocks*_OWP_RIJNDAEL_BLOCK_SIZE);
-	if (n < 0){
-		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"I2Writen failed:(%s)",strerror(errno));
-		return -1;
-	} 
-
-	return num_blocks;
+	return _OWPSendBlocksIntr(cntrl,buf,num_blocks,&intr);
 }
 
 int
-_OWPReceiveBlocks(OWPControl cntrl, u_int8_t *buf, int num_blocks)
+_OWPReceiveBlocks(
+	OWPControl	cntrl,
+	u_int8_t	*buf,
+	int		num_blocks
+	)
 {
-	ssize_t		n;
+	int	intr=0;
 
-	n = I2Readn(cntrl->sockfd,buf,num_blocks*_OWP_RIJNDAEL_BLOCK_SIZE);
-	if (n < 0){
-		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"I2Readn failed:(%s)",strerror(errno));
-		return -1;
-	} 
-	/*
-	 * Short reads mean socket was closed.
-	 */
-	if(n != (num_blocks*_OWP_RIJNDAEL_BLOCK_SIZE))
-		return 0;
-
-	if (cntrl->mode & _OWP_DO_CIPHER)
-		_OWPDecryptBlocks(cntrl, buf, num_blocks, buf);
-
-	return num_blocks;
+	return _OWPReceiveBlocksIntr(cntrl,buf,num_blocks,&intr);
 }
 
 /*
@@ -155,7 +107,6 @@ _OWPReceiveBlocks(OWPControl cntrl, u_int8_t *buf, int num_blocks)
 ** of (16-byte) blocks. IV is currently updated within
 ** the rijndael api (blockEncrypt/blockDecrypt).
 */
-
 int
 _OWPEncryptBlocks(
 	OWPControl	cntrl,

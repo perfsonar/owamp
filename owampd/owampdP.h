@@ -18,14 +18,12 @@
  *
  *	Description:	
  */
-#ifndef	_owampdp_h_
-#define	_owampdp_h_
+#ifndef	_OWAMPDP_H_
+#define	_OWAMPDP_H_
 
-/*
- * Default Constants
- */
-#define	OWD_MAXCONN	"100"
-#define	OWD_TMOUT	"30"
+#ifndef	OWAMPD_CONF_FILE
+#define	OWAMPD_CONF_FILE	"owampd.conf"
+#endif
 
 /*
  * Types
@@ -35,6 +33,7 @@ typedef struct {
 	I2Boolean	verbose;
 	I2Boolean	help;
 
+	char		cwd[MAXPATHLEN];
 	char		*confdir;
 	char		*vardir;
 	char		*ip2class;
@@ -50,14 +49,13 @@ typedef struct {
 	char		*user;
 	char		*group;
 
-	int		maxconnections;
-	int		tmout;
-	unsigned int	lossThreshold;
-
+	double		diskfudge;
+	u_int32_t	dieby;
+	u_int32_t	controltimeout;
 #ifndef	NDEBUG
 	I2Boolean	childwait;
 #endif
 	I2Boolean	daemon;
 } owampd_opts;
 
-#endif	/*	_owampdp_h_	*/
+#endif	/*	_OWAMPDP_H_	*/
