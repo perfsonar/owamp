@@ -264,12 +264,11 @@ sub plot_resolution {
 	    next;
 	}
 
-	my $lost_perc = sprintf "%.2f", ($lost/$sent)*100;
+	my $lost_perc = fmt(($lost/$sent)*100);
 
 	# Compute stats for a new data point.
-	my @stats = map {sprintf "%.2f", $_} 
-		(get_percentile(0.5, $sent, $pairs_ref), $min,
-		 get_percentile(0.9, $sent, $pairs_ref), $lost_perc);
+	my @stats = (fmt(get_percentile(0.5, $sent, $pairs_ref)), $min,
+		     fmt(get_percentile(0.9, $sent, $pairs_ref)), $lost_perc);
 
 	warn join "\n", "Stats for the file $datafile are:",
 		@stats, '' if DEBUG;
@@ -359,8 +358,7 @@ sub get_percentile {
 	my ($index, $count) = @{$pair};
 	$sum += $count;
 
-	# XXX - note - this presumes 0.01ms precision.
-	return sprintf "%.2f", index2pt($index)*THOUSAND
+	return fmt(index2pt($index)*THOUSAND)
 		if $sum >= $alpha*$sent;
     }
 
@@ -466,4 +464,8 @@ sub print_pairs {
     for my $pair (@pairs) {
 	print join " ", @{$pair}, "\n";
     }
+}
+
+sub fmt {
+    return sprintf "%.2f", $_[0];
 }
