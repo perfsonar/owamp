@@ -11,11 +11,6 @@
 #define DEFAULT_CLASS_TO_LIMITS_FILE 	"class2limits.conf" 
 #define DEFAULT_PASSWD_FILE 		"owamp_secrets.conf"
 
-#define OWP_CTRL_REQUEST_SESSION 1
-#define OWP_CTRL_START_SESSION 2
-#define OWP_CTRL_STOP_SESSION 3
-#define OWP_CTRL_RETRIEVE_SESSION 4
-
 int ip2class_flag = 0;
 int class2limits_flag = 0;
 int passwd_flag = 0;
@@ -35,10 +30,10 @@ usage(char *name)
 /*!
 ** This function runs an initial policy check on the remote host.
 ** Based only on the remote IP number, it determines if the client
-** is a member of BANNED_CLASS. Additional diagnostics can be
+** is a member of OWP_BANNED_CLASS. Additional diagnostics can be
 ** returned via err_ret.
 ** 
-** Return values: False if the client is a member of BANNED_CLASS,
+** Return values: False if the client is a member of OWP_BANNED_CLASS,
 **                True otherwise.
 */
 
@@ -73,7 +68,7 @@ owamp_first_check(void *app_data,            /* to be cast into (policy *) */
 		    ipaddr2class(ip_addr, ip2class_hash));
 
 	        if (strcmp(ipaddr2class(ip_addr, ip2class_hash), 
-			   BANNED_CLASS) == 0){ 
+			   OWP_BANNED_CLASS) == 0){ 
 		    *err_ret = OWPErrFATAL; /* prohibit access */
 		    return False;
 	    } else {
@@ -88,6 +83,27 @@ owamp_first_check(void *app_data,            /* to be cast into (policy *) */
 	}
 }
 
+/*
+** Temporary plug.
+*/
+
+char *
+OWPGetClass(void *id)
+{
+	return NULL;
+}
+
+int
+OWPGetMode(char *class)
+{
+	return 0;
+}
+
+/*
+** This function is called by OWPControlAccept. It identifies the usage
+** class of the client and, based on that, whether to grant or reject
+** establishment of the Control connection.
+*/
 OWPBoolean 
 check_control(
 	      void*          app_data,
@@ -98,6 +114,16 @@ check_control(
 	      OWPErrSeverity  *err_ret
 )
 {
+	char *class;
+
+	if (mode_req & (OWP_MODE_AUTHENTICATED|OWP_MODE_ENCRYPTED)){
+		if ((class = OWPGetClass((void *)kid)) == NULL)
+			class = OWP_AUTH_CLASS;
+	} else if (class = (OWPGetClass((void *)remote)) == NULL)
+		class = OWP_DEFAULT_OPEN_CLASS;
+	
+	if ((OWPGetMode(class) & mode_req) == 0)
+		return False;
 	return True;
 }
 
@@ -260,7 +286,7 @@ main(int argc, char *argv[])
 	ia.fp = stderr;
 
 	/*
-	* Start an error loggin session for reporing errors to the
+	* Start an error loggin session for reporting errors to the
 	* standard error
 	*/
 	eh = I2ErrOpen(progname, I2ErrLogImmediate, &ia, NULL, NULL);
@@ -315,7 +341,6 @@ main(int argc, char *argv[])
 	listenfd = tcp_listen(ctx, NULL, SERV_PORT_STR, &addrlen);
 
 	while (1) {
-		char buf[MAX_MSG];
 		OWPBoolean again = True;
 		socklen_t len = addrlen;
 
@@ -362,14 +387,25 @@ main(int argc, char *argv[])
 		
 		while (again == True) {
 			pid_t pidlet;
-			u_int8_t msg_type;
-			if ( OWPGetRequestType(cntrl, &msg_type) < 0){
-				/* clean_up(); */
-				exit(0);
-			}
+			char buf[MAX_MSG];
+			int msg_type;
+			/*
+			  if ( OWPGetRequestType(cntrl, &msg_type) < 0){
+			  clean_up(); 
+			  exit(0);
+			  }
+			*/
+
+			if ((msg_type = OWPServerReadRequest(cntrl, buf)) < 0)
+				continue;
 			
 			switch (msg_type) {
 			case OWP_CTRL_REQUEST_SESSION:
+				/* DEBUG only */
+				fprintf(stderr, 
+				    "DEBUG: client issued a session request");
+				continue;
+
 				/* XXX fill in!
 				if (ParseRest(cntrl) < 0){
 					rude_close();
@@ -419,12 +455,27 @@ main(int argc, char *argv[])
 				}
 			
 			case OWP_CTRL_START_SESSION:
+				/* DEBUG only */
+				fprintf(stderr, 
+				    "DEBUG: client issued a session start");
+				continue;
+
 				OWPServerProcessTestStart(cntrl, buf);
 				break;
 			case OWP_CTRL_STOP_SESSION:
+				/* DEBUG only */
+				fprintf(stderr, 
+				    "DEBUG: client issued a session stop");
+				continue;
+
 				OWPServerProcessTestStop(cntrl, buf);
 				break;
 			case OWP_CTRL_RETRIEVE_SESSION:
+				/* DEBUG only */
+				fprintf(stderr, 
+				    "DEBUG: client issued a session retrieve");
+				continue;
+
 				OWPServerProcessSessionRetrieve(cntrl, buf);
 				break;
 			default:
