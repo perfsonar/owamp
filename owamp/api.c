@@ -507,7 +507,8 @@ _OWPControlAlloc(
 	 * Init encryption fields
 	 */
 	memset(&cntrl->kid,0,sizeof(OWPKID));
-	memset(&cntrl->key,0,sizeof(&cntrl->key));
+	memset(&cntrl->encrypt_key,0,sizeof(cntrl->encrypt_key));
+	memset(&cntrl->decrypt_key,0,sizeof(cntrl->decrypt_key));
 	memset(cntrl->challenge,0,sizeof(cntrl->challenge));
 	memset(cntrl->session_key,0,sizeof(cntrl->session_key));
 	memset(cntrl->readIV,0,sizeof(cntrl->readIV));
@@ -577,8 +578,8 @@ OWPControlOpen(
 	int		fd;
 	OWPControl	cntrl;
 	u_int32_t	mode_avail;
-	OWPByte		key_value[16];
-	OWPByte		*key=NULL;
+	OWPByte         key_value[16];
+	OWPByte         *key=NULL;
 	struct sockaddr	*local=NULL, *remote;
 
 	*err_ret = OWPErrOK;
@@ -601,7 +602,7 @@ OWPControlOpen(
 	 */
 	if(kid &&
 		(mode_avail & (OWP_MODE_ENCRYPTED|OWP_MODE_AUTHENTICATED))){
-		if(!_OWPCallGetAESKey(ctx,kid,&key_value,err_ret)){
+		if(!_OWPCallGetAESKey(ctx, kid, key_value, err_ret)){
 			if(*err_ret != OWPErrOK)
 				goto error;
 		}
@@ -611,7 +612,7 @@ OWPControlOpen(
 	/*
 	 * If no key, then remove auth/crypt modes
 	 */
-	if(!key)
+	if(!key) 
 		mode_avail &= ~(OWP_MODE_ENCRYPTED|OWP_MODE_AUTHENTICATED);
 
 	/*
@@ -632,7 +633,7 @@ OWPControlOpen(
 	 * Now determine if client side is willing to actually talk control
 	 * given the kid/addr combinations.
 	 */
-	if(!_OWPCallCheckControlPolicy(ctx,cntrl->mode,kid,cntrl->key,
+	if(!_OWPCallCheckControlPolicy(ctx,cntrl->mode,kid,
 			&local_addr->saddr,&server_addr->saddr,err_ret)){
 		OWPError(ctx,OWPErrFATAL,OWPErrPOLICY,"Failed policy check");
 		goto error;
@@ -719,14 +720,6 @@ OWPControlAccept(
 )
 {
 	OWPControl cntrl;
-	char buf[MAX_MSG]; 
-
-	char *cur;
-	u_int32_t mode = 4; /* XXX - fix later */
-	int i, r, encrypt;
-	u_int32_t mode_requested;
-	u_int8_t challenge[16], token[32], read_iv[16], write_iv[16];
-	u_int8_t kid[8]; /* XXX - assuming Stas will extend KID to 8 bytes */
 
 	/* Remove what's not needed. */
 	/* 
@@ -784,4 +777,61 @@ OWPAddrCheck(
 		return False;
 
 	return (*ctx->cfg.check_addr_func)(app_data, local, remote, err_ret);
+}
+
+/*
+** This function sets up the key field of a OWPControl structure,
+** using the binary key located in <binKey>.
+*/
+
+_OWPMakeKey(OWPControl cntrl, OWPByte *binKey)
+{
+	cntrl->encrypt_key.Nr
+		= rijndaelKeySetupEnc(cntrl->encrypt_key.rk, binKey, 128);
+	cntrl->decrypt_key.Nr 
+		= rijndaelKeySetupDec(cntrl->decrypt_key.rk, binKey, 128);
+}
+
+
+/* 
+** The next two functions perform a single encryption/decryption
+** of Token in Control protocol, using a given (binary) key and the IV of 0.
+*/
+
+#define TOKEN_BITS_LEN (2*16*8)
+
+int
+OWPEncryptToken(char *binKey, char *token_in, char *token_out)
+{
+	int r;
+	char IV[16];
+	keyInstance key;
+
+	memset(IV, 0, 16);
+	
+	key.Nr = rijndaelKeySetupEnc(key.rk, binKey, 128);
+	r = blockEncrypt(IV, &key, token_in, TOKEN_BITS_LEN, token_out); 
+			 
+	if (r != TOKEN_BITS_LEN)
+		return -1;
+
+	return 0;
+}
+
+int
+OWPDecryptToken(char *binKey, char *token_in, char *token_out)
+{
+	int r;
+	char IV[16];
+	keyInstance key;
+
+	memset(IV, 0, 16);
+	
+	key.Nr = rijndaelKeySetupDec(key.rk, binKey, 128);
+	r = blockDecrypt(IV, &key, token_in, TOKEN_BITS_LEN, token_out); 
+			 
+	if (r != TOKEN_BITS_LEN)
+		return -1;
+
+	return 0;
 }
