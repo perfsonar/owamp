@@ -1119,9 +1119,6 @@ OWPProcessRetrieveSession(
 	if ((fd = open(path, O_RDONLY)) < 0) {
 		if (errno == EINTR )
 			goto try_incomplete_file;
-		if (errno != ENOENT)
-			OWPError(cntrl->ctx,OWPErrWARNING, errno, 
-               "WARNING: OWPProcessRetrieveSession: open(%s) failed: %M - trying complete path...", path);
 	}
 
 	/* If not found - look for the completed one. */
