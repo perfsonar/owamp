@@ -38,7 +38,9 @@
 # 	CONFDIR			=>	1,
 # 	CENTRALDATADIR		=
 
-bin_SCRIPTS = owampd.sh collector.pl make_top_html.pl makecron.pl pairs_pages_init.pl powmaster.pl testconf.pl buckets2stats.pl
+SUBDIRS = . OWP
+
+bin_SCRIPTS = owampd.sh collector.pl make_top_html.pl makecron.pl pairs_pages_init.pl powmaster.pl testconf.pl buckets2stats.pl OWP.pm
 
 owampd.sh: owampd.sh.in
 	@echo bindir = $(bindir)
