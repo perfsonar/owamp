@@ -83,7 +83,7 @@ S4. [Deliver the answer.] Set X <- mu*(j + V)*ln2.
 **
 ** as described in the Knuth algorithm.
 */
-static struct num128 Q[K] = {
+static struct OWPnum128 Q[K] = {
 	{{     0,      0,      0,      0, 0, 0, 0, 0}},  /* Placeholder. */
 	{{0x79AC, 0xD1CF, 0x17F7, 0xB172, 0, 0, 0, 0}},
 	{{0x96FD, 0xD75A, 0x93F6, 0xEEF1, 0, 0, 0, 0}},
@@ -108,13 +108,13 @@ static struct num128 Q[K] = {
 #define LN2 &Q[1] /* this element represents ln2 */
 
 /* 
-** Convert an unsigned 32-bit integer into a num128 struct..
+** Convert an unsigned 32-bit integer into a OWPnum128 struct..
 */
-static struct num128
-ulong2num(unsigned long a)
+static struct OWPnum128
+OWPulong2num(unsigned long a)
 {
 	int i;
-	struct num128 ret;
+	struct OWPnum128 ret;
 	
 	for (i = 0; i < NUM_DIGITS; i++)
 		ret.digits[i] = 0;
@@ -126,14 +126,14 @@ ulong2num(unsigned long a)
 }
 
 /*
-** Arithmetic functions on num128 structs.
+** Arithmetic functions on OWPnum128 structs.
 */
 
 /*
 ** Addition. The result is saved in the variable z.
 */
 static void 
-num128_add(num128 x, num128 y, num128 z)
+OWPnum128_add(OWPnum128 x, OWPnum128 y, OWPnum128 z)
 {
 	int i;
 	unsigned long carry = 0; 	 /* Can only be 0 or 1. */
@@ -152,7 +152,7 @@ num128_add(num128 x, num128 y, num128 z)
 ** Multiplication. The result is saved in the variable z.
 */
 static void
-num128_mul(num128 x, num128 y, num128 z)
+OWPnum128_mul(OWPnum128 x, OWPnum128 y, OWPnum128 z)
 {
 	int i, j;
 	unsigned long carry; /* Always < 2^32. */
@@ -185,7 +185,7 @@ num128_mul(num128 x, num128 y, num128 z)
 ** number depending as x is <, =, or > than y, respectively.
 */
 static int
-num_cmp(num128 x, num128 y)
+OWPnum128_cmp(OWPnum128 x, OWPnum128 y)
 {
 	int i = 3;
 	
@@ -210,7 +210,7 @@ num_cmp(num128 x, num128 y)
 ** B can never overflow.
 */
 void
-num2formatted(num128 from, OWPFormattedTime to)
+OWPnum2formatted(OWPnum128 from, OWPFormattedTime to)
 {
 	to->t[0] = ((unsigned long)(from->digits[5]) << 16) + from->digits[4];
 	to->t[1] = ((unsigned long)(from->digits[3]) << 8)
@@ -226,7 +226,7 @@ num2formatted(num128 from, OWPFormattedTime to)
 ** with remainder by 2^16.
 */
 void
-formatted2num(OWPFormattedTime from, num128 to)
+OWPformatted2num(OWPFormattedTime from, OWPnum128 to)
 {
 	to->digits[7] = to->digits[6] = 0;
 	to->digits[5] = (unsigned short)(MASK32(from->t[0]) >> 16);
@@ -249,18 +249,18 @@ formatted2num(OWPFormattedTime from, num128 to)
 ** Integer part: A = c*(2^16) + d. 
 */
 void
-num2timeval(num128 from, struct timeval *to)
+OWPnum2timeval(OWPnum128 from, struct timeval *to)
 {
-	struct num128 res;
-	static struct num128 million = {{0, 0, 0, 0, 16960, 15, 0, 0}}; 
+	struct OWPnum128 res;
+	static struct OWPnum128 million = {{0, 0, 0, 0, 16960, 15, 0, 0}}; 
 
 	/* first convert the fractional part */
-	struct num128 tmp = {{0, 0, 0, 0, 0, 0, 0, 0}};
+	struct OWPnum128 tmp = {{0, 0, 0, 0, 0, 0, 0, 0}};
 	tmp.digits[2] = from->digits[2];
 	tmp.digits[3] = from->digits[3];
 
 	/* See discussion: it may take two digits of res to express tv_usec. */
-	num128_mul(&tmp, &million, &res);
+	OWPnum128_mul(&tmp, &million, &res);
 	to->tv_usec = ((unsigned long)(res.digits[5]) << 16) +
 		(unsigned long)(res.digits[4]); 
 
@@ -283,24 +283,24 @@ num2timeval(num128 from, struct timeval *to)
 ** 0 <= a,b,c,d <= 2^16 - 1, is the expansion of C in base 2^16.
 ** Similarly, (10^6) = e*(2^16) + f, where e = 15 and f = 16960.
 ** An integer-arithmetic division of "abcd0000" by "ef" is performed,
-** and the 7-digit result, when interpreted as a num128 struct
+** and the 7-digit result, when interpreted as a OWPnum128 struct
 ** is the sought answer. The task is, moreover, simplified by
 ** being implemented as *single*-digit division in the base 2^32.
 */ 
 void
-timeval2num(struct timeval *from, num128 to)
+OWPtimeval2num(struct timeval *from, OWPnum128 to)
 {
 	unsigned long carry = 0;
-	static struct num128 million = {{0, 0, 0, 0, 16960, 15, 0, 0}}; 
+	static struct OWPnum128 million = {{0, 0, 0, 0, 16960, 15, 0, 0}}; 
 
 	int i;
-	struct num128 C, tmp; 
+	struct OWPnum128 C, tmp; 
 
-	struct num128 sec = ulong2num(from->tv_sec);
-	struct num128 usec = ulong2num(from->tv_usec);
+	struct OWPnum128 sec = OWPulong2num(from->tv_sec);
+	struct OWPnum128 usec = OWPulong2num(from->tv_usec);
 
-	num128_mul(&sec, &million, &tmp);
-	num128_add(&tmp, &usec, &C);
+	OWPnum128_mul(&sec, &million, &tmp);
+	OWPnum128_add(&tmp, &usec, &C);
 
 	/* First divide by 2^6 using shifts. */
 	C.digits[7] = 0; 
@@ -320,11 +320,11 @@ timeval2num(struct timeval *from, num128 to)
 ** This function converts a 64-bit binary string (network byte order)
 ** into num struct (fractional part only). The integer part iz zero.
 */
-static struct num128
-raw2num(const unsigned char *raw)
+static struct OWPnum128
+OWPraw2num(const unsigned char *raw)
 {
 	int i;
-	struct num128 x = {{0, 0, 0, 0, 0, 0, 0, 0}};
+	struct OWPnum128 x = {{0, 0, 0, 0, 0, 0, 0, 0}};
 
 	for (i = 0; i < 4; i++)
 		x.digits[3-i] = (((unsigned short)(*(raw + 2*i))) << 8) 
@@ -340,14 +340,14 @@ raw2num(const unsigned char *raw)
 ** Generate a 64-bit uniform random string and save it in the lower
 ** part of the struct.
 */
-static struct num128
-unif_rand(rand_context *next)
+static struct OWPnum128
+OWPunif_rand(OWPrand_context *next)
 {
 	int j;
 
 	next->reuse = 1 - next->reuse;
 	if (next->reuse)
-		return raw2num(next->out + 8);
+		return OWPraw2num(next->out + 8);
 
 	rijndaelEncrypt(next->key.rk, next->key.Nr, next->counter, next->out);
 	
@@ -357,17 +357,17 @@ unif_rand(rand_context *next)
 		if (++next->counter[j])
 			break;
 	
-	return raw2num(next->out);
+	return OWPraw2num(next->out);
 }
 
 /*
 ** Seed the random number generator using a 16-byte string.
 */
-rand_context*
-rand_context_init(BYTE *sid)
+OWPrand_context*
+OWPrand_context_init(BYTE *sid)
 {
 	int i;
-	rand_context *next;
+	OWPrand_context *next;
 
 	next = malloc(sizeof(*next));
 	if (!next)
@@ -384,7 +384,7 @@ rand_context_init(BYTE *sid)
 }
 
 void
-rand_context_free(rand_context *next)
+OWPrand_context_free(OWPrand_context *next)
 {
 	assert(next);
 	free(next);
@@ -395,56 +395,56 @@ rand_context_free(rand_context *next)
 ** This is algorithm 3.4.1.S from Knuth's v.2 of "Art of Computer Programming" 
 ** (1998), p.133.
 */
-struct num128 
-exp_rand(rand_context *next)
+struct OWPnum128 
+OWPexp_rand(OWPrand_context *next)
 {
 	unsigned long i, k;
 	unsigned long j = 0;
-	struct num128 U, V, J, two, tmp, ret; 
+	struct OWPnum128 U, V, J, two, tmp, ret; 
 	unsigned short mask = 0x8000; /* test if first bit == zero */
 
-	two = ulong2num(2UL);
+	two = OWPulong2num(2UL);
 
 	/* Get U and shift */
-	U = unif_rand(next);
+	U = OWPunif_rand(next);
 	
 	while (U.digits[3] & mask && j < 64){ /* shift until find first '0' */
-		num128_mul(&U, &two, &V);
+		OWPnum128_mul(&U, &two, &V);
 		U = V;
 		j++;
 	}
 
 	/* remove the '0' itself */
-	num128_mul(&U, &two, &V);
+	OWPnum128_mul(&U, &two, &V);
 	U = V;
 	for (i = 4; i < 8; i++) 
 		U.digits[i] = 0; /* Keep only the fractional part. */
 
-	J = ulong2num(j);
+	J = OWPulong2num(j);
 
 	/* Immediate acceptance? */
-	if (num_cmp(&U, LN2) < 0){ 	   /* return  (j*ln2 + U) */ 
-		num128_mul(&J, LN2, &tmp);   
-		num128_add(&tmp, &U, &ret);
+	if (OWPnum128_cmp(&U, LN2) < 0){ 	   /* return  (j*ln2 + U) */ 
+		OWPnum128_mul(&J, LN2, &tmp);   
+		OWPnum128_add(&tmp, &U, &ret);
 		return ret;
 	}
 
 	/* Minimize */
 	for (k = 2; k < K; k++)
-		if (num_cmp(&U, &Q[k]) < 0)
+		if (OWPnum128_cmp(&U, &Q[k]) < 0)
 			break;
 
 	assert(k < K);
-	V = unif_rand(next);
+	V = OWPunif_rand(next);
 	for (i = 2; i <= k; i++){
-		tmp = unif_rand(next);
-		if (num_cmp(&tmp, &V) < 0)
+		tmp = OWPunif_rand(next);
+		if (OWPnum128_cmp(&tmp, &V) < 0)
 			V = tmp;
 	}
 
 	/* Return (j+V)*ln2 */
-	num128_add(&J, &V, &tmp);
-	num128_mul(&tmp, LN2, &ret);
+	OWPnum128_add(&J, &V, &tmp);
+	OWPnum128_mul(&tmp, LN2, &ret);
 	return ret;
 }
 
@@ -453,10 +453,10 @@ exp_rand(rand_context *next)
 */
 
 /*
-** Print out a num128 struct. More significant digits are printed first.
+** Print out a OWPnum128 struct. More significant digits are printed first.
 */
 void
-num_print(num128 x)
+OWPnum_print(OWPnum128 x)
 {
 	int i;
 	assert(x);

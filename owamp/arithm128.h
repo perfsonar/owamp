@@ -20,8 +20,8 @@
  *                      arithmetic (64 bits before and after the decimal point)
  */
 
-#ifndef ARITHM128_INCLUDED
-#define ARITHM128_INCLUDED
+#ifndef OWP_ARITHM128_INCLUDED
+#define OWP_ARITHM128_INCLUDED
 
 #include <sys/time.h>
 #include "rijndael-api-fst.h"
@@ -29,19 +29,19 @@
 
 #define NUM_DIGITS 8
 
-typedef struct num128 {
+typedef struct OWPnum128 {
 	unsigned short digits[NUM_DIGITS];
-} *num128;
+} *OWPnum128;
 
 /*
 ** Context for seeding AES-based random-number generator.
 */
-typedef struct rand_context {
+typedef struct OWPrand_context {
 	unsigned char counter[16]; /* 128-bit counter (network byte ordered) */
 	keyInstance key;           /* key used to encrypt the counter.       */
 	BYTE out[16];              /* the encrypted block is kept there.     */
 	unsigned char reuse;       /* use the upper 64 bits of out if set    */
-} rand_context;
+} OWPrand_context;
 
 /* 
 ** This structure represents 32.24 style time format (32-bit number of seconds,
@@ -56,15 +56,15 @@ typedef struct {
 } *OWPFormattedTime;
 
 /* Conversion operations */
-void num2formatted(num128 from, OWPFormattedTime to);
-void formatted2num(OWPFormattedTime from, num128 to);
-void num2timeval(num128 from, struct timeval *to);
-void timeval2num(struct timeval *from, num128 to);
+void OWPnum2formatted(OWPnum128 from, OWPFormattedTime to);
+void OWPformatted2num(OWPFormattedTime from, OWPnum128 to);
+void OWPnum2timeval(OWPnum128 from, struct timeval *to);
+void OWPtimeval2num(struct timeval *from, OWPnum128 to);
 
 /* Random number generating functions */
-rand_context *rand_context_init(BYTE *sid);  /* Initialize the generator.   */
-struct num128 exp_rand(rand_context *next);  /* Generate an exponential 
-						(mean 1) deviate */
+OWPrand_context *OWPrand_context_init(BYTE *sid);  /* Initialize generator. */
+struct OWPnum128 OWPexp_rand(OWPrand_context *next);  /* Generate exponential 
+						      (mean 1) deviate */
 /* Debugging and auxilliary functions */
-void num_print(num128 x);
+void OWPnum_print(OWPnum128 x);
 #endif
