@@ -461,6 +461,9 @@ _OWPReadControlAck(
 	OWPAcceptType	*acceptval
 );
 
+extern int
+_OWPReadDataHeader(OWPControl cntrl, u_int32_t *num_rec);
+
 /*
  * TODO:Send session data functions...
  */
