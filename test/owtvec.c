@@ -42,7 +42,7 @@ main(
 			"0102030405060708090a0b0c0d0e0f00",
 			"deadbeefdeadbeefdeadbeefdeadbeef",
 			"feed0feed1feed2feed3feed4feed5ab"};
-	int			nice[] = {1,10,100,1000,100000,1000000};
+	unsigned int		nice[] = {1,10,100,1000,100000,1000000};
 	unsigned int		i,j,n;
 	OWPExpContext		exp;
 	OWPNum64		eval;
