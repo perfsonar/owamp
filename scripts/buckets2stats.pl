@@ -308,8 +308,6 @@ sub plot_resolution {
 		@{get_buck_ref($dat_fh, $datafile)};
 	undef $dat_fh;
 
-	print "DEBUG: file $datafile, prec = $prec\n" if DEBUG;
-
 	$worst_prec = $prec if $prec < $worst_prec;
 
 	print "DEBUG: loop: worst_prec = $worst_prec\n" if DEBUG;
@@ -336,8 +334,6 @@ sub plot_resolution {
 		     ($perc_ninety eq 'inf')? $min : fmt($perc_ninety),
 		     $lost_perc);
 
-	warn join "\n", "Stats for the file $datafile are:",
-		@stats, '' if DEBUG;
 	my $date = "$year/$mon/$day/$hour/$minute/$second";
 	print GNUDAT join " ", $date, @stats, "\n";
 	$got_data = 1;
@@ -546,7 +542,7 @@ sub get_buck_ref {
     die "Currently only work with version 1: $fname" unless ($version == 1);
     die "Cannot read header"
 	    if (read($fh, $buf, $remain_bytes) != $remain_bytes);
-    ($prec, $sent, $lost, $dup, $min) = unpack "CLLLL", $buf;
+    ($prec, $sent, $lost, $dup, $min) = unpack "CLLLl", $buf;
     $min /= THOUSAND; # convert from usec to ms
     if (VERBOSE) {
 	printlist("magic = $magic", "version = $version",

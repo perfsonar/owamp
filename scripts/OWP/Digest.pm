@@ -75,7 +75,7 @@ sub merge {
 	die "Currently only work with version 1: $file" unless ($version == 1);
 	die "Cannot read header"
 		if (read(FH, $buf, $remain_bytes) != $remain_bytes);
-	($prec, $sent, $lost, $dup, $min) = unpack "CLLLL", $buf;
+	($prec, $sent, $lost, $dup, $min) = unpack "CLLLl", $buf;
 
 	if ($prec < $worst_prec) {
 	    $worst_prec = $prec;
