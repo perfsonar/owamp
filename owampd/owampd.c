@@ -349,8 +349,6 @@ main(int argc, char *argv[])
 
 	ctx = OWPContextInitialize(&cfg);
 	
-	
-
 	/* 
 	   XXX - can't think of a better place to put it, but it doesn't
 	   belong here. 
