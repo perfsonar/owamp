@@ -71,7 +71,7 @@ foreach (keys %optnames){
 push @SAVEARGV, '-f' if(!defined($setopts{'f'}));
 
 $defaults{"NODE"} =~ tr/a-z/A-Z/
-	if(defined($defaults{"NODE"));
+	if defined($defaults{"NODE"});
 
 my $conf = new OWP::Conf(%defaults);
 
