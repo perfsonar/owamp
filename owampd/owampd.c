@@ -392,12 +392,17 @@ ACCEPT:
 		switch(errno){
 			case EINTR:
 				/*
-				 * Go ahead and reap since it could make
-				 * more free connections.
+				 * Exit signal received, no reason to do more.
 				 */
 				if(owpd_exit){
 					return;
 				}
+
+				/*
+				 * Go ahead and reap before re-entering
+				 * accept since it could make more free
+				 * connections.
+				 */
 				ReapChildren(maxfd,readfds);
 				goto ACCEPT;
 				break;
@@ -450,201 +455,201 @@ ACCEPT:
 		FD_SET(chld->fd, readfds);
 		if((*maxfd > -1) && (chld->fd > *maxfd))
 			*maxfd = chld->fd;
+
+		return;
 	}
-	/* Child */
-	else{
-		struct itimerval	itval;
-		OWPRequestType		msgtype=OWPReqInvalid;
+
+	/* Rest of function is child */
+	struct itimerval	itval;
+	OWPRequestType		msgtype=OWPReqInvalid;
 
 #ifndef	NDEBUG
-		int		childwait;
+	int		childwait;
 
-		childwait = opts.childwait;
-		/* busy loop to wait for debug-attach */
-		while(childwait);
-		/*
-		 * set OWPChildWait if you want to attach
-		 * to them... (by resetting childwait back to non-zero)
-		 */
-		if(childwait && !OWPContextConfigSet(policy->ctx,OWPChildWait,
+	childwait = opts.childwait;
+	/* busy loop to wait for debug-attach */
+	while(childwait);
+	/*
+	 * set OWPChildWait if you want to attach
+	 * to them... (by resetting childwait back to non-zero)
+	 */
+	if(childwait && !OWPContextConfigSet(policy->ctx,OWPChildWait,
 							(void*)childwait)){
-			OWPError(policy->ctx,OWPErrWARNING,OWPErrUNKNOWN,
-			"OWPContextConfigSet(): Unable to set OWPChildWait?!");
-		}
+		OWPError(policy->ctx,OWPErrWARNING,OWPErrUNKNOWN,
+		"OWPContextConfigSet(): Unable to set OWPChildWait?!");
+	}
 #endif
-		/*
-		 * TODO: Close all open file descriptors not needed by this
-		 * child?
-		 */
+	/*
+	 * TODO: Close all open file descriptors not needed by this
+	 * child?
+	 */
 
-		/*
-		 * check/set signal vars.
-		 */
-		if(owpd_exit){
-			exit(0);
-		}
-		owpd_intr = 0;
+	/*
+	 * check/set signal vars.
+	 */
+	if(owpd_exit){
+		exit(0);
+	}
+	owpd_intr = 0;
 
-		/*
-		 * Initialize itimer struct. The it_value.tv_sec will be
-		 * set to interrupt socket i/o if the message is not received
-		 * within the timeout as described by owdp draft section 4
-		 * (OWAMP-Control).
-		 */
-		memset(&itval,0,sizeof(itval));
+	/*
+	 * Initialize itimer struct. The it_value.tv_sec will be
+	 * set to interrupt socket i/o if the message is not received
+	 * within the timeout as described by owdp draft section 4
+	 * (OWAMP-Control).
+	 */
+	memset(&itval,0,sizeof(itval));
 
-		/*
-		 * save the pipe fd in the policy record for the hooks to
-		 * pick it up.
-		 */
-		policy->fd = new_pipe[1];
+	/*
+	 * save the pipe fd in the policy record for the hooks to
+	 * pick it up.
+	 */
+	policy->fd = new_pipe[1];
 
-		/*
-		 * If the daemon is configured to do open_mode, check if
-		 * there is an open_mode limit defined for the given
-		 * address.
-		 */
-		if((mode & OWP_MODE_OPEN) &&
-				!OWPDAllowOpenMode(policy,
+	/*
+	 * If the daemon is configured to do open_mode, check if
+	 * there is an open_mode limit defined for the given
+	 * address.
+	 */
+	if((mode & OWP_MODE_OPEN) && !OWPDAllowOpenMode(policy,
 					(struct sockaddr *)&sbuff,&out)){
-			if(out != OWPErrOK){
-				exit(out);
-			}
-			mode &= ~OWP_MODE_OPEN;
+		if(out != OWPErrOK){
+			exit(out);
 		}
+		mode &= ~OWP_MODE_OPEN;
+	}
 
-		owpd_intr = 0;
+	owpd_intr = 0;
+	itval.it_value.tv_sec = opts.controltimeout;
+	if(setitimer(ITIMER_REAL,&itval,NULL) != 0){
+		I2ErrLog(errhand,"setitimer(): %M");
+		exit(OWPErrFATAL);
+	}
+	cntrl = OWPControlAccept(policy->ctx,connfd,
+				(struct sockaddr *)&sbuff,sbufflen,
+				mode,uptime,&owpd_intr,&out);
+	/*
+	 * session not accepted.
+	 */
+	if(!cntrl){
+		exit(out);	
+	}
+
+	/*
+	 * Process all requests - return when complete.
+	 */
+	while(1){
+		OWPErrSeverity	rc;
+
+		rc = OWPErrOK;
+		/*
+		 * reset signal vars
+		 */
+		owpd_intr = owpd_alrm = owpd_chld = 0;
 		itval.it_value.tv_sec = opts.controltimeout;
 		if(setitimer(ITIMER_REAL,&itval,NULL) != 0){
 			I2ErrLog(errhand,"setitimer(): %M");
-			exit(OWPErrFATAL);
-		}
-		cntrl = OWPControlAccept(policy->ctx,connfd,
-					(struct sockaddr *)&sbuff,sbufflen,
-					mode,uptime,&owpd_intr,&out);
-		/*
-		 * session not accepted.
-		 */
-		if(!cntrl){
-			exit(out);	
+			goto done;
 		}
 
-		/*
-		 * Process all requests - return when complete.
-		 */
-		while(1){
-			OWPErrSeverity	rc;
+		msgtype = OWPReadRequestType(cntrl,&owpd_intr);
 
-			rc = OWPErrOK;
+		switch (msgtype){
+
+		case OWPReqTest:
+			rc = OWPProcessTestRequest(cntrl,&owpd_intr);
+			break;
+
+		case OWPReqStartSessions:
+			rc = OWPProcessStartSessions(cntrl,&owpd_intr);
+			if(rc < OWPErrOK){
+				break;
+			}
 			/*
-			 * reset signal vars
+			 * Test session started - unset timer - wait
+			 * until all sessions are complete, then
+			 * reset the timer and wait for stopsessions
+			 * to complete.
 			 */
-			owpd_intr = owpd_alrm = owpd_chld = 0;
+			owpd_intr = 0;
+			itval.it_value.tv_sec = 0;
+			if(setitimer(ITIMER_REAL,&itval,NULL) != 0){
+				I2ErrLog(errhand,"setitimer(): %M");
+				goto done;
+			}
+			while(OWPSessionsActive(cntrl,NULL)){
+				int	wstate;
+
+				rc = OWPErrOK;
+				owpd_intr = 0;
+				wstate = OWPStopSessionsWait(cntrl,NULL,
+							  &owpd_intr,NULL,&rc);
+				if(owpd_exit || (wstate < 0)){
+					goto done;
+				}
+				if(wstate == 0){
+					goto nextreq;
+				}
+			}
+			/*
+			 * Sessions are complete, but StopSessions
+			 * message has not been exchanged - set the
+			 * timer and trade StopSessions messages
+			 */
+			owpd_intr = 0;
 			itval.it_value.tv_sec = opts.controltimeout;
 			if(setitimer(ITIMER_REAL,&itval,NULL) != 0){
 				I2ErrLog(errhand,"setitimer(): %M");
 				goto done;
 			}
+			rc = OWPStopSessions(cntrl,&owpd_intr,NULL);
 
-			msgtype = OWPReadRequestType(cntrl,&owpd_intr);
+			break;
 
-			switch (msgtype){
+		case OWPReqFetchSession:
+			/*
+			 * TODO: Should the timeout be suspended
+			 * for fetchsession?
+			 * (If session files take longer than
+			 * the timeout - this will fail... The
+			 * default is 30 min. Leave for now.
+			 * (The fix would be to leave the timeout in
+			 * place for completing the fetchsession
+			 * read, and then process the write
+			 * of the session separately.)
+			 */
+			rc = OWPProcessFetchSession(cntrl,&owpd_intr);
+			break;
 
-			case OWPReqTest:
-				rc = OWPProcessTestRequest(cntrl,&owpd_intr);
-				break;
-
-			case OWPReqStartSessions:
-				rc = OWPProcessStartSessions(cntrl,&owpd_intr);
-				if(rc < OWPErrOK){
-					break;
-				}
-				/*
-				 * Test session started - unset timer - wait
-				 * until all sessions are complete, then
-				 * reset the timer and wait for stopsessions
-				 * to complete.
-				 */
-				owpd_intr = 0;
-				itval.it_value.tv_sec = 0;
-				if(setitimer(ITIMER_REAL,&itval,NULL) != 0){
-					I2ErrLog(errhand,"setitimer(): %M");
-					goto done;
-				}
-				while(OWPSessionsActive(cntrl,NULL)){
-					int	wstate;
-
-					rc = OWPErrOK;
-					owpd_intr = 0;
-					wstate = OWPStopSessionsWait(cntrl,NULL,
-							  &owpd_intr,NULL,&rc);
-					if(owpd_exit || (wstate < 0)){
-						goto done;
-					}
-					if(wstate == 0){
-						goto nextreq;
-					}
-				}
-				/*
-				 * Sessions are complete, but StopSessions
-				 * message has not been exchanged - set the
-				 * timer and trade StopSessions messages
-				 */
-				owpd_intr = 0;
-				itval.it_value.tv_sec = opts.controltimeout;
-				if(setitimer(ITIMER_REAL,&itval,NULL) != 0){
-					I2ErrLog(errhand,"setitimer(): %M");
-					goto done;
-				}
-				rc = OWPStopSessions(cntrl,&owpd_intr,NULL);
-
-				break;
-
-			case 4:
-				/*
-				 * TODO: Should the timeout be suspended
-				 * for fetchsession?
-				 * (If session files take longer than
-				 * the timeout - this will fail... The
-				 * default is 30 min. Leave for now.
-				 * (The fix would be to leave the timeout in
-				 * place for completing the fetchsession
-				 * read, and then process the write
-				 * of the session separately.)
-				 */
-				rc = OWPProcessFetchSession(cntrl,&owpd_intr);
-				break;
-
-			case OWPReqSockClose:
-			default:
-				rc = OWPErrFATAL;
-				break;
-			}
-nextreq:
-			if(rc < OWPErrWARNING){
-				break;
-			}
-
+		case OWPReqSockClose:
+		default:
+			rc = OWPErrFATAL;
+			break;
 		}
+nextreq:
+		if(rc < OWPErrWARNING){
+			break;
+		}
+
+	}
 
 done:
-		OWPControlClose(cntrl);
+	OWPControlClose(cntrl);
 
-		if(owpd_exit){
-			exit(0);
-		}
-
-		/*
-		 * Normal socket close
-		 */
-		if(msgtype == OWPReqSockClose){
-			exit(0);
-		}
-
-		I2ErrLog(errhand,"Control session terminated abnormally...");
-
-		exit(1);
+	if(owpd_exit){
+		exit(0);
 	}
+
+	/*
+	 * Normal socket close
+	 */
+	if(msgtype == OWPReqSockClose){
+		exit(0);
+	}
+
+	I2ErrLog(errhand,"Control session terminated abnormally...");
+
+	exit(1);
 }
 
 /*

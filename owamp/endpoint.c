@@ -235,8 +235,15 @@ InitNTP(
 
 	ntp_conf.modes = 0;
 
-	if(ntp_adjtime(&ntp_conf) < 0)
+	if(ntp_adjtime(&ntp_conf) < 0){
+		BWLError(ctx,BWLErrFATAL,BWLErrUNKNOWN,"ntp_adjtime(): %M");
 		return 1;
+	}
+
+	if(ntp_conf.status & STA_UNSYNC){
+		BWLError(ctx,BWLErrFATAL,BWLErrUNKNOWN,"NTP: Status UNSYNC!");
+	}
+
 #ifdef	STA_NANO
 	if( !(ntp_conf.status & STA_NANO)){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
@@ -316,8 +323,8 @@ GetTimespec(
 	/*
 	 * Set estimated error
 	 */
-	*esterr = (u_int32_t)ntp_conf.esterror;
-	assert((long)*esterr == ntp_conf.esterror);
+	*esterr = (u_int32_t)ntp_conf.maxerror;
+	assert((long)*esterr == ntp_conf.maxerror);
 
 	/*
 	 * Error estimate should never be 0, but I've seen ntp do it!
