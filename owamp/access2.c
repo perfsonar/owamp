@@ -351,6 +351,25 @@ owp_kid2class(char *kid, int len, policy_data* policy)
 	return val? val->dptr : NULL;
 }
 
+
+/*
+** Look up the 32-byte hex-encoded password for a given KID.
+** <len> typically should be strlen(kid) + 1.
+*/
+char *
+owp_kid2passwd(const char *kid, int len, policy_data* policy)
+{
+	I2table hash;
+	I2datum *key, *val;
+	
+	assert(kid); assert(policy);
+	hash = policy->passwd;
+	key = owp_raw2datum(kid, len);
+	val = I2hash_fetch(hash, key);
+
+	return val? ((owp_kid_data *)(val->dptr))->passwd : NULL;
+}
+
 /*
 ** Given IPv4 or IPv6 address (the offset field is ignored)
 ** return the tightest class containing it (i.e. the class
