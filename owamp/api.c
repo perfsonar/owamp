@@ -22,8 +22,6 @@
 #include <rijndael-api-fst.h>
 #include "../contrib/table.h"
 
-void random_bytes(char *ptr, int count);
-
 static OWPInitializeConfigRec	def_cfg = {
 	/* tm_out.tv_sec		*/	0,
 	/* tm_out.tv_usec		*/	0,
@@ -885,12 +883,3 @@ OWPAddrCheck(
 	return (*ctx->cfg.check_addr_func)(app_data, local, remote, err_ret);
 }
 
-
-void
-random_bytes(char *ptr, int count)
-{
-	int i;
-	long scale = (RAND_MAX / 1<<8);
-	for (i = 0; i < count; i++)
-		*(u_int8_t *)(ptr+i) = random()/scale; 
-}
