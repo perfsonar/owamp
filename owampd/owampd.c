@@ -2,21 +2,15 @@
 
 #include <owamp.h>
 #include <access.h>
-#include "rijndael-api-fst.h"
 
 #define LISTENQ 5
 #define SERV_PORT_STR "5555"
-
-#define MAX_MSG 60 /* XXX - currently 56 but KID to be extended by 4 bytes */
 
 #define DEFAULT_CONFIG_DIR              "/home/karp/projects/owamp/contrib"
 #define DEFAULT_CONFIG_FILE 	 	"policy.conf"
 #define DEFAULT_IP_TO_CLASS_FILE 	"ip2class.conf"
 #define DEFAULT_CLASS_TO_LIMITS_FILE 	"class2limits.conf" 
 #define DEFAULT_PASSWD_FILE 		"owamp_secrets.conf"
-
-#define CTRL_ACCEPT 0
-#define CTRL_REJECT 1
 
 const char *DefaultConfigFile = DEFAULT_CONFIG_FILE;
 char *ConfigFile = NULL;
@@ -27,11 +21,6 @@ char *ClassToLimitsFile = NULL;
 const char *DefaultPasswdFile = DEFAULT_PASSWD_FILE;
 char *PasswdFile = NULL;
 u_int32_t DefaultMode = OWP_MODE_OPEN;
-
-jmp_buf jmpbuffer;
-
-/* XXX - try to get rid of these later */
-hash_ptr ip2class_hash, class2limits_hash, passwd_hash; 
 
 /* Global variable - the total number of allowed Control connections. */
 #define DEFAULT_NUM_CONN 100
@@ -56,8 +45,8 @@ usage(char *name)
 ** is a member of BANNED_CLASS. Additional diagnostics can be
 ** returned via err_ret.
 ** 
-** Return values: 0 if the client is a member of BANNED_CLASS,
-**                1 otherwise.
+** Return values: False if the client is a member of BANNED_CLASS,
+**                True otherwise.
 */
 
 OWPBoolean
@@ -79,15 +68,15 @@ owamp_first_check(void *app_data,
 	        if (strcmp(ipaddr2class(ip_addr, ip2class_hash), 
 			   BANNED_CLASS) == 0){ 
 		    *err_ret = OWPErrFATAL; /* prohibit access */
-		    return 0;
+		    return False;
 	    } else {
 		    *err_ret = OWPErrOK;    /* allow access */
-		    return 1;
+		    return True;
 	    };
 	    break;
 	    
 	default:
-		return 0;
+		return False;
 		break;
 	}
 }
@@ -205,95 +194,6 @@ OWPServerOK(OWPControl ctrl, int sock, u_int8_t code, char* buf)
 	send_data(sock, buf, 32, 0);
 }
 
-/*
-** This function actually talks Control Protocol via the socket connfd.
-*/
-void
-doit(OWPControl ctrl, int connfd)
-{
-	char buf[MAX_MSG];
-	char *cur;
-	u_int32_t mode;
-	int i, r, encrypt;
-	u_int32_t mode_requested;
-	u_int8_t challenge[16], token[32], read_iv[16], write_iv[16];
-	u_int8_t kid[8]; /* XXX - assuming Stas will extend KID to 8 bytes */
-
-
-	/* Remove what's not needed. */
-	keyInstance keyInst;
-	cipherInstance cipherInst;
-
-	datum *key;
-
-	/* first generate server greeting */
-	bzero(buf, sizeof(buf));
-	mode = htonl(get_mode());
-	*(int32_t *)(buf + 12) = mode; /* first 12 bytes unused */
-
-	/* generate 16 random bytes and save them away. */
-	random_bytes(challenge, 16);
-	bcopy(challenge, buf + 16, 16); /* the last 16 bytes */
-
-	/* Send server greeting. */
-	encrypt = 0;
-	if (send_data(connfd, buf, 32, encrypt) < 0){
-		fprintf(stderr, "Warning: send_data failed.\n");
-		close(connfd);
-		exit(1);
-	}
-
-	/* Read client greeting. */
-	if (readn(connfd, buf, 60) != 60){
-		fprintf(stderr, "Warning: client greeting too short.\n");
-		exit(1);
-	}
-
-	mode_requested = htonl(*(u_int32_t *)buf);
-	if (mode_requested & ~mode){ /* can't provide requested mode */
-		OWPServerOK(ctrl, connfd, CTRL_REJECT, buf);
-		close(connfd);
-		exit(0);
-	}
-	if (mode_requested & OWP_MODE_AUTHENTICATED){
-
-		/* Save 8 bytes of kid */
-		bcopy(buf + 4, kid, 8);
-
-		/* Fetch the shared secret and initialize the cipher. */
-		key = hash_fetch(passwd_hash, 
-				 (const datum *)str2datum((const char *)kid));
-		r = makeKey(&keyInst, DIR_DECRYPT, 128, key->dptr);
-		if (TRUE != r) {
-			fprintf(stderr,"makeKey error %d\n",r);
-			exit(-1);
-		}
-		r = cipherInit(&cipherInst, MODE_CBC, NULL);
-		if (TRUE != r) {
-			fprintf(stderr,"cipherInit error %d\n",r);
-			exit(-1);
-		}
-
-		/* Decrypt two 16-byte blocks - save the result into token.*/
-		blockDecrypt(&cipherInst, &keyInst, buf + 12, 2*(16*8), token);
-
-		/* Decrypted challenge is in the first 16 bytes */
-		if (bcmp(challenge, token, 16)){
-			OWPServerOK(ctrl, connfd, CTRL_REJECT, buf);
-			close(connfd);
-			exit(0);
-		}
-
-		/* Save 16 bytes of session key and 16 bytes of client IV*/
-		/* OWPSetSessionKey(ctrl, token + 16); */
-		bcopy(buf + 44, read_iv, 16);
-
-		/* Apparently everything is ok. Accept the Control session. */
-		OWPServerOK(ctrl, connfd, CTRL_ACCEPT, buf);
-
-	}
-}
-
 /* 
 ** This function is called when the server doesn't even want
 ** to speak Control protocol with a particular host.
@@ -370,14 +270,15 @@ print_class2limits_binding(const struct binding *p, FILE* fp)
 int
 main(int argc, char *argv[])
 {
+	char ctrl_msg[MAX_MSG];
 	char key_bytes[5];
 	datum * dat;
 	char class[128];
 	char err_msg[128];
 	int listenfd, connfd;
 	char buff[MAX_LINE];
-	struct sockaddr *cliaddr;
-	socklen_t len;
+	struct sockaddr cliaddr;
+	socklen_t addrlen;
 	char path[MAXPATHLEN]; /* various config files */
 	extern char *optarg;
 	extern int optind;
@@ -491,33 +392,71 @@ main(int argc, char *argv[])
 	read_passwd_file(path, app_data.passwd);
 	hash_print(app_data.passwd, stderr);
 
-	listenfd = tcp_listen(ctx, host, port, &len);
+	listenfd = tcp_listen(ctx, host, port, &addrlen);
 	if (signal(SIGCHLD, sig_chld) == SIG_ERR){
 		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
 			 "signal() failed. errno = %d", errno);	
 		exit(1);
 	}
 
+	/* XXX - remove eventually. */
 	fprintf(stderr, "DEBUG: exiting...\n");
 	exit(0);
 
-	setjmp(jmpbuffer);
 	while (1) {
-		cntrl = OWPControlAccept(ctx, &app_data, len, listenfd, &out);
-		if (cntrl == NULL)
-			continue;
+		socklen_t len = addrlen;
 
-		/* 
-		   Now start working with the valid OWPControl handle. 
-		                      ...
-		                      ...
-		                      ...
-		*/
+		if ( (connfd = accept(listenfd, &cliaddr, &addrlen)) < 0){
+			if (errno == EINTR)
+				continue;
+			else {
+				OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
+					 "accept error");
+				exit(1);
+			}
+		}
+
+		if (OWPAddrCheck(ctx, &app_data, NULL, 
+				 &cliaddr, ctrl_msg, &out)==False){
+			do_ban(connfd);     /* access denied */
+			continue;
+		}
+		
+		if (free_connections == 0){
+			do_ban(connfd);
+			continue;
+		}
+
+		free_connections--;
+
+		if ( (pid = fork()) < 0){
+			OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, "fork");
+			exit(1);
+		}
+		
+		if (pid == 0){ /* child */
+			cntrl = OWPControlAccept(ctx, connfd, &app_data, &out);
+						 
+			if (cntrl == NULL){
+				close(connfd);
+				exit(0);
+			}
+			
+			/* 
+			   Now start working with the valid OWPControl handle. 
+			   ...
+			   ...
+			   ...
+			*/
+		} else { /* parent */
+			close(connfd);
+			continue;
+		}
 	}
 	
-	hash_close(&ip2class_hash);
-	hash_close(&class2limits_hash);
-	hash_close(&passwd_hash);
+	hash_close(&app_data.ip2class);
+	hash_close(&app_data.class2limits);
+	hash_close(&app_data.passwd);
 
 	exit(0);
 }
