@@ -17,7 +17,7 @@ use strict;
 use constant DEBUG => 1;
 use constant JAN_1970 => 0x83aa7e80; # offset in seconds
 use Math::BigInt;
-use IO::Socket::INET;
+use IO::Socket;
 
 ### Start of configuration section. Change these values as appropriate.
 
@@ -29,7 +29,9 @@ require 'syscall.ph';
 my $local_md5_path = '/sbin/md5';           # path to local md5 program
 my $remote_md5_path = '/usr/bin/md5sum';    # same on the remote host
 my $remote_user = 'karp\@sss.advanced.org'; # argument to scp
-my $remote_host = 'sss.advanced.org';
+#my $remote_host = 'sss.advanced.org';
+my $remote_host = 'mail.internet2.edu';
+# my $remote_host = 'erdos.math.wisc.edu';
 my $remote_top = 'datadir';                 # remote dir to place the files
                                             # NOTE: make sure it exists!
 
@@ -50,7 +52,8 @@ my $data_suffix = '\.owp';                  # suffix for data files (Perl)
 my $local_md5_field = 3;
 my $remote_md5_field = 0;
 
-my  $interval = 10;                       # number of seconds between updates
+my $interval = 3;                       # number of seconds between updates
+my $owampd_pid_file = 'owampd.pid';     # file containing owampd pid
 
 ### End of configuration section.
 
@@ -60,7 +63,13 @@ chdir $dirname or die "could not chdir: $!";
 my $offset_1970 = new Math::BigInt JAN_1970;
 my $scale = new Math::BigInt 2**32;
 
-my $socket = IO::Socket::INET->new("$remote_host:$port")
+# my $socket = IO::Socket::INET->new("$remote_host:$port")
+#	or die "Could not connect to $remote_host:$port : $!";
+
+socket(my $socket, PF_INET, SOCK_DGRAM, getprotobyname('udp'))
+	or die "socket: $!";
+my $remote_addr = sockaddr_in($port, inet_aton($remote_host));
+connect $socket, $remote_addr 
 	or die "Could not connect to $remote_host:$port : $!";
 
 # Set the timer to go off in 1 second, and every $interval seconds
@@ -78,7 +87,22 @@ while (1) {
     $curtime = ($curtime + $offset_1970) * $scale;
     my $str = "$curtime";
     $str =~ s/^\+//;
-    print $socket "cur_time = $str\n";
+    unless (open(PID_FILE, $owampd_pid_file)) {
+      warn "could not open $owampd_pid_file: $!";
+      next;
+    }
+    my $pid = <PID_FILE>;
+    close PID_FILE;
+    chomp $pid;
+    if (kill 0, $pid != 1) {
+      warn "could not signal pid $pid: $!";
+      next;
+    }
+
+    # Just for testing: randomly send start/cur_time messages..
+    my $type = (rand() < 0.5)? 'start' : 'cur_time';
+    warn "DEBUG: process pid $pid alive, sending $str\n";
+    send $socket, "$type=$str\n", 0;
   }
 
   next if DEBUG;  # XXX - Eventually remove.
