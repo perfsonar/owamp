@@ -24,7 +24,7 @@ lib_LIBRARIES		= libowamp.a
 libowamp_a_SOURCES	= api.c capi.c sapi.c context.c error.c owampP.h \
 			cprotocol.c sprotocol.c io.c \
 			endpoint.h endpoint.c time.c \
-			arithm.h arithm.c \
+			arithm128.h arithm128.c \
 			rijndael-alg-fst.c rijndael-alg-fst.h \
 			rijndael-api-fst.c rijndael-api-fst.h
 
