@@ -334,9 +334,9 @@ SetupSession(
 			I2ErrLog(eh,"OWPControlOpen():%M:Retry in-%d seconds",
 									stime);
 			while((stime = sleep(stime))){
-				if(sig_check())
-					return 1;
+				if(sig_check()) return 1;
 			}
+			if(sig_check()) return 1;
 		}
 	}
 	if(sig_check())

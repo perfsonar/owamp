@@ -905,19 +905,20 @@ OWPProcessStartSessions(
 	if( (rc = _OWPReadStartSessions(cntrl,intr)) < OWPErrOK)
 		return _OWPFailControlSession(cntrl,rc);
 
-	if( (rc = _OWPWriteControlAck(cntrl,intr,OWP_CNTRL_ACCEPT)) < OWPErrOK)
-		return _OWPFailControlSession(cntrl,rc);
-
 	for(tsession = cntrl->tests;tsession;tsession = tsession->next){
 		if(tsession->endpoint){
 			if(!_OWPEndpointStart(tsession->endpoint,&err)){
-				(void)_OWPWriteStopSessions(cntrl,intr,
-							    OWP_CNTRL_FAILURE);
+				(void)_OWPWriteControlAck(cntrl,intr,
+							  OWP_CNTRL_FAILURE);
 				return _OWPFailControlSession(cntrl,err);
 			}
 			err2 = MIN(err,err2);
 		}
 	}
+
+	if( (rc = _OWPWriteControlAck(cntrl,intr,OWP_CNTRL_ACCEPT)) < OWPErrOK)
+		return _OWPFailControlSession(cntrl,rc);
+
 
 	return err2;
 }
