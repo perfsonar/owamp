@@ -748,9 +748,11 @@ OWPFetchSession(OWPControl cntrl,
 		OWPSID	   sid,
 		int        fd);
 
+OWPErrSeverity
+OWPGetDataHeader(int fd, u_int32_t *typeP);
+
 /*
-** "Fetching" data from local disk - assume the header has been
-** processed already. 
+** "Fetching" data from local disk.
 */
 OWPErrSeverity
 OWPFetchLocalRecords(int fd, 

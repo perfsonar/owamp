@@ -1049,9 +1049,21 @@ OWPFetchSession(OWPControl cntrl,
 
 #define OWP_BUFSIZ 960 /* must be divisible by 20 */
 
+OWPErrSeverity
+OWPGetDataHeader(int fd, u_int32_t *typeP)
+{
+	u_int8_t buf[4];
+
+	if (I2Readn(fd, buf, 4) != 4)
+		return OWPErrFATAL;
+	
+	*typeP = ntohl(*(u_int32_t *)buf);
+	return OWPErrOK;
+}
+
+
 /*
-** "Fetching" data from local disk - assume the header has been
-** processed already. 
+** "Fetching" data from local disk.
 */
 OWPErrSeverity
 OWPFetchLocalRecords(int fd, 
