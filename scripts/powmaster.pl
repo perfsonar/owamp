@@ -75,10 +75,12 @@ $defaults{"NODE"} =~ tr/a-z/A-Z/
 
 my $conf = new OWP::Conf(%defaults);
 
+my $facility = $conf->must_get_val(ATTR=>'SyslogFacility');
+
 # setup syslog
 local(*MYLOG);
 my $slog = tie *MYLOG, 'OWP::Syslog',
-		facility	=> $conf->must_get_val(ATTR=>'SyslogFacility'),
+		facility	=> $facility,
 		log_opts	=> 'pid',
 		setlogsock	=> 'unix';
 # make die/warn goto syslog, and also to STDERR.
@@ -889,7 +891,7 @@ sub powstream{
 	my($mtype,$myaddr,$node,$oaddr)	= @_;
 	local(*CHWFD,*CHRFD);
 	my $val;
-	my @cmd = ($powcmd,"-p","-S",$myaddr);
+	my @cmd = ($powcmd,"-e",$facility,"-p","-S",$myaddr);
 
 	push @cmd, ("-i", $val) if($val = $conf->get_val(MESH=>$mtype,
 							ATTR=>'OWPINTERVAL'));
