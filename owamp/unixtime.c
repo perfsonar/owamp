@@ -46,10 +46,91 @@ OWPCvtTVtoTS(
 
 	tstamp->sec = tval->tv_sec + OWPJAN_1970;
 	tstamp->frac_sec = ((double)tval->tv_usec/1000000.0) * (1<<24);
-	tstamp->prec = 19; /* usec is 20 bits - 1(rounding errors)	*/
+	tstamp->prec = 19+32; /* usec is 20 bits of prec - 1(rounding errors)*/
 	tstamp->sync = 0;
 
 	return(tstamp);
+}
+
+
+/*
+ * Function:	OWPCvtTimespec2Timestamp
+ *
+ * Description:	
+ * 	If errest (error estimate) is not set:
+ * 	Precision in the timestamp is set only taking into account the
+ * 	loss of precision from nsec to fractional seconds and does not
+ * 	address the precision of how the struct timespec was determined.
+ * 	It is the responsibility of the caller to adjust the precision/sync
+ * 	bits as needed by the actual implementation.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
+OWPTimeStamp *
+OWPCvtTimespec2Timestamp(
+	OWPTimeStamp	*tstamp,
+	struct timespec	*tval,
+	u_int32_t	*errest		/* usec's */
+	)
+{
+	u_int64_t	err_frac;
+
+	if(!tstamp || !tval)
+		return NULL;
+
+	tstamp->sec = tval->tv_sec + OWPJAN_1970;
+	tstamp->frac_sec = ((double)tval->tv_nsec/1000000000.0) * (1<<24);
+	tstamp->prec = 56; /*nsec is 30 bits - 1 rnd errors:max 56 */
+	if(errest){
+		err_frac = OWPusec2num64(*errest);
+		/*
+		 * count digits in err_frac to determine how many digits
+		 * must be discounted from precision.
+		 */
+		err_frac >>= 8;	/* lowest 8 don't count. */
+		while(err_frac){
+			tstamp->prec--;
+			err_frac >>= 1;
+		}
+		tstamp->sync = 1;
+	}
+	else
+		tstamp->sync = 0;
+
+	return tstamp;
+}
+
+struct timespec *
+OWPCvtTimestamp2Timespec(
+	struct timespec	*tval,
+	OWPTimeStamp	*tstamp
+	)
+{
+	u_int32_t	frac;
+	u_int32_t	shift;
+
+	if(!tval || !tstamp)
+		return NULL;
+
+	frac = tstamp->frac_sec & 0xFFFFF;
+	if(tstamp->prec < 33)
+		frac = 0;
+	else{
+		/* shift for num sig digits in frac */
+		shift = 24 - (MIN(56,tstamp->prec) - 32);
+		frac = ((frac>>shift)<<shift);
+	}
+
+	tval->tv_sec = tstamp->sec - OWPJAN_1970;
+	tval->tv_nsec =((double)frac * 1000000000.0) / (double)(1<<24);
+
+	return tval;
 }
 
 /*

@@ -453,6 +453,44 @@ OWPGetMode(
 	return cntrl->mode;
 }
 
+/*
+ * Function:	OWPGetAESkeyInstance
+ *
+ * Description:	
+ * 		Return the keyInstance associated with the "which" key.
+ * 		which:
+ * 			0: Decryption key
+ * 			1: Encryption key
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
+keyInstance*
+OWPGetAESkeyInstance(
+		OWPControl	cntrl,
+		int		which
+		)
+{
+	if(!cntrl)
+		return NULL;
+
+	switch(which){
+		case 0:
+			return &cntrl->decrypt_key;
+			break;
+		case 1:
+			return &cntrl->encrypt_key;
+			break;
+		default:
+			return NULL;
+	}
+}
+
 OWPErrSeverity
 OWPControlClose(OWPControl cntrl)
 {
@@ -593,45 +631,63 @@ OWPInitiateStopTestSessions(
 	return MIN(err,err2);
 }
 
+OWPPacketSizeT
+OWPTestPayloadSize(
+		int		mode, 
+		u_int32_t	padding
+		)
+{
+	OWPPacketSizeT msg_size;
 
-#define OWP_UDP_HDR_SIZE     8 /* bytes */
+	switch (mode) {
+	case OWP_MODE_OPEN:
+		msg_size = 12;
+		break;
+	case OWP_MODE_AUTHENTICATED:
+		msg_size = 24;
+		break;
+	case OWP_MODE_ENCRYPTED:
+		msg_size = 16;
+		break;
+	default:
+		return 0;
+		/* UNREACHED */
+	}
+
+	return msg_size + padding;
+}
+
+#define OWP_IP4_HDR_SIZE	20
+#define OWP_IP6_HDR_SIZE	40
+#define OWP_UDP_HDR_SIZE	8
 
 /*
 ** Given the protocol family, OWAMP mode and packet padding,
 ** compute the size of resulting full IP packet.
 */
-owp_packsize_t
-owp_ip_packet_size(int af,    /* AF_INET, AF_INET6 */
-                   int mode, 
-		   u_int32_t padding)
+OWPPacketSizeT
+OWPTestPacketSize(
+		int		af,    /* AF_INET, AF_INET6 */
+		int		mode, 
+		u_int32_t	padding
+		)
 {
-	owp_packsize_t payload_size, header_size;
+	OWPPacketSizeT payload_size, header_size;
 
 	switch (af) {
 	case AF_INET:
-		header_size = (owp_packsize_t)20 + OWP_UDP_HDR_SIZE;
+		header_size = OWP_IP4_HDR_SIZE + OWP_UDP_HDR_SIZE;
 		break;
 	case AF_INET6:
-		header_size = (owp_packsize_t)40 + OWP_UDP_HDR_SIZE;
+		header_size = OWP_IP6_HDR_SIZE + OWP_UDP_HDR_SIZE;
 		break;
 	default:
 		return 0;
 		/* UNREACHED */
 	}
 
-	switch (mode) {
-	case OWP_MODE_OPEN:
-		payload_size = 12 + padding;
-		break;
-	case OWP_MODE_AUTHENTICATED:
-		payload_size = 24 + padding;
-		break;
-	case OWP_MODE_ENCRYPTED:
-		payload_size = 16 + padding;
-		break;
-	default:
-		return 0;
-		/* UNREACHED */
-	}
+	if(!(payload_size = OWPTestPayloadSize(mode,padding)))
+			return 0;
+
 	return payload_size + header_size;
 }

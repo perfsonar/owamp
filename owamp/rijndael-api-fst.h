@@ -39,7 +39,7 @@
 #define __RIJNDAEL_API_FST_H
 
 #include <stdio.h>
-#include "rijndael-alg-fst.h"
+#include <owamp/rijndael-alg-fst.h>
 
 /*  Generic Defines  */
 #define     DIR_ENCRYPT           0 /*  Are we encrpyting?  */

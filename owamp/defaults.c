@@ -121,7 +121,6 @@ owp_check_control(
 		return False;
 
 	((OWPPerConnDataRec *)app_data)->node = node;
-	((OWPPerConnDataRec *)app_data)->mode = mode;
 	
 	return True;
 	

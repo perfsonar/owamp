@@ -39,7 +39,6 @@
 #define OWP_MAX_CLASSNAME_LEN 64 /* temp plug */
 
 /* Global variable - the total number of allowed Control connections. */
-static int		free_connections;
 static int		sigchld_received = 0;
 static owampd_opts	opts;
 static I2ErrHandle	errhand;
@@ -64,11 +63,11 @@ static I2OptDescRec	set_options[] = {
 	/*
 	 * configuration options - should probably add a conf file eventually.
 	 */
+	{"datadir",1,OWP_DATADIR,"Data directory"},
+
 	{"authmode",1,NULL,
 	"Default supported authmodes:[E]ncrypted,[A]uthenticated,[O]pen"},
 	{"nodename",1,NULL,"Local nodename to bind to: addr:port"},
-	{"maxconnections",1,OWD_MAXCONN,
-		"Max unauthenticated control connections"},
 	{"tmout",1,OWD_TMOUT,
 		"Max time to wait for control connection reads (sec)"},
 #ifndef	NDEBUG
@@ -110,10 +109,6 @@ static	I2Option	get_options[] = {
 	{
 	"nodename", I2CvtToString, &opts.nodename,
 	sizeof(opts.nodename)
-	},
-	{
-	"maxconnections", I2CvtToInt, &opts.maxconnections,
-	sizeof(opts.maxconnections)
 	},
 	{
 	"tmout", I2CvtToInt, &opts.tmout,
@@ -313,12 +308,6 @@ ReapChildren(
 			*maxfd = -1;
 
 		/*
-		 * If child was not authenticated, then add a free connection.
-		 */
-		if(!(cstate->authmode &
-				(OWP_MODE_AUTHENTICATED|OWP_MODE_ENCRYPTED)))
-			free_connections++;
-		/*
 		 * TODO: free the resouces allocated to this child from
 		 * the "class" allotment.
 		 */
@@ -396,9 +385,8 @@ CleanPipes(
 
 /*
  * This function needs to create a new child process with a pipe to
- * communicate with it. It needs to update the free_connections count,
- * add the new pipefd into the readfds, and update maxfd if the new
- * pipefd is greater than the current max.
+ * communicate with it. It needs to add the new pipefd into the readfds,
+ * and update maxfd if the new pipefd is greater than the current max.
  */
 static void
 NewConnection(
@@ -480,7 +468,6 @@ ACCEPT:
 			return;
 		}
 
-		free_connections--;
 		FD_SET(chld->fd, readfds);
 		if((*maxfd > -1) && (chld->fd > *maxfd))
 			*maxfd = chld->fd;
@@ -513,14 +500,17 @@ ACCEPT:
 			while((close(i) < 0) && (errno == EINTR));
 		}
 
-		if (free_connections <= 0)
-			mode &= OWP_MODE_OPEN;
-
-		conndata.pipefd = new_pipe[1];
-		conndata.policy = policy;
 		/*
-		conndata.session_data_path = opts.data_path;
-		*/
+		 * TODO: Could check if the class from this IP allows
+		 * open_mode, and modify "mode" if open is not allowed...
+		 * For now, just leave it alone and if open is not allowed
+		 * for this address, then Accept will fail when it calls
+		 * the CheckControlPolicy function.
+		 */
+		memset(&conndata,0,sizeof(conndata));
+		conndata.pipefd = new_pipe[1];
+		conndata.datadir = opts.datadir;
+		conndata.policy = policy;
 
 		cntrl = OWPControlAccept(ctx,connfd,
 					(struct sockaddr *)sbuff,sbufflen,
@@ -531,6 +521,7 @@ ACCEPT:
 		if(!cntrl){
 			exit(out);	
 		}
+		conndata.cntrl = cntrl;
 
 		/*
 		 * Send the mode to the parent.
@@ -663,8 +654,6 @@ main(int argc, char *argv[])
 		usage(od,progname,NULL);
 		exit(0);
 	}
-
-	free_connections = opts.maxconnections;
 
 	/*
 	 * Setup paths.

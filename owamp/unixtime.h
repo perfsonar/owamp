@@ -37,4 +37,17 @@ OWPGetTimeOfDay(
 	OWPTimeStamp	*tstamp
 );
 
+extern OWPTimeStamp *
+OWPCvtTimespec2Timestamp(
+	OWPTimeStamp	*tstamp,
+	struct timespec	*tval,
+	u_int32_t	*errest		/* usec's */
+	);
+
+extern struct timespec *
+OWPCvtTimestamp2Timespec(
+	struct timespec	*tval,
+	OWPTimeStamp	*tstamp
+	);
+
 #endif	/*	_OWPCONTRIB_UNIXTIME_H_ */

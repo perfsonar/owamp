@@ -126,8 +126,6 @@ _OWPReadServerGreeting(
 }
 
 /*
-	 * TODO:Ensure Stas actually changed KID to 8 octets - otherwise this
-	 * message is the wrong size!
  *
  *
  * 	ClientGreeting message format:

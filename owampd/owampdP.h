@@ -44,6 +44,8 @@ typedef struct {
 	char		*class2limits;
 	char		*passwd;
 
+	char		*datadir;
+
 	char		*authmode;
 	u_int32_t	auth_mode;	/* cooked version of authmode */
 	char		*nodename;

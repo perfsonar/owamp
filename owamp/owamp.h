@@ -23,9 +23,38 @@
 #ifndef	OWAMP_H
 #define	OWAMP_H
 
+/*
+ * Portablility sanity checkes.
+ */
+#if	HAVE_CONFIG_H
+#include <owamp/config.h>
+
+#if	!HAVE_ERRNO_H || !HAVE_NETDB_H || !HAVE_STDLIB_H || !HAVE_SYS_PARAM_H
+#error	Missing Header!
+#endif
+
+#if	!HAVE_GETADDRINFO || !HAVE_SOCKET
+#error	Missing needed networking capabilities! (getaddrinfo and socket)
+#endif
+
+#if	!HAVE_MALLOC || !HAVE_MEMSET
+#error	Missing needed memory functions!
+#endif
+#endif	/* HAVE_CONFIG_H */
+
+#ifndef	HAVE___ATTRIBUTE__
+#define __attribute__(x)
+#endif
+
+#ifndef	OWP_DATADIR
+#define OWP_DATADIR "/data"
+#endif
+
+
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/socket.h>
+#include <sys/param.h>
 #include <netdb.h>
 
 #ifndef	False
@@ -35,6 +64,14 @@
 #define	True	(!False)
 #endif
 
+#ifndef MIN
+#define MIN(a,b) ((a<b)?a:b)
+#endif
+#ifndef MAX
+#define MAX(a,b) ((a>b)?a:b)
+#endif
+
+#include <owamp/rijndael-api-fst.h>
 #include <owamp/arithm64.h>
 
 #define	OWP_MODE_UNDEFINED		(0)
@@ -612,12 +649,27 @@ OWPGetMode(
 	OWPControl	cntrl
 	);
 
-typedef u_int64_t owp_packsize_t;
+extern keyInstance*
+OWPGetAESkeyInstance(
+		OWPControl	cntrl,
+		int		which
+		);
+
+typedef u_int32_t OWPPacketSizeT;
+
 /*
 ** Given the protocol family, OWAMP mode and packet padding,
 ** compute the size of resulting full IP test packet.
 */
-owp_packsize_t owp_ip_packet_size(int af, int mode, u_int32_t padding);
+OWPPacketSizeT OWPTestPayloadSize(
+		int		mode,
+		u_int32_t	padding
+		);
+OWPPacketSizeT OWPTestPacketSize(
+		int		af,
+		int		mode,
+		u_int32_t	padding
+		);
 
 /*
 ** This (type of) function is used by Fetch-Client to process (cooked)

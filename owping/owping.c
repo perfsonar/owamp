@@ -427,6 +427,7 @@ main(
 		I2ErrLog(eh, "Unable to open control connection.");
 		exit(1);
 	}
+	conndata.cntrl = ping_ctx.cntrl;
 
 	/*
 	 * Now ready to make test requests...

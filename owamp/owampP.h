@@ -24,29 +24,6 @@
 #ifndef	OWAMPP_H
 #define	OWAMPP_H
 
-/*
- * Portablility sanity checkes.
- */
-#if	HAVE_CONFIG_H
-#include "config.h"
-
-#if	!HAVE_ERRNO_H || !HAVE_NETDB_H || !HAVE_STDLIB_H || !HAVE_SYS_PARAM_H
-#error	Missing Header!
-#endif
-
-#if	!HAVE_GETADDRINFO || !HAVE_SOCKET
-#error	Missing needed networking capabilities! (getaddrinfo and socket)
-#endif
-
-#if	!HAVE_MALLOC || !HAVE_MEMSET
-#error	Missing needed memory functions!
-#endif
-#endif	/* HAVE_CONFIG_H */
-
-#ifndef	HAVE___ATTRIBUTE__
-#define __attribute__(x)
-#endif
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
@@ -65,8 +42,6 @@
 
 #include <I2util/util.h>
 #include <owamp/owamp.h>
-
-#include "rijndael-api-fst.h"
 
 #define	_OWP_DO_CIPHER		(OWP_MODE_AUTHENTICATED|OWP_MODE_ENCRYPTED)
 
