@@ -480,7 +480,7 @@ do_single_record(void *calldata, OWPCookedDataRecPtr rec)
 			memmove(&state->window[0], rec, sizeof(*rec));
 		state->cur_win_size++;
 	} else { /* rotate - update state*/
-		OWPCookedDataRecPtr cur_rec = rec;		
+		OWPCookedDataRecPtr out_rec = rec;		
 		if (state->num_received
 		    && OWP_OUT_OF_ORDER(rec, &(state->last_processed))) {
 				state->order_disrupted = 1;
@@ -488,17 +488,18 @@ do_single_record(void *calldata, OWPCookedDataRecPtr rec)
 		}
 
 		i = look_for_spot(state, rec);
+
 		if (i != -1)
-			cur_rec = &state->window[i];
-		memcpy(&state->last_processed, cur_rec, sizeof(*cur_rec));
-		owp_update_stats(state, cur_rec);
+			out_rec = &state->window[0];
+		memcpy(&state->last_processed, out_rec, sizeof(*out_rec));
+		owp_update_stats(state, out_rec);
 
 		/* Update the window.*/
 		if (i != -1) {  /* Shift if needed - then insert.*/
 			if (i) 
 				memmove(&state->window[0],
-					&state->window[i], i*sizeof(&cur_rec));
-			memcpy(&state[i], cur_rec, sizeof(&cur_rec));
+					&state->window[1], i*sizeof(*rec));
+			memcpy(&state->window[i], rec, sizeof(*rec));
 		} 
 	}
 	
