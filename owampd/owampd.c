@@ -9,6 +9,12 @@
 
 #define MAX_MSG 60 /* XXX - currently 56 but KID to be extended by 4 bytes */
 
+#define DEFAULT_CONFIG_DIR              "/home/karp/projects/contrib"
+#define DEFAULT_CONFIG_FILE 	 	"policy.conf"
+#define DEFAULT_IP_TO_CLASS_FILE 	"ip2class.conf"
+#define DEFAULT_CLASS_TO_LIMITS_FILE 	"class2limits.conf" 
+#define DEFAULT_PASSWD_FILE 		"owamp_secrets.conf"
+
 const char *DefaultConfigFile = DEFAULT_CONFIG_FILE;
 char *ConfigFile = NULL;
 const char *DefaultIPtoClassFile = DEFAULT_IP_TO_CLASS_FILE;
@@ -232,7 +238,7 @@ doit(int connfd)
 	keyInstance keyInst;
 	cipherInstance cipherInst;
 
-	datum key;
+	datum *key;
 
 	/* first generate server greeting */
 	bzero(buf, sizeof(buf));
@@ -270,9 +276,9 @@ doit(int connfd)
 		/* Decrypt the token and compare the 16 bytes of challenge */
 		bzero(client_iv, 16);
 
-		key = hash_fetch(passwd_hash, *(str2datum((const char *)kid)));
+		key = hash_fetch(passwd_hash, str2datum((const char *)kid));
 
-		r = makeKey(&keyInst, DIR_DECRYPT, 128, key.dptr);
+		r = makeKey(&keyInst, DIR_DECRYPT, 128, key->dptr);
 		if (TRUE != r) {
 			fprintf(stderr,"makeKey error %d\n",r);
 			exit(-1);
@@ -354,6 +360,7 @@ main(int argc, char *argv[])
 	char buff[MAX_LINE];
 	struct sockaddr *cliaddr;
 	socklen_t addrlen, len;
+	char path[MAXPATHLEN]; /* various config files */
 	extern char *optarg;
 	extern int optind;
 	int c;
@@ -433,25 +440,27 @@ main(int argc, char *argv[])
 	openlog("owampd", LOG_PID | LOG_NDELAY | LOG_PERROR, LOG_DAEMON);
 	
 	/* Open the ip2class hash for writing. */
-	if ((ip2class_hash = hash_init(IPtoClassFile)) == NULL){
+	snprintf(path,sizeof(path), "%s/%s", DEFAULT_CONFIG_DIR,IPtoClassFile);
+	fprintf(stderr, "DEBUG: trying to open %s\n", path);
+	if ((ip2class_hash = hash_init(ctx, 0, NULL, NULL)) == NULL){
 		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
 			 "Could not initialize hash for %s", IPtoClassFile);
 		exit(1);
 	}
 	owamp_read_ip2class(IPtoClassFile, ip2class_hash); 
-	owamp_print_ip2class(ip2class_hash); 
+	/* owamp_print_ip2class(ip2class_hash);  */
 
 	/* Open the class2limits hash for writing. */
-	if ((class2limits_hash = hash_init(ClassToLimitsFile)) == NULL){
+	if ((class2limits_hash = hash_init(ctx, 0, NULL, NULL)) == NULL){
 		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
 			"Could not initialize hash for %s", ClassToLimitsFile);
 		exit(1);
 	}
 	owamp_read_class2limits(ClassToLimitsFile, class2limits_hash);
-	owamp_print_class2limits(class2limits_hash);
+	/* 	owamp_print_class2limits(class2limits_hash); */
 
 	/* Open the passwd hash for writing. */
-	if ((passwd_hash = hash_init(PasswdFile)) == NULL){
+	if ((passwd_hash = hash_init(ctx, 0, NULL, NULL)) == NULL){
 		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
 			"Could not initialize hash for %s", PasswdFile);
 		exit(1);
@@ -523,9 +532,9 @@ main(int argc, char *argv[])
 			OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, "fork");
 	}
 	
-	hash_close(ip2class_hash);
-	hash_close(class2limits_hash);
-	hash_close(passwd_hash);
+	hash_close(&ip2class_hash);
+	hash_close(&class2limits_hash);
+	hash_close(&passwd_hash);
 
 #if SCRATCH
 	fclose(scratch);
