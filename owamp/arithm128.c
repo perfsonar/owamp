@@ -34,7 +34,7 @@ struct num_128 raw2num(const unsigned char *raw);
 struct num_128 unif_rand();      /* Generate a Unif(0, 1) random quantity. */
 
 /* We often need to scale by 10^6 so let's fix a struct for that. */
-static struct num_128 million = {{0, 0, 0, 0, 16960, 15, 0, 0}};
+static struct num_128 million = {{0, 0, 0, 0, 16960, 15, 0, 0}}; 
 
 /* Initialize the RNG counter. */
 static rand_context next;
@@ -231,10 +231,50 @@ num2timeval(num_128 from, struct timeval *to)
 		(unsigned long)(from->digits[4]);
 }
 
+/*
+** Discussion: given struct timeval {sec, u_sec}, the goal is
+** to compute C/(10^6), where C = [sec*(10^6) + u_sec] < (2^64).
+** It is done as follows: observe that
+**
+** C/(10^6) = {C/[(10^6) >> 4]} << 4
+**
+** where '>>' and '<<' are right and left shift operations
+** in the base 2^16.
+**
+** Thus, assume that C = a*(2^48) + b*(2^32) + c*(2^16) + d, 
+** 0 <= a,b,c,d <= 2^16 - 1, is the expansion of C in base 2^16.
+** Similarly, (10^6) = e*(2^16) + f, where e = 15 and f = 16960.
+** An integer-arithmetic division of "abcd0000" by "ef" is performed,
+** and the 7-digit result, when interpreted as a num_128 struct
+** is the sought answer. The task is, moreover, simplified by
+** being implemented as *single*-digit division in the base 2^32.
+*/ 
 void
 timeval2num(struct timeval *from, num_128 to)
 {
-	
+	unsigned long carry = 0;
+	int i;
+	struct num_128 C, tmp; 
+
+	struct num_128 sixtyfour = ulong2num(64);
+	struct num_128 sec = ulong2num(from->tv_sec);
+	struct num_128 usec = ulong2num(from->tv_usec);
+
+	num_mul(&sec, &million, &tmp);
+	num_add(&tmp, &usec, &C);
+
+	/* First divide by 2^6 using shifts. */
+	C.digits[7] = 0; 
+	for (i = 0; i < 7; i++)
+		C.digits[i] = MASK16(C.digits[i] >> 6) 
+			| MASK16(C.digits[i+1] << 10);
+
+	/* Do division by 5^6 (= 0x3D09). */
+	for (i = 7; i >= 0; i--){
+		carry = (carry << 16) + (unsigned long)(C.digits[i]);
+		to->digits[i] = carry/0x3D09;
+		carry %= 0x3D09;
+	}
 }
 
 /*
