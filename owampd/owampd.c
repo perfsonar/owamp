@@ -482,9 +482,18 @@ ACCEPT:
 	}
 #endif
 	/*
-	 * TODO: Close all open file descriptors not needed by this
-	 * child?
+	 * Close all open file descriptors not needed by this child.
 	 */
+	for(;*maxfd>=0;*maxfd--){
+		if(*maxfd == new_pipe[1]) continue;
+		if(*maxfd == connfd) continue;
+
+		/*
+		 * If close is interupted, continue to try and close,
+		 * otherwise, ignore the error.
+		 */
+		while((close(*maxfd) < 0) && (errno == EINTR));
+	}
 
 	/*
 	 * check/set signal vars.
@@ -1022,7 +1031,11 @@ main(int argc, char *argv[])
 	 * Initialize the context. (Set the error handler to the app defined
 	 * one.)
 	 */
-	ctx = OWPContextCreate(errhand);
+	if( !(ctx = OWPContextCreate(errhand))){
+		fprintf(stderr, "%s: Unable to initialize application\n",
+				progname);
+		exit(1);
+	}
 
 	/*
 	 * Now deal with "all" cmdline options.
