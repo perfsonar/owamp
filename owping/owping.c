@@ -43,6 +43,87 @@ static	ow_ping_trec	ping_ctx;
 static I2ErrHandle		eh;
 
 /*
+** Save the given record toa given file descriptor.
+*/
+int
+owp_save_to_disk(void *calldata, u_int8_t *rec)
+{
+	int fd;
+
+	assert(calldata);
+
+	fd = *(int *)calldata;
+	return I2Writen(fd, rec, 20);
+}
+
+/*
+** Retrieve records from remote server and save them in a file
+** on the local disk. No printing is done. Returns 0 on success,
+** or -1 on failure.
+*/
+int
+owp_fetch_to_local(OWPControl cntrl, 
+		   u_int32_t  num_rec, 
+		   char       *datadir,
+		   OWPSID     sid)
+{
+	char datafile[PATH_MAX]; /* full path to data file */
+	char *new_name;
+	int  fd;
+	char sid_name[(sizeof(OWPSID)*2)+1];
+
+	/* First creat an "incomplete" path */
+	strcpy(datafile, datadir);
+	strcat(datafile,OWP_PATH_SEPARATOR);
+	OWPHexEncode(sid_name, sid, sizeof(OWPSID));
+	strcat(datafile, sid_name);
+	strcat(datafile, OWP_INCOMPLETE_EXT);
+
+	fd = open(datafile, O_WRONLY);
+	if (fd < 0) {
+		I2ErrLog(eh, "FATAL: open():%M");
+		return -1;
+	}
+
+	/*
+	  XXX: TODO - write 4 bytes of Type-P header.
+	*/
+
+	if (OWPFetchRecords(cntrl, num_rec,owp_save_to_disk, &fd) != OWPErrOK){
+		I2ErrLog(eh, "main: OWPFetchRecords failed");
+		goto fatal;
+	}
+
+	/* Prepare "complete" name */
+	new_name = strdup(datafile);
+	if (!new_name) {
+		I2ErrLog(eh, "FATAL: strdup():%M");
+		goto fatal;
+	}
+	new_name[strlen(datafile) - strlen(OWP_INCOMPLETE_EXT)] = '\0';
+	if (rename(datafile, new_name) < 0) {
+		free(new_name);
+		I2ErrLog(eh, "FATAL: strdup():%M");
+		goto fatal;
+	}
+
+	free(new_name);
+	if (close(fd) < 0)
+		I2ErrLog(eh, "main: close():%M");
+	return 0;
+
+ fatal:
+	if (close(fd) < 0)
+		I2ErrLog(eh, "main: close():%M");
+	if (unlink(datafile) < 0)
+		I2ErrLog(eh, "main: unlink():%M");
+	return -1;
+}
+
+/* Template for temporary directory to keep fetched data records. */
+#define OWP_TMPDIR_TEMPLATE "/tmp/XXXXXXXXXXXXXXXX"
+
+/*
 ** Data structures for a window of records being processed.
 ** Implemented as a linked list since in the most common case
 ** new nodes will just be added at the end.
@@ -51,6 +132,7 @@ typedef struct rec_link *rec_link_ptr;
 typedef struct rec_link {
 	u_int8_t     record[20];    /* raw timestamp record */
 	rec_link_ptr next;
+	rec_link_ptr previous;
 } rec_link;
 
 /*
@@ -72,11 +154,25 @@ list_init(rec_list_ptr list)
 }
 
 /*
+** Free the linked list.
+*/
+void
+list_free(rec_list_ptr list)
+{
+	rec_link_ptr ptr;
+	assert(list);
+
+	for (ptr = list->head; ptr; ptr = ptr->next)
+		free(ptr);
+}
+
+/*
 ** Insert a new record in the <list> right after the given <current>.
-** If <current> is NULL, insert at the head of the list.
+** If <current> is NULL, insert at the head of the list. Return 0 on
+** success, or -1 on failure.
 */
 int
-rec_insert_next(rec_list *list, rec_link_ptr current, const u_int8_t *data)
+rec_insert_next(rec_list_ptr list, rec_link_ptr current, const u_int8_t *data)
 {
 	rec_link_ptr new_record;
 
@@ -89,6 +185,9 @@ rec_insert_next(rec_list *list, rec_link_ptr current, const u_int8_t *data)
 	memcpy(new_record->record, data, 20);
 
 	if (current == NULL) {
+		if (list->head)
+			list->head->previous = new_record;
+		new_record->previous = NULL;
 		new_record->next = list->head;
 		list->head = new_record;
 
@@ -98,7 +197,9 @@ rec_insert_next(rec_list *list, rec_link_ptr current, const u_int8_t *data)
 	} else {
 		if (current->next == NULL) /* inserting at the tail */
 			list->tail = new_record;
-
+		else
+			current->next->previous = new_record;
+		new_record->previous = current;
 		new_record->next = current->next;
 		current->next = new_record;
 	}
@@ -107,38 +208,44 @@ rec_insert_next(rec_list *list, rec_link_ptr current, const u_int8_t *data)
 }
 
 /* Various styles of owping output. */
-#define OWP_MACHINE_READABLE     0    /* full dump of each record, ASCII     */
+#define OWP_MACHINE_READ         0    /* full dump of each record, ASCII     */
 #define OWP_PING_STYLE           1    /* seq_no, one-way delay + final stats */
+#define OWP_PING_QUIET           2    /* quiet, just summary at the end      */
 
 /*
 ** State to be maintained by client during Fetch.
 */
 typedef struct fetch_state {
-	double       tmin;             /* max delay                    */
-	double       tmax;             /* min delay                    */     
-	double       tsum;             /* sum of delays                */
-	double       tsumsq;           /* sum of squared delays        */
-	u_int32_t    numpack_received; /* number of received packets   */
-	FILE*        fp;               /* stream to report records     */
-	rec_list_ptr window;           /* window of read records       */
-	int          type;             /* OWP_MACHINE_READABLE,
-					  OWP_PING_STYLE */
+	FILE*        fp;               /* stream to report records         */
+	rec_list_ptr window;           /* window of read records           */
+	int          type;             /* OWP_MACHINE_READ, OWP_PING_STYLE,
+					  OPW_PING_QUIET                   */
+	double       tmin;             /* max delay                        */
+	double       tmax;             /* min delay                        */  
+	double       tsum;             /* sum of delays                    */
+	double       tsumsq;           /* sum of squared delays            */
+	u_int32_t    numpack_received; /* number of received packets       */
+	int64_t      last_seqno;       /* seqno of last output record      */
+	int          order_disrupted;  /* flag */
 } fetch_state, *fetch_state_ptr;
-
 
 /*
 ** Initialize the state.
 */
 void
-fetch_state_init(fetch_state_ptr state, FILE *fp, rec_list_ptr window)
+fetch_state_init(fetch_state_ptr state, FILE *fp, rec_list_ptr window,int type)
 {
 	assert(state);
+
+	state->fp = fp;
+	state->window = window;
+	state->type = type;
 
 	state->tmin = 9999.999;
 	state->tmax = state->tsum = state->tsumsq = 0.0;
 	state->numpack_received = 0;
-	state->fp = fp;
-	state->window = window;
+	state->last_seqno = -1;
+	state->order_disrupted = 0;
 }
 
 #ifdef	NOT
@@ -207,7 +314,7 @@ static	I2OptDescRec	set_options[] = {
 	/*
 	 * Control connection specific stuff.
 	 */
-	{"authmode",1,NULL,"Requested modes:[E]ncrypted,[A]uthenticated,[O]pen"},
+      {"authmode",1,NULL,"Requested modes:[E]ncrypted,[A]uthenticated,[O]pen"},
 	{"identity",1,NULL,"ID for shared secret"},
 	{"tmout",1,"30","Max time to wait for control connection reads (sec)"},
 
@@ -216,7 +323,7 @@ static	I2OptDescRec	set_options[] = {
 	 * test setup args
 	 */
 	{"sender", -2, NULL, "IP address/node name of sender [and server]"},
-	{"receiver", -2, NULL, "IP address/node name of receiver [and server]"},
+       {"receiver", -2, NULL, "IP address/node name of receiver [and server]"},
 
 	{"padding", 1, "0", "min size of padding for test packets (octets)"},
 	{"rate", 1, "1.0", "rate of test packets (packets/sec)"},
@@ -341,39 +448,16 @@ FailSession(
 	exit(1);
 }
 
-/*
-** Given a pointer to a 20-byte data record, print it out, in a 
-** machine-readable form, to a given file (if not NULL), or stdout otherwise.
-*/
-int
-print_record(void *calldata,          /* currently just a file pointer */
-	     u_int32_t seq_num,
-	     OWPTimeStamp *send_time,
-	     OWPTimeStamp *recv_time)
-{
-	FILE* fp = (calldata)? (FILE *)calldata : stdout;
-
-	fprintf(fp, "seq_no=%u send=%u.%us recv=%u.%us\n",
-		seq_num, send_time->sec, send_time->frac_sec,
-		recv_time->sec, recv_time->frac_sec);
-	return 0;
-}
-
 #define THOUSAND 1000.0
 
 /*
-** Print delay for the current record (ping-like style) and update the stats.
+** Update statistics due to the new record having given <delay>.
 */
-int
-print_delay(void *calldata,      /* fetch_state_ptr */
-	    u_int32_t seq_num,
-	    OWPTimeStamp *send_time,
-	    OWPTimeStamp *recv_time
-	    )
+void
+owp_update_stats(fetch_state_ptr state,
+		 double delay
+		 )
 {
-	fetch_state_ptr state = (fetch_state_ptr)calldata;
-	double delay = owp_delay(send_time, recv_time);
-
 	assert(state);
 	
 	/* Update the state. */
@@ -386,11 +470,6 @@ print_delay(void *calldata,      /* fetch_state_ptr */
 	state->tsum += delay;
 	state->tsumsq += (delay*delay);
 	state->numpack_received++;
-
-	fprintf(state->fp, "seq_no=%u delay=%.3f ms\n", seq_num, 
-		delay*THOUSAND);
-
-	return 0;
 }
 
 /*
@@ -412,18 +491,107 @@ owp_do_summary(fetch_state_ptr state)
 	return 0;
 }
 
+#define OWP_CMP(a,b) ((a) < (b))? -1 : (((a) == (b))? 0 : 1)
+
 /* 
    Width of Fetch receiver window - MUST be divisible by 4.
 */
 #define OWP_WIN_WIDTH   16
+/*
+** Given two timestamp records, compare their sequence numbers.
+** The function returns -1. 0 or 1 if the first record's sequence
+** number is respectively less than, equal to, or greater than that 
+** of the second.
+*/
+int
+owp_seqno_cmp(u_int8_t *a, u_int8_t *b)
+{
+	assert(a);
+	assert(b);
+
+	return OWP_CMP(OWPGetSeqno(a), OWPGetSeqno(b));
+}
 
 /*
-** Insert a new timestamp record in a window.
+** Given a list of records ordered by seq_no (from lowest to
+** highest) find a location in the list after which the record <rec>
+** should be inserted. Return NULL if <rec> is to be inserted at
+** the head of the list.
+*/
+rec_link_ptr
+owp_find_location(rec_list_ptr list, u_int8_t *rec)
+{
+	rec_link_ptr ret;
+
+	assert(list);
+	assert(rec);
+
+	for (ret = list->tail; ret; ret = ret->previous)
+		if (owp_seqno_cmp(rec, ret->record) > 0)
+			return ret;
+
+	return NULL;
+}
+
+/*
+** Generic function to output timestamp record in given format
+** as encoded in <state>.
+*/
+void
+owp_record_out(u_int8_t *rec, fetch_state_ptr state)
+{
+	OWPTimeStamp send, recv;
+	u_int32_t    seq_no;
+	double delay;
+
+	assert(rec);
+	assert(state);
+
+	OWPParseDataRecord(rec, &send, &recv, &seq_no);
+
+	switch (state->type) {
+	case OWP_MACHINE_READ:
+		assert(state->fp);
+		fprintf(state->fp, 
+"seq_no=%u send=%u.%us sync=%u prec=%u recv=%u.%us sync=%u prec=%u\n",
+			seq_no, send.sec, send.frac_sec, send.sync, send.prec,
+			recv.sec, recv.frac_sec, recv.sync, recv.prec);
+		break;
+	case OWP_PING_STYLE:
+		delay = owp_delay(&send, &recv);
+		fprintf(state->fp, "seq_no=%u delay=%.3f ms\n", seq_no, 
+			delay*THOUSAND);
+		owp_update_stats(state, delay);
+		break;
+	case OWP_PING_QUIET:
+		delay = owp_delay(&send, &recv);
+		owp_update_stats(state, delay);
+		break;
+	default:
+		fprintf(stderr, "FATAL: Internal error - bad 'type' value\n");
+		exit(1);
+	}
+}
+
+/*
+** Insert a new timestamp record in a window. Return 0 on success,
+** or -1 on failure.
 */
 int
 fill_window(void *calldata, u_int8_t *rec)
 {
-	return 0;
+	fetch_state_ptr state = (fetch_state_ptr)calldata;
+
+	assert(state);
+	assert(state->window);
+
+	owp_record_out(rec, state); /* Output is done in all cases. */
+
+	if (state->type == OWP_MACHINE_READ)
+		return 0;
+
+	return rec_insert_next(state->window, 
+			       owp_find_location(state->window, rec), rec);
 }
 
 /*
@@ -433,6 +601,28 @@ fill_window(void *calldata, u_int8_t *rec)
 int
 do_rest(void *calldata, u_int8_t *rec)
 {
+	fetch_state_ptr state = (fetch_state_ptr)calldata;
+	u_int32_t       seq_no;
+
+	assert(state);
+	assert(state->window);
+	assert(rec);
+
+	owp_record_out(rec, state); /* Output is done in all cases. */
+
+	/* If ordering is not important - done. */
+	if (state->type == OWP_MACHINE_READ)
+		return 0;
+
+	/* If ordering is important - handle it here. */
+	if (state->order_disrupted)
+		return 0;
+	seq_no = OWPGetSeqno(rec);
+	if ((int64_t)seq_no < state->last_seqno) {
+		state->order_disrupted = 1;
+		return 0; /* No error but all stats processing is off now. */
+	}
+
 	return 0;
 }
 
@@ -446,46 +636,52 @@ do_rest(void *calldata, u_int8_t *rec)
 **     (original ping style: max/avg/min/stdev) at the end.
 */
 int
-do_records_all(OWPControl cntrl, u_int32_t num_rec, int type, FILE *fp)
+do_records_all(int fd, u_int32_t num_rec, int type, FILE *out)
 {
 	rec_list window;
 	u_int32_t nchunks;
 	fetch_state state;
 	int i;
 
-	assert(fp);
-	list_init(&window);
-	fetch_state_init(&state, fp, &window);
+	assert(out);
+	assert((type == OWP_MACHINE_READ)
+	       || (type == OWP_PING_STYLE)
+	       || (type == OWP_PING_QUIET));
 
-	/* Set up properties of output in state here. */
-	switch (type) {
-	case 0:          /* print the full record in machine-readable form */
-		break;
-	default:
-		break;
-	}
+	list_init(&window);
+	fetch_state_init(&state, out, &window, type);
 
 	/* If few records - fill the window and flush immediately */
 	if (num_rec <= OWP_WIN_WIDTH) {
-		OWPFetchRecords(cntrl, num_rec, fill_window, fp);
+		OWPFetchLocalRecords(fd, num_rec, fill_window, out);
 		
 		/*
-		  XXX - TODO: flush the window and return
+		  XXX - TODO: flush AND free the window and return
 		*/
+		list_free(&window);
+		return 0;
 	}
 	
-	OWPFetchRecords(cntrl, OWP_WIN_WIDTH, fill_window, &state);
-	OWPFetchRecords(cntrl, num_rec - OWP_WIN_WIDTH, 
-			do_rest, &state);
+	OWPFetchLocalRecords(fd, OWP_WIN_WIDTH, fill_window, &state);
+	OWPFetchLocalRecords(fd, num_rec - OWP_WIN_WIDTH, do_rest, &state);
 	
-	if (OWPCheckPadding(cntrl) == OWPErrFATAL) {
-       		I2ErrLog(eh, "owping: FATAL: bad padding in data stream");
-		return -1;
-	}
-		
 	/*
-	  XXX - TODO: flush the window and return
+	  XXX - TODO: flush AND free the window.
 	*/
+
+	list_free(&window);
+
+	if (close(fd) < 0)
+		I2ErrLog(eh, "WARNING: close(%d) failed", fd);
+
+	/* Stats are requested and failed to keep records sorted - redo */
+	if (((type == OWP_PING_STYLE) || (type == OWP_PING_QUIET))
+		&& state.order_disrupted) {
+		I2ErrLog(eh, "Severe out-of-order condition observed.");
+		I2ErrLog(eh, 
+	     "Producing statistics for this case is currently unimplemented.");
+		exit(1);
+	}
 
 	return 0;
 }
@@ -734,7 +930,6 @@ main(
 	 */
 	test_spec.InvLambda = (double)1000000.0 / ping_ctx.opt.rate;
 
-
 	/*
 	 * TODO: Figure out how the client is going to make policy
 	 * requests. could just leave it empty I suppose. (Could also
@@ -742,7 +937,23 @@ main(
 	 * the pipefd portion of PerConnData is -1....
 	 */
 	conndata.pipefd = -1;
-	conndata.datadir = ping_ctx.opt.datadir;
+	conndata.link_data_dir = NULL;
+	if (ping_ctx.opt.datadir)
+		conndata.real_data_dir = ping_ctx.opt.datadir;
+	else { /* create a unique temp dir */
+		conndata.real_data_dir = strdup(OWP_TMPDIR_TEMPLATE);
+		if (!conndata.real_data_dir) {
+			I2ErrLog(eh, "FATAL: main: malloc(%d) failed",
+				 strlen(OWP_TMPDIR_TEMPLATE) + 1);
+			exit(1);
+		}
+		if (mkdtemp(conndata.real_data_dir) == NULL) {
+			I2ErrLog(eh, 
+		       "FATAL: main: mkdtemp: failed to create temp data dir");
+			free(conndata.real_data_dir);
+			exit(1);
+		}
+	}
 	conndata.policy = policy;
 	conndata.lossThreshold = ping_ctx.opt.lossThreshold;
 	conndata.node = NULL;
