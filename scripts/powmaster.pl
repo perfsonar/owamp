@@ -315,8 +315,9 @@ while(1){
 	my $peeraddr;
 
 	$@ = '';
+	undef $peeraddr;
 	if($sigchld){
-		undef $peeraddr;
+		;
 	}
 	elsif($reset || $die){
 		undef $UptimeSocket;
@@ -324,21 +325,29 @@ while(1){
 		if($reset == 1){
 			$reset++;
 			warn "Handling SIGHUP... Stop processing...\n";
-			kill 'TERM', keys %pid2info;
-			next; # SIGCHLD shows up during kill - even if blocked.
+			$funcname = "kill";
+			eval{
+				# SIGCHLD happens during kill - even if blocked.
+				kill 'TERM', keys %pid2info;
+			};
 		}
-		if($die == 1){
+		elsif($die == 1){
 			$die++;
 			warn "Exiting... Deleting sub-processes...\n";
-			kill 'TERM', keys %pid2info;
-			next; # SIGCHLD shows up during kill - even if blocked.
-		}
-		$funcname = "sigsuspend";
-		# Wait for children to exit
-		if((keys %pid2info) > 0){
+			$funcname = "kill";
 			eval{
-				sigsuspend($old_mask);
+				# SIGCHLD happens during kill - even if blocked.
+				kill 'TERM', keys %pid2info;
 			};
+		}
+		else{
+			$funcname = "sigsuspend";
+			# Wait for children to exit
+			if((keys %pid2info) > 0){
+				eval{
+					sigsuspend($old_mask);
+				};
+			}
 		}
 	}
 	else{

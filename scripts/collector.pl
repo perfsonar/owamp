@@ -237,6 +237,7 @@ sub catch{
 	else{
 		$die++;
 	}
+
 	#
 	# If we are in an eval - die from here to make the function return
 	# and not automatically restart: ie accept.
@@ -262,8 +263,9 @@ while(1){
 	my ($func);
 
 	$@ = '';
+	undef $paddr;
 	if($sigchld){
-		undef $paddr;
+		;
 	}elsif($reset || $die){
 		undef $Server;
 		undef $paddr;
@@ -274,23 +276,22 @@ while(1){
 			eval{
 				kill 'TERM', (keys %children);
 			};
-			next;
 		}
-		if($die == 1){
+		elsif($die == 1){
 			$die++;
 			warn "Exiting... Deleting sub-processes...\n";
 			$func = "kill";
 			eval{
 				kill 'TERM', (keys %children);
 			};
-			next;
 		}
-
-		$func = "sigsuspend";
-		if((keys %children) > 0){
-			eval{
-				sigsuspend($old_mask);
-			};
+		else{
+			$func = "sigsuspend";
+			if((keys %children) > 0){
+				eval{
+					sigsuspend($old_mask);
+				};
+			}
 		}
 	}else{
 		$func = "accept";
