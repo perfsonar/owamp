@@ -266,16 +266,16 @@ typedef OWPTimeStamp (*OWPGetTimeStampFunc)(
 typedef struct {
 	struct timeval			tm_out;
 	void				*app_data;
-	OWPErrFunc			*err_func;
-	OWPGetAESKeyFunc		*get_aes_key_func;
-	OWPCheckAddrPolicy		*check_addr_func;
-	OWPCheckControlPolicyFunc	*check_control_func;
-	OWPCheckTestPolicyFunc		*check_test_func;
-	OWPEndpointInitFunc		*endpoint_init_func;
-	OWPEndpointInitHookFunc		*endpoint_init_hook_func;
-	OWPEndpointStart		*endpoint_start_func;
-	OWPEndpointStop			*endpoint_stop_func;
-	OWPGetTimeStampFunc		*get_timestamp_func;
+	OWPErrFunc			err_func;
+	OWPGetAESKeyFunc		get_aes_key_func;
+	OWPCheckAddrPolicy		check_addr_func;
+	OWPCheckControlPolicyFunc	check_control_func;
+	OWPCheckTestPolicyFunc		check_test_func;
+	OWPEndpointInitFunc		endpoint_init_func;
+	OWPEndpointInitHookFunc		endpoint_init_hook_func;
+	OWPEndpointStart		endpoint_start_func;
+	OWPEndpointStop			endpoint_stop_func;
+	OWPGetTimeStampFunc		get_timestamp_func;
 } OWPInitializeConfigRec, *OWPInitializeConfig;
 
 
