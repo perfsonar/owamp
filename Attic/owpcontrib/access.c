@@ -223,6 +223,26 @@ str2datum(const char *bytes)
 	return dat;
 }
 
+datum*
+limits2datum(const OWAMPLimits * lim)
+{
+	datum* dat;
+	size_t len = sizeof(*lim);
+
+	if ( (dat = (void *)malloc(sizeof(datum))) == NULL)
+		return NULL;
+	if ( (dat->dptr = (void *)malloc(len)) == NULL) 
+		return NULL;
+
+	/* Later improve to: */
+	/* dat->dptr = (char *)lim; */
+
+	bcopy(lim, dat->dptr, len);
+	dat->dsize = len;
+
+	return dat;
+}
+
 u_int32_t
 get_ip_addr(const datum * dat)
 {
@@ -465,12 +485,7 @@ owamp_read_class2limits(const char *class2limits, hash_ptr hash)
 				OWAMPSetNumSessions(&limits, numval);
 			printf("DEBUG: key = %s value =  %lu\n", key, numval);
 			} 
-		printf("\n");                     /* DEBUG */
-
 		/* Now save the limits structure in the hash. */
-		/*		key_dat = *(str2datum(class)); */
-		val_dat.dptr = (char *)&limits;
-		val_dat.dsize = sizeof(OWAMPLimits);
-		hash_store(ctx, hash, str2datum(class), &val_dat);
+		hash_store(ctx, hash, str2datum(class), limits2datum(&limits));
 	}
 }
