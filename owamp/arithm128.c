@@ -77,8 +77,8 @@ static unsigned short mask2[16] = {
 	0xff, 0x7f, 0x3f, 0x1f, 0xf, 0x7, 0x3, 0x1
 };
 
-#define first(x, i)  ((x) & mask1[(i)])
-#define second(x, i) (((x) & mask2[(i)]) << i)
+#define first(x, i)  (((x) & mask1[(i)]) >> (16-(i)))
+#define second(x, i) (((x) & mask2[(i)]) << (i))
 
 /*
 ** Constructor function. Create a num struct out of its components.
@@ -141,8 +141,22 @@ num_print(num_128 x)
 	assert(x);
 	
 	for (i = NUM_DIGITS - 1; i >= 0; i--)
-		fprintf(stderr, "%hx ", x->digits[i]);
-	fprintf(stderr, "\n");
+		fprintf(stdout, "%hx ", x->digits[i]);
+	fprintf(stdout, "\n");
+}
+
+/*
+** This function is used primarily for debugging.
+*/
+void
+num_binprint(num_128 x)
+{
+	int i;
+	assert(x);
+	
+	for (i = (NUM_DIGITS/2) - 1; i >= 0; i--)
+		print_bin(x->digits[i]);
+	fprintf(stdout, "\n");
 }
 
 /*
@@ -398,9 +412,12 @@ random_exp(keyInstance *key, unsigned long in)
 
 	/* XXX - remove later */
 
+	/* 	*/
+
 	/*
 	fprintf(stderr, "DEBUG: in = %lu, initial U = \n", in);
-	num_print(&U);
+	num_print(&U); 
+	num_binprint(&U);
 	*/
 
 	/* Get U and shift */
@@ -448,18 +465,51 @@ random_exp(keyInstance *key, unsigned long in)
 		for (i = 4 - num_blocks; i < 4; i++)
 			U.digits[3-i] = (unsigned short)0;
 	} else { /* need some cut and paste */
-		for (i = 0; i < num_blocks; i++){
-			U.digits[3-i] = second(U.digits[3-i], num_bits)
-				| first(U.digits[3-(i+1)], num_bits);
+
+		for (i = 0; i <= 2 - num_blocks; i++){
+
+			/*
+			fprintf(stderr, "DEBUG: U.digits[%d] = \n", 3-i);
+			print_bin(U.digits[3-i]);
+			fprintf(stderr, "\n");
+
+			fprintf(stderr, "DEBUG: second = \n");
+			print_bin(second(U.digits[3-i], num_bits));
+			fprintf(stderr, "\n");
+			fprintf(stderr, "DEBUG: first = \n");
+			print_bin(first(U.digits[3-(i+1)], num_bits));
+			fprintf(stderr, "\n");
+			*/
+
+			U.digits[3-i] = second(U.digits[3-i-num_blocks], 
+					       num_bits)
+				| first(U.digits[3-(i+1)-num_blocks], 
+					num_bits);
+			/*
+			fprintf(stderr, 
+				"DEBUG: inside loop U.digits[%d] is = \n",3-i);
+			print_bin(U.digits[3-i]);
+			fprintf(stderr, "\n");
+			*/
+			
 		}
 
-		U.digits[3-num_blocks] = 
-			second(U.digits[3-num_blocks], num_bits);
+		U.digits[num_blocks] = 
+			second(U.digits[0], num_bits);
 
-		for (i = num_blocks + 1; i < 4; i++)
+		for (i = 4 - num_blocks; i < 4; i++)
 			U.digits[3-i] = (unsigned short)0;
 	}
-
+	/*
+	fprintf(stderr, "DEBUG: after the loop U.digits[3] is = \n");
+	print_bin(U.digits[3]);
+	fprintf(stderr, "\n");
+	*/
+	/* XXX - debug only. remove 
+	fprintf(stderr, "DEBUG: bl = %d, bi = %d, count = %d, shifted U = \n", 
+		num_blocks, num_bits, count);
+	num_binprint(&U);
+	*/
 
 	/* Immediate acceptance? */
 	if (num_cmp(&U, LN2) < 0){ 
@@ -493,4 +543,41 @@ random_exp(keyInstance *key, unsigned long in)
 	num_add(&tmp1, &V, &tmp2);
 	num_mul(&tmp2, LN2, &ret);
 	return ret;
+}
+
+/*
+** DEBUG only.
+*/
+void
+print_macros()
+{
+	int i;
+
+	fprintf(stderr, "DEBUG: printing values of macros:\n");
+	for (i = 1; i <= 15; i++)
+		fprintf(stderr, "first(150, %d) = %x, second(150, %d) = %x\n", 
+			i, first(150, i), i, second(150, i));
+}
+
+/*
+** Print out binary expansion of an unsigned short.
+*/
+void
+print_bin(unsigned short n)
+{
+	int i;
+	unsigned short tmp = n;
+	unsigned short div = (unsigned short)1 << 15;
+	
+	for (i = 1; i <= 15; i++){
+		/* fprintf(stderr, "div = %hu\n", div); */
+		if ((tmp/div) == 0){
+			fprintf(stderr, "0");
+		} else {
+			fprintf(stderr, "1");
+			tmp -= div;
+		}
+		div >>= 1;
+	}
+	fprintf(stderr, "%hu ", tmp);
 }

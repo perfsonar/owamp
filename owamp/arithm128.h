@@ -75,6 +75,9 @@ void num_print(num_128 x);
 unsigned long num2ulong(num_128 x);
 unsigned long long num2ulonglong(num_128 x);
 struct num_128 ulonglong2num(unsigned long long a);
+void print_macros();
+void print_bin(unsigned short n);
+void num_binprint(num_128 x);
 
 /* Generate an exponential deviate using 64-bit binary string as an input. */
 struct num_128 random_exp(keyInstance *key, unsigned long in);
