@@ -136,7 +136,7 @@ _OWPCallCheckControlPolicy(
  */
 OWPBoolean
 _OWPCallCheckTestPolicy(
-	OWPContext	ctx,		/* library context		*/
+	OWPControl	cntrl,		/* control handle		*/
 	OWPSessionMode	mode,		/* authentication mode		*/
 	const char	*kid,		/* kid or null			*/
 	struct sockaddr	*local,		/* local endpoint		*/
@@ -145,8 +145,10 @@ _OWPCallCheckTestPolicy(
 	OWPErrSeverity	*err_ret	/* error - return		*/
 )
 {
+	OWPContext ctx;
 	*err_ret = OWPErrOK;
 
+	ctx = OWPGetContext(cntrl);
 	if(!ctx){
 		OWPErrorLine(NULL,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
 				"_OWPCallCheckTestPolicy:No Context!");
@@ -162,4 +164,13 @@ _OWPCallCheckTestPolicy(
 
 	return (*ctx->cfg.check_test_func)(ctx->cfg.app_data,mode,kid,
 						local,remote,test_spec,err_ret);
+}
+
+/*
+** Context access function.
+*/
+OWPContext
+OWPGetContext(OWPControl cntrl)
+{
+	return cntrl->ctx;
 }
