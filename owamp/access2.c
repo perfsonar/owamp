@@ -69,7 +69,7 @@ is_valid_netmask6(struct sockaddr_in6 *addr, u_int8_t num_offset)
 	ptr = (addr->sin6_addr.s6_addr) + nbytes;
 
 	if (nbits){     /* The last (8-nbits) bits must be zero. */
-		if (*ptr++ && (((u_int8_t)1 << (8 - nbits)) - 1))
+		if (*ptr++ & (((u_int8_t)1 << (8 - nbits)) - 1))
 			return 0;
 		nbytes++;
 	}
@@ -197,6 +197,10 @@ owp_netmask2class_store(void *addr,
 		ptr->addr4 = (u_int32_t)0;
 		memcpy(ptr->addr6, 
 		       ((struct sockaddr_in6 *)addr)->sin6_addr.s6_addr, 16);
+#ifdef ACCESS_DEBUG		
+		fprintf(stderr, "DEBUG: saving netmask:");
+		owp_print_netmask(key, stderr);
+#endif
 		break;
 	default:
 		return 0;
@@ -425,8 +429,8 @@ owp_netmask2class(owp_access_netmask *netmask, policy_data* policy)
 		perror("malloc");
 		return NULL;
 	}
-
 	assert(netmask); assert(policy);
+	cur_mask->af = netmask->af;
 	hash = policy->ip2class;
 	switch (netmask->af) {
 	case AF_INET:
@@ -445,13 +449,37 @@ owp_netmask2class(owp_access_netmask *netmask, policy_data* policy)
 		}
 		break;
 	case AF_INET6:
+#ifdef ACCESS_DEBUG
+		fprintf(stderr, "Original mask is:\n");
+		owp_print_strnet(netmask, stderr);
+#endif
 		/* Prepare the address part of the mask */
 		cur_mask->addr4 = 0;
 		memcpy(cur_mask->addr6, netmask->addr6, 16);
 
 		for (offset = 128; offset >= 0; offset--){
+			u_int8_t nbytes, nbits, *ptr;
+			int i;
+			nbytes = offset/8;
+			nbits = offset%8;
+			ptr = (cur_mask->addr6) + nbytes;
+			
+			if (nbits){ /* The last (8-nbits) bits must be zero. */
+				*ptr &= ~(((u_int8_t)1 << (8 - nbits)) - 1);
+				nbytes++;
+				ptr++;
+			}
+	
+			/* Make sure all subsequent bytes are zero. */
+			for (i = 0; i < 16 - nbytes; i++, ptr++)
+				*ptr = (u_int8_t)0; 
+
 			cur_mask->offset = offset;
 			key = owp_netmask2datum(cur_mask);
+#ifdef ACCESS_DEBUG
+			fprintf(stderr, "netmask2datum, looking for mask\n");
+			owp_print_netmask(key, stderr);
+#endif
 			val = I2hash_fetch(hash, key);
 			if (val)
 				return val->dptr;
