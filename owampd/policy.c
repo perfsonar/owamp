@@ -39,9 +39,8 @@
  * Function:	parsekeys
  *
  * Description:	
- * 	Read a single line from the keys file of the format:
- * 		"\s*username\s+key\n"
- * 	skipping blank lines, comment lines, trailing comments
+ * 		Read all keys from the keyfile and populate the keys
+ * 		hash with that data.
  *
  * In Args:	
  *
@@ -67,29 +66,25 @@ parsekeys(
 	char		*keystart;
 	OWPKey		tkey;
 	I2Datum		key,val;
+	I2ErrHandle	eh = OWPContextGetErrHandle(policy->ctx);
 
+	/*
+	 * TODO: Replace with an autoconf test
+	 */
+	{
+		size_t	tsize;
+		tsize = sizeof(username);
+		assert(I2MAXIDENTITYLEN <= tsize);
+		tsize = sizeof(OWPKey);
+		assert(I2KEYLEN == tsize);
+	}
+	
 	if(!fp){
 		return 0;
 	}
 
-	while((rc = OWPDGetConfLine(policy->ctx,fp,rc,lbuf,lbuf_max)) > 0){
-
-		line = *lbuf;
-
-		i=0;
-		while(i <= OWP_USERID_LEN){
-			if(isspace(*line) || (*line == '\0')){
-				break;
-			}
-			username[i++] = *line++;
-		}
-
-		if(i > OWP_USERID_LEN){
-			OWPError(policy->ctx,OWPErrFATAL,OWPErrINVALID,
-							"Username too long");
-			return -rc;
-		}
-		username[i] = '\0';
+	while((rc = I2ParseKeyFile(eh,fp,rc,lbuf,lbuf_max,NULL,NULL,
+					username,tkey)) > 0){
 
 		/*
 		 * Make sure the username is not already in the hash.
@@ -99,52 +94,6 @@ parsekeys(
 		if(I2HashFetch(policy->keys,key,&val)){
 			OWPError(policy->ctx,OWPErrFATAL,OWPErrINVALID,
 					"username \"%s\" duplicated",username);
-			return -rc;
-		}
-
-		/*
-		 * grab hex-encoded key.
-		 */
-		while(isspace(*line)){
-			line++;
-		}
-
-		keystart = line;
-		i=0;
-		while(*line != '\0'){
-			if(isspace(*line)){
-				break;
-			}
-			i++;
-			line++;
-		}
-		/*
-		 * terminate keystart
-		 */
-		*line++ = '\0';
-
-		/*
-		 * Make sure the only thing trailing the key is
-		 * a comment or whitespace.
-		 */
-		while(*line != '\0'){
-			if(*line == '#'){
-				break;
-			}
-			if(!isspace(*line)){
-				return -rc;
-			}
-			line++;
-		}
-
-		if(i != keylen){
-			OWPError(policy->ctx,OWPErrFATAL,OWPErrINVALID,
-						"Invalid key: wrong length");
-			return -rc;
-		}
-		if(!I2HexDecode(keystart,tkey,sizeof(tkey))){
-			OWPError(policy->ctx,OWPErrFATAL,OWPErrINVALID,
-						"Invalid key: not hex?");
 			return -rc;
 		}
 
@@ -337,7 +286,7 @@ parselimitline(
 	/*
 	 * Grab new classname
 	 */
-	if(!(line = strtok(line,OWPDWSPACESET))){
+	if(!(line = strtok(line,I2WSPACESET))){
 		return 1;
 	}
 	cname = line;
@@ -362,7 +311,7 @@ parselimitline(
 	/*
 	 * parse "with"
 	 */
-	if(!(line = strtok(NULL,OWPDWSPACESET))){
+	if(!(line = strtok(NULL,I2WSPACESET))){
 		return 1;
 	}
 	/* compare strings INCLUDING the '\0' */
@@ -578,7 +527,7 @@ parseassignline(
 	/*
 	 * Grab assign "type"
 	 */
-	if(!(line = strtok(line,OWPDWSPACESET))){
+	if(!(line = strtok(line,I2WSPACESET))){
 		return 1;
 	}
 
@@ -602,7 +551,7 @@ parseassignline(
 		/*
 		 * Grab addr/mask
 		 */
-		if(!(line = strtok(NULL,OWPDWSPACESET))){
+		if(!(line = strtok(NULL,I2WSPACESET))){
 			OWPError(policy->ctx,OWPErrFATAL,OWPErrINVALID,
 				"Invalid \"assign net\" argument.");
 			return 1;
@@ -716,7 +665,7 @@ parseassignline(
 		/*
 		 * Grab username
 		 */
-		if(!(line = strtok(NULL,OWPDWSPACESET))){
+		if(!(line = strtok(NULL,I2WSPACESET))){
 			return 1;
 		}
 		key.dptr = line;
@@ -742,7 +691,7 @@ parseassignline(
 	 * The Pid is valid - now parse and check for limits for
 	 * the "classname".
 	 */
-	if(!(line = strtok(NULL,OWPDWSPACESET))){
+	if(!(line = strtok(NULL,I2WSPACESET))){
 		return 1;
 	}
 
@@ -779,10 +728,11 @@ parselimits(
 	size_t		*lbuf_max
 	)
 {
-	int	rc = 0;
-	size_t	i;
-	size_t	maxlim = 0;
-	char	*line;
+	int		rc = 0;
+	size_t		i;
+	size_t		maxlim = 0;
+	char		*line;
+	I2ErrHandle	eh = OWPContextGetErrHandle(policy->ctx);
 
 	/*
 	 * Count number of possible limit parameters
@@ -796,7 +746,7 @@ parselimits(
 	/*
 	 * parse the file, one line at a time.
 	 */
-	while(fp && ((rc = OWPDGetConfLine(policy->ctx,fp,rc,lbuf,lbuf_max)) > 0)){
+	while(fp && ((rc = I2GetConfLine(eh,fp,rc,lbuf,lbuf_max)) > 0)){
 		line = *lbuf;
 
 		/*
@@ -846,7 +796,7 @@ parselimits(
 
 		line = *lbuf;
 		if(sizeof(defline) > *lbuf_max){
-			*lbuf_max += OWPDLINEBUFINC;
+			*lbuf_max += I2LINEBUFINC;
 			*lbuf = realloc(line,sizeof(char) * *lbuf_max);
 			if(!*lbuf){
 				if(line){
@@ -1390,7 +1340,7 @@ OWPDPolicyInstall(
 	}
 
 	/*
-	 * lbuf is a char buffer that grows as needed in OWPDGetConfLine
+	 * lbuf is a char buffer that grows as needed in I2GetConfLine
 	 * lbuf will be realloc'd repeatedly as needed. Once conf file
 	 * parsing is complete - it is free'd from this function.
 	 */
