@@ -27,8 +27,8 @@
 #include <owamp/owamp.h>
 #include "./access.h"
 
-static char* lim_names[5] = {"bandwidth", "space", "expiry", "del_on_close", \
-                             "del_on_fetch"};
+static char* lim_names[6] = {"bandwidth", "space", "expiry", "del_on_close", \
+                             "del_on_fetch", "open_mode_ok"};
 
 /*
 ** Allocate a new tree node.
@@ -137,11 +137,13 @@ owp_buf_print(owp_chunk_buf_ptr buf)
 	printf("%s\n", buf->data);
 }
 
+#if 0
 I2datum *
 owp_node2datum(owp_tree_node_ptr node)
 {
 	
 }
+#endif
 
 #define OWP_OK            0
 #define OWP_ERR           1
@@ -346,7 +348,7 @@ owp_str2num(char *str, owp_lim_t *val)
 ** Given a class name return the address of the corresponding node
 ** on success, or NULL if not found.
 */
-static owp_tree_node_ptr
+owp_tree_node_ptr
 owp_class2node(char *class, I2table hash)
 {
 	I2datum *key, *val;
@@ -380,15 +382,19 @@ owp_get_description(OWPContext ctx,
 		    I2table class2node
 		    )
 {
-	int c, t;
+	int c, t, i;
+	int value_set[6]; /* array of flags for specific limits being set */
 	owp_chunk_buf buf;
 	char *p, *q, *brka;
 	I2datum *key, *val;
 	int newline = 1; /* set if the last character was '\n' */
-
 	int parent_set = 0;
 
 	assert(class2node);
+
+	for (i = 0; i < 6; i++)
+		value_set[i] = 0;
+
 	if ((t = owp_skip_separators(ctx, fp)) != OWP_OK)
 		return t;
 
@@ -418,7 +424,6 @@ owp_get_description(OWPContext ctx,
 
 	while ((t = owp_skip_whitespace(ctx, fp, &newline, line_num))==OWP_OK){
 		owp_lim_t numval;
-		int i;
 		/* Now process the chunk - look for first whitespace. */
 		owp_buf_reset(&buf);
 		while ((c = fgetc(fp)) != EOF) {
@@ -446,25 +451,32 @@ owp_get_description(OWPContext ctx,
 				if (owp_str2num(q, &numval) < 0)
 					goto syntax_err;
 				new_node->limits.values[i] = numval;
+				value_set[i] = 1;
 				goto next_chunk;
 			}
 		}
-		for (i = 3; i < 5; i++) {
+		for (i = 3; i < 6; i++) {
 			if (!strcmp(p, lim_names[i])) {
 				if (! (OWP_ON(q) || OWP_OFF(q)))
 					goto syntax_err;
 				new_node->limits.values[i] = (OWP_ON(q))? 1:0;
+				value_set[i] = 1;
 				goto next_chunk;
 			}
 		}
 		if (!strcmp(p, "parent")) {
 			owp_tree_node_ptr tmp;
+			/* 
+			   Note: next line ensures that the first node
+			   cannot have a parent (thus must be root node)
+			*/
 			if (!(new_node->parent=owp_class2node(q,class2node)))
 				goto syntax_err;
 				
 			tmp = new_node->parent->first_child;
 			new_node->parent->first_child = new_node;
 			new_node->next_sibling = tmp;
+			parent_set = 1;
 			continue;
 		}
 		goto syntax_err; /* No match. */
@@ -474,14 +486,36 @@ owp_get_description(OWPContext ctx,
 	if (t == OWP_ERR)
 		goto syntax_err;
 
-	/* Now inspect the description and check for any remaining errors. */
-	/*
-	  XXX
-	*/
+	if (!*root){  /* root has not been seet yet */
+		/* All attributes except for flags MUST be set */
+		for (i = 0; i < 3; i++) {
+			if (value_set[i] == 0)
+				goto syntax_err;
+		}
 
-	if (!*root)  /* root has not been seet yet */
+		/* "delete" flags are OFF by default */
+		for (i = 3; i < 5; i++) {
+			if (!value_set[i])
+				new_node->limits.values[i] = 0;
+		}
+		/* "open_mode_ok" flag is ON by default */
+		if (!value_set[5])
+			new_node->limits.values[5] = 1;
+		
 		*root = new_node;
-
+	} else { /* All missing limits are inherited from the parent. */
+		if (!parent_set) {
+			OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
+	    "FATAL: owp_get_description: no parent has been set for class %s", 
+				 new_node->data);
+			goto syntax_err;
+		}
+		for (i = 0; i < 6; i++)
+			if (!value_set[i]) {
+				new_node->limits.values[i] = 
+					new_node->parent->limits.values[i];
+			}
+	};
 	/* Save the new node in class2node hash */
 	key = owp_raw2datum(new_node->data, strlen(new_node->data) + 1);
 	val = owp_raw2datum(new_node, sizeof(*new_node));
@@ -560,7 +594,6 @@ owp_read_class2limits2(OWPContext ctx, const char *class2limits, I2table hash)
 
 	}
  final:
-	printf("\nPrinting the class2node hash:\n");
 	I2hash_print(class2node_hash, stdout);
 	return 0;
 }
