@@ -1,0 +1,213 @@
+'\"t
+." The first line of this file must contain the '"[e][r][t][v] line
+." to tell man to run the appropriate filter "t" for table.
+."
+."	$Id$
+."
+."######################################################################
+."#									#
+."#			   Copyright (C)  2004				#
+."#	     			Internet2				#
+."#			   All Rights Reserved				#
+."#									#
+."######################################################################
+."
+."	File:		owfetch.1
+."
+."	Author:		Jeff Boote
+."			Internet2
+."
+."	Date:		Wed Apr 28 08:48:05 MDT 2004
+."
+."	Description:	
+."
+.TH owfetch 1 "$Date$"
+.SH NAME
+owfetch \- Client application to fetch buffered \fBOWAMP\fR session data.
+.SH SYNOPSIS
+.B owfetch
+[\fIoptions\fR] peerhost [SID savefile]+
+.SH DESCRIPTION
+\fBowfetch\fR is a command line client application that is used to
+fetch buffered \fBOWAMP\fR session data.
+.PP
+\fBOWAMP\fR one-way latency measurements send packets from a sending host
+to a receiving host. The recieving host is the only entity that ends up
+with the results of the test. When
+the \fBowampd\fR daemon is used to setup a recieving endpoint the daemon
+buffers that data. The owfetch application can be used to \fIfetch\fR the
+buffered data.
+.PP
+\fBowfetch\fR is a simple application that can be used to fetch this
+buffered data if it was not saved as part of the \fBowping\fR execution.
+The data will be saved in a file. \fBowfetch\fR can also print raw or
+summary statistics as well.
+.PP
+The \fISID\fR (Session Identifier) is a hex number that uniquely identifies
+a single test session. \fIsavefile\fR is the file the data from that test
+session will be saved in. Any number of \fISID\fR \fIsavefile\fR pairs can be
+specified on the command-line to download more than one session per
+command execution. The
+\fISID\fR is printed out when a test session is requested by \fBowping\fR
+if output is not suppressed with the \fI\-Q\fR option.
+.PP
+\fIsavefile\fR can be specified as /dev/null on UNIX if there is no desire
+to actually save the session data.
+.SH OPTIONS
+.TP
+\fB\-h\fR
+.br
+Print a usage message and exit.
+.RS
+.IP Default:
+Unset.
+.RE
+.SS Connection/Authentication Arguments:
+.TP
+\fB\-A\fR \fIauthmode\fB
+.br
+Specify the authentication modes the client is willing to use for
+communication. \fIauthmode\fR should be set as a character string with
+any or all of the characters "AEO". The modes are:
+.RS
+.IP \fBA\fR
+[\fBA\fR]uthenticated. This mode encrypts the control connection and
+encrypts part of each test packet.
+.IP \fBE\fR
+[\fBE\fR]ncrypted. This mode encrypts the control connection and
+encrypts each test packet in full. This mode forces an encryption step
+between the fetching of a timestamp and when the packet is sent. This
+adds more computational delay to the time reported by \fBOWAMP\fR for each
+packet.
+.IP \fBO\fR
+[\fBO\fR]pen. No encryption of any kind is done.
+.PP
+The client can specify all the modes with which it is willing to communicate.
+The most strict mode that both the server and the client are willing to use
+will be selected. Authenticated and Encrypted modes require a "shared secret"
+in the form of an AES key.
+.IP Default:
+"AEO".
+.RE
+.TP
+\fB\-k\fR \fIkeyfile\fR
+.br
+Indicates that \fBowfetch\fR should use the AES key in \fIkeyfile\fR for
+\fIusername\fB. \fIusername\fR must have a valid key in \fIkeyfile\fR.
+\fIkeyfile\fR can be generated as described in the aespasswd(1)
+manual page.
+.RS
+.IP Default:
+Unset. (If the \fB\-U\fR option was specified, user will be prompted for a
+\fIpassphrase\fR.)
+.RE
+.TP
+\fB\-S\fR \fIsrcaddr\fR
+.br
+Bind the local address of the client socket to \fIsrcaddr\fR. \fIsrcaddr\fR
+can be specified using a DNS name or using standard textual notations for
+the IP addresses.
+.RS
+.IP Default:
+Unspecified (wild-card address selection).
+.RE
+.TP
+\fB\-u\fR \fIusername\fR
+.br
+Specify the username that is used to identify the AES key for
+authenticated or encrypted modes. If the \fB\-k\fR option is specified,
+the key is retrieved from the \fIkeyfile\fR, otherwise \fBowfetch\fR prompts
+the user for a \fIpassphrase\fR. The \fIpassphrase\fR is used to generate
+the AES key.
+.RS
+.IP Default:
+Unset.
+.RE
+.SS Output Arguments:
+.TP
+\fB\-a\fR \fIpercentile\fR
+.br
+Specify an additional \fIpercentile\fR to print out in addition to the 
+minimum and the median when printing summary statistics.
+.RS
+.IP Default:
+Unset.
+.RE
+.TP
+\fB\-Q\fR
+.br
+Suppress the printing of summary statistics and human readable individual
+delays (\fI\-v\fR).
+.RS
+.IP Default:
+Unset.
+.RE
+.TP
+\fB\-R\fR
+.br
+Print individual packet records one per line in the raw format:
+.RS
+.PP
+\fISEQNO SENDTIME SSYNC SERR RECVTIME RSYNC RERR\fR
+.br
+.TS
+li l .
+SEQNO	Sequence number.
+SENDTIME	Send timestamp.
+SSYNC	Sending system synchronized (0 or 1).
+SERR	Estimate of SENDTIME error.
+RECVTIME	Receive timestamp.
+RSYNC	Receiving system synchronized (0 or 1).
+RERR	Estimate of RECVTIME error.
+.TE
+.PP
+The timestamps are ASCII representation of 64 bit integers with the
+high-order 32 bits representing the number of seconds since Jan 1, 1900
+and the low-order 32 bits representing fractional seconds.
+.PP
+The \fI\-R\fR option implies \fI\-Q\fR.
+.IP Default:
+Unset.
+.RE
+.TP
+\fB\-v\fR
+.br
+Print delays for individual packet records. This option is disabled by
+the \fI-Q\fR option.
+.RS
+.IP Default:
+Unset.
+.RE
+.SH EXAMPLES
+.LP
+\fBowfetch somehost.com abcdef0123456789abcdef0123456789 save.owp\fR
+.IP
+Contact host somehost.com. Fetch the test session identified by
+the SID abcdef0123456789abcdef0123456789. Print summary statistics on that
+file and save the data in save.owp.
+.LP
+\fBowfetch -R somehost.com abcdef0123456789abcdef0123456789 save.owp\fR
+.IP
+Contact host somehost.com. Fetch the test session identified by
+the SID abcdef0123456789abcdef0123456789. Print the raw decoding of the
+data in that file and save the session data in save.owp.
+.LP
+\fBowfetch -v somehost.com abcdef0123456789abcdef0123456789 save.owp\fR
+.IP
+Contact host somehost.com. Fetch the test session identified by
+the SID abcdef0123456789abcdef0123456789. Print individual delays for each
+packet in human readable format, print the summary statistics, and save the
+session data in save.owp.
+.LP
+\fBowfetch -U someuser somehost.com abcdef0123456789abcdef0123456789 save.owp\fR
+.IP
+The same action as the first example.  Authenticate using
+the identity \fIsomeuser\fR. \fBowfetch\fR will prompt for a \fIpassphrase\fR.
+.SH SEE ALSO
+owampd(8), owping(1), owstats(1), aespasswd(1) and
+the \%http://e2epi.internet2.edu/owamp/ web site.
+.SH ACKNOWLEDGMENTS
+This material is based in part on work supported by the National Science
+Foundation (NSF) under Grant No. ANI-0314723. Any opinions, findings and
+conclusions or recommendations expressed in this material are those of
+the author(s) and do not necessarily reflect the views of the NSF.

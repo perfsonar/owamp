@@ -155,10 +155,10 @@ any or all of the characters "AEO". The modes are:
 digitally signs part of each test packet.
 .IP \fBE\fR
 [\fBE\fR]ncrypted. This mode encrypts the control connection and
-encrypts each test packet in full. (This mode forces an encryption step
+encrypts each test packet in full. This mode forces an encryption step
 between the fetching of a timestamp and when the packet is sent. This
 adds more computational delay to the time reported by \fBOWAMP\fR for each
-packet.)
+packet.
 .IP \fBO\fR
 [\fBO\fR]pen. No encryption of any kind is done.
 .PP
@@ -174,8 +174,8 @@ in the form of an AES key.
 .br
 Indicates that \fBowping\fR should use the AES key in \fIkeyfile\fR for
 \fIusername\fB. \fIusername\fR must have a valid key in \fIkeyfile\fR.
-\fIkeyfile\fR should have been generated using the aespasswd(1)
-application.
+\fIkeyfile\fR can be generated as described in the aespasswd(1) manual
+page.
 .RS
 .IP Default:
 Unset. (If the \fB\-U\fR option was specified, user will be prompted for a
@@ -216,7 +216,8 @@ Unset.
 .TP
 \fB\-Q\fR
 .br
-Suppress the printing of summary statistics.
+Suppress the printing of summary statistics and human readable individual
+delays (\fI\-v\fR).
 .RS
 .IP Default:
 Unset.
@@ -251,7 +252,8 @@ Unset.
 .TP
 \fB\-v\fR
 .br
-Print delays for individual packet records.
+Print delays for individual packet records. This option is disabled by
+the \fI\-Q\fR option.
 .RS
 .IP Default:
 Unset.

@@ -157,7 +157,19 @@ clock. (On the other hand, if you notice a large amount of "clock hopping"
 it might be worth assigning a preferred peer - at least if there is a very
 stable, very available peer clock to use.)</li>
 </ol>
-More details on configuring NTP can be found at <font color="#000000"><a href="http://www.eecis.udel.edu/~mills/ntp/html/notes.html">http://www.eecis.udel.edu/~mills/ntp/html/notes.html</a></font>
+Additionally, it is probably a very good idea to make sure you allow other
+hosts to query the ntpd process on the host where owampd is running. This
+will allow test partners to see how NTP is configured on test peer systems
+and allow for quicker diagnosis of problems. This is done using the "restrict"
+keyword. A typical configuration for this might look like:
+<blockquote>
+<pre># allow anyone to query
+restrict default nomodify&nbsp;
+# allow localhost to more fully interact
+restrict 127.0.0.1
+</pre>
+</blockquote>
+More details on configuring NTP can be found at <font color="#000000"><a href="http://www.eecis.udel.edu/~mills/ntp/html/notes.html">http://www.eecis.udel.edu/~mills/ntp/html/notes.html.</a></font>
 <h3>
 Understanding the Data</h3>
 Latency distributions in general have a heavy tail. In other words, the

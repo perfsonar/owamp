@@ -53,8 +53,9 @@ Unset.
 .TP
 \fB\-Q\fR
 .br
-Suppress the printing of summary statistics. (Not really useful in the
-context of \fBowstats\fR but documented here for consistency.)
+Suppress the printing of summary statistics and human readable individual
+delays (\fI\-v\fR). This is not very useful in the context of
+\fBowstats\fR but documented here for consistency.
 .RS
 .IP Default:
 Unset.
@@ -89,7 +90,8 @@ Unset.
 .TP
 \fB\-v\fR
 .br
-Print delays for individual packet records.
+Print delays for individual packet records. This option is disabled by
+the \fI\-Q\fR option.
 .RS
 .IP Default:
 Unset.

@@ -1,0 +1,197 @@
+." The first line of this file must contain the '"[e][r][t][v] line
+." to tell man to run the appropriate filter "t" for table.
+."
+."	$Id$
+."
+."######################################################################
+."#									#
+."#			   Copyright (C)  2004				#
+."#	     			Internet2				#
+."#			   All Rights Reserved				#
+."#									#
+."######################################################################
+."
+."	File:		owampd.8
+."
+."	Author:		Jeff Boote
+."			Internet2
+."
+."	Date:		Tue May 11 14:15:18 MDT 2004
+."
+."	Description:	
+."
+.TH owampd.conf 5 "$Date$"
+.SH NAME
+owampd.conf \- One-way latency daemon configuration file.
+.SH DESCRIPTION
+The \fBowampd.conf\fR file is the configuration file for the owampd(8)
+daemon. It is used to configure the basic operation of the server. For
+example, what addresses and ports it should listen on, where it should
+send error messages, and where it should save files.
+.PP
+The policy rules for \fBowampd\fR are configured using the \fBowampd.limits\fR
+file; the details for configuring those policies are described in
+the owampd.limits(5) manual page.
+.PP
+The format of this file is as follows:
+.RS
+.IP \(bu
+Comment lines are any line where the first non-whitespace character is '#'.
+These lines are counted for the purposes of returning line numbers in error
+messages but are otherwise ignored by \fBowampd\fR.
+.IP \(bu
+Lines may be continued using the semi-standard '\\' character followed
+immediately by a newline character. This is the only valid place for
+the '\\' character. If it is found elsewhere, a syntax error is reported.
+.IP \(bu
+Blank lines are treated as comment lines.
+.IP \(bu
+All other lines are used to set configuration options. The format of these
+lines is an initial keyword followed by a variable list of arguments,
+separated by whitespace.
+.RE
+.SH CONFIGURATION OPTIONS
+.TP
+.BI authmode " authmode"
+Specify the authentication modes the server is willing to use for
+communication. \fIauthmode\fR should be set as a character string, with
+any or all of the characters "AEO". The modes are:
+.RS
+.IP \fBA\fR
+[\fBA\fR]uthenticated. This mode encrypts the control connection and
+encrypts part of each test packet.
+.IP \fBE\fR
+[\fBE\fR]ncrypted. This mode encrypts the control connection and encrypts
+each test packet in full. This mode forces an encryption step between
+the fetching of a timestamp and when the packet is sent. This adds more
+computational delay to the time reported by \fBOWAMP\fR for each packet.
+.IP \fBO\fR
+[\fBO\fR]pen. No encryption of any kind is done.
+.PP
+The server can specify all the modes with which it is willing to communicate.
+The most strict mode that both the server and the client are willing to use
+will be selected.
+.IP Default:
+"AEO".
+.RE
+.TP
+.BI controltimeout " controltimeout"
+Number of seconds to wait for protocol messages before timing out.
+.RS
+.IP Default:
+1800
+.RE
+.TP
+.BI datadir " datadir"
+Directory path where data files will be placed. The data files are the
+"\fIreceive\fR" session files that are buffered on the server.
+.RS
+.IP Default:
+Current directory
+.RE
+.TP
+.BI dieby " dieby"
+Number of seconds to wait for child processes to gracefully terminate
+before killing them with \fBSIGKILL\fR. This is in response to the master
+process receiving \fBSIGTERM\fR or \fBSIGHUP\fR.
+.RS
+.IP Default:
+30
+.RE
+.TP
+.BI diskfudge " diskfudge"
+Fudge factor to use when determining if a buffered owp file should be kept.
+It creates a soft limit for disk usage. The hard limit is determined by
+the limitclass that a connection matches (see the owampd.limits(5) manual
+page) and is applied when a test is requested. If the estimated filesize
+of the test would put the
+limitclass over the disk quota, then the test is denied. However, it is
+possible due to duplicate packets that a test session file may end up larger
+than this estimate. If that happens, and if the file is successfully saved
+to disk, then upon completion of the test the actual filesize is used to
+update the disk usage in the resource broker process. At this point, the soft
+limit is applied. The soft limit is determined by multiplying the hard limit
+by the \fIdiskfudge\fR. If the final filesize is larger than the
+soft quota then the file is immediately deleted.
+.RS
+.PP
+A liberal factor
+is recommended because this factor won't come in to play unless there are
+numerous duplicates, and that is precisely the kind of data most users
+will want to see. However, it is important to have this factor to ensure
+disk usage is not too vulnerable to replay DOS attacks of the test protocol.)
+.PP
+The valid values for \fIdiskfudge\fR are 1.0-10.0.
+.IP Default:
+1.0 (No soft limit)
+.RE
+.TP
+.BI facility " facility"
+Specify the syslog \fIfacility\fR to log messages.
+.RS
+.IP Default:
+LOG_DAEMON
+.RE
+.TP
+.BI group " group"
+Specifies the gid the \fBowampd\fR process should run as. \fIgroup\fR
+can be specified using a valid group name on the system or by using -gid.
+This option is only used if \fBowampd\fR is started as root.
+.TP
+.B loglocation
+Directs the \fBowampd\fR process to report source code file and line
+number information with error messages. This is a particularly useful
+option to set when sending in messages as part of a bug report.
+.TP
+.BI srcnode " nodename:port"
+Specify the address and port that \fBowampd\fR will listen for requests on.
+\fInodename\fR can be specified using a DNS name or using the textual
+representation of the address. It is possible to set the source address
+without setting the \fIport\fR by simply leaving off the ':' and \fIport\fR
+specification. If an IPv6 address is specified, note that the accepted format
+contains \fInodename\fR in square brackets as: [fe80::fe9f:62d8]. This
+ensures the port number is distinct from the address specification.
+.RS
+.IP Default:
+\fInodename\fR is wildcarded as any currently available address
+.br
+\fIport\fR is 4823.
+.RE
+.TP
+.BI syncfuzz " syncfuzz"
+This value is added to the NTP error estimates to increase the tolorence
+of owampd to incomplete ntp configurations. If not enough ntp peers are
+specified, NTP can not accurately determine the time error. This option
+is specified as a floating point number in seconds. For example, to indicate
+that the system is synchronized to one second, you could specify this option as 1.0.
+.RS
+.IP Default:
+0.0 (NTP error estimates are used as is.)
+.RE
+.TP
+.BI user " user"
+Specifies the uid the \fBowampd\fR process should run as. \fIuser\fR
+can be specified using a valid user name on the system or by using -uid.
+This option is only used if \fBowampd\fR is started as root.
+.TP
+.BI vardir " vardir"
+Directory path where the owampd.pid and owampd.info files will be placed.
+.RS
+.IP Default:
+Current directory
+.RE
+.TP
+.B verbose
+If this option is present, it directs the \fBowampd\fR process to
+generate more verbose messages to syslog.
+.SH SEE ALSO
+owping(1), owampd(8), owampd.limits(5), owampd.keys(5),
+and the \%http://e2epi.internet2.edu/bwctl/ web site.
+.PP
+For details on \fBIperf\fR, see the \%http://dast.nlanr.net/Projects/Iperf/
+web site.
+.SH ACKNOWLEDGMENTS
+This material is based in part on work supported by the National Science
+Foundation (NSF) under Grant No. ANI-0314723. Any opinions, findings and
+conclusions or recommendations expressed in this material are those of
+the author(s) and do not necessarily reflect the views of the NSF.

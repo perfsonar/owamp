@@ -72,7 +72,7 @@ any or all of the characters "AEO". The modes are:
 .RS
 .IP \fBA\fR
 [\fBA\fR]uthenticated. This mode encrypts the control connection and
-digitally signs part of each test packet.
+encrypts part of each test packet.
 .IP \fBE\fR
 [\fBE\fR]ncrypted. This mode encrypts the control connection and
 encrypts each test packet in full. (This mode forces an encryption step
