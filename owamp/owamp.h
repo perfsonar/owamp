@@ -73,6 +73,7 @@
 
 #include <owamp/rijndael-api-fst.h>
 #include <owamp/arithm64.h>
+#include <I2util/util.h>
 
 #define	OWP_MODE_UNDEFINED		(0)
 #define	OWP_MODE_OPEN			(01)
@@ -326,6 +327,9 @@ typedef struct {
 	OWPEndpointStartFunc		endpoint_start_func;
 	OWPEndpointStopFunc		endpoint_stop_func;
 	OWPGetTimeStampFunc		get_timestamp_func;
+	int                             rand_type;
+	void*                           rand_data;
+	I2ErrHandle                     rand_eh;
 } OWPInitializeConfigRec, *OWPInitializeConfig;
 
 /*
@@ -701,4 +705,18 @@ OWPFetchRecords(OWPControl cntrl,
 		u_int32_t num_rec, 
 		OWPDoDataRecord proc_rec,
 		void *app_data);
+
+/*
+** Compute delay between send time and receive time.
+*/
+double
+owp_delay(OWPTimeStamp *send_time, OWPTimeStamp *recv_time);
+
+void
+hexencode(
+	char		*buff,
+	u_int8_t	*bytes,
+	unsigned int	nbytes
+	);
+
 #endif	/* OWAMP_H */

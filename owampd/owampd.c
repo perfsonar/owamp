@@ -629,6 +629,9 @@ main(int argc, char *argv[])
 		NULL,
 		NULL,
 		NULL,
+		NULL,
+		RAND_DEV,
+		"/dev/urandom",
 		NULL
 	};
 
@@ -704,7 +707,6 @@ main(int argc, char *argv[])
 	printf("DEBUG: policy init ok. Printing out ip2class hash...\n");
 	I2hash_print(policy->ip2class, stdout);
 #endif
-
 	/*
 	 * Setup the "default_mode".
 	 */

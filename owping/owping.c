@@ -107,7 +107,10 @@ static	OWPInitializeConfigRec	OWPCfg = {{
 	/* endpoint_init_hook_func	*/	NULL,
 	/* endpoint_start_func		*/	NULL,
 	/* endpoint_stop_func		*/	NULL,
-	/* get_timestamp_func		*/	NULL
+	/* get_timestamp_func		*/	NULL,
+	/* rand_type                    */      RAND_DEV,
+	/* rand_data                    */      "/dev/urandom",
+	/* rand_eh                      */      NULL
 };
 
 /*

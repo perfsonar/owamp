@@ -37,7 +37,10 @@ static OWPInitializeConfigRec	def_cfg = {
 	/* endpoint_init_hook_func	*/	NULL,
 	/* endpoint_start_func		*/	NULL,
 	/* endpoint_stop_func		*/	NULL,
-	/* get_timestamp_func		*/	NULL
+	/* get_timestamp_func		*/	NULL,
+	/* rand_type                    */      RAND_DEV,
+	/* rand_data                    */      "/dev/urandom",
+	/* rand_eh                      */      NULL
 };
 
 OWPContext
@@ -60,6 +63,14 @@ OWPContextInitialize(
 		ctx->cfg = def_cfg;
 
 	ctx->cntrl_list = NULL;
+
+	if (I2RandomSourceInit(ctx->cfg.rand_eh,
+			       ctx->cfg.rand_type,
+			       ctx->cfg.rand_data) < 0) {
+		OWPErrorLine(ctx,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
+			     "Failed to initialize randomness sources");
+		return NULL;
+	}
 
 	return ctx;
 }
