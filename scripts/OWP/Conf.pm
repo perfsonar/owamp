@@ -527,25 +527,30 @@ sub dump{
 # $mode indicates whether the summary file is needed.
 sub get_names_info {
     my ($self, $mtype, $recv, $sender, $res, $mode) = @_;
-    my $rel_dir = "$mtype/$recv/$sender/$res";
-    my $datadirname = join('/', $self->{'CENTRALUPLOADDIR'}, $rel_dir);
+    my $rel_dir = "$mtype/$recv/$sender"; # www: all resolutions together
+    my $datadirname = join('/', $self->{'CENTRALUPLOADDIR'}, $rel_dir, $res);
 
-    my ($filename, $png_file);
+
+    my $full_www = join('/', $self->{'CENTRALWWWDIR'}, $rel_dir);
+    my ($summary_file, $png_file);
 
     if ($mode == 1) {
-	$filename = "unneeded"; # ignored
+	$summary_file = undef; # ignored
 	$png_file = "data$res.png";
     } else {
-	$filename = "last$res";
+	$summary_file = "$full_www/last_summary";
 	$png_file = "$res.png";
     }
-    return ($datadirname, $rel_dir, $filename, $png_file);
+
+    my $www_reldir = "$rel_dir/$res";
+
+    return ($datadirname, $rel_dir, $summary_file, $png_file, $full_www);
 }
 
 # Make a full www path out of the relative one.
-sub get_www_path {
-    my ($self, $rel_dir) = @_;
-    return join('/', $self->{'CENTRALWWWDIR'}, $rel_dir);
-}
+#sub get_www_path {
+#    my ($self, $rel_dir) = @_;
+#    return join('/', $self->{'CENTRALWWWDIR'}, $rel_dir);
+#}
 
 1;

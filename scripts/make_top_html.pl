@@ -22,8 +22,8 @@ $| = 1;
 my $conf = new OWP::Conf(CONFDIR => "$FindBin::Bin");
 my @mtypes = $conf->get_val(ATTR=>'MESHTYPES');
 my @nodes = $conf->get_val(ATTR=>'MESHNODES');
-my $wwwdir = $conf->get_www_path("");
-my $index_page = "$wwwdir/index.html";
+# my $wwwdir = $conf->get_www_path("");
+my $index_page = join '/', $conf->{'CENTRALWWWDIR'}, 'index.html';
 
 my $recv;
 
@@ -48,9 +48,6 @@ foreach my $mtype (@mtypes){
 	$table_str .= "td(['$recv ($rec_addr)', ";
 	$table_str .= join(', ', @senders_data);
         $table_str .=  "]),\n";
-	foreach my $sender (@nodes) {
-	    ;
-	}
     }
 
     $table_str .= q/]
@@ -66,12 +63,9 @@ close INDEXFH;
 sub fetch_sender_data {
     my ($sender, $recv, $mtype) = @_;
 
-    my ($datadir, $rel_wwwdir, $filename, $png_file) =
+    my ($datadir, $rel_wwwdir, $summary_file, $png_file, $wwwdir) =
 	    $conf->get_names_info($mtype, $recv, $sender, 30, 2);
 
-    my $wwwdir = $conf->get_www_path($rel_wwwdir);
-
-    my $summary_file = "$datadir/$filename";
     unless (-f $summary_file) {
 	warn "summary file $summary_file not found - skipping";
 	return "'N/A'";
@@ -86,5 +80,5 @@ sub fetch_sender_data {
     my ($median, $med, $ninety_perc) = split / /, $line;
 
     # create a proper link here
-    return "'<a href=$rel_wwwdir>$median</a>'";
+   return "'" . a({href => $rel_wwwdir}, $median) . "'";
 }

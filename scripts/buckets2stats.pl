@@ -12,7 +12,7 @@ use strict;
 # file so that they can be fetched. Resulting plots are placed
 # under $conf->{'CENTRALWWWDIR'}
 
-# usage: buckets2stats.pl <resolution>
+# usage: buckets2stats.pl <resolution> [mode]
 
 # The script operates in two modes:
 # mode 1 just produces the graphs;
@@ -70,6 +70,9 @@ open(GNUPLOT, "| gnuplot") or die "cannot execute gnuplot";
 autoflush GNUPLOT 1;
 
 my $age = $conf->must_get_val(DIGESTRES=>$res, ATTR=>'PLOTPERIOD');
+my $res_name = $conf->must_get_val(DIGESTRES=>$res, ATTR=>'COMMONRESNAME');
+my $period_name = $conf->must_get_val(DIGESTRES=>$res, 
+				      ATTR=>'PLOT_PERIOD_NAME');
 
 foreach my $mtype (@mtypes){
     foreach my $recv (@nodes){
@@ -89,10 +92,8 @@ foreach my $mtype (@mtypes){
 sub plot_resolution {
     my ($conf, $mtype, $recv, $sender, $age, $mode) = @_;
     my $body = "$mtype/$recv/$sender/$res";
-    my ($datadir, $rel_wwwdir, $filename, $png_file) =
+    my ($datadir, $rel_wwwdir, $summary_file, $png_file, $wwwdir) =
 	    $conf->get_names_info($mtype, $recv, $sender, $res, $mode);
-
-    my $wwwdir = $conf->get_www_path($rel_wwwdir);
 
     print "plot_resolution: trying datadir = $datadir\n" if VERBOSE;
 
@@ -192,19 +193,14 @@ sub plot_resolution {
 	# Create a plain-text file with data for the last period -
 	# it will be picked up by make_top_html.pl to fill entries
 	# in its tables.
-	unless (-d $datadir) {
-	    mkpath([$datadir], 0, 0755)
-		    or die "Could not create dir $datadir: $!";
-	}
-	my ($tmp_fh, $tmp_name) = tempfile("XXXXXX", DIR => $datadir,
+	my ($tmp_fh, $tmp_name) = tempfile("XXXXXX", DIR => $wwwdir,
 					   SUFFIX => "last$res.tmp");
 	print $tmp_fh join " ", @stats, "\n";
 	close $tmp_fh;
 
-	my $newname = "$datadir/$filename";
-	warn "renaming to newname $newname" if DEBUG;
-	rename $tmp_name, "$newname"
-		or die "Could not rename $tmp_name to $newname: $!";
+	warn "renaming to newname $summary_file" if DEBUG;
+	rename $tmp_name, "$summary_file"
+		or die "Could not rename $tmp_name to $summary_file: $!";
 
     }
 
@@ -215,6 +211,8 @@ sub plot_resolution {
     }
 
     my $full_png = "$wwwdir/$png_file";
+    my $title = "Delays: Min, Median, and 90th Percentile " .
+	    "for the last $period_name sampled at $res_name frequency";
     print GNUPLOT <<"STOP";
 set terminal png small color
 set xdata time
@@ -224,7 +222,7 @@ set nokey
 set grid
 set xlabel "Time"
 set ylabel "Delay (ms)"
-set title "One-way delays: Min, Median, and 90th Percentile"
+set title \"$title\"
 set output "$full_png"
 plot "$gnu_dat" using 1:2:3:4 with errorbars ps 1
 STOP
@@ -278,9 +276,15 @@ sub is_younger_than {
 
     $sec =~ s/^\+//;
 
-    return $sec if TESTING; # XXX - careful!
-
     my $current = OWP::Utils::time2time_1970($init);
+
+    if (DEBUG) {
+	my $diff = $current - $start;
+	unless ($diff < $age) {
+	    warn "DEBUG: diff=$diff, age=$age - skipping $filename";
+	}
+    }
+
     return ($current - $start < $age)? $sec : undef;
 }
 
