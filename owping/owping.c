@@ -204,6 +204,12 @@ typedef struct fetch_state {
 	char         *to;
 	u_int32_t    count_out;        /* number of printed packets          */
 
+	/* worst case precision is determined by the lexicographically
+	   smallest pair of precision bits */
+	int          bits_low;
+	int          bits_high;
+	int          sync;           /* flag set if never saw unsync packets */
+
 	/* N-reodering state variables. */
 	u_int32_t        m[OWP_MAX_N];       /* We have m[j-1] == number of
 						j-reordered packets.         */
@@ -305,11 +311,10 @@ owp_record_out(fetch_state_ptr state, OWPDataRecPtr rec)
 	       "seq_no=%-10u delay=%.3f ms       (sync, precision %.3f ms)\n", 
 				rec->seq_no, delay*THOUSAND, 
 				prec*THOUSAND);
-		
-			return;
-		}
-		fprintf(state->fp, "seq_no=%u delay=%.3f ms (unsync)\n",
-			rec->seq_no, delay*THOUSAND);
+		} else
+			fprintf(state->fp, 
+				"seq_no=%u delay=%.3f ms (unsync)\n",
+				rec->seq_no, delay*THOUSAND);
 		return;
 	}
 	fprintf(state->fp, "seq_no=%-10u *LOST*\n", rec->seq_no);
@@ -352,16 +357,35 @@ owp_bucket(double delay)
 void
 owp_update_stats(fetch_state_ptr state, OWPDataRecPtr rec) {
 	double delay;  
-	int bucket;
+	int bucket, low, high;
 
 	assert(state); assert(rec);
 
-	if (state->num_received++ && !owp_seqno_cmp(rec, &state->last_out)){
+	if (state->num_received && !owp_seqno_cmp(rec, &state->last_out)){
 		state->dup_packets++;
+		state->num_received++;
 		return;
 	}
 
+	if (rec->seq_no > state->max_seqno)
+		state->max_seqno = rec->seq_no;
+	if (OWPIsLostRecord(rec))
+		return;
+	state->num_received++;
+
 	delay =  owp_delay(&rec->send, &rec->recv);
+
+	low = MIN(rec->send.prec, rec->recv.prec);
+	high = MAX(rec->send.prec, rec->recv.prec);
+	if ((low < state->bits_low) 
+	    || ((low == state->bits_low) && (high < state->bits_high))) {
+		state->bits_low = low;
+		state->bits_high = high;
+	}
+
+	if (!rec->send.sync || !rec->send.sync)
+		state->sync = 0;
+
 	bucket = owp_bucket(delay);
 	
 	assert((0 <= bucket) && (bucket <= OWP_MAX_BUCKET));
@@ -372,8 +396,6 @@ owp_update_stats(fetch_state_ptr state, OWPDataRecPtr rec) {
 	if (delay > state->tmax)
 		state->tmax = delay;
 	
-	if (rec->seq_no > state->max_seqno)
-		state->max_seqno = rec->seq_no;
 
 	memcpy(&state->last_out, rec, sizeof(*rec));
 }
@@ -437,8 +459,10 @@ do_single_record(void *calldata, OWPDataRecPtr rec)
 
 	owp_record_out(state, rec); /* Output is done in all cases. */
 
-	if (OWPIsLostRecord(rec))
+	if (OWPIsLostRecord(rec)) {
+		owp_update_stats(state, rec);
 		return 0;       /* May do something better later. */
+	}
 
 	/* If ordering is important - handle it here. */
 	if (state->order_disrupted)
@@ -522,9 +546,19 @@ owp_do_summary(fetch_state_ptr state)
 		fprintf(state->fp, 
 		     "%u packets transmitted, %u packets lost (%.1f%% loss)\n",
 			sent ,lost, percent_lost);
+	if (!state->num_received)
+		goto done;
 
-	fprintf(state->fp, "one-way delay min/median = %.3f/%.3f ms\n", 
-		min, owp_get_percentile(state, 0.5)*THOUSAND);
+	if (state->sync)
+		fprintf(state->fp, 
+	     "one-way delay min/median = %.3f/%.3f ms  (precision %.3f ms)\n", 
+		min, owp_get_percentile(state, 0.5)*THOUSAND,
+		(owp_bits2prec(state->bits_low)
+		+ owp_bits2prec(state->bits_high))*THOUSAND);
+	else
+		fprintf(state->fp, 
+	     "one-way delay min/median = %.3f/%.3f ms  (unsync)\n", 
+			min, owp_get_percentile(state, 0.5)*THOUSAND);
 
 	for (j = 0; j < OWP_MAX_N && state->m[j]; j++)
                 fprintf(state->fp,
@@ -547,7 +581,7 @@ owp_do_summary(fetch_state_ptr state)
 			ping_ctx.opt.percentile,
 			owp_get_percentile(state, x) * THOUSAND);
 	}
-	
+ done:	
 	fprintf(state->fp, "\n");
 
 	return 0;
@@ -586,6 +620,9 @@ do_records_all(
 	state->from = from;
 	state->to = to;
 	state->count_out = 0;
+
+	state->bits_low = state->bits_high = 56;
+	state->sync = 1;
 
 	/* N-reodering fields/ */
 	state->r = state->l = 0;
