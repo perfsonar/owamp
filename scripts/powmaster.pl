@@ -96,7 +96,10 @@ if($kill || $hup){
 		if !defined($pid);
 	chomp $pid;
 	my $sig = ($kill)?'TERM':'HUP';
-	die "Sent $sig to $pid\n" if(kill($sig,$pid));
+	if(kill($sig,$pid)){
+		warn "Sent $sig to $pid\n";
+		exit(0);
+	}
 	die "Unable to send $sig to $pid: $!";
 }
 
