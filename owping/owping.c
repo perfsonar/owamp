@@ -1186,9 +1186,15 @@ main(
 
 	if (!strcmp(progname, "owstats")) {
 		FILE	*fp;
+		u_int32_t hdr_len, num_rec;
 
-		if(!(fp = fopen(argv[0],"wb+"))){
+		if(!(fp = fopen(argv[0],"rb"))){
 			I2ErrLog(eh,"fopen(%s):%M",argv[0]);
+			exit(1);
+		}
+
+		if (!(num_rec = OWPReadDataHeader(fp,&hdr_len))) {
+			I2ErrLog(eh,"do_records_all() failed.");
 			exit(1);
 		}
 		
