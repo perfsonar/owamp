@@ -56,6 +56,8 @@ print '</p>';
 foreach my $mtype (@mtypes){
     my $first_row = join '', map {th($_)} $mtype, @nodes;
     print <<"STOP";
+<p>
+<h2>Mesh type: $mtype </h2>
 <table border=1>
 <tr align="CENTER" valign="TOP">
 $first_row
@@ -76,8 +78,6 @@ STOP
 	my $red = 0;
 
 	foreach my $send_datum (@senders_data) {
-#	    warn "$send_datum";
-
 	    my ($datum, $median, $loss) = split /,/, $send_datum;
 	    my $td;
 	    if ($median eq '*') {
@@ -90,7 +90,7 @@ STOP
 	}
 	print "</tr>\n";
     }
-print "</table>\n";
+    print "</table>\n</p><hr>";
 }
 
 print end_html;
