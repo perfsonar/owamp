@@ -120,6 +120,10 @@ sub plot_resolution {
     open(GNUDAT, ">$gnu_dat") or die "Could not open a gnuplot data file";
 
     my $init = time();
+
+    my $xr_end = join '/', mdHMS($init);
+    my $xr_start = join '/', mdHMS($init - $age);
+
     my $got_data = 0;
 
     foreach my $file (@all) {
@@ -131,10 +135,9 @@ sub plot_resolution {
 	next unless $sec;
 	$sec -= OWP::Utils::JAN_1970;
 
-	my @gm = gmtime($sec);
-	my ($second, $minute, $hour, $day, $mon, $year, $wday, $yday) = @gm;
+	my ($mon, $day, $hour, $minute, $second) = mdHMS($sec);
 	warn join " ", "DEBUG: sec=$second", "min=$minute", "hour=$hour",
-		"mon=$mon", "year=$year", '' if DEBUG;
+		"mon=$mon", '' if DEBUG;
 
 	# Read the header.
 	my $datafile = "$datadir/$ofile";
@@ -241,15 +244,17 @@ sub plot_resolution {
     my @tmp = split //, $fmt;
     my $fmt_xlabel = join '/', map {code2unit($_)} @tmp;
 
-    $fmt = join '/', map {"%$_"} split //, $fmt;
+    $fmt = join ':', map {"%$_"} split //, $fmt;
 
 #    print "DEBUG: set format x \"$fmt\""; die;
+#    print "set xrange [\"$xr_start\":\"$xr_end\"]"; die;
 
     print GNUPLOT <<"STOP";
 set terminal png small color
 set xdata time
 set format x \"$fmt\"
 set timefmt "%m/%d/%H/%M/%S"
+set xrange [\"$xr_start\":\"$xr_end\"]
 set nokey
 set grid
 set xlabel "Time ($fmt_xlabel)"
@@ -337,3 +342,8 @@ sub code2unit {
     $t eq 'm' && return 'month';
 };
 
+sub mdHMS {
+    my ($second, $minute, $hour, $day, $mon, $year, $wday, $yday) 
+	    = gmtime($_[0]);
+    return ($mon, $day, $hour, $minute, $second);
+}
