@@ -19,7 +19,7 @@
 #	Description:	libowamp build description.
 
 lib_LIBRARIES		= libowamp.a
-libowamp_a_SOURCES	= api.c context.c error.c owampP.h cprotocol.c sprotocol.c \
+libowamp_a_SOURCES	= api.c context.c error.c owampP.h cprotocol.c sprotocol.c random.c\
 			io.c \
 			rijndael-alg-fst.c rijndael-alg-fst.h \
 			rijndael-api-fst.c rijndael-api-fst.h
