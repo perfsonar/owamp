@@ -41,6 +41,10 @@ OWPHexEncode(
 	*buff = '\0';
 }
 
+/*
+** In:  buff.
+** Out: bytes
+*/
 void
 OWPHexDecode(
 	char		*buff,

@@ -1092,8 +1092,8 @@ OWPProcessRetrieveSession(
 	OWPErrSeverity  err;
 	u_int32_t	hdr_len;
 
-	if( (rc = _OWPReadRetrieveSession(cntrl,&begin,&end,sid)) < OWPErrOK)
-		return _OWPFailControlSession(cntrl,rc);
+	if( (rc = _OWPReadRetrieveSession(cntrl, &begin, &end,sid)) < OWPErrOK)
+		return _OWPFailControlSession(cntrl, rc);
 
 	/*
 	 * TODO: All this path/file opening code should be combined
@@ -1107,7 +1107,7 @@ OWPProcessRetrieveSession(
 
 	strcpy(path, datadir);
 	strcat(path, OWP_PATH_SEPARATOR);
-	OWPHexEncode(sid_name,sid,sizeof(OWPSID));
+	OWPHexEncode(sid_name, sid, sizeof(OWPSID));
 	strcat(path, sid_name);
 
 	/* First look for incomplete file */

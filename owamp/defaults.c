@@ -23,7 +23,6 @@
 #include <owamp/access.h>
 #include <owamp/conndata.h>
 
-
 /*
 ** Fetch 16-byte binary AES key for a given KID and return it
 ** via key_ret (memory must be allocated by the caller).
