@@ -357,104 +357,6 @@ _OWPClientBind(
 	return False;
 }
 
-#define tvaladd(a,b)					\
-	do{						\
-		(a)->tv_sec += (b)->tv_sec;		\
-		(a)->tv_usec += (b)->tv_usec;		\
-		if((a)->tv_usec >= 1000000){		\
-			(a)->tv_sec++;			\
-			(a)->tv_usec -= 1000000;	\
-		}					\
-	} while (0)
-#define tvalsub(a,b)					\
-	do{						\
-		(a)->tv_sec -= (b)->tv_sec;		\
-		(a)->tv_usec -= (b)->tv_usec;		\
-		if((a)->tv_usec < 0){			\
-			(a)->tv_sec--;			\
-			(a)->tv_usec += 1000000;	\
-		}					\
-	} while (0)
-
-static int
-connect_tmout(
-	int		fd,
-	struct sockaddr	*ai_addr,
-	size_t		ai_addr_len,
-	struct timeval	*tm_out
-)
-{
-	int		flags;
-	int		rc;
-	fd_set		rset,wset;
-	int		len;
-	struct timeval	end_time;
-	struct timeval	curr_time;
-	struct timeval	tout;
-
-	flags = fcntl(fd, F_GETFL,0);
-	fcntl(fd,F_SETFL,flags|O_NONBLOCK);
-
-	rc = connect(fd,ai_addr,ai_addr_len);
-
-	if(rc==0)
-		goto DONE;
-
-	if(errno != EINPROGRESS){
-		return -1;
-	}
-	
-	if(gettimeofday(&curr_time,NULL) != 0)
-		return -1;
-
-	timevalclear(&end_time);
-	tvaladd(&end_time,&curr_time);
-	tvaladd(&end_time,tm_out);
-
-AGAIN:
-	FD_ZERO(&rset);
-	FD_SET(fd,&rset);
-	wset = rset;
-
-	/*
-	 * Set tout to (end_time-curr_time) - curr_time will get updated
-	 * if there is an intr, so this is the "time left" from the original
-	 * timeout.
-	 */
-	timevalclear(&tout);
-	tvaladd(&tout,&end_time);
-	tvalsub(&tout,&curr_time);
-	rc = select(fd+1,&rset,&wset,NULL,&tout);
-	if(rc == 0){
-		errno = ETIMEDOUT;
-		return -1;
-	}
-	if(rc < 0){
-		if(errno == EINTR){
-			if(gettimeofday(&curr_time,NULL) != 0)
-				return -1;
-			goto AGAIN;
-		}
-		return -1;
-	}
-
-	if(FD_ISSET(fd,&rset) || FD_ISSET(fd,&wset)){
-		len = sizeof(rc);
-		if(getsockopt(fd,SOL_SOCKET,SO_ERROR,(void*)&rc,&len) < 0){
-			return -1;
-		}
-		if(rc != 0){
-			errno = rc;
-			return -1;
-		}
-	}else
-		return -1;
-
-DONE:
-	fcntl(fd,F_SETFL,flags);
-	return fd;
-}
-
 static int
 _OWPClientConnect(
 	OWPControl	cntrl,
@@ -465,6 +367,7 @@ _OWPClientConnect(
 {
 	int		fd=-1;
 	struct addrinfo	*ai=NULL;
+	char		*tstr;
 
 	if((!server_addr) &&
 		!(server_addr = OWPAddrByNode(cntrl->ctx,"localhost"))){
@@ -489,9 +392,12 @@ _OWPClientConnect(
 		 */
 		struct addrinfo	hints, *airet;
 		const char	*node=NULL;
+		const char	*port=NULL;
 
 		if(server_addr->node_set)
 			node = server_addr->node;
+		if(server_addr->port_set)
+			port = server_addr->port;
 
 		memset(&hints,0,sizeof(struct addrinfo));
 		hints.ai_family = AF_UNSPEC;
@@ -554,7 +460,7 @@ _OWPClientConnect(
 		/*
 		 * Call connect - we ignore error values from here for now...
 		 */
-		if(connect_tmout(fd,ai->ai_addr,ai->ai_addrlen,&cntrl->ctx->cfg.tm_out) == 0){
+		if(_OWPConnect(fd,ai->ai_addr,ai->ai_addrlen,&cntrl->ctx->cfg.tm_out) == 0){
 			server_addr->fd = fd;
 			server_addr->saddr = *ai->ai_addr;
 			server_addr->saddr_set = True;
@@ -573,8 +479,14 @@ next:
 		}
 	}
 
+	if(server_addr->node_set)
+		tstr = server_addr->node;
+	else
+		tstr = "Server";
+
 	OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
-			"No Valid Addr's");
+			"Unable to connect to %s",tstr);
+
 error:
 	*err_ret = OWPErrFATAL;
 

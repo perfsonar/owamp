@@ -65,9 +65,9 @@
 #define MAX_MSG 60 /* XXX - currently 56 but KID to be extended by 4 bytes */
 
 /*
- * The 590 should eventually be replaced by a IANA blessed service name.
+ * The 5555 should eventually be replaced by a IANA blessed service name.
  */
-#define OWP_CONTROL_SERVICE_NAME	"590"
+#define OWP_CONTROL_SERVICE_NAME	"5555"
 
 /*
  * These structures are opaque to the API user.

@@ -43,6 +43,10 @@
 #endif
 #endif	/* HAVE_CONFIG_H */
 
+#include <sys/types.h>
+#include <sys/time.h>
+#include <sys/socket.h>
+
 #include <owamp.h>
 #include "rijndael-api-fst.h"
 
@@ -141,6 +145,14 @@ _OWPWriten(
 	const void	*buff,
 	size_t		n
 	  );
+
+extern int
+_OWPConnect(
+	int		fd,
+	struct sockaddr	*ai_addr,
+	size_t		ai_addr_len,
+	struct timeval	*tm_out
+	   );
 
 extern int
 _OWPSendBlocks(
