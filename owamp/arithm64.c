@@ -163,6 +163,11 @@ OWPNum64ToTimespec(
 	 * nano = frac * 10^9 / 2^32
 	 */
 	to->tv_nsec = MASK32((MASK32(from)*BILLION) >> 32);
+
+	while(to->tv_nsec >= (long)BILLION){
+		to->tv_sec++;
+		to->tv_nsec -= BILLION;
+	}
 }
 
 /*
@@ -251,6 +256,11 @@ OWPNum64ToTimeval(
 	 * nano = frac * 10^6 / 2^32
 	 */
 	to->tv_usec = MASK32((MASK32(from)*MILLION) >> 32);
+
+	while(to->tv_usec >= (long)MILLION){
+		to->tv_sec++;
+		to->tv_usec -= MILLION;
+	}
 }
 
 /*
