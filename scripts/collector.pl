@@ -177,16 +177,6 @@ my $Server = IO::Socket::INET->new(
 if(!$debug && !$foreground){
 	daemonize(PIDFILE => 'collector.pid') ||
 		die "Unable to daemonize process";
-	# Re-setup syslog
-#	untie *MYLOG;
-#	$slog = tie *MYLOG, 'OWP::Syslog',
-#		facility	=> $conf->must_get_val(ATTR=>'SyslogFacility'),
-#		log_opts	=> 'pid',
-#		setlogsock	=> 'unix';
-	# make die/warn goto syslog, and also to STDERR.
-#	$slog->HandleDieWarn();
-#	undef $slog;	# Don't need the ref anymore, and untie won't work if
-			# I keep the ref.
 }
 
 my (%children);
