@@ -1370,7 +1370,8 @@ AGAIN:
 				fflush(stdout);
 			}
 error:
-			I2HashClean(parse.buckets);
+			if(parse.buckets)
+				I2HashClean(parse.buckets);
 			fclose(parse.fp);
 			parse.fp = NULL;
 			/* unlink old name */
