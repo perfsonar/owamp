@@ -323,8 +323,8 @@ GetTimespec(
 	/*
 	 * Set estimated error
 	 */
-	*esterr = (u_int32_t)ntp_conf.maxerror;
-	assert((long)*esterr == ntp_conf.maxerror);
+	*esterr = (u_int32_t)ntp_conf.esterror;
+	assert((long)*esterr == ntp_conf.esterror);
 
 	/*
 	 * Error estimate should never be 0, but I've seen ntp do it!
