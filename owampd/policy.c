@@ -57,7 +57,7 @@ parsekeys(
 	size_t		*lbuf_max
 	)
 {
-	int		rc;
+	int		rc=0;
 	OWPUserID	username;
 	OWPKey		tkey;
 	I2Datum		key,val;
@@ -1254,10 +1254,13 @@ OWPDPolicyInstall(
 {
 	OWPDPolicy		policy;
 	I2ErrHandle		eh;
-	char			fname[MAXPATHLEN+1];
+	char			kfname[MAXPATHLEN+1];
+	char			lfname[MAXPATHLEN+1];
 	int			len;
-	FILE			*fp;
+	FILE			*kfp,*lfp;
 	int			rc;	/* row count */
+	uid_t			euid;
+	gid_t			egid;
 
 	/*
 	 * use variables for the func pointers so the compiler can give
@@ -1310,9 +1313,28 @@ OWPDPolicyInstall(
 	}
 
 	/*
+	 * If the euid is different from "real" uid, than the
+	 * "real" uid is "root". Temporarily
+	 * take root permissions back to open the keys and
+	 * limits files.
+	 */
+	euid = geteuid();
+	if((euid != getuid()) && (seteuid(getuid()) != 0)){
+		OWPError(ctx,OWPErrFATAL,errno,
+				"OWPDPolicyInstall: seteuid(): %M");
+		return NULL;
+	}
+	egid = getegid();
+	if((egid != getgid()) && (setegid(getgid()) != 0)){
+		OWPError(ctx,OWPErrFATAL,errno,
+				"OWPDPolicyInstall: setegid(): %M");
+		return NULL;
+	}
+
+	/*
 	 * Open the keys file.
 	 */
-	fname[0] = '\0';
+	kfname[0] = '\0';
 	len = strlen(OWP_KEY_FILE);
 	if(len > MAXPATHLEN){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
@@ -1326,32 +1348,18 @@ OWPDPolicyInstall(
 				"Path to %s > MAXPATHLEN",OWP_KEY_FILE);
 		return NULL;
 	}
-	strcpy(fname,confdir);
-	strcat(fname,OWP_PATH_SEPARATOR);
-	strcat(fname,OWP_KEY_FILE);
-	if(!(fp = fopen(fname,"r")) && (errno != ENOENT)){
-		OWPError(ctx,OWPErrFATAL,errno,"Unable to open %s: %M",fname);
-		return NULL;
-	}
-
-	/*
-	 * lbuf is a char buffer that grows as needed in I2GetConfLine
-	 * lbuf will be realloc'd repeatedly as needed. Once conf file
-	 * parsing is complete - it is free'd from this function.
-	 */
-	if((rc = parsekeys(policy,fp,lbuf,lbuf_max)) < 0){
-		goto BADLINE;
-	}
-
-	if(fp && (fclose(fp) != 0)){
-		OWPError(ctx,OWPErrFATAL,errno,"fclose(%s): %M",fname);
+	strcpy(kfname,confdir);
+	strcat(kfname,OWP_PATH_SEPARATOR);
+	strcat(kfname,OWP_KEY_FILE);
+	if(!(kfp = fopen(kfname,"r")) && (errno != ENOENT)){
+		OWPError(ctx,OWPErrFATAL,errno,"Unable to open %s: %M",kfname);
 		return NULL;
 	}
 
 	/*
 	 * Open the limits file.
 	 */
-	fname[0] = '\0';
+	lfname[0] = '\0';
 	len = strlen(OWP_LIMITS_FILE);
 	if(len > MAXPATHLEN){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
@@ -1365,27 +1373,59 @@ OWPDPolicyInstall(
 				"Path to %s > MAXPATHLEN",OWP_LIMITS_FILE);
 		return NULL;
 	}
-	strcpy(fname,confdir);
-	strcat(fname,OWP_PATH_SEPARATOR);
-	strcat(fname,OWP_LIMITS_FILE);
+	strcpy(lfname,confdir);
+	strcat(lfname,OWP_PATH_SEPARATOR);
+	strcat(lfname,OWP_LIMITS_FILE);
 
-	if(!(fp = fopen(fname,"r"))){
+	if(!(lfp = fopen(lfname,"r"))){
 		if(errno != ENOENT){
 			OWPError(ctx,OWPErrFATAL,errno,"Unable to open %s: %M",
-					fname);
+					lfname);
 			return NULL;
 		}
 	}
 
-	rc = parselimits(policy,fp,lbuf,lbuf_max); 
-
-BADLINE:
-
-	if(rc < 0){
-		OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
-				"%s:%d Invalid file syntax",fname,-rc);
+	/*
+	 * Now set euid/egid back to original.
+	 */
+	if((seteuid(euid) != 0)){
+		OWPError(ctx,OWPErrFATAL,errno,
+				"OWPDPolicyInstall: seteuid(): %M");
 		return NULL;
 	}
+	if((setegid(egid) != 0)){
+		OWPError(ctx,OWPErrFATAL,errno,
+				"OWPDPolicyInstall: setegid(): %M");
+		return NULL;
+	}
+
+	/*
+	 * lbuf is a char buffer that grows as needed in I2GetConfLine
+	 * lbuf will be realloc'd repeatedly as needed. Once conf file
+	 * parsing is complete - it is free'd from this function.
+	 */
+	if((rc = parsekeys(policy,kfp,lbuf,lbuf_max)) < 0){
+		OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
+				"%s:%d Invalid file syntax",kfname,-rc);
+		return NULL;
+	}
+
+	if((rc = parselimits(policy,lfp,lbuf,lbuf_max)) < 0){
+		OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
+				"%s:%d Invalid file syntax",lfname,-rc);
+		return NULL;
+	}
+
+	if(kfp && (fclose(kfp) != 0)){
+		OWPError(ctx,OWPErrFATAL,errno,"fclose(%s): %M",kfname);
+		return NULL;
+	}
+
+	if(lfp && (fclose(lfp) != 0)){
+		OWPError(ctx,OWPErrFATAL,errno,"fclose(%s): %M",lfname);
+		return NULL;
+	}
+
 
 	/*
 	 * Now that the "user class" hierarchy is loaded - take a look

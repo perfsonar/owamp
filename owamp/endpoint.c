@@ -548,7 +548,7 @@ success:
 		/*
 		 * Don't make buffer larger than "default"
 		 */
-		size = MIN(size,statbuf.st_blksize);
+		size = MIN(size,(size_t)statbuf.st_blksize);
 
 		/*
 		 * buffer needs to be at least as large as one record.
@@ -1300,6 +1300,7 @@ recvfromttl(
 				cmdmsgptr->cmsg_type);
 		return -rc;
 NEXTCMSG:
+		;
 	}
 
 	return rc;
