@@ -41,6 +41,7 @@ owp_get_aes_key(void *app_data,
 	/* First fetch 32-byte hex-encoded key. */
 	char* secr = owp_kid2passwd(kid, strlen(kid) + 1, policy);
 
+	*err_ret = OWPErrOK;
 	if (!secr)
 		return False;
 
@@ -68,7 +69,9 @@ owp_get_aes_key(void *app_data,
 
 /*
 ** Returns False if the class of the <remote_sa_addr> has "open_mode_ok"
-** flag turned OFF, or on error, and True in all other cases.
+** flag turned OFF, or on error, and True in all other cases. Also
+** sets up the usage class associated with this Control connection.
+** KID, if valid, takes precedence over the ip address.
 */
 OWPBoolean
 owp_check_control(
@@ -84,25 +87,96 @@ owp_check_control(
 	char *class;
 	owp_tree_node_ptr node;
 
-	if (mode & _OWP_DO_CIPHER)
-		return True;
-
+	*err_ret = OWPErrOK;
 	policy = ((OWPPerConnDataRec *)app_data)->policy;
-	class = owp_sockaddr2class(remote_sa_addr, policy);
 
-	if (!class) {
-		
-		return False;
+	/* 
+	   This implementation assumes that the KID has already
+	   been authenticated, and is valid.
+	*/
+	if (mode & _OWP_DO_CIPHER) { /* Look up class of the KID. */
+		if (!kid)  /* Paranoia */
+			return False;
+		class = owp_kid2class(kid, strlen(class) + 1, policy);
+	} else {
+		if (!remote_sa_addr)
+			return False;
+		class = owp_sockaddr2class(remote_sa_addr, policy);
 	}
+	
+	if (!class)  /*Internal error - every KID must have a class.*/
+		goto error;
 
 	node = owp_class2node(class, policy->class2limits);
-
-	if (!node) {
-		/*
-		  XXX - TODO: more elaborate diagnostics?
-		*/
+	if (!node)  /* Internal error - every class must have a node. */
+		goto error;
+	
+	/* If request open mode which is forbidden for class, deny. */
+	if (!(mode & _OWP_DO_CIPHER) && !node->limits.values[5])
 		return False;
+
+	((OWPPerConnDataRec *)app_data)->node = node;
+	return True;
+	
+ error:
+	*err_ret = OWPErrFATAL;
+	return False;
+}
+
+OWPBoolean
+owp_check_test(
+	void		*app_data,
+	OWPSessionMode	mode,
+	const char	*kid,
+	OWPBoolean	local_sender,
+	struct sockaddr	*local_sa_addr,
+	struct sockaddr	*remote_sa_addr,
+	OWPTestSpec	*test_spec,
+	OWPErrSeverity	*err_ret
+)
+{
+	u_int64_t packets_per_sec, total_octets, octets_on_disk, bw;
+	u_int32_t octs_per_pack;
+	OWPTestSpecPoisson *poisson_test;
+	policy_data* policy = ((OWPPerConnDataRec *)app_data)->policy;
+	owp_tree_node_ptr node = ((OWPPerConnDataRec *)app_data)->node;
+	
+	switch (test_spec->test_type) {
+	case OWPTestPoisson:
+		poisson_test = (OWPTestSpecPoisson *)test_spec;
+		switch (mode) {
+		case OWP_MODE_OPEN:
+			total_octets = 12 + poisson_test->packet_size_padding;
+			break;
+		case OWP_MODE_AUTHENTICATED:
+			total_octets = 24 + poisson_test->packet_size_padding;
+			break;
+		case OWP_MODE_ENCRYPTED:
+			total_octets = 16 + poisson_test->packet_size_padding;
+			break;
+		default:
+			return False;
+			/* UNREACHED */
+		}
+		bw = (total_octets*1000000)/poisson_test->InvLambda;
+		total_octets *= poisson_test->npackets;
+		octets_on_disk = (u_int64_t)20 * poisson_test->npackets;
+
+		/* fetch class limits and check restrictions */
+		if (bw > node->limits.values[OWP_LIM_BANDWIDTH])
+			return False;
+		if (!local_sender &&
+		    (octets_on_disk > node->limits.values[OWP_LIM_SPACE]))
+			return False;
+		return True;
+		/* UNREACHED */
+	case OWPTestUnspecified:
+		return False;
+		/* UNREACHED */
+	default:
+		return False;
+		/* UNREACHED */
 	}
 
-	return node->limits.values[5] ? True : False; 
+	return False;
 }
