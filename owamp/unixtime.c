@@ -79,7 +79,6 @@ OWPGetTimeOfDay(
 	       )
 {
 	struct timeval	tval;
-	int		rc;
 
 	if(!tstamp)
 		return NULL;
