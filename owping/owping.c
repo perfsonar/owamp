@@ -92,20 +92,27 @@ owp_fetch_to_local(OWPControl cntrl, char *datadir, OWPSID sid)
 	if (close(fd) < 0)
 		I2ErrLog(eh, "main: close():%M");
 	return 0;
-
+	
  fatal:
-	if (close(fd) < 0)
+
+ close_again:
+	if (close(fd) < 0) {
+		if (errno == EINTR)
+			goto close_again;
 		I2ErrLog(eh, "main: close(%d):%M", fd);
-	if (unlink(datafile) < 0)
+	}
+ unlink_again:
+	if (unlink(datafile) < 0) {
+		if (errno == EINTR)
+			goto unlink_again;
 		I2ErrLog(eh, "main: unlink(%s):%M", datafile);
+	}
 	return -1;
 }
 
 
 /* Template for temporary directory to keep fetched data records. */
-#define OWP_TMPDIR_TEMPLATE "/tmp/XXXXXXXXXXXXXXXX"
-
-
+#define OWP_TMPDIR "/tmp"
 
 #ifdef	NOT
 static int
@@ -194,10 +201,8 @@ static	I2OptDescRec	set_options[] = {
 	{"lossThreshold", 1, "120",
 			"elapsed time when recv declares packet lost (sec)"},
 	{"datadir", 1, NULL, "Data directory to store test session data"},
-
-	{"outfile", 1, NULL,    "alternative basename to store session data"},
-	{"full", 0, NULL,    "print out full records in human-readable form"},
 	{"keepdata", 0, NULL, "do not delete binary test session data "},
+	{"full", 0, NULL,    "print out full records in human-readable form"},
 	{"quiet", 0, NULL, "quiet ouput. only print out the final summary"},
 
 #ifndef	NDEBUG
@@ -278,11 +283,6 @@ static  I2Option  get_options[] = {
 	sizeof(ping_ctx.opt.lossThreshold)
 	},
         {
-	"outfile", I2CvtToString, &ping_ctx.opt.outfile,
-	sizeof(ping_ctx.opt.outfile)
-	},
-
-        {
 	"full", I2CvtToBoolean, &ping_ctx.opt.full,
 	sizeof(ping_ctx.opt.full)
 	},
@@ -290,11 +290,10 @@ static  I2Option  get_options[] = {
 	"quiet", I2CvtToBoolean, &ping_ctx.opt.quiet,
 	sizeof(ping_ctx.opt.quiet)
 	},
-        {
+	{
 	"keepdata", I2CvtToBoolean, &ping_ctx.opt.keepdata,
 	sizeof(ping_ctx.opt.keepdata)
 	},
-
         {
 	"childwait", I2CvtToBoolean, &ping_ctx.opt.childwait,
 	sizeof(ping_ctx.opt.childwait)
@@ -342,16 +341,13 @@ typedef struct fetch_state {
 	OWPCookedDataRec window[OWP_WIN_WIDTH]; /* window of read records  */
 	OWPCookedDataRec last_processed; /* last processed record */
 	int          cur_win_size;
-
-	I2Boolean    full;             /* print full record instead of delay */
-	I2Boolean    quiet;            /* don't print records - just summary */
-
-	double       tmin;             /* max delay                          */
-	double       tmax;             /* min delay                          */
+	double       tmin;             /* min delay                          */
 	double       tsum;             /* sum of delays                      */
 	double       tsumsq;           /* sum of squared delays              */
 	u_int32_t    num_received;     /* number of received packets         */
-	int          order_disrupted;  /* flag */
+	u_int32_t    dup_packets;      /* number of duplicate packets        */
+	int          order_disrupted;  /* flag                               */
+	u_int32_t    max_seqno;        /* max sequence number seen           */
 } fetch_state, *fetch_state_ptr;
 
 #define OWP_CMP(a,b) ((a) < (b))? -1 : (((a) == (b))? 0 : 1)
@@ -400,12 +396,12 @@ owp_record_out(fetch_state_ptr state, OWPCookedDataRecPtr rec)
 	assert(rec);
 	assert(state);
 
-	if (state->quiet)
+	if (ping_ctx.opt.quiet)
 		return;
 
 	assert(state->fp);
 	delay = owp_delay(&rec->send, &rec->recv);
-	if (state->full)
+	if (ping_ctx.opt.full)
 		fprintf(state->fp, 
 	 "seq_no=%u send=%u.%us sync=%u prec=%u recv=%u.%us sync=%u prec=%u\n",
 			rec->seq_no, rec->send.sec, rec->send.frac_sec, 
@@ -422,15 +418,20 @@ owp_update_stats(fetch_state_ptr state, OWPCookedDataRecPtr rec) {
 	double delay = owp_delay(&rec->send, &rec->recv);
 	if (delay < state->tmin)
 		state->tmin = delay;
-	if (delay > state->tmax)
-		state->tmax = delay;
 	
 	state->tsum += delay;
 	state->tsumsq += (delay*delay);
 	state->num_received++;
+
+	if (rec->seq_no > state->max_seqno)
+		state->max_seqno = rec->seq_no;
+
+	if (owp_seqno_cmp(rec, &state->last_processed) == 0)
+		state->dup_packets++;
+	memcpy(&state->last_processed, rec, sizeof(*rec));
 }
 
-/* True of the first timestamp is earlier than the second. */
+/* True if the first timestamp is earlier than the second. */
 #define OWP_EARLIER_THAN(a, b)                                \
 ( ((a).sec < (b).sec)                                         \
   || ( ((a).sec == (b).sec)                                   \
@@ -491,7 +492,6 @@ do_single_record(void *calldata, OWPCookedDataRecPtr rec)
 
 		if (i != -1)
 			out_rec = &state->window[0];
-		memcpy(&state->last_processed, out_rec, sizeof(*out_rec));
 		owp_update_stats(state, out_rec);
 
 		/* Update the window.*/
@@ -507,22 +507,25 @@ do_single_record(void *calldata, OWPCookedDataRecPtr rec)
 }
 
 /*
-** Print out summary results, ping-like style.
+** Print out summary results, ping-like style. sent + dup == lost +recv.
 */
 int
 owp_do_summary(fetch_state_ptr state)
 {
 	double min = ((double)(state->tmin)) * THOUSAND;    /* msec */
-	double max = ((double)(state->tmax)) * THOUSAND;    /* msec */
 	double   n = (double)(state->num_received);   
 	double avg = ((state->tsum)/n);
 	double vari = ((state->tsumsq / n) - avg * avg);
+	u_int32_t lost = state->dup_packets + (state->max_seqno + 1)
+		- state->num_received; 
 
 	fprintf(state->fp, "\n--- owping statistics ---\n");
-	fprintf(state->fp, "%u records received\n", state->num_received);
+	fprintf(state->fp, "%u packets sent\n", state->max_seqno + 1);
+	fprintf(state->fp, "%u duplicates\n", state->dup_packets);
+	fprintf(state->fp, "%u packets lost\n", lost);
 	fprintf(state->fp, 
-		"one-way delay min/avg/max/stddev = %.3f/%.3f/%.3f/%.3f ms\n",
-		min, avg*THOUSAND, max, sqrt(vari)*THOUSAND);
+		"one-way delay min/avg/stddev = %.3f/%.3f/%.3f ms\n",
+		min, avg*THOUSAND, sqrt(vari)*THOUSAND);
 	return 0;
 }
 
@@ -558,6 +561,15 @@ do_records_all(char *datadir, OWPSID sid, fetch_state_ptr state)
 		return -1;
 	}
 
+	if (!ping_ctx.opt.keepdata) {
+	unlink_again:
+		if (unlink(datafile) < 0) {
+			if (errno == EINTR)
+				goto unlink_again;
+			I2ErrLog(eh, "WARNING: unlink(%s) failed:%M",datafile);
+		}
+	}
+
 	if (fstat(fd, &stat_buf) < 0) {
 		I2ErrLog(eh, "FATAL: open():%M");
 		return -1;
@@ -581,16 +593,14 @@ do_records_all(char *datadir, OWPSID sid, fetch_state_ptr state)
 	*/
 	state->cur_win_size = 0;
 	state->tmin = 9999.999;
-	state->tmax = state->tsum = state->tsumsq = 0.0;
+	state->tsum = state->tsumsq = 0.0;
 	state->num_received = 0;
 	state->order_disrupted = 0;
+	state->dup_packets = 0;
+	state->max_seqno = 0;
 
 	OWPFetchLocalRecords(fd, num_rec, do_single_record, state);
 	
-	/*
-	  XXX - TODO: flush the window.
-	*/
-
  close_again:
 	if (close(fd) < 0) {
 		if (errno == EINTR)
@@ -606,6 +616,7 @@ do_records_all(char *datadir, OWPSID sid, fetch_state_ptr state)
 		exit(1);
 	}
 
+	/* Incorporate remaining records left in the window. */
 	for (i = 0; i < state->cur_win_size; i++)
 		owp_update_stats(state, &state->window[i]);
 
@@ -859,17 +870,13 @@ main(
 	conndata.pipefd = -1;
 	conndata.link_data_dir = NULL;
 
+	/* Set up data dir.*/
+
 	if (ping_ctx.opt.datadir) {
 		  conndata.real_data_dir = ping_ctx.opt.datadir;
-	}	
-	else { /* create a unique temp dir */
+	} else { /* create a unique temp dir */	
 		conndata.real_data_dir = conndata.real_data_dir_mem;
-		strcpy(conndata.real_data_dir,OWP_TMPDIR_TEMPLATE);
-		if (mkdtemp(conndata.real_data_dir) == NULL) {
-			I2ErrLog(eh, 
-		       "FATAL: main: mkdtemp: failed to create temp data dir");
-			exit(1);
-		}
+		strcpy(conndata.real_data_dir, OWP_TMPDIR);
 	}
 
 	conndata.policy = policy;
@@ -918,6 +925,11 @@ main(
 
 	/* If local sender - fetch data to local disk first. */
 	if (!ping_ctx.receiver_local) {
+		if (acceptval == 1) {
+			I2ErrLog(eh, "Server refused to send data.");
+			exit(0);
+		}
+		
 		if (owp_fetch_to_local(conndata.cntrl, 
 				       conndata.real_data_dir, sid_ret) < 0) {
 			I2ErrLog(eh, "Failed to fetch records to local disk");
@@ -926,9 +938,7 @@ main(
 	}
 
 	/* Set up relevant fields of state. */
-	state.fp = stdout;                  /* XXX - incorporate options! */
-	state.quiet = ping_ctx.opt.quiet;
-	state.full = ping_ctx.opt.full;
+	state.fp = stdout;
 
 	if (do_records_all(conndata.real_data_dir, sid_ret, &state) < 0){
 		I2ErrLog(eh, "FATAL: do_records_all: failure processing data");
