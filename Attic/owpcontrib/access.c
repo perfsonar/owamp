@@ -8,6 +8,7 @@
 #include <sys/stat.h>
 #include <assert.h>
 #include <netdb.h>
+#include <sys/wait.h>
 
 /* for inet_pton */
 #include <sys/socket.h>
@@ -47,6 +48,7 @@ typedef void (*OWPCheckAddrPolicy)(
 #define SERV_PORT_STR "5555"
 #define KID_LEN 16
 #define PASSWD_LEN 16
+#define PASSWD_LEN_HEX (PASSWD_LEN * 2)
 
 #define DEFAULT_OPEN_CLASS "open"
 #define AUTH_CLASS "authenticated"
@@ -74,10 +76,14 @@ char *ClassToLimitsFile = NULL;
 const char *DefaultPasswdFile = DEFAULT_PASSWD_FILE;
 char *PasswdFile = NULL;
 
+/* Global variable - the total number of allowed Control connections. */
+#define DEFAULT_NUM_CONN 100
+int free_connections = DEFAULT_NUM_CONN;
+
 static void
 usage(char *name)
 {
-	printf("Usage: %s [-p port] [ip address]\n", name);
+	printf("Usage: %s [-p port] [-a ip_address] [-n num] [-h]\n", name);
 	return;
 }
 
@@ -376,10 +382,18 @@ owamp_read_ip2class(const char *ip2class, hash_ptr hash)
 	return;
 }
 
+/*
+** Password file format: lines of the form <KID> <shared_secret>
+** where <KID> is an ASCII string of length at most 16,
+** and <shared_secret> is a sequence of hex digits of length 32
+** (corresponding to 16 bytes of binary data).
+*/
+ 
 void
 read_passwd_file(const char *passwd_file, hash_ptr hash)
 {
-	char line[MAX_LINE], kid[KID_LEN], secret[PASSWD_LEN];
+	char line[MAX_LINE];
+	char *kid, *secret;
 	char err_msg[1024];
 	FILE *fp;
 	u_int32_t addr;
@@ -395,19 +409,27 @@ read_passwd_file(const char *passwd_file, hash_ptr hash)
 	}
 
 	while ( (fgets(line, sizeof(line), fp)) != NULL) {
+		line[strlen(line) - 1] = '\0';
 		if (line[0] == '#') 
 			continue;
-		if (sscanf(line, "%s%s", kid, secret) != 2) 
-			continue;
 
-		/* Prevent from overspilling */
-		kid[KID_LEN] = '\0';
-		secret[PASSWD_LEN] = '\0';
-		if (strlen(secret) != PASSWD_LEN){ /* bad password */
-			fprintf(stderr, "Warning: password %s is not "
-                        "%d characters long.\n", secret, PASSWD_LEN);
+		kid = strtok(line, " \t");
+		if (!kid)
+			continue;
+		if (strlen(kid) > KID_LEN){
+			kid[KID_LEN] = '\0';
+			fprintf(stderr, "Warning: KID %s too long - ",
+				"truncating to %d characters\n", kid, KID_LEN);
+		}
+
+		secret = strtok(NULL, " \t");
+		if ( strlen(secret) != PASSWD_LEN_HEX ){
+			fprintf(stderr, 
+		"Warning: shared_secret %s must consist of %d hex digits.\n", 
+				secret, PASSWD_LEN_HEX);
 			continue;
 		}
+
 		/* Now save the key/class pair in a hash. */
 		if ( (key = str2datum(kid)) == NULL)
 			continue;
@@ -668,15 +690,16 @@ tcp_listen(const char *host, const char *serv, socklen_t *addrlenp)
 	ressave = res;
 
 	do {
-		listenfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+		listenfd = socket(res->ai_family, res->ai_socktype, 
+				  res->ai_protocol);
 		if (listenfd < 0)
 			continue;		/* error, try next one */
 
-		Setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
+		Setsockopt(listenfd, SOL_SOCKET,SO_REUSEADDR, &on, sizeof(on));
 		if (bind(listenfd, res->ai_addr, res->ai_addrlen) == 0)
 			break;			/* success */
 
-		Close(listenfd);	/* bind error, close and try next one */
+		Close(listenfd);      /* bind error, close and try next one */
 	} while ( (res = res->ai_next) != NULL);
 
 	if (res == NULL)	/* errno from final socket() or bind() */
@@ -685,7 +708,7 @@ tcp_listen(const char *host, const char *serv, socklen_t *addrlenp)
 	Listen(listenfd, LISTENQ);
 
 	if (addrlenp)
-		*addrlenp = res->ai_addrlen;	/* return size of protocol address */
+		*addrlenp = res->ai_addrlen;/* return size of proto address */
 
 	freeaddrinfo(ressave);
 
@@ -693,9 +716,23 @@ tcp_listen(const char *host, const char *serv, socklen_t *addrlenp)
 }
 /* end tcp_listen */
 
+/* XXX - must implement implement */
+u_int32_t
+get_mode()
+{
+	return 0;
+}
+
 void
 do_control_client(pid_t connfd)
 {
+	char greeting[32];
+	u_int32_t mode;
+
+	/* first send server greeting */
+	bzero(greeting, 32);
+	mode = htonl(get_mode());
+	*(int32_t *)(greeting + 12) = mode;
 	;
 }
 
@@ -703,6 +740,17 @@ void
 do_ban(int fd)
 {
 	Close(fd);
+}
+
+void
+sig_chld(int signo)
+{
+	pid_t pid;
+	int stat;
+
+	while ( (pid = waitpid(-1, &stat, WNOHANG)) > 0)
+		free_connections++;
+	return;
 }
 
 int
@@ -720,29 +768,38 @@ main(int argc, char *argv[])
 	extern int optind;
 	int c;
 	char* port = NULL;
-	char* cmd = argv[0];
+	char *host = NULL; 
 	pid_t pid;
 	OWPErrSeverity out;
 
 	/* Parse command line options. */
-	while ((c = getopt(argc, argv, "f:p:h")) != -1) {
+	while ((c = getopt(argc, argv, "f:a:p:n:h")) != -1) {
 		switch (c) {
 		case 'f':
 			ConfigFile = strdup(optarg);
 			break;
 		case 'h':
 			usage(argv[0]);
+			exit(0);
+			break;
+		case 'a':
+			host = strdup(optarg);
 			break;
 		case 'p':
 			port = strdup(optarg);
 			break;
+		case 'n':
+			free_connections = atoi(optarg);
+			break;
 		default:
-			usage(cmd);
+			usage(argv[0]);
 			break;
 		}
 	}
-	argc -= optind;
-	argv += optind;
+	if (argc != optind){
+		usage(argv[0]);
+		exit(1);
+	}
 
 	if (!port)
 		port = strdup(SERV_PORT_STR);
@@ -781,14 +838,8 @@ main(int argc, char *argv[])
 		exit(1);
 	}
 	read_passwd_file(PasswdFile, passwd_hash);
-
-
-	if (argc == 0)
-		listenfd = tcp_listen(NULL, port, &addrlen);
-	else if (argc == 1)
-		listenfd = tcp_listen(argv[0], port, &addrlen);
-	else
-		usage(cmd);
+	listenfd = tcp_listen(host, port, &addrlen);
+	Signal(SIGCHLD, sig_chld);
 
 #if 0
 	test_policy_check();
@@ -816,10 +867,16 @@ main(int argc, char *argv[])
 			break;
 		default:
 			fprintf(stderr, "DEBUG: policy is confused\n");
+			do_ban(connfd);
 			continue;
 			break;
 		};
 
+		if (free_connections == 0){
+			do_ban(connfd);
+			continue;
+		}
+		free_connections--;
 
 		if ( (pid = fork()) < 0)
 			sys_quit("fork");
@@ -835,6 +892,7 @@ main(int argc, char *argv[])
 
 	hash_close(ip2class_hash);
 	hash_close(class2limits_hash);
+	hash_close(passwd_hash);
 
 	exit(0);
 }
