@@ -85,15 +85,40 @@ main(
 			eval = OWPExpContextNext(exp);
 			sum = OWPNum64Add(sum,eval);
 			if((n < I2Number(nice)) && (j == nice[n])){
-				char	val[16];
-				n++;
-				OWPHexEncode(val,(u_int8_t*)&eval,8);
+				/* local copies of eval and sum */
+				OWPNum64	te,ts;
+				/* big-endian versions of eval and sum */
+				u_int8_t	e[8];
+				u_int8_t	s[8];
+				/* hex encoded big-endian ov eval and sum */
+				char		ve[17];
+				char		vs[17];
+
+				te = eval;
+				ts = sum;
+
+				/*
+				 * Copy low-order 32 bits
+				 */
+				*(u_int32_t*)&e[4] = htonl((te&0xffffffffUL));
+				*(u_int32_t*)&s[4] = htonl((ts&0xffffffffUL));
+				/*
+				 * Copy high-order 32 bits
+				 */
+				te >>= 32;
+				ts >>= 32;
+				*(u_int32_t*)&e[0] = htonl((te&0xffffffffUL));
+				*(u_int32_t*)&s[0] = htonl((ts&0xffffffffUL));
+
+				OWPHexEncode(ve,e,8);
+				OWPHexEncode(vs,s,8);
+				ve[16] = vs[16] = '\0';
 
 				fprintf(stdout,
-					"EXP[%d] = 0x%s (%f)\tsum = %f\n",
-					j,val,
-					OWPNum64ToDouble(eval),
-					OWPNum64ToDouble(sum));
+				"EXP[%d] = 0x%s (%f)\tSUM[%d] = 0x%s (%f)\n",
+					j,ve,OWPNum64ToDouble(eval),
+					j,vs,OWPNum64ToDouble(sum));
+				n++;
 			}
 		}
 		OWPExpContextFree(exp);
