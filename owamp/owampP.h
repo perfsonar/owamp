@@ -75,20 +75,34 @@ struct OWPAddrRec{
 
 typedef struct OWPControlRec OWPControlRec;
 struct OWPControlRec{
+	/*
+	 * Application configuration information.
+	 */
 	OWPContext		ctx;
 
-	int			server;	/* this record represents server */
+	/*
+	 * Control connection state information.
+	 */
+	OWPBoolean		server;	/* this record represents server */
 	int			state;	/* current state of connection */
 	OWPSessionMode		mode;
+
+	/*
+	 * Address specification and "network" information.
+	 */
+	OWPAddr			remote_addr;
+	OWPAddr			local_addr;
+	int			sockfd;
+
+	/*
+	 * Encryption fields
+	 */
 	OWPKID			kid;
 	OWPKey			key;
 	u_int32_t		challenge[4];
-
-	OWPAddr			remote_addr;
-	OWPAddr			local_addr;
-
 	u_int32_t		session_key[4];
-	u_int32_t		client_IV[4];
+	u_int32_t		readIV[4];
+	u_int32_t		writeIV[4];
 
 	struct OWPControlRec	*next;
 };
