@@ -163,3 +163,21 @@ owp_print_owpaddr(FILE *fp, OWPAddr addr)
 	if (addr->saddr)
 		owp_print_sockaddr(addr->saddr);
 }
+
+/*
+** Dump hex-encoded message for inspection. <len> is message length
+** in bytes.
+*/
+void
+owp_dump_msg(u_int8_t *msg, int len, FILE *fp)
+{
+	char *buf = (char *)malloc(2*len + 1);
+	
+	if (!buf) {
+		perror("owp_dump_msg: malloc failed");
+		return;
+	}
+	
+	hexencode(buf, msg, len);
+	fprintf(fp, "DEBUG: dumping message: %s\n", buf);
+}
