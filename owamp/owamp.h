@@ -732,20 +732,20 @@ typedef int (*OWPDoRawDataRecord)(
 			       u_int8_t *rec  /* 20-byte record */
 			       );
 
-/*
-** Request records with numbers from <begin> to <end>
-** of a given session <SID>. Process server response (Control-Ack).
-** On success, read the first 16 octets of data transmitted
-** by the server, save the number of records promised into
-** *numrec, and return OWPErrOK. Else return OWPErrFATAL.
-*/
 OWPErrSeverity
 OWPFetchSession(OWPControl cntrl,
 		u_int32_t  begin,
 		u_int32_t  end,
 		OWPSID	   sid,
-		u_int32_t  *num_rec);
+		int        fd);
 
+/*
+** Request records with numbers from <begin> to <end>
+** of a given session <SID>. Process server response (Control-Ack).
+** On success, read the first 16 octets of data transmitted
+** by the server, parse it, then read the promised number of records 
+** and write them to the provided file descriptor <fd>.
+*/
 OWPErrSeverity
 OWPFetchRecords(OWPControl cntrl, 
 		u_int32_t num_rec, 

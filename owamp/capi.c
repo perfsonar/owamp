@@ -916,37 +916,6 @@ OWPStartSessions(
 	return err2;
 }
 
-/*
-** Request records with numbers from <begin> to <end>
-** of a given session <SID>. Process server response (Control-Ack).
-** On success, read the first 16 octets of data transmitted
-** by the server, save the number of records promised into
-** *numrec, and return OWPErrOK. Else return OWPErrFATAL.
-*/
-OWPErrSeverity
-OWPFetchSession(OWPControl cntrl,
-		u_int32_t  begin,
-		u_int32_t  end,
-		OWPSID	   sid,
-		u_int32_t  *num_rec)
-{
-	OWPAcceptType acc_type;
-
-	if (_OWPWriteRetrieveSession(cntrl, begin, end, sid) != OWPErrOK) 
-		return OWPErrFATAL;
-
-	if (_OWPReadControlAck(cntrl, &acc_type) != OWPErrOK)
-		return OWPErrFATAL;
-	
-	if (acc_type != OWP_CNTRL_ACCEPT)
-		return OWPErrFATAL;
-	
-	if (_OWPReadDataHeader(cntrl, num_rec) != OWPErrOK)
-		return OWPErrFATAL;
-	
-	return OWPErrOK;
-}
-
 u_int64_t
 tstamp2int64(OWPTimeStamp *tstamp)
 {
@@ -974,100 +943,112 @@ owp_delay(OWPTimeStamp *send_time, OWPTimeStamp *recv_time)
 	return (t2 > t1)? (double)(t2 - t1)/scale : (double)(t1 - t2)/(-scale);
 }
 
-/*
-** After calling OWPFetchSession, the client reads the exact number
-** of data records advertised (= <num_rec>), and process them,
-** one by one with a user-supplied call-back function <proc_rec>.
-** NOTE: the final 16 bytes of padding are not handled here.
-*/
-OWPErrSeverity
-OWPFetchRecords(OWPControl cntrl, 
-		u_int32_t num_rec, 
-		OWPDoRawDataRecord proc_rec,
-		void *app_data)
-{
-	u_int64_t        nbytes, nchunks, rem_bytes;
-	u_int32_t        i, j;
-	u_int8_t         *cur_rec;
-	u_int8_t*	 buf;
-	int              k, more_records, padding_size, more_blocks = 0;
-
-	/* 
-	   Compute the number of 16-byte blocks to read. 
-	   Will read 5 blocks at a time (= 4 records = 80 octets)
-	*/
-	nbytes = (u_int64_t)num_rec * _OWP_TS_REC_SIZE;
-	nchunks = nbytes / (5 * _OWP_RIJNDAEL_BLOCK_SIZE);
-	rem_bytes = nbytes % (5 * _OWP_RIJNDAEL_BLOCK_SIZE);
-	for (i = 0; i < nchunks; i++) { /* each chunk is 4 records */
-		buf = (u_int8_t*)cntrl->msg;
-		if (_OWPReceiveBlocks(cntrl, buf, 5) != 5)
-			return OWPErrFATAL;
-		cur_rec = buf;
-		for (j = 0; j < 4; j++) {
-			if (proc_rec(app_data, cur_rec) < 0)
-				return OWPErrFATAL;
-			cur_rec += _OWP_TS_REC_SIZE;
-		}
-	}
-
-	if (!rem_bytes)  /* whenever num_rec is a mutltiple of 4 */
-		return OWPErrOK;
-	/* 
-	   If there's a remainder then rem_bytes should be divisible by 20,
-	   and not divisible by 16. Now more_blocks handles remaining blocks
-	   + partial zero padding.
-	*/
-
-	more_blocks = (rem_bytes / _OWP_RIJNDAEL_BLOCK_SIZE) + 1;
-	more_records = rem_bytes / _OWP_TS_REC_SIZE; /* can be zero */
-	
-	assert(more_blocks <= 5);
-	buf = (u_int8_t*)cntrl->msg;
-	if (_OWPReceiveBlocks(cntrl, buf, more_blocks) != more_blocks)
-		return OWPErrFATAL;
-
-	/* Process remaining records. */
-	cur_rec = buf;
-	for (k = 0; k < more_records; k++) {
-		if (proc_rec(app_data, cur_rec)<0)
-			return OWPErrFATAL;
-		cur_rec += _OWP_TS_REC_SIZE;
-	}
-	
-	/* Make sure padding is really zero. */
-	padding_size = (_OWP_RIJNDAEL_BLOCK_SIZE * more_blocks)
-		- (_OWP_TS_REC_SIZE * more_records);
-
-	for (k = 0; k < padding_size; k++, cur_rec++)
-		if (*cur_rec) {
-			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-		      "OWPFetchRecords: Non-zero padding in the data stream.");
-			return OWPErrFATAL;
-		}
-
-	return OWPErrOK;
-}
+#define OWP_NUM_BLOCKS 512
+#define OWP_APP_BUFSIZ (OWP_NUM_BLOCKS*_OWP_RIJNDAEL_BLOCK_SIZE)
 
 /*
-** Read the final 16 bytes of data stream and make sure it's all zeros.
+** Request records with numbers from <begin> to <end>
+** of a given session <SID>. Process server response (Control-Ack).
+** On success, read the first 16 octets of data transmitted
+** by the server, parse it, then read the promised number of records 
+** and write them to the provided file descriptor <fd>. Return OWPErrOK
+** on success, or OWPErrFATAL on failure.
 */
 OWPErrSeverity
-OWPCheckPadding(OWPControl cntrl)
+OWPFetchSession(OWPControl cntrl,
+		u_int32_t  begin,
+		u_int32_t  end,
+		OWPSID	   sid,
+		int        fd)
 {
-	int k;
-	u_int8_t *ptr = (u_int8_t*)cntrl->msg;
+	OWPAcceptType acc_type;
+	u_int32_t    num_rec;
+	int          more_blocks;
+	u_int8_t     buf[OWP_APP_BUFSIZ];
+	u_int64_t    nbytes, rem_bytes, i; 
 
-	if (_OWPReceiveBlocks(cntrl, ptr, 1) != 1)
+	if (_OWPWriteRetrieveSession(cntrl, begin, end, sid) != OWPErrOK) 
 		return OWPErrFATAL;
 
-	for (k = 0; k < 16; k++, ptr++)
-		if (*ptr) {
-			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+	if (_OWPReadControlAck(cntrl, &acc_type) != OWPErrOK)
+		return OWPErrFATAL;
+	
+	if (acc_type != OWP_CNTRL_ACCEPT)
+		return OWPErrFATAL;
+	
+	if (_OWPReadDataHeader(cntrl, &num_rec) != OWPErrOK)
+		return OWPErrFATAL;
+	
+	nbytes   = (u_int64_t)num_rec * _OWP_TS_REC_SIZE;
+
+	for (i = 0; i < nbytes / OWP_APP_BUFSIZ; i++) {
+		if (_OWPReceiveBlocks(cntrl, buf, OWP_NUM_BLOCKS) 
+		    != OWP_NUM_BLOCKS) {
+			OWPError(cntrl->ctx, OWPErrFATAL, OWPErrUNKNOWN,
+				 "FATAL: OWPFetchSession: read failure");
+			return OWPErrFATAL;
+		}
+		
+		if (I2Writen(fd, buf, OWP_APP_BUFSIZ) < 0) {
+			OWPError(cntrl->ctx, OWPErrFATAL, OWPErrUNKNOWN,
+				 "FATAL: OWPFetchSession: write failure");
+			return OWPErrFATAL;
+		}
+	}
+	rem_bytes = nbytes % OWP_APP_BUFSIZ;
+
+	/* Now rem_bytes < OWP_APP_BUFSIZ */
+	if (rem_bytes) {
+		more_blocks = rem_bytes / _OWP_RIJNDAEL_BLOCK_SIZE;
+		if (_OWPReceiveBlocks(cntrl, buf, more_blocks) != more_blocks){
+			OWPError(cntrl->ctx, OWPErrFATAL, OWPErrUNKNOWN,
+				 "FATAL: OWPFetchSession: read failure");
+			return OWPErrFATAL;
+		}
+		
+		if (I2Writen(fd, buf, more_blocks*_OWP_RIJNDAEL_BLOCK_SIZE)<0){
+			OWPError(cntrl->ctx, OWPErrFATAL, OWPErrUNKNOWN,
+				 "FATAL: OWPFetchSession: write failure");
+			return OWPErrFATAL;
+		}
+		rem_bytes -= more_blocks*_OWP_RIJNDAEL_BLOCK_SIZE;
+	}
+
+	/* Now rem_bytes < _OWP_RIJNDAEL_BLOCK_SIZE */
+	
+	if (rem_bytes) {
+		if (_OWPReceiveBlocks(cntrl, buf, 1) != 1){
+			OWPError(cntrl->ctx, OWPErrFATAL, OWPErrUNKNOWN,
+				 "FATAL: OWPFetchSession: read failure");
+			return OWPErrFATAL;
+		}
+
+		if (I2Writen(fd, buf, rem_bytes) < 0){
+			OWPError(cntrl->ctx, OWPErrFATAL, OWPErrUNKNOWN,
+				 "FATAL: OWPFetchSession: write failure");
+			return OWPErrFATAL;
+		}
+
+		/* Check zero padding */
+		for (i = rem_bytes; i < 16; i++)
+			if (buf[i]) {
+				OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
 		      "OWPCheckPadding: Non-zero padding in the data stream.");
+				return OWPErrFATAL;
+			}
+	}
+
+	/* Check the final 16 bytes of zero padding */
+	if (_OWPReceiveBlocks(cntrl, buf, 1) != 1)
+		return OWPErrFATAL;
+
+	for (i = 0; i < 16; i++)
+		if (buf[i]) {
+			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+		     "OWPCheckPadding: Non-zero padding in the data stream.");
 			return OWPErrFATAL;
 		}
-	
+
 	return OWPErrOK;
 }
 
