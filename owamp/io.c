@@ -1,7 +1,4 @@
-#include <sys/types.h>
-#include <sys/uio.h>
-#include <unistd.h>
-#include <errno.h>
+#include <owampP.h>
 
 /*
 ** Robust low-level IO functions - out of Stevens. Read or write
@@ -57,3 +54,20 @@ writen(int fd, const void *vptr, size_t n)
 	return(n);
 }
 /* end writen */
+
+/*
+** This function sends a given number of blocks to the socket,
+** doing encryption if needed.
+*/
+
+#define BLOCK_LEN    16 /* number of bytes in a block */
+
+int
+send_blocks(int sock, char *buf, int num_blocks, OWPBoolean encrypt)
+{
+	if (!encrypt){
+		if (writen(sock, buf, num_blocks*BLOCK_LEN) < 0)
+			return -1;
+	}
+	return 0;
+}
