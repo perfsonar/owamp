@@ -54,7 +54,7 @@ is a server program specifically designed to run one side of one-way
 latency tests. The client program \fBowping\fR is available to run
 the other side of the test.
 .PP
-Aside from actually running the tests, the main funciton of \fBowampd\fR
+Aside from actually running the tests, the main function of \fBowampd\fR
 is to determine which tests are allowable based upon the policy restrictions
 configured by the system administrator.
 .PP
