@@ -201,9 +201,9 @@ static	I2OptDescRec	set_options[] = {
 	{"lossThreshold", 1, "120",
 			"elapsed time when recv declares packet lost (sec)"},
 	{"datadir", 1, NULL, "Data directory to store test session data"},
-	{"keepdata", 0, NULL, "do not delete binary test session data "},
-	{"full", 0, NULL,    "print out full records in human-readable form"},
-	{"quiet", 0, NULL, "quiet ouput. only print out the final summary"},
+	{"keepdata", 0, 0, "do not delete binary test session data "},
+	{"full", 0, 0,    "print out full records in human-readable form"},
+	{"quiet", 0, 0, "quiet ouput. only print out the final summary"},
 
 #ifndef	NDEBUG
 	{"childwait",0,NULL,
@@ -333,6 +333,24 @@ FailSession(
 /* Width of Fetch receiver window. */
 #define OWP_WIN_WIDTH   64
 
+/* 
+** Cut-off values for and mesh sizes for constructing buckets. 
+** Used to compute median on the fly. Measured in seconds.
+** Thi high cut-off value is simply LossThreshold.
+*/
+#define OWP_CUTOFF_LOW  0.1
+#define OWP_CUTOFF_MID  1.0
+
+#define OWP_MESH_LOW    0.00001
+#define OWP_MESH_MID    0.001
+#define OWP_MESH_HIGH   0.1
+
+/* Numbers of buckets in each range. */
+#define OWP_NUM_LOW     ((int)(OWP_CUTOFF_LOW / OWP_MESH_LOW))
+#define OWP_NUM_MID     ((int)((OWP_MESH_MID - OWP_MESH_LOW) / OWP_CUTOFF_LOW))
+#define OWP_NUM_HIGH    ((int)((ping_ctx.opt.lossThreshold - OWP_MESH_MID)  \
+			       / OWP_CUTOFF_LOW))
+
 /*
 ** Generic state to be maintained by client during Fetch.
 */
@@ -348,9 +366,11 @@ typedef struct fetch_state {
 	u_int32_t    dup_packets;      /* number of duplicate packets        */
 	int          order_disrupted;  /* flag                               */
 	u_int32_t    max_seqno;        /* max sequence number seen           */
+	u_int32_t    *buckets;         /* array of buckets of counts         */
 } fetch_state, *fetch_state_ptr;
 
 #define OWP_CMP(a,b) ((a) < (b))? -1 : (((a) == (b))? 0 : 1)
+#define OWP_MIN(a,b) ((a) < (b))? (a) : (b)
 
 /*
 ** The function returns -1. 0 or 1 if the first record's sequence
@@ -421,13 +441,15 @@ owp_update_stats(fetch_state_ptr state, OWPCookedDataRecPtr rec) {
 	
 	state->tsum += delay;
 	state->tsumsq += (delay*delay);
-	state->num_received++;
 
 	if (rec->seq_no > state->max_seqno)
 		state->max_seqno = rec->seq_no;
 
-	if (owp_seqno_cmp(rec, &state->last_processed) == 0)
+	if (state->num_received 
+	    && owp_seqno_cmp(rec, &state->last_processed) == 0)
 		state->dup_packets++;
+
+	state->num_received++;
 	memcpy(&state->last_processed, rec, sizeof(*rec));
 }
 
@@ -530,6 +552,22 @@ owp_do_summary(fetch_state_ptr state)
 }
 
 /*
+** Given a delay, compute index of the corresponding bucket.
+*/
+int
+owp_bucket(double delay)
+{
+	if (delay < 0)
+		return 0;
+	if (delay <= OWP_CUTOFF_LOW)
+		return (int)(delay/OWP_MESH_LOW);
+	if (delay <= OWP_CUTOFF_MID)
+		return OWP_NUM_LOW + (int)(delay-OWP_CUTOFF_LOW)/OWP_MESH_MID; 
+	return OWP_NUM_LOW + OWP_NUM_MID 
+		+ (int)((delay - OWP_CUTOFF_MID)/OWP_MESH_HIGH);
+}
+
+/*
 ** Master output function - reads the records from the disk
 ** and prints them to <out> in a style specified by <type>.
 ** Its value is interpreted as follows:
@@ -541,7 +579,7 @@ owp_do_summary(fetch_state_ptr state)
 int
 do_records_all(char *datadir, OWPSID sid, fetch_state_ptr state)
 {
-	int fd, i;
+	int fd, i, num_buckets;
 	u_int32_t num_rec, typeP;
 	char datafile[PATH_MAX]; /* full path to data file */
 	char sid_name[(sizeof(OWPSID)*2)+1];
@@ -598,6 +636,14 @@ do_records_all(char *datadir, OWPSID sid, fetch_state_ptr state)
 	state->order_disrupted = 0;
 	state->dup_packets = 0;
 	state->max_seqno = 0;
+
+	num_buckets = OWP_NUM_LOW + OWP_NUM_MID + OWP_NUM_HIGH;
+
+	state->buckets = (u_int32_t *)malloc(num_buckets);
+	if (!state->buckets) {
+		I2ErrLog(eh, "FATAL: main: malloc(%d) failed: %M",num_buckets);
+		exit(1);
+	}
 
 	OWPFetchLocalRecords(fd, num_rec, do_single_record, state);
 	
