@@ -571,7 +571,7 @@ OWPControlOpen(
 	OWPAddr		local_addr,	/* local addr or null	*/
 	OWPAddr		server_addr,	/* server addr		*/
 	u_int32_t	mode_req_mask,	/* requested modes	*/
-	const OWPKID	*kid,		/* kid or NULL		*/
+	const OWPKID	kid,		/* kid or NULL		*/
 	OWPErrSeverity	*err_ret	/* err - return		*/
 )
 {

@@ -26,8 +26,8 @@
 #include <string.h>
 #include <ctype.h>
 
-#include <I2util/util.h>
-#include "owpingP.h"
+#include "./owpingP.h"
+#include "./localaddr.h"
 
 /*
  * The owping context
@@ -39,7 +39,7 @@ OWPingErrFunc(
 	void		*app_data,
 	OWPErrSeverity	severity,
 	OWPErrType	etype,
-	cont char	*errmsg
+	const char	*errmsg
 )
 {
 	OWPingT		pctx = (OWPingT)app_data;
@@ -96,8 +96,8 @@ static	I2OptDescRec	set_options[] = {
 	/*
 	 * test setup args
 	 */
-	{"sender", -2, NULL, "IP address/node name of local control socket"},
-	{"receiver", -2, NULL, "IP address/node name of receiver server"},
+	{"sender", -2, NULL, "IP address/node name of sender [and server]"},
+	{"receiver", -2, NULL, "IP address/node name of receiver [and server]"},
 
 	{"padding", 1, "0", "min size of padding for test packets (octets)"},
 	{"lambda", 1, "1000000", "mean time between test packets (usec)"},
@@ -178,6 +178,7 @@ main(
 	char	**argv
 ) {
 	char			*progname;
+	OWPErrSeverity		err_ret=OWPErrOK;
 	I2ErrHandle		eh;
 	I2LogImmediateAttr	ia;
 	int			od;
@@ -251,6 +252,7 @@ main(
 			s++;
 		}
 	}else if(OWPingCtx.opt.identity){
+		strncpy(OWPingCtx.kid,OWPingCtx.opt.identity,sizeof(OWPKID));
 		OWPingCtx.auth_mode = OWP_MODE_OPEN|OWP_MODE_AUTHENTICATED|
 							OWP_MODE_ENCRYPTED;
 	}else{
@@ -274,10 +276,10 @@ main(
 	 * Determine "locality" of server addresses.
 	 */
 	local_addr_table = load_local_addrs();
-	OWPCfg.sender_local = is_local_addr(local_addr_table,
-					OWPCfg.opt.senderServ);
-	OWPCfg.receiver_local = is_local_addr(local_addr_table,
-					OWPCfg.opt.receiverServ);
+	OWPingCtx.sender_local = is_local_addr(local_addr_table,
+					OWPingCtx.opt.senderServ);
+	OWPingCtx.receiver_local = is_local_addr(local_addr_table,
+					OWPingCtx.opt.receiverServ);
 	free_local_addrs(local_addr_table);
 
 	/*
@@ -288,18 +290,18 @@ main(
 	 * contact a local owampd to be sender.
 	 * (probably not real useful... but not fatal defaults are good.)
 	 */
-	if(!OWPCfg.sender_local && !OWPCfg.receiver_local &&
-				strcmp(OWPCfg.senderServ,OWPCfg.receiverServ)){
+	if(!OWPingCtx.sender_local && !OWPingCtx.receiver_local &&
+		strcmp(OWPingCtx.opt.senderServ,OWPingCtx.opt.receiverServ)){
 		I2ErrLog(eh,"Unable to broker 3rd party transactions...");
 		exit(1);
 	}
 
-	if(OWPCfg.receiver_local){
-		OWPCfg.local_addr = OWPCfg.receiverServ;
-		OWPCfg.remote_addr = OWPCfg.senderServ;
+	if(OWPingCtx.receiver_local){
+		OWPingCtx.local_addr = OWPingCtx.opt.receiverServ;
+		OWPingCtx.remote_addr = OWPingCtx.opt.senderServ;
 	}else{
-		OWPCfg.local_addr = OWPCfg.senderServ;
-		OWPCfg.remote_addr = OWPCfg.receiverServ;
+		OWPingCtx.local_addr = OWPingCtx.opt.senderServ;
+		OWPingCtx.remote_addr = OWPingCtx.opt.receiverServ;
 	}
 
 	/*
@@ -318,7 +320,7 @@ main(
 			OWPAddrByNode(ctx,OWPingCtx.local_addr),
 			OWPAddrByNode(ctx,OWPingCtx.remote_addr),
 			OWPingCtx.auth_mode,
-			OWPingCtx.identity,
+			((OWPingCtx.opt.identity)?OWPingCtx.kid:NULL),
 			&err_ret))){
 		I2ErrLog(eh, "Unable to open control connection.");
 		exit(1);

@@ -79,8 +79,16 @@ if test "$with_I2util" != "no"; then
 		I2UTILLIBS="$I2UTILLDFLAGS -lI2util"
 	fi
 fi
+
+OWAMP_dir='${top_srcdir}'
+OWPINCS="-I$OWAMP_dir"
+OWPLDFLAGS="-L$OWAMP_dir/owamp"
+OWPLIBS="$OWPLDFLAGS -lowamp"
+
 AC_SUBST(I2UTILINCS)
 AC_SUBST(I2UTILLIBS)
+AC_SUBST(OWPINCS)
+AC_SUBST(OWPLIBS)
 
 AC_SUBST(TOP_BUILD_DIRS)
 

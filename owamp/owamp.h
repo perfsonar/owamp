@@ -401,7 +401,7 @@ OWPControlOpen(
 	OWPAddr		local_addr,	/* src addr or NULL	*/
 	OWPAddr		server_addr,	/* server addr or NULL	*/
 	u_int32_t	mode_mask,	/* OR of OWPSessionMode */
-	const OWPKID	*kid,		/* null if unwanted	*/
+	const OWPKID	kid,		/* null if unwanted	*/
 	OWPErrSeverity	*err_ret
 );
 

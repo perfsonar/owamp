@@ -22,6 +22,7 @@
 #define	_owpingp_h_
 
 #include <I2util/util.h>
+#include <owamp/owamp.h>
 
 /*
  * Application "context" structure
@@ -62,7 +63,7 @@ typedef	struct {
 	char			*local_addr;
 	char			*remote_addr;
 
-	char			*kid;
+	OWPKID			kid;
 	u_int32_t		auth_mode;
 
 	OWPContext		lib_ctx;

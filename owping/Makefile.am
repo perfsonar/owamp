@@ -18,8 +18,8 @@
 #
 #	Description:	owping build description.
 
-INCLUDES	= $(I2UTILINCS)
+INCLUDES	= $(OWPINCS) $(I2UTILINCS)
 
 bin_PROGRAMS	= owping
 owping_SOURCES	= owping.c owpingP.h localaddr.c localaddr.h
-owping_LDADD	= $(I2UTILLIBS)
+owping_LDADD	= $(OWPLIBS) $(I2UTILLIBS)
