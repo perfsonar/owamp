@@ -57,11 +57,12 @@ struct num_128 num_new(unsigned short a,
  		 unsigned short h
 		 );
 struct num_128 ulong2num(unsigned long a);
+struct num_128 new_random(keyInstance *key, unsigned long in, BYTE *outBuffer);
 
 /* Arithmetic operations */
 void num_add(num_128 x, num_128 y, num_128 z);
 void num_mul(num_128 x, num_128 y, num_128 z);
-
+int num_cmp(num_128 x, num_128 y);
 /* Conversion operations */
 void num2formatted(num_128 from, OWPFormattedTime to);
 void formatted2num(OWPFormattedTime from, num_128 to);

@@ -30,28 +30,55 @@
 /* we often need to scale by 10^6 so let's fix a struct for that */
 static struct num_128 million = {0, 0, 0, 0, 16960, 15, 0, 0};
 
-#define K 19
-static unsigned long Q[K][2] = {
-	0x0,        0x0,             /* fake */
-	0xB17217F7, 0xD1CF79AB,
-	0xEEF193F6, 0xD75A96FC,
-	0xFD271862, 0x59AAF6C2,
-	0xFF9D6DD0, 0x50F4C5A7,
-	0xFFF4CFCF, 0xEF1E626B,
-	0xFFFEE818, 0x86E1C62F,
-	0xFFFFE7FE, 0x850E0BB5,
-	0xFFFFFE2A, 0x8731B17D,
-	0xFFFFFFDF, 0xAC6EEADC,
-	0xFFFFFFFD, 0xF9640067,
-	0xFFFFFFFF, 0xE22EC79C,
-	0xFFFFFFFF, 0xFE6A9DED,
-	0xFFFFFFFF, 0xFFEBFF81,
-	0xFFFFFFFF, 0xFFFF1417,
-	0xFFFFFFFF, 0xFFFFF5CE,
-	0xFFFFFFFF, 0xFFFFFF95,
-	0xFFFFFFFF, 0xFFFFFFFB,
-	0xFFFFFFFF, 0xFFFFFFFF
+#define K 19 /* As in Knuth: the first k such that Q[k] > 1 - 1/(2^64) */
+
+/*
+** Obtained by running:
+** perl -lne '$_=~m/(.{4})(.{4})(.{4})(.{4})/; \
+** print "0x$4, 0x$3, 0x$2, 0x$1, 0, 0, 0, 0,"' ques.dat.pure
+*/
+static struct num_128 Q[K] = {
+	0, 0, 0, 0, 0, 0, 0, 0,  /* fake */
+	0x79AB, 0xD1CF, 0x17F7, 0xB172, 0, 0, 0, 0,
+	0x96FC, 0xD75A, 0x93F6, 0xEEF1, 0, 0, 0, 0,
+	0xF6C2, 0x59AA, 0x1862, 0xFD27, 0, 0, 0, 0,
+	0xC5A7, 0x50F4, 0x6DD0, 0xFF9D, 0, 0, 0, 0,
+	0x626B, 0xEF1E, 0xCFCF, 0xFFF4, 0, 0, 0, 0,
+	0xC62F, 0x86E1, 0xE818, 0xFFFE, 0, 0, 0, 0,
+	0x0BB5, 0x850E, 0xE7FE, 0xFFFF, 0, 0, 0, 0,
+	0xB17D, 0x8731, 0xFE2A, 0xFFFF, 0, 0, 0, 0,
+	0xEADC, 0xAC6E, 0xFFDF, 0xFFFF, 0, 0, 0, 0,
+	0x0067, 0xF964, 0xFFFD, 0xFFFF, 0, 0, 0, 0,
+	0xC79C, 0xE22E, 0xFFFF, 0xFFFF, 0, 0, 0, 0,
+	0x9DED, 0xFE6A, 0xFFFF, 0xFFFF, 0, 0, 0, 0,
+	0xFF81, 0xFFEB, 0xFFFF, 0xFFFF, 0, 0, 0, 0,
+	0x1417, 0xFFFF, 0xFFFF, 0xFFFF, 0, 0, 0, 0,
+	0xF5CE, 0xFFFF, 0xFFFF, 0xFFFF, 0, 0, 0, 0,
+	0xFF95, 0xFFFF, 0xFFFF, 0xFFFF, 0, 0, 0, 0,
+	0xFFFB, 0xFFFF, 0xFFFF, 0xFFFF, 0, 0, 0, 0,
+	0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0, 0, 0, 0
 };
+
+#define LN2 &Q[1] /* this element represents ln2 */
+
+/*
+** The next two arrays of masks facilitate cutting an unsigned short
+** into 2 pieces to implement bitwise shifts on num_128 structs.
+*/
+static unsigned short mask1[16] = {
+	0,                 /* fake */
+	0x8000, 0xc000, 0xe000, 0xf000, 0xf800, 0xfc00, 0xfe00, 0xff00, 
+	0xff80, 0xffc0, 0xffe0, 0xfff0, 0xfff8, 0xfffc, 0xfffe 
+};
+
+static unsigned short mask2[16] = {
+	0,                 /* fake */ 
+	0x7fff, 0x3fff, 0x1fff, 0xfff, 0x7ff, 0x3ff, 0x1ff, 
+	0xff, 0x7f, 0x3f, 0x1f, 0xf, 0x7, 0x3, 0x1
+};
+
+#define first(x, i)  ((x) & mask1[(i)])
+#define second(x, i) (((x) & mask2[(i)]) << i)
 
 /*
 ** Constructor function. Create a num struct out of its components.
@@ -180,6 +207,22 @@ num_mul(num_128 x, num_128 y, num_128 z)
 }
 
 /*
+** This functions compares numerically fractional parts of the numbers 
+** represented by x and y. It returns a negative number, 0, or a positive
+** number depending as x is <, =, or > than y, respectively.
+*/
+int
+num_cmp(num_128 x, num_128 y)
+{
+	int i = 3;
+	
+	while (i > 0 && x->digits[i] == y->digits[i])
+		i--;
+
+	return (x->digits[i] - y->digits[i]);
+}
+
+/*
 ** The next two functions perform conversion between the num space
 ** and Owamp 32/24 space of timestamps (32-bit number of integer
 ** seconds, and 24-bit number of fractional seconds).
@@ -299,7 +342,7 @@ ulonglong2num(unsigned long long a)
 
 /*
 ** This function converts a 64-bit binary string (network byte order)
-** into num struct (fractional part).
+** into num struct (fractional part only). The integer part iz zero.
 */
 struct num_128
 raw2num(unsigned char *raw)
@@ -315,6 +358,21 @@ raw2num(unsigned char *raw)
 		       ntohs(dig[2]), ntohs(dig[3]));
 }
 
+
+struct num_128
+new_random(keyInstance *key, unsigned long in, BYTE *outBuffer)
+{
+	if (countermodeEncrypt(key, in, outBuffer) != 128){
+		fprintf(stderr, "FATAL: counter mode encryption error");
+		exit(1);
+	}
+
+	/* Grab the last 8 bytes of the encrypted block */
+	return raw2num(outBuffer + 8);
+	
+	/* XXX - TODO: use static var to avoid wasting randomness */
+}
+
 /* 
 ** Generate an exponential deviate using 64-bit binary string as an input
 ** (encoded using 2 unsigned long integers). This is algorithm S from
@@ -325,9 +383,10 @@ random_exp(keyInstance *key, unsigned long in)
 {
 	struct num_128 ret;
 	int i, j, k, count;
+	int num_blocks, num_bits;
 	BYTE outBuffer[16];
-	struct num_128 rand_uniform; /* represents 64-bit uniform deviate */
-	unsigned long high, low;       /* network byte ordered rand_uniform */
+	struct num_128 U, V; 
+	struct num_128 tmp1, tmp2;   /* structs to hold intermediate results */
 
 	if (countermodeEncrypt(key, in, outBuffer) != 128){
 		fprintf(stderr, "FATAL: counter mode encryption error");
@@ -335,32 +394,63 @@ random_exp(keyInstance *key, unsigned long in)
 	}
 
 	/* Grab the last 8 bytes of the encrypted block */
-	rand_uniform = raw2num(outBuffer + 8);
-
-	/* 	memcpy(rand_uniform, outBuffer + 8, 8); */
-
-	high = htonl(rand_uniform[0]);
-	low  = htonl(rand_uniform[1]);
+	U = raw2num(outBuffer + 8);
 
 	/* Get U and shift */
-	for (i = 0; i < 2; i++)
-		for (j = 0; j < 32; j++){
-			
+	count = 1;
+	for (i = 0; i < 4; i++){
+		unsigned short mask = 0x8000;
+		for (j = 0; j < 16; j++){
+			if (U.digits[i] & mask)
+				goto FOUND; /* found the first '1' */
+			mask >>= 1;
+			count++;
 		}
-
-	/* Immediate acceptance? */
-	if (high < Q[1][0] || (high == Q[1][0] && low < Q[1][1])){
-
-		/*
-		  ...
-		*/
-		
-		return ret;
+	}
+ FOUND: 
+	if (count == 65){ /* '1' was never found. */
+		/* XXX - TODO - handle this case */
 	}
 
+	/* Normal case. 1 <= count <= 64. Shift by count bits. */
+
+	num_blocks = count/16; /* integer number of 16-bit blocks to shift */
+	num_bits   = count%16; /* remaining number of bits                 */
+	j = count - 1;
+
+	if (num_bits == 0) { /* Easy case. Just move the blocks. */
+		for (i = 0; i < 4 - num_blocks; i++)
+		    U.digits[3-i] = 
+			    U.digits[3-(i+num_blocks)];
+
+		for (i = 4 - num_blocks; i < 4; i++)
+			U.digits[3-i] = (unsigned short)0;
+	} else { /* need some cut and paste */
+		for (i = 0; i < num_blocks; i++){
+			U.digits[3-i] = second(U.digits[3-i], num_bits)
+				| first(U.digits[3-(i+1)], num_bits);
+		}
+
+		U.digits[3-num_blocks] = 
+			second(U.digits[3-num_blocks], num_bits);
+
+		for (i = num_blocks + 1; i < 4; i++)
+			U.digits[3-i] = (unsigned short)0;
+	}
+
+
+	/* Immediate acceptance? */
+	if (num_cmp(&U, LN2) < 0){ 
+		/* return  (j*ln2 + U) */ 
+		tmp1 = ulong2num(j);     
+		num_mul(&tmp1, LN2, &tmp2);   
+		num_add(&tmp2, &U, &ret);
+		return ret;
+	}
+	
 	/* Minimize */
 	for (k = 2; k < K; k++)
-		if (high < Q[k][0] || (high == Q[k][0] && low < Q[k][1]))
+		if (num_cmp(&U, &Q[k]) < 0)
 			break;
 
 	if (k == K){
@@ -368,11 +458,17 @@ random_exp(keyInstance *key, unsigned long in)
 		exit(1);
 	}
 
-	/* Generate k new uniform deviates */
+	V = new_random(key, in + 1, outBuffer);
+	
+	for (i = 2; i <= k; i++){
+		tmp1 = new_random(key, in + i, outBuffer);
+		if (num_cmp(&tmp1, &V) < 0)
+			V = tmp1;
+	}
 
-	/*
-	  ...
-	*/
-
+	/* Return (j+V)*ln2 */
+	tmp1 = ulong2num(j);     
+	num_add(&tmp1, &V, &tmp2);
+	num_mul(&tmp2, LN2, &ret);
 	return ret;
 }
