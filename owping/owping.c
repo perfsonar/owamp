@@ -177,8 +177,6 @@ static	I2OptDescRec	set_options[] = {
 	 * policy config file options.
 	 */
 	{"confdir",1,OWP_CONFDIR,"Configuration directory"},
-	{"ip2class",1,"ip2class.conf","ip2class config filename"},
-	{"class2limits",1,"class2limits.conf","class2limits config filename"},
 	{"passwd",1,"passwd.conf","passwd config filename"},
 
 	/*
@@ -189,12 +187,11 @@ static	I2OptDescRec	set_options[] = {
 	{"identity",1,NULL,"ID for shared secret"},
 	{"tmout",1,"30","Max time to wait for control connection reads (sec)"},
 
-
 	/*
 	 * test setup args
 	 */
 	{"sender", -2, NULL, "IP address/node name of sender [and server]"},
-	{"receiver", -2, NULL,"IP address/node name of receiver [and server]"},
+	{"zreceiver",-2, NULL,"IP address/node name of receiver [and server]"},
 	{"padding", 1, "0", "min size of padding for test packets (octets)"},
 	{"rate", 1, "1.0", "rate of test packets (packets/sec)"},
 	{"numPackets", 1, "10", "number of test packets"},
@@ -207,7 +204,7 @@ static	I2OptDescRec	set_options[] = {
 	{"datadir", 1, NULL, "Data directory to store test session data"},
 	{"keepdata", 0, 0, "do not delete binary test session data "},
 	{"full", 0, 0,    "print out full records in human-readable form"},
-	{"quiet", 0, 0, "quiet ouput. only print out the final summary"},
+	{"records", 0, 0, "Show timestamp records."},
 
 #ifndef	NDEBUG
 	{"childwait",0,NULL,
@@ -235,14 +232,6 @@ static  I2Option  get_options[] = {
 	sizeof(ping_ctx.opt.confdir)
 	},
 	{
-	"ip2class", I2CvtToString, &ping_ctx.opt.ip2class,
-	sizeof(ping_ctx.opt.ip2class)
-	},
-	{
-	"class2limits", I2CvtToString, &ping_ctx.opt.class2limits,
-	sizeof(ping_ctx.opt.class2limits)
-	},
-	{
 	"passwd", I2CvtToString, &ping_ctx.opt.passwd,
 	sizeof(ping_ctx.opt.passwd)
 	},
@@ -263,7 +252,7 @@ static  I2Option  get_options[] = {
 	sizeof(ping_ctx.opt.sender)
 	},
         {
-	"receiver", I2CvtToString, &ping_ctx.opt.receiver,
+	"zreceiver", I2CvtToString, &ping_ctx.opt.receiver,
 	sizeof(ping_ctx.opt.receiver)
 	},
         {
@@ -291,8 +280,8 @@ static  I2Option  get_options[] = {
 	sizeof(ping_ctx.opt.full)
 	},
         {
-	"quiet", I2CvtToBoolean, &ping_ctx.opt.quiet,
-	sizeof(ping_ctx.opt.quiet)
+	"records", I2CvtToBoolean, &ping_ctx.opt.records,
+	sizeof(ping_ctx.opt.records)
 	},
 	{
 	"keepdata", I2CvtToBoolean, &ping_ctx.opt.keepdata,
@@ -337,36 +326,31 @@ FailSession(
 /* Width of Fetch receiver window. */
 #define OWP_WIN_WIDTH   64
 
-/* 
-** Cut-off values for and mesh sizes for constructing buckets. 
-** Used to compute median on the fly. Measured in seconds.
-** Thi high cut-off value is simply LossThreshold.
-*/
-#define OWP_CUTOFF_LOW  0.1
-#define OWP_CUTOFF_MID  1.0
+#define OWP_NUM_LOW         10000
+#define OWP_NUM_MID         1000
+#define OWP_NUM_HIGH        1000
 
-#define OWP_MESH_LOW    0.00001
-#define OWP_MESH_MID    0.001
-#define OWP_MESH_HIGH   0.1
+#define OWP_CUTOFF_LOW      0.1
+#define OWP_CUTOFF_MID      1.0
+#define OWP_CUTOFF_HIGH     ((double)(ping_ctx.opt.lossThreshold))
 
-/* Numbers of buckets in each range. */
-#define OWP_NUM_LOW     ((int)(OWP_CUTOFF_LOW / OWP_MESH_LOW))
-#define OWP_NUM_MID     ((int)((OWP_CUTOFF_MID - OWP_CUTOFF_LOW)              \
-			       / OWP_MESH_MID))
-#define OWP_NUM_HIGH    ((int)((ping_ctx.opt.lossThreshold - OWP_CUTOFF_MID)  \
-			       / OWP_MESH_HIGH))
+/* These are NOT configurable. */
+#define OWP_MESH_LOW        ((double)OWP_CUTOFF_LOW/(double)OWP_NUM_LOW)
+#define OWP_MESH_MID        ((double)(OWP_CUTOFF_MID-OWP_CUTOFF_LOW)         \
+			     /(double)OWP_NUM_MID) 
+#define OWP_MESH_HIGH       ((double)(OWP_CUTOFF_HIGH-OWP_CUTOFF_MID)        \
+                             /(double)OWP_NUM_HIGH)
 
 /*
 ** Generic state to be maintained by client during Fetch.
 */
 typedef struct fetch_state {
 	FILE*        fp;               /* stream to report records           */
-	OWPCookedDataRec window[OWP_WIN_WIDTH]; /* window of read records  */
-	OWPCookedDataRec last_processed; /* last processed record */
-	int          cur_win_size;
+	OWPCookedDataRec window[OWP_WIN_WIDTH]; /* window of read records    */
+	OWPCookedDataRec last_out; /* last processed record            */
+	int          cur_win_size;     /* number of records in the window    */
 	double       tmin;             /* min delay                          */
-	double       tsum;             /* sum of delays                      */
-	double       tsumsq;           /* sum of squared delays              */
+	double       tmax;             /* max delay                          */
 	u_int32_t    num_received;     /* number of received packets         */
 	u_int32_t    dup_packets;      /* number of duplicate packets        */
 	int          order_disrupted;  /* flag                               */
@@ -409,6 +393,12 @@ look_for_spot(fetch_state_ptr state,
 	return -1;
 }
 
+double
+owp_bits2prec(int nbits)
+{
+	return 1.0/pow(2.0, (double)(nbits - 32));
+}
+
 /*
 ** Generic function to output timestamp record <rec> in given format
 ** as encoded in <state>.
@@ -421,7 +411,7 @@ owp_record_out(fetch_state_ptr state, OWPCookedDataRecPtr rec)
 	assert(rec);
 	assert(state);
 
-	if (ping_ctx.opt.quiet)
+	if (!ping_ctx.opt.records)
 		return;
 
 	assert(state->fp);
@@ -433,9 +423,16 @@ owp_record_out(fetch_state_ptr state, OWPCookedDataRecPtr rec)
 			rec->send.sync, rec->send.prec,
 			rec->recv.sec, rec->recv.frac_sec, rec->recv.sync, 
 			rec->recv.prec);
-	else 
-			fprintf(state->fp, "seq_no=%u delay=%.3f ms\n", 
+	else {
+		if (rec->send.sync && rec->recv.sync) {
+			double prec = owp_bits2prec(rec->send.prec) 
+				+ owp_bits2prec(rec->recv.prec);
+    fprintf(state->fp, "seq_no=%u delay=%.3f ms (sync, precision %.3f ms)\n", 
+				rec->seq_no, delay*THOUSAND, prec);
+		} else 
+			fprintf(state->fp,"seq_no=%u delay=%.3f ms (unsync)\n",
 				rec->seq_no, delay*THOUSAND);
+	}
 }
 
 
@@ -465,6 +462,11 @@ owp_update_stats(fetch_state_ptr state, OWPCookedDataRecPtr rec) {
 
 	assert(state); assert(rec);
 
+	if (state->num_received++ && !owp_seqno_cmp(rec, &state->last_out)){
+		state->dup_packets++;
+		return;
+	}
+
 	delay =  owp_delay(&rec->send, &rec->recv);
 	bucket = owp_bucket(delay);
 	
@@ -473,19 +475,38 @@ owp_update_stats(fetch_state_ptr state, OWPCookedDataRecPtr rec) {
 
 	if (delay < state->tmin)
 		state->tmin = delay;
+	if (delay > state->tmax)
+		state->tmax = delay;
 	
-	state->tsum += delay;
-	state->tsumsq += (delay*delay);
-
 	if (rec->seq_no > state->max_seqno)
 		state->max_seqno = rec->seq_no;
 
-	if (state->num_received 
-	    && owp_seqno_cmp(rec, &state->last_processed) == 0)
-		state->dup_packets++;
+	memcpy(&state->last_out, rec, sizeof(*rec));
+}
 
-	state->num_received++;
-	memcpy(&state->last_processed, rec, sizeof(*rec));
+/*
+** Given a number <alpha> in [0, 1], compute
+** min {x: F(x) >= alpha}
+** where F is the empirical distribution function (in our case,
+** with a fuzz factor due to use of buckets.
+*/
+double
+owp_get_percentile(fetch_state_ptr state, double alpha)
+{
+	int i;
+	double sum = 0;
+
+	assert((0.0 <= alpha) && (alpha <= 1.0));
+	
+	for (i = 0; (i<=OWP_MAX_BUCKET) && (sum<alpha*state->num_received);i++)
+		sum += state->buckets[i];
+	
+
+	if (i <= OWP_NUM_LOW)
+		return i*OWP_MESH_LOW;
+	if (i <= OWP_NUM_LOW + OWP_NUM_MID)
+		return OWP_CUTOFF_LOW + (i - OWP_NUM_LOW)*OWP_MESH_MID;
+	return OWP_CUTOFF_MID + (i - (OWP_NUM_LOW+OWP_NUM_MID))*OWP_MESH_HIGH;
 }
 
 /* True if the first timestamp is earlier than the second. */
@@ -540,7 +561,7 @@ do_single_record(void *calldata, OWPCookedDataRecPtr rec)
 	} else { /* rotate - update state*/
 		OWPCookedDataRecPtr out_rec = rec;		
 		if (state->num_received
-		    && OWP_OUT_OF_ORDER(rec, &(state->last_processed))) {
+		    && OWP_OUT_OF_ORDER(rec, &(state->last_out))) {
 				state->order_disrupted = 1;
 				return 0; 
 		}
@@ -570,19 +591,22 @@ int
 owp_do_summary(fetch_state_ptr state)
 {
 	double min = ((double)(state->tmin)) * THOUSAND;    /* msec */
-	double   n = (double)(state->num_received);   
-	double avg = ((state->tsum)/n);
-	double vari = ((state->tsumsq / n) - avg * avg);
-	u_int32_t lost = state->dup_packets + (state->max_seqno + 1)
-		- state->num_received; 
-
+	u_int32_t sent = state->max_seqno + 1;
+	u_int32_t lost = state->dup_packets + sent - state->num_received; 
+	double percent_lost = (double)lost/(double)state->max_seqno;
+	
 	fprintf(state->fp, "\n--- owping statistics ---\n");
-	fprintf(state->fp, "%u packets sent\n", state->max_seqno + 1);
-	fprintf(state->fp, "%u duplicates\n", state->dup_packets);
-	fprintf(state->fp, "%u packets lost\n", lost);
-	fprintf(state->fp, 
-		"one-way delay min/avg/stddev = %.3f/%.3f/%.3f ms\n",
-		min, avg*THOUSAND, sqrt(vari)*THOUSAND);
+	if (state->dup_packets)
+		fprintf(state->fp, 
+ "%u packets transmitted, %u packets lost (%.1f%% loss), %u duplicates\n",
+			sent, lost, percent_lost, state->dup_packets);
+	else	
+		fprintf(state->fp, 
+		     "%u packets transmitted, %u packets lost (%.1f%% loss)\n",
+			sent ,lost, percent_lost);
+
+	fprintf(state->fp, "one-way delay min/median = %.3f/%.3f ms\n", 
+		min, owp_get_percentile(state, 0.5)*THOUSAND);
 	return 0;
 }
 
@@ -650,7 +674,7 @@ do_records_all(char *datadir, OWPSID sid, fetch_state_ptr state)
 	*/
 	state->cur_win_size = 0;
 	state->tmin = 9999.999;
-	state->tsum = state->tsumsq = 0.0;
+	state->tmax = 0.0;
 	state->num_received = 0;
 	state->order_disrupted = 0;
 	state->dup_packets = 0;

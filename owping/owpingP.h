@@ -33,8 +33,6 @@ typedef	struct {
 		I2Boolean	help;
 
 		char		*confdir;
-		char		*ip2class;
-		char		*class2limits;
 		char		*passwd;
 
 		char		*authmode;
@@ -59,7 +57,7 @@ typedef	struct {
 		/* Flags */
 		I2Boolean       full;
 		I2Boolean       keepdata;
-		I2Boolean       quiet;
+		I2Boolean       records;
 
 #ifndef	NDEBUG
 		I2Boolean	childwait;
