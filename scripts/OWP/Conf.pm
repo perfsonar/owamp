@@ -121,6 +121,7 @@ my %PATHOPTS = (
 	OWPBINDIR		=>	1,
 	CONFDIR			=>	1,
 	CENTRALDATADIR		=>	1,
+	CENTRALARCHIVEDIR	=>	1,
 );
 
 sub new {

@@ -93,6 +93,10 @@ foreach my $mtype (@mtypes){
 	next unless defined $rec_addr;
 	foreach my $sender (@nodes) {
 	    next if ($recv eq $sender);	# don't test with self.
+	    $send_addr = $conf->get_val(NODE=>$sender, TYPE=>$mtype,
+					ATTR=>'ADDR');
+	    next unless defined $send_addr;
+
 	    # Recover the last validated time
 	    my $dir = "$dataroot/$mtype/$recv/$sender";
 	    my $end;
@@ -104,9 +108,6 @@ foreach my $mtype (@mtypes){
 		warn "Open Error $dir/$vtimefile: $!" if 0;
 	    }
 
-	    $send_addr = $conf->get_val(NODE=>$sender, TYPE=>$mtype,
-					ATTR=>'ADDR');
-	    next unless defined $send_addr;
 	    plot_resolution($conf, $mtype, $recv, $sender, $age, $mode);
 	}
     }
@@ -122,7 +123,7 @@ sub plot_resolution {
 	    $conf->get_names_info($mtype, $recv, $sender, $res, $mode);
     my $png_file = OWP::get_png_prefix($res, $mode);
 
-    print "plot_resolution: trying datadir = $datadir\n" if VERBOSE;
+    warn "plot_resolution: trying datadir = $datadir" if VERBOSE;
 
     unless (-d $datadir) {
 	warn "directory $datadir does not exist - skipping";
@@ -194,7 +195,7 @@ sub plot_resolution {
 	{
 	    use integer;
 	    $num_records = ($size - $hdr_len) / 8;
-	    print "num_rec = $num_records\n" if DEBUG;
+	    warn "num_rec = $num_records\n" if DEBUG;
 	}
 
 	for (0..MAX_BUCKET) {
@@ -375,7 +376,8 @@ sub is_younger_than {
 }
 
 sub printlist {
-    print join " ", @_, "\n\n";
+    my $mesg = joing " ", @_;
+    warn $mesg;
 }
 
 sub code2unit {

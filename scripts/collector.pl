@@ -90,6 +90,7 @@ undef $slog;	# Don't need the ref anymore, and untie won't work if
 # Globals...
 #
 my $debug = $conf->get_val(ATTR=>'DEBUG');
+my $verbose = $conf->get_val(ATTR=>'VERBOSE');
 my $devnull = $conf->must_get_val(ATTR=>"devnull");
 
 #
@@ -965,8 +966,6 @@ sub update_node{
 		if($validend){
 			local (*TFILE);
 
-			warn "VALIDTIME=$validend for $node:$dir"
-				if defined($verbose);
 			# inform archive of updated valid_time
 			$archive->valid_time(DIRECTORY=>$dir,
 							VALID_TIME=>$validend);
@@ -983,6 +982,8 @@ sub update_node{
 			close TFILE;
 			rename "$dir/$vtimefile.i","$dir/$vtimefile" ||
 					warn "Rename $dir/$vtimefile: $!";
+			warn "VALIDTIME=$validend for $node:$dir\n"
+				if defined($verbose);
 			
 		}
 	}
