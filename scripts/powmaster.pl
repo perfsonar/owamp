@@ -27,13 +27,15 @@
 #
 #	Options:
 use strict;
+use FindBin;
+use lib ("$FindBin::Bin");
 use Getopt::Std;
 use POSIX;
 use IPC::Open3;
 use File::Path;
-use FindBin;
-use lib ("$FindBin::Bin");
 use OWP;
+use OWP::RawIO;
+use Digest::MD5;
 
 my @SAVEARGV = @ARGV;
 my %options = (
@@ -48,8 +50,7 @@ my %defaults = (
 		CONFDIR	=> "$FindBin::Bin",
 		);
 
-my $options = "";
-$options.=$options{$_} foreach (keys %options);
+my $options = join "", values %options;
 my %setopts;
 getopts($options,\%setopts);
 foreach (keys %optnames){
@@ -235,25 +236,35 @@ sub catch_sig{
 	die "Handling SIG$signame...\n";
 }
 
-sub sys_readline{
-	my($fh) = @_;
-	my $char;
-	my $read;
-	my $fname = "";
-
-	while(1){
-		$read = sysread($fh,$char,1);
-		die "sysread: $!" if(!defined($read));
-		next if($read < 1);
-		return $fname if($char eq "\n");
-		$fname .= $char;
-	}
-}
+my($Server);
 
 sub send_file{
 	my($conf,$fname) = @_;
+	my(%req,%response);
+	local *SENDFILE;
 
-	print "SEND_DATA:$fname\n";
+	print "SEND_DATA:$fname\n" if defined($debug);
+
+	my($md5) = new Digest::MD5 ||
+			warn "Unable to create md5 context",return undef;
+
+	open SENDFILE, "<".$fname || die "Unable to open $fname";
+	binmode SENDFILE;
+
+	# compute the md5 of the file.
+	$md5->addfile(*SENDFILE);
+	$req{'FILEMD5'} = $md5->md5_hex;
+
+	# reset md5 context so it can be used for the message verification.
+	$md5->reset;
+
+	# Set all the req options.
+	$req{'CMD'} = 'TXFR';
+	$req{'FNAME'} = $fname;
+
+	# seek the file to the beginning for transfer
+	seek SENDFILE,0,0;
+
 	unlink $fname || warn "unlink: $!";
 
 	return 1;
@@ -294,14 +305,14 @@ SEND_FILES:
 	while(1){
 
 		if(defined(@flist) && (@flist > 0)){
+			# only poll with select if we have work to do.
 			$timeout = 0;
 		}
 		else{
 			undef $timeout;
 		}
 
-		while($nfound = select($rout=$rin,undef,$eout=$ein,$timeout)){
-#			die "send_data:Error reading input: $!" if($eout);
+		if($nfound = select($rout=$rin,undef,$eout=$ein,$timeout)){
 			my $newfile = sys_readline(*STDIN);
 			push @flist, $newfile;
 			next SEND_FILES;

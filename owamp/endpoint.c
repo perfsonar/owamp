@@ -753,8 +753,8 @@ AGAIN:
 					case EAGAIN:
 						OWPError(ep->ctx,OWPErrFATAL,
 							OWPErrUNKNOWN,
-							"send(%d,#%d):%M",
-							ep->sockfd,i);
+			"Unable to send:(PID %d,packet #%d): %M",getpid(),
+							i);
 						exit(OWP_CNTRL_FAILURE);
 						break;
 					/* ignore everything else */
@@ -764,7 +764,8 @@ AGAIN:
 
 				/* but do note it as INFO for debugging */
 				OWPError(ep->ctx,OWPErrINFO,OWPErrUNKNOWN,
-					       "send(%d,#%d):%M",ep->sockfd,i);
+				       "Unable to send(PID %d,packet #%d): %M",
+				       getpid(),i);
 			}
 
 			i++;
@@ -781,7 +782,7 @@ AGAIN:
 				goto AGAIN;
 			}
 			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"nanosleep(%u.%u,nil):%M",
+				"nanosleep(%u.%u,nil): %M",
 					sleeptime.tv_sec,sleeptime.tv_nsec);
 			exit(OWP_CNTRL_FAILURE);
 		}

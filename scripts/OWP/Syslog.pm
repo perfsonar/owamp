@@ -38,22 +38,23 @@ use FindBin;
 
 sub HandleDieWarn {
 	my $this = shift;
-	my $fh = shift;
+	my @fh = @_;
 
-	die("Invalid Filehandle") if(!$fh);
 	return if (1 == $this->{'isDIEWARN'});  ## already been here
 
 	## trap these special cases so they go through the syslog fh.
 	$this->{'warn_sub'} = $SIG{__WARN__};
 	$this->{'die_sub'}  = $SIG{__DIE__};
 	$SIG{__WARN__} = sub {
-		print $fh @_;
+		print $_ @_ foreach(@fh);
+		syslog $this->{'priority'}, "%s", join('',@_);
 		return;
 	};
 	$SIG{__DIE__} = sub {  ## still dies upon return
 		return if $^S; ## see perldoc -f die perlfunc
-		print $fh @_;
-		die @_;
+		print $_ @_ foreach(@fh);
+		syslog $this->{'priority'}, "%s", join('',@_);
+		exit 1;
 	};
 
 	## mark that this object redefined warn/die handlers
@@ -69,11 +70,7 @@ my %defs = (
 	);
 
 sub TIEHANDLE {
-	## first arg *could* be an optional filehandle glob ref
 	my $this = {};
-	if ( 'GLOB' eq ref($_[0]) ) {
-		$this->{fh} = shift;
-	}
 
 	my $class    = shift;
 	my %args	= @_;
@@ -259,12 +256,14 @@ The blessed object that is returned from tie also has one additional
 member function. In the case that you want to capture information
 going to the warn() and die() functions. You may call HandleDieWarn()
 to setup the proper handler function to deal with the special signals
-for __DIE__ and __WARN__. (This will work for any filehandle even though
-the example shows the use of STDERR.)
+__DIE__ and __WARN__. (The args to HandleDieWarn are a list of fh's to
+optionally send the message to as well as syslog. If you send the "tied"
+fh, you will see the message in syslog twice, so don't do that.)
 
-  my $x = tie *STDERR, 'OWP::Syslog', priority => 'debug';
-  $x->HandleDieWarn();			## set __DIE__,__WARN__ handler
+  my $x = tie *MYLOG, 'OWP::Syslog', priority => 'debug';
+  $x->HandleDieWarn(*STDERR);		## set __DIE__,__WARN__ handler
   					## can undef $x anytime after this...
+					## arg is filehandle from "tie"
 
   print STDERR "I made an error.";	## this will be syslogged
   printf STDERR "Error %d", 42;		## syslog as "Error 42"

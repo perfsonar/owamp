@@ -129,7 +129,7 @@ my %PATHOPTS = (
 	OWAMPDVARPATH		=>	1,
 	OWPBINDIR		=>	1,
 	CONFDIR			=>	1,
-	CENTRALUPLOADDIR	=>	1,
+	CENTRALDATADIR		=>	1,
 );
 
 sub new {

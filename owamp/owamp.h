@@ -127,9 +127,9 @@
 #define OWP_DEFAULT_OFFERED_MODE 	(OWP_MODE_OPEN|OWP_MODE_AUTHENTICATED|OWP_MODE_ENCRYPTED)
 
 /*
- * The 5555 should eventually be replaced by a IANA blessed service name.
+ * The 4822 should eventually be replaced by a IANA blessed service name.
  */
-#define OWP_CONTROL_SERVICE_NAME	"5555"
+#define OWP_CONTROL_SERVICE_NAME	"4822"
 
 /*
  * Default value to use for the listen backlog. We pick something large
