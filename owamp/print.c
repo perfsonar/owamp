@@ -20,6 +20,10 @@ print_id2class_binding(const struct I2binding *p, FILE* fp)
 	idtype type;
 	owp_access_id *ptr;
 	char *class;
+	struct in_addr addr4;
+	struct in6_addr addr6;
+	char buf[INET6_ADDRSTRLEN];
+	char *ret;
 
 	ptr = (owp_access_id *)(p->key->dptr);
 	class = (char *)(p->value->dptr);
@@ -29,14 +33,25 @@ print_id2class_binding(const struct I2binding *p, FILE* fp)
 	case OWP_IDTYPE_KID:
 		fprintf(fp, "DEBUG: class of KID `%s' is `%s'\n", 
 			ptr->kid, class);
-		break;
+		return;
 	case OWP_IDTYPE_IPv4:
+		addr4.s_addr = htonl(ptr->addr4); 
+		if (inet_ntop(AF_INET, &addr4, buf, sizeof(buf)) == NULL) {
+			fprintf(stderr, "DEBUG: inet_ntop failed\n");
+			return;
+		}
 		break;
 	case OWP_IDTYPE_IPv6:
+		memcpy(addr6.s6_addr, ptr->addr6, 16); 
+		if (inet_ntop(AF_INET6, &addr6, buf, sizeof(buf)) == NULL) {
+			fprintf(stderr, "DEBUG: inet_ntop failed\n");
+			return;
+		}
 		break;
 	default:
-		break;
+		return;
 	}
+	fprintf(fp, "DEBUG class of %s/%d is %s\n", buf, ptr->offset, class);
 }
 
 

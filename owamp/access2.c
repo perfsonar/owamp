@@ -136,6 +136,7 @@ owp_id2class_store_netmask(void *addr,
 		ptr->addr4 = (u_int32_t)0;
 		memcpy(ptr->addr6, addr, 16);
 		ptr->type = OWP_IDTYPE_IPv6;
+		break;
 	default:
 		return;
 		break;
@@ -202,6 +203,10 @@ owamp_read_id2class(OWPContext ctx,
 	char line[MAX_LINE];
 
 	unsigned long line_num = 0;
+#if 1
+	struct in6_addr addr6;
+	char buf[INET6_ADDRSTRLEN];
+#endif
 
 	printf("DEBUG: reading file %s...\n", id2class);
 
@@ -301,6 +306,17 @@ owamp_read_id2class(OWPContext ctx,
 					 (struct sockaddr_in6 *)(res->ai_addr),
 					 num_offset))
 				goto BAD_MASK;
+#if 1
+		    memcpy(addr6.s6_addr, 
+		   ((struct sockaddr_in6 *)(res->ai_addr))->sin6_addr.s6_addr, 
+			   16); 
+		if (inet_ntop(AF_INET6, &addr6, buf, sizeof(buf)) == NULL) {
+			fprintf(stderr, "DEBUG: inet_ntop failed\n");
+			continue;
+		}
+	       printf("DEBUG class of %s/%d is %s\n", buf, num_offset, class);
+
+#endif
 			owp_id2class_store_netmask(res->ai_addr, num_offset, 
 					 res->ai_family, class, id2class_hash);
 			break;
