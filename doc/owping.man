@@ -51,6 +51,14 @@ direction of test (send, receive, or both) as well as packet size.
 The results are returned to the client after the test completes. The
 test will not be complete until \fItimeout\fR after the last packet is
 scheduled to be sent.
+.PP
+With no options specified, \fBowping\fR will perform concurrent bidirectional
+tests of 100 packets each at a rate of approxamently 1 packet every 0.1
+seconds to and from the \fIpeerhost\fR. This works out to about 10 seconds
+of sending. Then, the receivers on each host
+will wait a reasonable period after that to count possible duplicate packets.
+(See the \fI\-L\fR option.) Upon completion of the sessions, summary statistics
+are printed to STDOUT.
 .SH OPTIONS
 .TP
 \fB\-h\fR
@@ -60,7 +68,7 @@ Print a usage message and exit.
 .IP Default:
 Unset.
 .RE
-.SS Test Configuration Arguments:
+.SS Test Configuration Options:
 .TP
 \fB\-c\fR \fIcount\fR
 .br
@@ -70,21 +78,16 @@ Number of test packets to send in the test session.
 100
 .RE
 .TP
-\fB\-f\fR
+\fB\-f\fR | \fB\-F\fR \fIfromfile\fR
 .br
-Perform a One-way test \fBf\fRrom the target \fIpeerhost\fR.
+Perform a One-way test \fBf\fRrom the target \fIpeerhost\fR. The \fI\-F\fR
+form is used to save the results in \fIfromfile\fR. If no directional
+options (\fI\-f, \-F, \-t, \-T\fR) are specified, \fBowping\fR requests
+concurrent bidirectional tests, otherwise only the explicit directions are
+performed.
 .RS
 .IP Default:
-True, unless the \fI\-t\fR or \fI\-T\fR have been specified.
-.RE
-.TP
-\fB\-F\fR \fIfromfile\fR
-.br
-Perform a One-way test \fBf\fRrom the target \fIpeerhost\fR, and
-save the results in \fIfromfile\fR.
-.RS
-.IP Default:
-Unset.
+True, unless the \fI\-t\fR or \fI\-T\fR have been specified explicitly.
 .RE
 .TP
 \fB\-i\fR \fIwait\fR
@@ -126,23 +129,18 @@ for a test packet in \fIauthenticated\fR or \fIencrypted\fR mode is 32 bytes.
 0 (bytes)
 .RE
 .TP
-\fB\-t\fR
+\fB\-t\fR | \fB\-T\fR \fItofile\fR
 .br
-Perform a one-way test \fBt\fRoward the target \fIpeerhost\fR.
+Perform a one-way test \fBt\fRoward the target \fIpeerhost\fR. The \fI\-T\fR
+form is used to save the results in \fItofile\fR. If no directional
+options (\fI\-f, \-F, \-t, \-T\fR) are specified, \fBowping\fR requests
+concurrent bidirectional tests, otherwise only the explicit directions are
+performed.
 .RS
 .IP Default:
-True, unless the \fI\-f\fR or \fI\-F\fR have been specified.
+True, unless the \fI\-f\fR or \fI\-F\fR have been specified explicitly.
 .RE
-.TP
-\fB\-T\fR \fItofile\fR
-.br
-Perform a one-way test \fBt\fRoward the target \fIpeerhost\fR, and
-save the results in \fItofile\fR.
-.RS
-.IP Default:
-Unset.
-.RE
-.SS Connection/Authentication Arguments:
+.SS Connection/Authentication Options:
 .TP
 \fB\-A\fR \fIauthmode\fB
 .br
@@ -186,7 +184,7 @@ Unset. (If the \fB\-U\fR option was specified, user will be prompted for a
 .br
 Bind the local address of the client socket to \fIsrcaddr\fR. \fIsrcaddr\fR
 can be specified using a DNS name or using standard textual notations for
-the IP addresses.
+the IP addresses. (IPv6 addresses are of course supported.)
 .RS
 .IP Default:
 Unspecified (wild-card address selection).
@@ -203,7 +201,7 @@ the AES key.
 .IP Default:
 Unset.
 .RE
-.SS Output Arguments:
+.SS Output Options:
 .TP
 \fB\-a\fR \fIpercentile\fR
 .br
@@ -244,6 +242,9 @@ RERR	Estimate of RECVTIME error.
 The timestamps are ASCII representation of 64 bit integers with the
 high-order 32 bits representing the number of seconds since Jan 1, 1900
 and the low-order 32 bits representing fractional seconds.
+The sequence
+number is simply an integer. The error estimates are printed as floating-point
+numbers using scientific notation.
 .PP
 The \fI\-R\fR option implies \fI\-Q\fR.
 .IP Default:
@@ -253,7 +254,7 @@ Unset.
 \fB\-v\fR
 .br
 Print delays for individual packet records. This option is disabled by
-the \fI\-Q\fR option.
+the \fI\-Q\fR and \fI\-R\fR options.
 .RS
 .IP Default:
 Unset.
@@ -267,27 +268,31 @@ seconds. One session sending packets from the local host to somehost.com,
 the other session receiving packets from somehost.com.) Print summary
 statistics of the results only.
 .LP
+\fBowping -U someuser somehost.com\fR
+.IP
+Run the default test as in the first example. Authenticate using
+the identity \fIsomeuser\fR. \fBowping\fR will prompt for a \fIpassphrase\fR.
+.LP
 \fBowping -f somehost.com\fR
 .IP
 Run a single ~10-second test session at a rate of one packet every 0.1
 seconds with the packets being sent from somehost.com and received
 at the local host.
 .LP
-\fBowping -F savefile.owp somehost.com\fR
+\fBowping -F from.owp somehost.com\fR
 .IP
 Same as the previous example, with the resulting data saved in
-savefile.owp. The \fBowstats\fR program can be used to decode
-that datafile.
+from.owp. The \fBowstats\fR program can be used to decode
+that datafile using the same Output options that are available in
+\fBowping\fR.
 .LP
 \fBowping -F from.owp -T to.owp somehost.com\fR
 .IP
-Same as the first example, with the resulting data saved in from.owp and
+Run two concurrent ~10-second test sessions at a rate of a packet every 0.1
+seconds. One session sending packets from the local host to somehost.com,
+the other session receiving packets from somehost.com.) Print summary
+statistics of the results and save the resulting data saved in from.owp and
 to.owp.
-.LP
-\fBowping -U someuser somehost.com\fR
-.IP
-Run the default test as in the first example. Authenticate using
-the identity \fIsomeuser\fR. \fBowping\fR will prompt for a \fIpassphrase\fR.
 .SH SEE ALSO
 owampd(8), owstats(1), owfetch(1) and the \%http://e2epi.internet2.edu/owamp/
 web site.

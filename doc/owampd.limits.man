@@ -112,7 +112,7 @@ Maximum amount of bandwidth to allow \fIlimitclass\fR
 to use concurrently in all one-way tests.  0 indicates unlimited
 by policy, but remember this is checked all the way to
 the root of the hierarchy. (If you want an unlimited \fIlimitclass\fR, your
-root must be unlimited, and the whole path down
+root must be unlimited as well as the whole path down
 to the given \fIlimitclass\fR.)
 .TP
 .I disk

@@ -30,7 +30,7 @@ owstats \- Command line application used to parse \fBOWAMP\fR data files.
 .SH DESCRIPTION
 \fBowstats\fR is a command line application that is used to parse \fBOWAMP\fR
 data files. It is used to display the results in a number of different
-textual formats.
+textual formats. The default output is summary statistics.
 .SH OPTIONS
 .TP
 \fB\-h\fR
@@ -40,7 +40,7 @@ Print a usage message and exit.
 .IP Default:
 Unset.
 .RE
-.SS Output Arguments:
+.SS Output Options:
 .TP
 \fB\-a\fR \fIpercentile\fR
 .br
@@ -82,6 +82,9 @@ RERR	Estimate of RECVTIME error.
 The timestamps are ASCII representation of 64 bit integers with the
 high-order 32 bits representing the number of seconds since Jan 1, 1900
 and the low-order 32 bits representing fractional seconds.
+The sequence
+number is simply an integer. The error estimates are printed as floating-point
+numbers using scientific notation.
 .PP
 The \fI\-R\fR option implies \fI\-Q\fR.
 .IP Default:
@@ -91,7 +94,7 @@ Unset.
 \fB\-v\fR
 .br
 Print delays for individual packet records. This option is disabled by
-the \fI\-Q\fR option.
+the \fI\-Q\fR and \fI\-R\fR options.
 .RS
 .IP Default:
 Unset.

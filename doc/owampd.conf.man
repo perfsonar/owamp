@@ -33,7 +33,7 @@ The policy rules for \fBowampd\fR are configured using the \fBowampd.limits\fR
 file; the details for configuring those policies are described in
 the owampd.limits(5) manual page.
 .PP
-The format of this file is as follows:
+The format of this file is:
 .RS
 .IP \(bu
 Comment lines are any line where the first non-whitespace character is '#'.
@@ -145,7 +145,7 @@ number information with error messages. This is a particularly useful
 option to set when sending in messages as part of a bug report.
 .TP
 .BI srcnode " nodename:port"
-Specify the address and port that \fBowampd\fR will listen for requests on.
+Specify the address and port that \fBowampd\fR will listen for requests.
 \fInodename\fR can be specified using a DNS name or using the textual
 representation of the address. It is possible to set the source address
 without setting the \fIport\fR by simply leaving off the ':' and \fIport\fR

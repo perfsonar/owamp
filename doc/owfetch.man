@@ -39,12 +39,14 @@ buffers that data. The owfetch application can be used to \fIfetch\fR the
 buffered data.
 .PP
 \fBowfetch\fR is a simple application that can be used to fetch this
-buffered data if it was not saved as part of the \fBowping\fR execution.
+buffered data from a \fBowampd\fR process running on \fIpeerhost\fR
+if it was not saved as part of the \fBowping\fR execution.
 The data will be saved in a file. Additionally, \fBowfetch\fR can print raw or
 summary statistics.
 .PP
 The \fISID\fR (Session Identifier) is a hex number that uniquely identifies
-a single test session. \fIsavefile\fR is the file in which the data from that test
+a single test session. \fIsavefile\fR is the file in which the data from
+that test
 session will be saved. Any number of \fISID\fR \fIsavefile\fR pairs can be
 specified on the command-line to download more than one session per
 command execution. The
@@ -53,6 +55,10 @@ unless output is suppressed with the \fI\-Q\fR option.
 .PP
 \fIsavefile\fR can be specified as /dev/null on UNIX if there is no desire
 to actually save the session data.
+.PP
+If no options are specified, \fBowfetch\fR retrieves the buffered session
+data from \fIpeerhost\fR, saves the data to the \fIsavefile\fR,
+and prints summary statistics.
 .SH OPTIONS
 .TP
 \fB\-h\fR
@@ -62,7 +68,7 @@ Print a usage message and exit.
 .IP Default:
 Unset.
 .RE
-.SS Connection/Authentication Arguments:
+.SS Connection/Authentication Options:
 .TP
 \fB\-A\fR \fIauthmode\fB
 .br
@@ -106,7 +112,7 @@ Unset. (If the \fB\-U\fR option was specified, user will be prompted for a
 .br
 Bind the local address of the client socket to \fIsrcaddr\fR. \fIsrcaddr\fR
 can be specified using a DNS name or using standard textual notations for
-the IP addresses.
+the IP addresses. (IPv6 addresses are of course supported.)
 .RS
 .IP Default:
 Unspecified (wild-card address selection).
@@ -123,7 +129,7 @@ the AES key.
 .IP Default:
 Unset.
 .RE
-.SS Output Arguments:
+.SS Output Options:
 .TP
 \fB\-a\fR \fIpercentile\fR
 .br
@@ -164,6 +170,9 @@ RERR	Estimate of RECVTIME error.
 The timestamps are ASCII representation of 64 bit integers with the
 high-order 32 bits representing the number of seconds since Jan 1, 1900
 and the low-order 32 bits representing fractional seconds.
+The sequence
+number is simply an integer. The error estimates are printed as floating-point
+numbers using scientific notation.
 .PP
 The \fI\-R\fR option implies \fI\-Q\fR.
 .IP Default:
@@ -173,7 +182,7 @@ Unset.
 \fB\-v\fR
 .br
 Print delays for individual packet records. This option is disabled by
-the \fI-Q\fR option.
+the \fI\-Q\fR and \fI\-R\fR options.
 .RS
 .IP Default:
 Unset.
