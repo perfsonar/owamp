@@ -88,7 +88,6 @@ typedef unsigned char	OWPByte;
 typedef u_int32_t	OWPBoolean;
 typedef OWPByte		OWPSID[16];
 typedef OWPByte		OWPSequence[4];
-typedef char		OWPKID[8];
 typedef OWPByte		OWPKey[16];
 typedef u_int32_t	OWPSessionMode;
 
@@ -120,7 +119,7 @@ typedef struct{
 	u_int32_t	npackets;
 	u_int32_t	typeP;
 	u_int32_t	packet_size_padding;
-	/* make sure this is larger then any other TestSpec struct. */
+	/* make sure this is larger than any other TestSpec struct. */
 	u_int32_t	padding[4];
 } OWPTestSpec;
 
@@ -166,7 +165,7 @@ typedef int (*OWPErrFunc)(
  */	
 typedef OWPBoolean	(*OWPGetAESKeyFunc)(
 	void		*app_data,
-	OWPKID		kid,
+	char		*kid,
 	OWPByte		*key_ret,
 	OWPErrSeverity	*err_ret
 );
@@ -200,8 +199,8 @@ typedef OWPBoolean (*OWPCheckAddrPolicy)(
  */
 typedef OWPBoolean (*OWPCheckControlPolicyFunc)(
 	void		*app_data,
-	OWPSessionMode	mode_req,
-	OWPKID		kid,
+	OWPSessionMode	*mode_req,	/* in/out	*/
+	char		*kid,
 	struct sockaddr	*local_sa_addr,
 	struct sockaddr	*remote_sa_addr,
 	OWPErrSeverity	*err_ret
@@ -220,9 +219,11 @@ typedef OWPBoolean (*OWPCheckControlPolicyFunc)(
  */
 typedef OWPBoolean (*OWPCheckTestPolicyFunc)(
 	void		*app_data,
+	OWPSessionMode	mode,
+	char		*kid,
+	struct sockaddr	*local_sa_addr,
+	struct sockaddr	*remote_sa_addr,
 	OWPTestSpec	*test_spec,
-	OWPEndpoint	local,
-	OWPEndpoint	remote,
 	OWPErrSeverity	*err_ret
 );
 
@@ -394,6 +395,8 @@ OWPAddrFree(
  *
  * Once an OWPAddr record is passed into this function - it is
  * automatically free'd and should not be referenced again in any way.
+ *
+ * Client
  */
 extern OWPControl
 OWPControlOpen(
@@ -401,62 +404,47 @@ OWPControlOpen(
 	OWPAddr		local_addr,	/* src addr or NULL	*/
 	OWPAddr		server_addr,	/* server addr or NULL	*/
 	u_int32_t	mode_mask,	/* OR of OWPSessionMode */
-	const OWPKID	kid,		/* null if unwanted	*/
+	const char	*kid,		/* null if unwanted	*/
 	OWPErrSeverity	*err_ret
 );
 
 /*
- * This function is used to define an endpoint for a test session.
- * send_or_recv defines if it is a send or recv endpoint. If server_request
- * is True - then the server is asked to configure the endpoint - otherwise
- * it will be up to the current process to configure the endpoint using
- * the endpoint func's defined in the ctx record.
- *
- * Once an OWPAddr record is passed into this function - it is
- * automatically free'd and should not be referenced again in any way.
+ * Client and Server
  */
-extern OWPEndpoint
-OWPDefineEndpoint(
-	OWPAddr		addr,
-	OWPEndpointType	send_or_recv,
-	OWPBoolean	server_request
+extern OWPErrSeverity
+OWPControlClose(
+	OWPControl	cntrl
 );
 
 /*
  * Request a test session - if err_ret is OWPErrOK - then the function
  * returns a valid SID for the session.
  *
- * Once an EWPEndpoint record has been passed into this function, it
+ * Once an EWPAddr record has been passed into this function, it
  * is automatically free'd. It should not be referenced again in any way.
+ *
+ * Client
  */
 extern OWPBoolean
 OWPRequestTestSession(
 	OWPControl	control_handle,
-	OWPEndpoint	sender,
-	OWPEndpoint	receiver,
+	OWPAddr		sender,
+	OWPBoolean	server_conf_sender,
+	OWPAddr		receiver,
+	OWPBoolean	server_conf_receiver,
 	OWPTestSpec	test_spec,
 	OWPSID		sid_ret,
 	OWPErrSeverity	*err_ret
 );
 
 /*
- * Start all test sessions - if successful, err_ret is OWPErrOK.
+ * Start all test sessions - if successful, returns OWPErrOK.
+ *
+ * Client and Server
  */
-extern void
+extern OWPErrSeverity
 OWPStartTestSessions(
-	OWPControl	control_handle,
-	OWPErrSeverity	*err_ret
-);
-
-/*
- * If a send/recv endpoint is part of the local application, use
- * this function to start it after the OWPStartTestSessions function
- * returns successfully.
- */
-extern void
-OWPStartEndpoint(
-	OWPEndpoint	send_or_recv,
-	OWPErrSeverity	*err_ret
+	OWPControl	control_handle
 );
 
 /*
@@ -468,6 +456,8 @@ OWPStartEndpoint(
  * 	2	CollectSession received from other side, and this side has
  * 		a receiver endpoint.
  *	3	system event (signal)
+ *
+ * Client and Server
  */
 extern int
 OWPWaitTestSessionStop(
@@ -489,6 +479,8 @@ OWPWaitTestSessionStop(
  *
  * If the control_handle is no longer connected - the function will return
  * a negative value.
+ *
+ * Client and Server.
  */
 extern int
 OWPGetControlFD(
@@ -497,6 +489,8 @@ OWPGetControlFD(
 
 /*
  * Send the StopSession message, and wait for the response.
+ *
+ * Client and Server.
  */
 extern void
 OWPSendStopSessions(
@@ -510,6 +504,8 @@ OWPSendStopSessions(
 ** 1) the Control connection is accepted and valid OWPControl handle returned;
 ** 2) the Control connection is rejected, and NULL is returned;
 ** 3) an error occurs, NULL is returned, plus extra diagnostics via err_ret.
+*
+* Server.
 */
 extern OWPControl
 OWPControlAccept(

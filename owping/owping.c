@@ -65,14 +65,15 @@ static	OWPInitializeConfigRec	OWPCfg = {
 	/* tm_out.tv_usec		*/	0,
 	/* app_data			*/	(void*)&OWPingCtx,
 	/* err_func			*/	OWPingErrFunc,
+	/* get_aes_key			*/	NULL,
+	/* check_addr_func		*/	NULL,
 	/* check_control_func		*/	NULL,
 	/* check_test_func		*/	NULL,
-	/* get_aes_key			*/	NULL,
-	/* get_timestamp_func		*/	NULL,
 	/* endpoint_init_func		*/	NULL,
 	/* endpoint_init_hook_func	*/	NULL,
 	/* endpoint_start_func		*/	NULL,
 	/* endpoint_stop_func		*/	NULL
+	/* get_timestamp_func		*/	NULL,
 };
 
 /*
@@ -173,6 +174,20 @@ static void	usage(int od, const char *progname, const char *msg)
 	return;
 }
 
+static void
+FailSession(
+	OWPControl	control_handle
+	   )
+{
+	/*
+	 * Session denied - report error, close connection, and exit.
+	 */
+
+	/* TODO: determine "reason" for denial and report */
+	(void)OWPControlClose(OWPingCtx.cntrl);
+	exit(1);
+}
+
 main(
 	int	argc,
 	char	**argv
@@ -184,6 +199,7 @@ main(
 	int			od;
 	OWPContext		ctx;
 	I2table			local_addr_table;
+	OWPPoissonTestSpec	poisson_test;
 
 	ia.line_info = (I2NAME | I2MSG);
 	ia.fp = stderr;
@@ -251,12 +267,13 @@ main(
 			}
 			s++;
 		}
-	}else if(OWPingCtx.opt.identity){
-		strncpy(OWPingCtx.kid,OWPingCtx.opt.identity,sizeof(OWPKID));
+	}else{
+		/*
+		 * Default to all modes.
+		 * If identity not set - library will ignore A/E.
+		 */
 		OWPingCtx.auth_mode = OWP_MODE_OPEN|OWP_MODE_AUTHENTICATED|
 							OWP_MODE_ENCRYPTED;
-	}else{
-		OWPingCtx.auth_mode = OWP_MODE_OPEN;
 	}
 
 	/*
@@ -275,20 +292,17 @@ main(
 	/*
 	 * Determine "locality" of server addresses.
 	 */
-	local_addr_table = load_local_addrs();
-	OWPingCtx.sender_local = is_local_addr(local_addr_table,
-					OWPingCtx.opt.senderServ);
-	OWPingCtx.receiver_local = is_local_addr(local_addr_table,
-					OWPingCtx.opt.receiverServ);
-	free_local_addrs(local_addr_table);
+	OWPingCtx.sender_local = is_local_addr(OWPingCtx.opt.senderServ,0);
+	OWPingCtx.receiver_local = is_local_addr(OWPingCtx.opt.receiverServ,0);
 
 	/*
 	 * If both send/recv server addrs are not local, then they MUST be the
-	 * same - otherwise this is a 3rd part transaction, and won't work.
+	 * same - otherwise this is a request for a 3rd party transaction and
+	 * it can't work.
+	 * ("same" is fairly simply defined as the same string here - it is
+	 * possible that 2 different names would resolv to the same
+	 * address, but we ignore that complexity here.)
 	 *
-	 * If both are local - then this process will handle receiver, and
-	 * contact a local owampd to be sender.
-	 * (probably not real useful... but not fatal defaults are good.)
 	 */
 	if(!OWPingCtx.sender_local && !OWPingCtx.receiver_local &&
 		strcmp(OWPingCtx.opt.senderServ,OWPingCtx.opt.receiverServ)){
@@ -296,13 +310,23 @@ main(
 		exit(1);
 	}
 
+	/*
+	 * If both are local - then this process will handle receiver, and
+	 * contact a local owampd to be sender.
+	 * (probably not real useful... but non-fatal defaults are good.)
+	 */
 	if(OWPingCtx.receiver_local){
 		OWPingCtx.local_addr = OWPingCtx.opt.receiverServ;
 		OWPingCtx.remote_addr = OWPingCtx.opt.senderServ;
+		OWPingCtx.sender_local = False;
 	}else{
 		OWPingCtx.local_addr = OWPingCtx.opt.senderServ;
 		OWPingCtx.remote_addr = OWPingCtx.opt.receiverServ;
 	}
+
+	/*
+	 * Setup test_spec and verify options.
+	 */
 
 	/*
 	 * Initialize library with configuration functions.
@@ -320,7 +344,7 @@ main(
 			OWPAddrByNode(ctx,OWPingCtx.local_addr),
 			OWPAddrByNode(ctx,OWPingCtx.remote_addr),
 			OWPingCtx.auth_mode,
-			((OWPingCtx.opt.identity)?OWPingCtx.kid:NULL),
+			OWPingCtx.opt.identity,
 			&err_ret))){
 		I2ErrLog(eh, "Unable to open control connection.");
 		exit(1);
@@ -328,6 +352,22 @@ main(
 
 	/*
 	 * Now ready to make test requests...
+	 */
+	if( !OWPRequestTestSession(OWPingCtx.cntrl,
+			OWPAddrByNode(ctx,OWPingCtx.opt.sender),
+			!OWPingCtx.sender_local,
+			OWPAddrByNode(ctx,OWPingCtx.opt.receiver),
+			!OWPingCtx.receiver_local,
+			test_spec,
+			sid_ret,
+			&err_ret))
+		FailSession(OWPingCtx.cntrl);
+
+	if( (OWPStartTestSessions(OWPingCtx.cntrl) != OWPErrOK))
+		FailSession(OWPingCtx.cntrl);
+	/*
+	 * TODO install sig handler for keyboard interupt - to send stop
+	 * sessions.
 	 */
 
 	exit(0);

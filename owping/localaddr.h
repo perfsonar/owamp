@@ -24,20 +24,9 @@
 #define	_localaddr_h_
 #include <I2util/util.h>
 
-extern I2table
-load_local_addrs(
-	void
-	);
-
 extern I2Boolean
-is_local_addr(
-	I2table		addrtable,
-	char		*nodename
-	);
-
-extern void
-free_local_addrs(
-	I2table		addrtable
+is_local_node(
+	const char	*nodename
 	);
 
 #endif	/* _localaddr_h_ */

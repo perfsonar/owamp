@@ -31,7 +31,7 @@
 OWPBoolean
 _OWPCallGetAESKey(
 	OWPContext	ctx,		/* library context	*/
-	OWPKID		kid,		/* identifies key	*/
+	const char	*kid,		/* identifies key	*/
 	OWPByte		*key_ret,	/* key - return		*/
 	OWPErrSeverity	*err_ret	/* error - return	*/
 )
@@ -99,12 +99,12 @@ _OWPCallCheckAddrPolicy(
  */
 OWPBoolean
 _OWPCallCheckControlPolicy(
-	OWPContext	ctx,		/* library context	*/
-	OWPSessionMode	mode,		/* reqested mode	*/
-	OWPKID		kid,		/* key identity		*/
-	struct sockaddr	*local_sa_addr,	/* local addr or NULL	*/
-	struct sockaddr	*remote_sa_addr,/* remote addr		*/
-	OWPErrSeverity	*err_ret	/* error - return	*/
+	OWPContext	ctx,		/* library context		*/
+	OWPSessionMode	*mode,		/* reqested mode (in/out)	*/
+	const char	*kid,		/* key identity			*/
+	struct sockaddr	*local_sa_addr,	/* local addr or NULL		*/
+	struct sockaddr	*remote_sa_addr,/* remote addr			*/
+	OWPErrSeverity	*err_ret	/* error - return		*/
 )
 {
 	*err_ret = OWPErrOK;

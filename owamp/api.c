@@ -506,7 +506,8 @@ _OWPControlAlloc(
 	/*
 	 * Init encryption fields
 	 */
-	memset(&cntrl->kid,0,sizeof(OWPKID));
+	cntrl->kid = NULL;
+	cntrl->kid_buffer[sizeof(cntrl->kid_buffer)-1] = '\0';
 	memset(&cntrl->encrypt_key,0,sizeof(cntrl->encrypt_key));
 	memset(&cntrl->decrypt_key,0,sizeof(cntrl->decrypt_key));
 	memset(cntrl->challenge,0,sizeof(cntrl->challenge));
@@ -523,9 +524,11 @@ _OWPControlAlloc(
 	return cntrl;
 }
 
-static void
-_OWPControlFree(OWPControl cntrl)
+static OWPErrSeverity
+OWPControlClose(OWPControl cntrl)
 {
+	OWPErrSeverity	err = OWPErrOK;
+	OWPErrSeverity	lerr = OWPErrOK;
 	OWPControl	*list = &cntrl->ctx->cntrl_list;
 
 	/*
@@ -544,12 +547,14 @@ _OWPControlFree(OWPControl cntrl)
 	/*
 	 * this function will close the control socket if it is open.
 	 */
-	OWPAddrFree(cntrl->remote_addr);
-	OWPAddrFree(cntrl->local_addr);
+	lerr = OWPAddrFree(cntrl->remote_addr);
+	err = MIN(err,lerr);
+	lerr = OWPAddrFree(cntrl->local_addr);
+	err = MIN(err,lerr);
 
 	free(cntrl);
 
-	return;
+	return err;
 }
 
 /*
@@ -571,7 +576,7 @@ OWPControlOpen(
 	OWPAddr		local_addr,	/* local addr or null	*/
 	OWPAddr		server_addr,	/* server addr		*/
 	u_int32_t	mode_req_mask,	/* requested modes	*/
-	const OWPKID	kid,		/* kid or NULL		*/
+	const char	*kid,		/* kid or NULL		*/
 	OWPErrSeverity	*err_ret	/* err - return		*/
 )
 {
@@ -597,13 +602,16 @@ OWPControlOpen(
 	 * Select mode wanted...
 	 */
 	mode_avail &= mode_req_mask;	/* mask out unwanted modes */
+
 	/*
 	 * retrieve key if needed
 	 */
 	if(kid &&
 		(mode_avail & (OWP_MODE_ENCRYPTED|OWP_MODE_AUTHENTICATED))){
-		if(_OWPCallGetAESKey(ctx, kid, key_value, err_ret)){
+		strncpy(cntrl->kid_buffer,kid,sizeof(cntrl->kid_buffer)-1);
+		if(_OWPCallGetAESKey(ctx,cntrl->kid_buffer,key_value,err_ret)){
 			key = key_value;
+			cntrl->kid = cntrl->kid_buffer;
 		}
 		else{
 			if(*err_ret != OWPErrOK)
@@ -617,7 +625,17 @@ OWPControlOpen(
 		mode_avail &= ~(OWP_MODE_ENCRYPTED|OWP_MODE_AUTHENTICATED);
 
 	/*
-	 * Pick "highest" level mode still available.
+	 * Now determine if client side is willing to actually talk control
+	 * given the kid/addr combinations.
+	 */
+	if(!_OWPCallCheckControlPolicy(ctx,&mode_avail,cntrl->kid,
+			&local_addr->saddr,&server_addr->saddr,err_ret)){
+		OWPError(ctx,OWPErrFATAL,OWPErrPOLICY,"Failed policy check");
+		goto error;
+	}
+
+	/*
+	 * Pick "highest" level mode still available after policy check.
 	 */
 	if(mode_avail & OWP_MODE_ENCRYPTED){
 		cntrl->mode = OWP_MODE_ENCRYPTED;
@@ -627,16 +645,6 @@ OWPControlOpen(
 		cntrl->mode = OWP_MODE_OPEN;
 	}else{
 		OWPError(ctx,OWPErrFATAL,OWPErrPOLICY,"No Common Modes");
-		goto error;
-	}
-
-	/*
-	 * Now determine if client side is willing to actually talk control
-	 * given the kid/addr combinations.
-	 */
-	if(!_OWPCallCheckControlPolicy(ctx,cntrl->mode,kid,
-			&local_addr->saddr,&server_addr->saddr,err_ret)){
-		OWPError(ctx,OWPErrFATAL,OWPErrPOLICY,"Failed policy check");
 		goto error;
 	}
 
@@ -666,34 +674,8 @@ error:
 		OWPAddrFree(local_addr);
 	if(cntrl->remote_addr != server_addr)
 		OWPAddrFree(server_addr);
-	_OWPControlFree(cntrl);
+	OWPControlClose(cntrl);
 	return NULL;
-}
-
-/*
- * Function:	OWPDefineEndpoint
- *
- * Description:	
- * 		Used to define an endpoint for a test session.
- *
- * In Args:	
- * 	send_or_recv	defines if endpoint is a send or recv endpoint
- * 	server_request	if True server is asked to configure the endpoint
- * 			otherwise it will be up to the current process to
- * 			configure the endpoint using the endpoint func's
- * 			defined in the ctx record.
- *
- * Returns:	
- * Side Effect:	
- */
-OWPEndpoint
-OWPDefineEndpoint(
-	OWPAddr		addr,
-	OWPEndpointType	send_or_recv,
-	OWPBoolean	server_request
-)
-{
-
 }
 
 /*
@@ -711,7 +693,6 @@ OWPDefineEndpoint(
  *
  * Side Effect:	
  */
-
 OWPControl
 OWPControlAccept(
 		 OWPContext     ctx,       /* control context               */

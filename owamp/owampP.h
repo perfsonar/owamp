@@ -100,7 +100,8 @@ struct OWPControlRec{
 	/*
 	 * Encryption fields
 	 */
-	OWPKID			kid;
+	char			*kid; /* null if not set - else kid_buffer */
+	char			kid_buffer[9];
 	keyInstance             encrypt_key;
 	keyInstance             decrypt_key;
 	OWPByte			challenge[16];
