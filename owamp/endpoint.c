@@ -155,10 +155,8 @@ make_data_dir(
 		strcat(path,node->data);
 	}
 	else{
-		/*
-		 * 5 "nodes"
-		 */
-		len = strlen(datadir)+OWP_PATH_SEPARATOR_LEN+5+add_chars;
+		len = strlen(datadir) + OWP_PATH_SEPARATOR_LEN
+			+ strlen(OWP_NODES_DIR) + add_chars;
 		if(len > FILENAME_MAX){
 			OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
 						"Datapath length too long.");
@@ -173,7 +171,7 @@ make_data_dir(
 		strcpy(path,datadir);
 
 		strcat(path,OWP_PATH_SEPARATOR);
-		strcat(path,"nodes");
+		strcat(path, OWP_NODES_DIR);
 	}
 
 	if((mkdir(path,0755) != 0) && (errno != EEXIST)){
@@ -404,7 +402,7 @@ OWPDefEndpointInit(
 		}
 		strcpy(ep->linkpath,cdata->datadir);
 		strcat(ep->linkpath,OWP_PATH_SEPARATOR);
-		strcat(ep->linkpath,"sessions");
+		strcat(ep->linkpath,OWP_SESSIONS_DIR);
 
 		if((mkdir(ep->linkpath,0755) != 0) && (errno != EEXIST)){
 			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,

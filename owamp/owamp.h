@@ -56,6 +56,16 @@
 #ifndef	OWP_PATH_SEPARATOR_LEN
 #define	OWP_PATH_SEPARATOR_LEN	1
 #endif
+#ifndef OWP_SESSIONS_DIR
+#define OWP_SESSIONS_DIR         "sessions"
+#endif
+#ifndef OWP_NODES_DIR
+#define OWP_NODES_DIR            "nodes"
+#endif
+
+#ifndef  OWP_INCOMPLETE_EXT
+#define OWP_INCOMPLETE_EXT         ".i"
+#endif
 
 #include <sys/types.h>
 #include <sys/time.h>
