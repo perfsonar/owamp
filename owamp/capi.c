@@ -1053,39 +1053,51 @@ owp_delay(OWPTimeStamp *send_time, OWPTimeStamp *recv_time)
 ** Request records with numbers from <begin> to <end>
 ** of a given session <SID>. Process server response (Control-Ack).
 ** On success, read the first 16 octets of data transmitted
-** by the server, parse it, then read the promised number of records 
-** and write them to the provided file descriptor <fd>. Return OWPErrOK
-** on success, or OWPErrFATAL on failure.
+** by the server, parse it.
 */
 OWPErrSeverity
-OWPFetchSession(OWPControl cntrl,
-		u_int32_t  begin,
-		u_int32_t  end,
-		OWPSID	   sid,
-		int        fd)
+OWPFetchSessionInfo(OWPControl cntrl,
+		    u_int32_t  begin,
+		    u_int32_t  end,
+		    OWPSID     sid,
+		    u_int32_t  *num_rec,
+		    u_int8_t  *typeP     /* 4 bytes in network byte order */
+		    )
 {
 	OWPAcceptType acc_type;
-	u_int32_t    num_rec;
-	int          more_blocks;
-	u_int8_t     typeP[4]; /* network byte order */
-	u_int8_t     buf[OWP_APP_BUFSIZ];
-	u_int64_t    nbytes, rem_bytes, i; 
 
 	if (_OWPWriteRetrieveSession(cntrl, begin, end, sid) != OWPErrOK) 
 		return OWPErrFATAL;
-
+	
 	if (_OWPReadControlAck(cntrl, &acc_type) != OWPErrOK)
 		return OWPErrFATAL;
 	
 	if (acc_type != OWP_CNTRL_ACCEPT)
 		return OWPErrFATAL;
 	
-	if (_OWPReadDataHeader(cntrl, &num_rec, typeP) != OWPErrOK)
+	if (_OWPReadDataHeader(cntrl, num_rec, typeP) != OWPErrOK)
 		return OWPErrFATAL;
-	
-	/* Write header to data file. */
-	if (I2Writen(fd, typeP, 4) < 0)
-		goto write_err;
+	return OWPErrOK;
+}
+
+/*
+** Read the promised number of records and write them to provided descriptor 
+** <fd>. Return OWPErrOK on success, or OWPErrFATAL on failure.
+*/
+OWPErrSeverity
+OWPFetchRecords(OWPControl cntrl, int fd, u_int32_t num_rec)
+{
+	int          more_blocks;
+	u_int8_t     buf[OWP_APP_BUFSIZ];
+	u_int64_t    nbytes, rem_bytes, i; 
+
+	/* 
+	   First called OWPReadDataHeader().
+	*/
+
+	/* 
+	   Then OWPWriteDataHeader(). ?????
+	*/
 
 	nbytes   = (u_int64_t)num_rec * _OWP_TS_REC_SIZE;
 	for (i = 0; i < nbytes / OWP_APP_BUFSIZ; i++) {
@@ -1153,17 +1165,33 @@ OWPFetchSession(OWPControl cntrl,
 #define OWP_BUFSIZ 960 /* must be divisible by 20 */
 
 OWPErrSeverity
-OWPGetDataHeader(int fd, u_int32_t *typeP)
+OWPReadDataHeader(int fd, u_int32_t *typeP)
 {
 	u_int8_t buf[4];
 
-	if (I2Readn(fd, buf, 4) != 4)
+	if (I2Readn(fd, buf, 4) != 4) {
+		perror("I2readn");
 		return OWPErrFATAL;
+	}
 	
 	*typeP = ntohl(*(u_int32_t *)buf);
 	return OWPErrOK;
 }
 
+/*
+** This will eventualy probably be used by server as well.
+*/
+OWPErrSeverity
+OWPWriteDataHeader(OWPControl cntrl, int fd, u_int8_t *typeP)
+{
+	/* Write header to data file. */
+	if (I2Writen(fd, typeP, 4) < 0) {
+		OWPError(cntrl->ctx, OWPErrFATAL, OWPErrUNKNOWN,
+			 "FATAL: OWPWriteDataHeader: write failure");
+		return OWPErrFATAL;
+	}
+	return OWPErrOK;
+}
 
 /*
 ** "Fetching" data from local disk.

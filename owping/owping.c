@@ -26,7 +26,6 @@
 #include <unistd.h>
 #include <string.h>
 #include <ctype.h>
-#include <math.h>
 #include <netdb.h>
 
 #include <I2util/util.h>
@@ -43,81 +42,7 @@
 static	ow_ping_trec	ping_ctx;
 static I2ErrHandle		eh;
 
-/*
-** Retrieve records from remote server and save them in a file
-** on the local disk (in directory <datadir>). Returns 0 on success,
-** or -1 on failure. NOTE: currently just asks for complete session.
-*/
-int
-owp_fetch_to_local(OWPControl cntrl, char *datadir, OWPSID sid)
-{
-	char datafile[PATH_MAX]; /* full path to data file */
-	char *new_name;
-	int  fd;
-	char sid_name[(sizeof(OWPSID)*2)+1];
-
-	/* First create an "incomplete" path */
-	strcpy(datafile, datadir);
-	strcat(datafile,OWP_PATH_SEPARATOR);
-	OWPHexEncode(sid_name, sid, sizeof(OWPSID));
-	strcat(datafile, sid_name);
-	strcat(datafile, OWP_INCOMPLETE_EXT);
-
-	fd = open(datafile, O_WRONLY | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
-	if (fd < 0) {
-		I2ErrLog(eh, "FATAL: open(%s):%M", datafile);
-		return -1;
-	}
-
-	/* Ask for complete session - for now. */
-	if (OWPFetchSession(cntrl, 0, (u_int32_t)0xFFFFFFFF, sid, fd) 
-		    == OWPErrFATAL) {
-		I2ErrLog(eh, "main: OWPFetchSession failed");
-		goto fatal;
-	}
-
-	/* Prepare "complete" name */
-	new_name = strdup(datafile);
-	if (!new_name) {
-		I2ErrLog(eh, "FATAL: strdup():%M");
-		goto fatal;
-	}
-	new_name[strlen(datafile) - strlen(OWP_INCOMPLETE_EXT)] = '\0';
-	if (rename(datafile, new_name) < 0) {
-		free(new_name);
-		I2ErrLog(eh, "FATAL: strdup():%M");
-		goto fatal;
-	}
-
-	free(new_name);
- again:
-	if (close(fd) < 0) {
-		if (errno == EINTR)
-			goto again;
-		I2ErrLog(eh, "main: close():%M");
-	}
-	return 0;
-	
- fatal:
-
- close_again:
-	if (close(fd) < 0) {
-		if (errno == EINTR)
-			goto close_again;
-		I2ErrLog(eh, "main: close(%d):%M", fd);
-	}
- unlink_again:
-	if (unlink(datafile) < 0) {
-		if (errno == EINTR)
-			goto unlink_again;
-		I2ErrLog(eh, "main: unlink(%s):%M", datafile);
-	}
-	return -1;
-}
-
-
-/* Template for temporary directory to keep fetched data records. */
-#define OWP_TMPDIR "/tmp"
+#define OWP_TMPFILE "/tmp/owamp.XXXXX"
 
 #ifdef	NOT
 static int
@@ -164,170 +89,14 @@ static	OWPInitializeConfigRec	OWPCfg = {{
 	/* rand_data                    */      NULL
 };
 
-/*
- *      the options that we want to have parsed
- */
-static	I2OptDescRec	set_options[] = {
-	/*
-	 * Basic application args.
-	 */
-	{"verbose",0,NULL,"blah, blah, blah..."},
-	{"help",0,NULL,"Print this message and exit"},
-
-	{"to",0,NULL,"Only test toward test address"},
-	{"from",0,NULL,"Only test from test address"},
-	{"srcaddr",1,NULL,"Local address for test"},
-	/*
-	 * policy config file options.
-	 */
-	{"confdir",1,OWP_CONFDIR,"Configuration directory"},
-	{"passwd",1,"passwd.conf","passwd config filename"},
-
-	/*
-	 * Control connection specific stuff.
-	 */
-	{"authmode",1,NULL,
-			"Requested modes:[E]ncrypted,[A]uthenticated,[O]pen"},
-	{"identity",1,NULL,"ID for shared secret"},
-	{"tmout",1,"30","Max time to wait for control connection reads (sec)"},
-
-	/*
-	 * test setup args
-	 */
-	{"padding", 1, "0", "min size of padding for test packets (octets)"},
-	{"rate", 1, "1.0", "rate of test packets (packets/sec)"},
-	{"percentile", 1, "50.0", "report given percentile of delays (0-100)"},
-	{"numPackets", 1, "10", "number of test packets"},
-
-	/*
-	 * Recv specific args.
-	 */
-	{"lossThreshold", 1, "120",
-			"elapsed time when recv declares packet lost (sec)"},
-	{"datadir", 1, NULL, "Data directory to store test session data"},
-	{"readfrom", 1, NULL, "Read binary data from file."},
-	{"keepdata", 0, 0, "do not delete binary test session data "},
-	{"full", 0, 0,    "print out full records in human-readable form"},
-	{"records", 0, 0, "Show timestamp records."},
-
-#ifndef	NDEBUG
-	{"childwait",0,NULL,
-		"Debugging: busy-wait children after fork to allow attach"},
-#endif
-
-	{NULL,0,NULL,NULL}
-};
-
-/*
-**      return structure for loading options. We load them straight
-**	into the context variable.
-*/
-static  I2Option  get_options[] = {
-        {
-	"verbose", I2CvtToBoolean, &ping_ctx.opt.verbose,
-	sizeof(ping_ctx.opt.verbose)
-	},
-        {
-	"help", I2CvtToBoolean, &ping_ctx.opt.help,
-	sizeof(ping_ctx.opt.help)
-	},
-        {
-	"to", I2CvtToBoolean, &ping_ctx.opt.to,
-	sizeof(ping_ctx.opt.to)
-	},
-        {
-	"from", I2CvtToBoolean, &ping_ctx.opt.from,
-	sizeof(ping_ctx.opt.from)
-	},
-	{
-	"srcaddr", I2CvtToString, &ping_ctx.opt.srcaddr,
-	sizeof(ping_ctx.opt.srcaddr)
-	},
-	{
-	"confdir", I2CvtToString, &ping_ctx.opt.confdir,
-	sizeof(ping_ctx.opt.confdir)
-	},
-	{
-	"passwd", I2CvtToString, &ping_ctx.opt.passwd,
-	sizeof(ping_ctx.opt.passwd)
-	},
-        {
-	"authmode", I2CvtToString, &ping_ctx.opt.authmode,
-	sizeof(ping_ctx.opt.authmode)
-	},
-        {
-	"identity", I2CvtToString, &ping_ctx.opt.identity,
-	sizeof(ping_ctx.opt.identity)
-	},
-        {
-	"tmout", I2CvtToInt, &ping_ctx.opt.tmout,
-	sizeof(ping_ctx.opt.tmout)
-	},
-#if	NOT
-        {
-	"sender", I2CvtToString, &ping_ctx.opt.sender,
-	sizeof(ping_ctx.opt.sender)
-	},
-        {
-	"zreceiver", I2CvtToString, &ping_ctx.opt.receiver,
-	sizeof(ping_ctx.opt.receiver)
-	},
-#endif
-        {
-	"padding", I2CvtToUInt, &ping_ctx.opt.padding,
-	sizeof(ping_ctx.opt.padding)
-	},
-        {
-	"rate", I2CvtToFloat, &ping_ctx.opt.rate,
-	sizeof(ping_ctx.opt.rate)
-	},
-        {
-	"percentile", I2CvtToFloat, &ping_ctx.opt.percentile,
-	sizeof(ping_ctx.opt.percentile)
-	},
-        {
-	"numPackets", I2CvtToUInt, &ping_ctx.opt.numPackets,
-	sizeof(ping_ctx.opt.numPackets)
-	},
-        {
-	"datadir", I2CvtToString, &ping_ctx.opt.datadir,
-	sizeof(ping_ctx.opt.datadir)
-	},
-        {
-	"readfrom", I2CvtToString, &ping_ctx.opt.readfrom,
-	sizeof(ping_ctx.opt.readfrom)
-	},
-        {
-	"lossThreshold", I2CvtToUInt, &ping_ctx.opt.lossThreshold,
-	sizeof(ping_ctx.opt.lossThreshold)
-	},
-        {
-	"full", I2CvtToBoolean, &ping_ctx.opt.full,
-	sizeof(ping_ctx.opt.full)
-	},
-        {
-	"records", I2CvtToBoolean, &ping_ctx.opt.records,
-	sizeof(ping_ctx.opt.records)
-	},
-	{
-	"keepdata", I2CvtToBoolean, &ping_ctx.opt.keepdata,
-	sizeof(ping_ctx.opt.keepdata)
-	},
-        {
-	"childwait", I2CvtToBoolean, &ping_ctx.opt.childwait,
-	sizeof(ping_ctx.opt.childwait)
-	},
-	{NULL,NULL,NULL,0}
-};
-
-static void	usage(int od, const char *progname, const char *msg)
+static void
+usage(const char *progname, const char *msg)
 {
 	if(msg) fprintf(stderr, "%s: %s\n", progname, msg);
 
 	fprintf(stderr,"Usage: %s [options] testaddress [servaddr]\n",
-								progname);
+		progname);
 	fprintf(stderr, "\nWhere \"options\" are:\n\n");
-	I2PrintOptionHelp(od, stderr);
 
 	return;
 }
@@ -437,7 +206,8 @@ look_for_spot(fetch_state_ptr state,
 double
 owp_bits2prec(int nbits)
 {
-	return 1000.0/pow(2.0, (double)(nbits - 32));
+	return (nbits >= 32)? 1.0/(1 << (nbits - 32)) 
+		: (double)(1 << (32 - nbits));
 }
 
 /*
@@ -476,7 +246,7 @@ owp_record_out(fetch_state_ptr state, OWPCookedDataRecPtr rec)
 				+ owp_bits2prec(rec->recv.prec);
     fprintf(state->fp, 
 	    "seq_no=%-10u delay=%.3f ms       (sync, precision %.3f ms)\n", 
-				rec->seq_no, delay*THOUSAND, prec);
+				rec->seq_no, delay*THOUSAND, prec*THOUSAND);
 		} else 
 			fprintf(state->fp,"seq_no=%u delay=%.3f ms (unsync)\n",
 				rec->seq_no, delay*THOUSAND);
@@ -707,44 +477,19 @@ owp_do_summary(fetch_state_ptr state)
 **     (original ping style: max/avg/min/stdev) at the end.
 */
 int
-do_records_all(
-		char		*datadir,
-		OWPSID		sid,
-		fetch_state_ptr	state,
-		char            *from,
-		char            *to
-		)
+do_records_all(int fd,
+	       fetch_state_ptr	state,
+	       char            *from,
+	       char            *to
+	       )
 {
-	int		fd, i, num_buckets;
+	int		i, num_buckets;
 	u_int32_t	num_rec, typeP;
 	struct stat	stat_buf;
-	char		datafile[PATH_MAX]; /* full path to data file */
-	char		sid_name[(sizeof(OWPSID)*2)+1];
 	
-	if(sid){
-		strcpy(datafile,datadir);
-		strcat(datafile,OWP_PATH_SEPARATOR);
-		OWPHexEncode(sid_name,sid,sizeof(OWPSID));
-		strcat(datafile, sid_name);
-	}
-	else
-		strcpy(datafile,datadir);
-
- open_again:
-	if ((fd = open(datafile, O_RDONLY)) < 0) {
-		if (errno == EINTR)
-			goto open_again;
-		I2ErrLog(eh, "FATAL: open(%s) failed:%M", datafile);
+	if (lseek(fd, 0, SEEK_SET) < 0) {
+		I2ErrLog(eh, "FATAL: lseek():%M");
 		return -1;
-	}
-
-	if (!ping_ctx.opt.keepdata) {
-	unlink_again:
-		if (unlink(datafile) < 0) {
-			if (errno == EINTR)
-				goto unlink_again;
-			I2ErrLog(eh, "WARNING: unlink(%s) failed:%M",datafile);
-		}
 	}
 
 	if (fstat(fd, &stat_buf) < 0) {
@@ -754,13 +499,11 @@ do_records_all(
 	
 	num_rec = (stat_buf.st_size - 4) / 20;
 	if ((stat_buf.st_size - 4)%20) {
-		I2ErrLog(eh, 
-		       "FATAL: data file %s contains uneven number of records",
-			 datafile);
+		I2ErrLog(eh, "FATAL: file contains uneven number of records");
 		return -1;
 	}
 
-	if (OWPGetDataHeader(fd, &typeP) != OWPErrOK) {
+	if (OWPReadDataHeader(fd, &typeP) != OWPErrOK) {
 		I2ErrLog(eh, "FATAL: could not get data header");
 		return -1;
 	}
@@ -797,13 +540,6 @@ do_records_all(
 
 	OWPFetchLocalRecords(fd, num_rec, do_single_record, state);
 	
- close_again:
-	if (close(fd) < 0) {
-		if (errno == EINTR)
-			goto close_again;
-		I2ErrLog(eh, "WARNING: close(%d) failed: %M", fd);
-	}
-
 	/* Stats are requested and failed to keep records sorted - redo */
 	if (state->order_disrupted) {
 		I2ErrLog(eh, "Severe out-of-order condition observed.");
@@ -834,10 +570,9 @@ main(
 	char			*progname;
 	OWPErrSeverity		err_ret=OWPErrOK;
 	I2LogImmediateAttr	ia;
-	int			od;
 	owp_policy_data		*policy;
 	char			passwd[PATH_MAX];
-	int			rc;
+	int			ch;
 	OWPContext		ctx;
 	OWPTestSpecPoisson	test_spec;
 	OWPSID			tosid,fromsid;
@@ -849,6 +584,9 @@ main(
 	int			tofd=-1,fromfd=-1;
 	OWPAddr                 local;
 	char                    local_str[NI_MAXHOST], *remote;
+	char                    *endptr;
+
+	int ret;
 
 	ia.line_info = (I2NAME | I2MSG);
 	ia.fp = stderr;
@@ -868,63 +606,137 @@ main(
 	}
 	OWPCfg.eh = eh;
 
-	od = I2OpenOptionTbl(eh);
+	/* Set default options. */
+	ping_ctx.opt.records = ping_ctx.opt.full = ping_ctx.opt.help 
+		= ping_ctx.opt.from = ping_ctx.opt.to = ping_ctx.opt.childwait 
+		= ping_ctx.opt.quiet = False;
+	ping_ctx.opt.save_from_test = ping_ctx.opt.save_to_test 
+		= ping_ctx.opt.identity = ping_ctx.opt.passwd 
+		= ping_ctx.opt.srcaddr = ping_ctx.opt.readfrom 
+		= ping_ctx.opt.authmode = NULL;
+	ping_ctx.opt.numPackets = 100;
+	ping_ctx.opt.lossThreshold = 10;
+	ping_ctx.opt.percentile = 50.0;
+	ping_ctx.opt.rate = (float)10;
+	ping_ctx.opt.padding = 0;
 
-	/*
-	* register the options we're interested in and have them parsed
-	*/
-	if(I2ParseOptionTable(od, &argc, argv, set_options) < 0) {
-		I2ErrLog(eh, "Could not parse command line options");
-		exit(1);
-	}
+	while ((ch = getopt(argc, argv, 
+			    "A:F:P:QR:S:T:Va:c:fhl:r:s:tu:vw")) != -1)
+             switch (ch) {
+             case 'v':
+		     ping_ctx.opt.records = True;
+                     break;
+             case 'V':
+		     ping_ctx.opt.full = True;
+                     break;
+             case 'h':
+		     ping_ctx.opt.help = True;
+                     break;
+             case 'Q':
+		     ping_ctx.opt.quiet = True;
+                     break;
 
-	/*
-	* load the options into opt
-	*/
-	if(I2GetOptions(od, get_options) < 0) {
-		I2ErrLog(eh, "Could not retrieve command line options");
-		exit(1);
-	}
+  	     case 'F':
+		     ping_ctx.opt.save_from_test = strdup(optarg);
+		     /* fall through */
+             case 'f':
+		     ping_ctx.opt.from = True;
+                     break;
+	     case 'T':
+		     ping_ctx.opt.save_to_test = strdup(optarg);
+		     /* fall through */
+             case 't':
+		     ping_ctx.opt.to = True;
+                     break;
+  
+             case 'A':
+		     ping_ctx.opt.authmode = strdup(optarg);
+                     break;
+             case 'u':
+		     ping_ctx.opt.identity = strdup(optarg);
+                     break;
+             case 'c':
+		     ping_ctx.opt.numPackets = strtoul(optarg, &endptr, 10);
+                     break;
+
+             case 'l':
+		     ping_ctx.opt.lossThreshold = strtoul(optarg, &endptr, 10);
+                     break;
+             case 'a':
+		     ping_ctx.opt.percentile =(float)(strtod(optarg, &endptr));
+		     break;
+
+	     case 'P':
+		     ping_ctx.opt.passwd = strdup(optarg);
+                     break;
+             case 'S':
+		     ping_ctx.opt.srcaddr = strdup(optarg);
+                     break;
+
+	     case 'w':
+		     ping_ctx.opt.childwait = True;
+                     break;
+	     case 'R':
+		     ping_ctx.opt.readfrom = strdup(optarg);
+		     break;
+
+             case 'r':
+		     ping_ctx.opt.rate = (float)(strtod(optarg, &endptr));
+                     break;
+             case 's':
+		     ping_ctx.opt.padding = strtoul(optarg, &endptr, 10);
+                     break;
+             case '?':
+             default:
+                     usage(progname, "");
+		     exit(0);
+		     /* UNREACHED */
+             }
+	argc -= optind;
+	argv += optind;
 
 	/*
 	 * Print help.
 	 */
 	if(ping_ctx.opt.help) {
-		usage(od, progname, NULL);
+		usage(progname, NULL);
 		exit(0);
 	}
 
 	if (ping_ctx.opt.readfrom) {
-		ping_ctx.opt.keepdata = 1;
-		if (do_records_all(ping_ctx.opt.readfrom, NULL, &state, NULL,
-				   NULL) < 0){
-			I2ErrLog(eh, 
-			 "FATAL: do_records_all(%s): failure processing data",
+		int fd = open(ping_ctx.opt.readfrom, O_RDONLY);
+		if (fd < 0) {
+			I2ErrLog(eh, "FATAL: open(%s) failed: %M",
 				 ping_ctx.opt.readfrom);
+			exit(1);
+		}
+
+		if (do_records_all(fd, &state, NULL, NULL) < 0){
+			I2ErrLog(eh, "FATAL: do_records_all failed.");
 			exit(1);
 		}
 		exit(0);
 	}
 
-	if((argc < 2) || (argc > 3)){
-		usage(od, progname, NULL);
+	if((argc < 1) || (argc > 2)){
+		usage(progname, NULL);
 		exit(1);
 	}
 
-	ping_ctx.remote_test = argv[1];
-	if(argc > 2)
-		ping_ctx.remote_serv = argv[2];
+	ping_ctx.remote_test = argv[0];
+	if(argc > 1)
+		ping_ctx.remote_serv = argv[1];
 	else
 		ping_ctx.remote_serv = ping_ctx.remote_test;
 
 
 	if ((ping_ctx.opt.percentile < 0.0) 
 		|| (ping_ctx.opt.percentile > 100.0)) {
-		usage(od, progname, NULL);
+		usage(progname, NULL);
 		exit(0);
 	}
 
-	OWPCfg.tm_out.tv_sec = ping_ctx.opt.tmout;
+	OWPCfg.tm_out.tv_sec = 60;   /* just for now */
 
 	/*
 	 * Initialize library with configuration functions.
@@ -934,16 +746,6 @@ main(
 		exit(1);
 	}
 	ctx = ping_ctx.lib_ctx;
-
-	/*
-	 * Setup paths.
-	 */
-	rc = snprintf(passwd,sizeof(passwd),"%s%s%s",ping_ctx.opt.confdir,
-			OWP_PATH_SEPARATOR,ping_ctx.opt.passwd);
-	if(rc > (int)sizeof(passwd)){
-		I2ErrLog(eh, "Invalid path to passwd file.");
-		exit(1);
-	}
 
 	if(ping_ctx.opt.identity){
 		/*
@@ -985,7 +787,7 @@ main(
 				break;
 				default:
 				I2ErrLogP(eh,EINVAL,"Invalid -authmode %c",*s);
-				usage(od, progname, NULL);
+				usage(progname, NULL);
 				exit(1);
 			}
 			s++;
@@ -1021,7 +823,7 @@ main(
 	/*
 	 * TODO: Figure out typeP...
 	 */
-	test_spec.typeP = 0;
+	test_spec.typeP = 0;          /* so it's in host byte order then */
 	test_spec.packet_size_padding = ping_ctx.opt.padding;
 	/*
 	 * InvLambda is mean in usec so, to convert from rate_sec:
@@ -1033,18 +835,9 @@ main(
 	test_spec.InvLambda = (double)1000000.0 / ping_ctx.opt.rate;
 
 	conndata.pipefd = -1;
-	conndata.link_data_dir = NULL;
 
-	/* Set up data dir.*/
+	conndata.policy = policy; /* or NULL ??? */
 
-	if (ping_ctx.opt.datadir) {
-		  conndata.real_data_dir = ping_ctx.opt.datadir;
-	} else { /* create a unique temp dir */	
-		conndata.real_data_dir = conndata.real_data_dir_mem;
-		strcpy(conndata.real_data_dir, OWP_TMPDIR);
-	}
-
-	conndata.policy = policy;
 	conndata.lossThreshold = ping_ctx.opt.lossThreshold;
 	conndata.node = NULL;
 #ifndef	NDEBUG
@@ -1055,39 +848,102 @@ main(
 	 * Open connection to owampd.
 	 */
 	if( !(ping_ctx.cntrl = OWPControlOpen(ctx,
-			OWPAddrByNode(ctx,ping_ctx.opt.srcaddr),
-			OWPAddrByNode(ctx,ping_ctx.remote_serv),
-			ping_ctx.auth_mode,
-			ping_ctx.opt.identity,
-			(void*)&conndata,
-			&err_ret))){
+			OWPAddrByNode(ctx, ping_ctx.opt.srcaddr),
+			OWPAddrByNode(ctx, ping_ctx.remote_serv),
+			ping_ctx.auth_mode, ping_ctx.opt.identity,
+			(void*)&conndata, &err_ret))){
 		I2ErrLog(eh, "Unable to open control connection.");
 		exit(1);
 	}
 	conndata.cntrl = ping_ctx.cntrl;
 
 	/*
-	 * Now ready to make test requests...
+	 * Prepare paths for datafiles. Unlink if not keeping data.
 	 */
-	if(ping_ctx.opt.to &&
-		!OWPSessionRequest(ping_ctx.cntrl,
-			NULL,False,
-			OWPAddrByNode(ctx,ping_ctx.remote_test),True,
-			(OWPTestSpec*)&test_spec,tosid,tofd,&err_ret))
-		FailSession(ping_ctx.cntrl);
+	if(ping_ctx.opt.to) {
+		if (ping_ctx.opt.save_to_test) {
+			tofd = open(ping_ctx.opt.save_to_test, 
+			       O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+			if (tofd < 0) {
+				I2ErrLog(eh, "FATAL: open(%s) failed: %M", 
+					 ping_ctx.opt.save_to_test);
+				exit(1);
+			}
 
+			if (ftruncate(tofd, 0) < 0) {
+				I2ErrLog(eh, "FATAL: ftruncate() failed: %M");
+				exit(1);
+			}
 
-	if(ping_ctx.opt.from &&
-		!OWPSessionRequest(ping_ctx.cntrl,
-			OWPAddrByNode(ctx,ping_ctx.remote_test),True,
-			NULL,False,
-			(OWPTestSpec*)&test_spec,fromsid,fromfd,&err_ret))
-		FailSession(ping_ctx.cntrl);
+		} else {
+			char *path = strdup(OWP_TMPFILE);
+			if (!path) {
+				I2ErrLog(eh, "FATAL: malloc() failed: %M");
+				exit(1);
+			}
+			if ((tofd = mkstemp(path)) < 0) {
+				I2ErrLog(eh, "FATAL: open(%s) failed: %M", 
+					 path);
+				exit(1);	
+			}
+			if (unlink(path) < 0) {
+				I2ErrLog(eh, "WARNING: unlink(%s) failed: %M", 
+					 path);
+			}
+		}
+		if (!OWPSessionRequest(ping_ctx.cntrl, NULL, False,
+				       OWPAddrByNode(ctx,ping_ctx.remote_test),
+				       True, (OWPTestSpec*)&test_spec, tosid, 
+				       tofd, &err_ret))
+			FailSession(ping_ctx.cntrl);
+	}
+
+	if(ping_ctx.opt.from) {
+		u_int8_t     typeP[4];
+
+		if (ping_ctx.opt.save_from_test) {
+			fromfd = open(ping_ctx.opt.save_from_test, 
+			       O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+			if (fromfd < 0) {
+				I2ErrLog(eh, "FATAL: open(%s) failed: %M", 
+					 ping_ctx.opt.save_from_test);
+				exit(1);
+			}
+			if (ftruncate(fromfd, 0) < 0) {
+				I2ErrLog(eh, "FATAL: ftruncate() failed: %M");
+				exit(1);
+			}
+		} else {
+			char *path = strdup(OWP_TMPFILE);
+			if (!path) {
+				I2ErrLog(eh, "FATAL: malloc() failed: %M");
+				exit(1);
+			}
+			if ((fromfd = mkstemp(path)) < 0) {
+				I2ErrLog(eh, "FATAL: open(%s) failed: %M", 
+					 path);
+				exit(1);	
+			}
+			if (unlink(path) < 0) {
+				I2ErrLog(eh, "WARNING: unlink(%s) failed: %M", 
+					 path);
+			}
+		}
+
+		*(u_int32_t *)typeP = htonl(test_spec.typeP);
+		OWPWriteDataHeader(conndata.cntrl, fromfd, typeP);
+
+		if (!OWPSessionRequest(ping_ctx.cntrl,
+				       OWPAddrByNode(ctx,ping_ctx.remote_test),
+				       True, NULL, False, 
+				       (OWPTestSpec*)&test_spec, fromsid,
+				       fromfd, &err_ret))
+			FailSession(ping_ctx.cntrl);
+	}
 	
-	local = OWPAddrByLocalControl(ping_ctx.cntrl);
-	
+	local = OWPAddrByLocalControl(ping_ctx.cntrl); /* sender */
 
-	if(OWPStartSessions(ping_ctx.cntrl)< OWPErrINFO)
+	if(OWPStartSessions(ping_ctx.cntrl) < OWPErrINFO)
 		FailSession(ping_ctx.cntrl);
 
 	/*
@@ -1116,22 +972,43 @@ main(
 	}
 
 	if(ping_ctx.opt.to){
-		if(owp_fetch_to_local(conndata.cntrl, conndata.real_data_dir, 
-				      tosid) < 0){
+		u_int32_t num_rec;
+		u_int8_t     typeP[4]; 
+
+	/* Fetch Info + WriteDataheader + Fetch Records. */
+	/* Ask for complete session - for now. */
+		if (OWPFetchSessionInfo(conndata.cntrl, 0, 
+					(u_int32_t)0xFFFFFFFF, tosid, &num_rec,
+					typeP)
+		    == OWPErrFATAL) {
 			I2ErrLog(eh, "Failed to fetch remote records");
 			goto next_test;
 		}
-		if(do_records_all(conndata.real_data_dir, tosid, &state, 
-				  local_str, remote) < 0){
-				  
-			I2ErrLog(eh,"FATAL: do_records_all(to session)");
+
+		OWPWriteDataHeader(conndata.cntrl, tofd, typeP);
+
+		if (OWPFetchRecords(conndata.cntrl,tofd,num_rec)==OWPErrFATAL){
+			I2ErrLog(eh, "Failed to fetch remote records");
+			goto next_test;
+		}
+		ret = do_records_all(tofd, &state, local_str, remote);
+		if(ret < 0) {
+			I2ErrLog(eh, "FATAL: do_records_all(to session)");
+		}
+
+		if (close(tofd) < 0) {
+			I2ErrLog(eh, "WARNING: close() failed: %M");
 		}
 	}
-next_test:
+
+ next_test:
 	if(ping_ctx.opt.from){
-		if(do_records_all(conndata.real_data_dir, fromsid, &state, 
-				  remote, local_str) < 0){
+		ret = do_records_all(fromfd, &state, remote, local_str);
+		if (ret < 0) {
 			I2ErrLog(eh,"FATAL: do_records_all(from session)");
+		}
+		if (close(fromfd) < 0) {
+			I2ErrLog(eh, "WARNING: close() failed: %M");
 		}
 	}
 	exit(0);

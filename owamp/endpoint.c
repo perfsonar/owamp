@@ -525,13 +525,17 @@ OWPDefEndpointInit(
 		/*
 		 * Write typeP as first 4-octets of file.
 		 */
-		*(u_int32_t *)&ep->payload[0] = htonl(ep->test_spec.any.typeP);
-		if(fwrite(ep->payload,sizeof(u_int32_t),1,ep->datafile) != 1){
-			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"fwrite(1,u_int32_t):%M");
-			goto error;
+		if (fd < 0) {
+			*(u_int32_t *)&ep->payload[0] 
+				= htonl(ep->test_spec.any.typeP);
+			if (fwrite(ep->payload, sizeof(u_int32_t), 1,
+				   ep->datafile) != 1){
+				OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+					 "fwrite(1,u_int32_t):%M");
+				goto error;
+			}
+			fflush(ep->datafile);
 		}
-		fflush(ep->datafile);
 
 		/*
 		 * receiver - need to set the recv buffer size large

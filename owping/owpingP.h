@@ -29,41 +29,41 @@ typedef	struct {
 	**	Command line options
 	*/
 	struct  {
-		I2Boolean	verbose;
-		I2Boolean	help;
-
-		I2Boolean	to;
-		I2Boolean	from;
-
-		char		*srcaddr;
-		char		*confdir;
-		char		*passwd;
-
-		char		*authmode;
-		char		*identity;
-
-		int		tmout;
-
-		u_int32_t	padding;
-		float		rate;
-		u_int32_t	numPackets;
-
-		char		*datadir;
-		char		*readfrom;
-
-		float           percentile;
-
-		u_int32_t	lossThreshold;
-
 		/* Flags */
-		I2Boolean       full;
-		I2Boolean       keepdata;
-		I2Boolean       records;
+		I2Boolean       records; /* -v */
+		I2Boolean       full;    /* -V */
+		I2Boolean	help;    /* -h */
+		I2Boolean	quiet;    /* -Q */
+
+		I2Boolean	to;      /* -t */
+		I2Boolean	from;    /* -f */
+		char            *save_to_test;    /* -T */
+		char            *save_from_test;  /* -F */
+
+		char		*authmode;        /* -A */
+		char		*identity;        /* -u */
+		u_int32_t	numPackets;       /* -c */
+
+		u_int32_t	lossThreshold;    /* -l */
+		float           percentile;       /* -a */
+
+		char		*passwd;          /* -P */
+		char		*srcaddr;         /* -S */
 
 #ifndef	NDEBUG
-		I2Boolean	childwait;
+		I2Boolean	childwait;        /* -w */
 #endif
+		char		*readfrom;        /* -R */
 
+
+
+
+		float		rate;             /* -r */
+		u_int32_t	padding;          /* -s */
+
+#if 0
+		char            *sid;
+#endif
 
 	} opt;
 

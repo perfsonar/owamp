@@ -747,23 +747,28 @@ typedef int (*OWPDoDataRecord)(
 			       OWPCookedDataRecPtr rec
 			       );
 
+OWPErrSeverity
+OWPFetchSessionInfo(OWPControl cntrl,
+		    u_int32_t  begin,
+		    u_int32_t  end,
+		    OWPSID     sid,
+		    u_int32_t  *num_rec,
+		    u_int8_t  *typeP
+		    );
+
+OWPErrSeverity
+OWPWriteDataHeader(OWPControl cntrl, int fd, u_int8_t *typeP);
+
 /*
-** Request records with numbers from <begin> to <end>
-** of a given session <SID>. Process server response (Control-Ack).
-** On success, read the first 16 octets of data transmitted
-** by the server, parse it, then read the promised number of records 
+** Read the promised number of records 
 ** and write them to the provided file descriptor <fd>. Return OWPErrOK
 ** on success, or OWPErrFATAL on failure.
 */
 OWPErrSeverity
-OWPFetchSession(OWPControl cntrl,
-		u_int32_t  begin,
-		u_int32_t  end,
-		OWPSID	   sid,
-		int        fd);
+OWPFetchRecords(OWPControl cntrl, int fd, u_int32_t num_rec);
 
 OWPErrSeverity
-OWPGetDataHeader(int fd, u_int32_t *typeP);
+OWPReadDataHeader(int fd, u_int32_t *typeP);
 
 /*
 ** "Fetching" data from local disk.
