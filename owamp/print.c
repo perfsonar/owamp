@@ -178,6 +178,6 @@ owp_dump_msg(u_int8_t *msg, int len, FILE *fp)
 		return;
 	}
 	
-	hexencode(buf, msg, len);
+	OWPHexEncode(buf, msg, len);
 	fprintf(fp, "DEBUG: dumping message: %s\n", buf);
 }
