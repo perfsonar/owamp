@@ -40,6 +40,7 @@ typedef struct rand_context {
 	unsigned char counter[16]; /* 128-bit counter (network byte ordered) */
 	keyInstance key;           /* key used to encrypt the counter.       */
 	BYTE out[16];              /* the encrypted block is kept there.     */
+	unsigned char reuse;       /* use the upper 64 bits of out if set    */
 } rand_context;
 
 /* 
@@ -61,9 +62,9 @@ void num2timeval(num128 from, struct timeval *to);
 void timeval2num(struct timeval *from, num128 to);
 
 /* Random number generating functions */
-void rand_context_init(BYTE *sid);  /* Initialize the generator */
-struct num128 exp_rand();       /* Generate an exponential (mean 1) deviate */
-
+rand_context *rand_context_init(BYTE *sid);  /* Initialize the generator.   */
+struct num128 exp_rand(rand_context *next);  /* Generate an exponential 
+						(mean 1) deviate */
 /* Debugging and auxilliary functions */
 void num_print(num128 x);
 #endif

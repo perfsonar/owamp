@@ -69,12 +69,6 @@ S4. [Deliver the answer.] Set X <- mu*(j + V)*ln2.
 #include <assert.h>
 #include "arithm128.h"
 
-/* We often need to scale by 10^6 so let's fix a struct for that. */
-static struct num128 million = {{0, 0, 0, 0, 16960, 15, 0, 0}}; 
-
-/* Initialize the RNG counter. */
-static rand_context next;
-
 #define K 19 /* So (K - 1) is the first k such that Q[k] > 1 - 1/(2^64). */
 
 /* Insure that all longs are 32-bit and shorts are 16-bit. */
@@ -258,6 +252,7 @@ void
 num2timeval(num128 from, struct timeval *to)
 {
 	struct num128 res;
+	static struct num128 million = {{0, 0, 0, 0, 16960, 15, 0, 0}}; 
 
 	/* first convert the fractional part */
 	struct num128 tmp = {{0, 0, 0, 0, 0, 0, 0, 0}};
@@ -296,6 +291,8 @@ void
 timeval2num(struct timeval *from, num128 to)
 {
 	unsigned long carry = 0;
+	static struct num128 million = {{0, 0, 0, 0, 16960, 15, 0, 0}}; 
+
 	int i;
 	struct num128 C, tmp; 
 
@@ -339,44 +336,58 @@ raw2num(const unsigned char *raw)
 ** Random number generating functions.
 */
 
-
 /*
 ** Generate a 64-bit uniform random string and save it in the lower
 ** part of the struct.
 */
 static struct num128
-unif_rand()
+unif_rand(rand_context *next)
 {
-	static int reuse = 1;
 	int j;
 
-	reuse = 1 - reuse;
-	if (reuse)
-		return raw2num(next.out + 8);
+	next->reuse = 1 - next->reuse;
+	if (next->reuse)
+		return raw2num(next->out + 8);
 
-	rijndaelEncrypt(next.key.rk, next.key.Nr, next.counter, next.out);
+	rijndaelEncrypt(next->key.rk, next->key.Nr, next->counter, next->out);
 	
 	/* Increment next.counter as an 128-bit single quantity in network
 	   byte order for AES counter mode. */
 	for (j = 15; j >= 0; j--)
-		if (++next.counter[j])
+		if (++next->counter[j])
 			break;
 	
-	return raw2num(next.out);
+	return raw2num(next->out);
 }
 
 /*
 ** Seed the random number generator using a 16-byte string.
 */
-void 
+rand_context*
 rand_context_init(BYTE *sid)
 {
 	int i;
-	
-	bytes2Key(&next.key, sid);
-	memset(next.out, 0, 16);
+	rand_context *next;
+
+	next = malloc(sizeof(*next));
+	if (!next)
+		return NULL;
+
+		
+	bytes2Key(&next->key, sid);
+	memset(next->out, 0, 16);
+	next->reuse = 1;
 	for (i = 0; i < 16; i++)
-		next.counter[i] = 0UL;
+		next->counter[i] = 0UL;
+
+	return(next);
+}
+
+void
+rand_context_free(rand_context *next)
+{
+	assert(next);
+	free(next);
 }
 
 /* 
@@ -385,7 +396,7 @@ rand_context_init(BYTE *sid)
 ** (1998), p.133.
 */
 struct num128 
-exp_rand()
+exp_rand(rand_context *next)
 {
 	unsigned long i, k;
 	unsigned long j = 0;
@@ -395,7 +406,7 @@ exp_rand()
 	two = ulong2num(2UL);
 
 	/* Get U and shift */
-	U = unif_rand();
+	U = unif_rand(next);
 	
 	while (U.digits[3] & mask && j < 64){ /* shift until find first '0' */
 		num128_mul(&U, &two, &V);
@@ -424,9 +435,9 @@ exp_rand()
 			break;
 
 	assert(k < K);
-	V = unif_rand();
+	V = unif_rand(next);
 	for (i = 2; i <= k; i++){
-		tmp = unif_rand();
+		tmp = unif_rand(next);
 		if (num_cmp(&tmp, &V) < 0)
 			V = tmp;
 	}
