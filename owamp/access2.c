@@ -27,14 +27,25 @@
 #include <owamp/owamp.h>
 #include "access.h"
 
-/*
-** Create a datum struct out of a netmask and return a pointer.
-*/
-static I2datum*
-netmask2datum(void *addr, long num_offset, int af)
-{
-	return NULL; /* XXX - TODO */
-}
+typedef struct owamp_access_netmask {
+	u_int32_t *addr4;
+	u_int8_t *addr6;
+	u_int8_t num_offset;
+	unsigned char family;
+} owamp_access_netmask;
+
+#define OWP_IDTYPE_KID     1
+#define OWP_IDTYPE_IPADDR  2
+#define OWP_IDTYPE_IPv4    3
+#define OWP_IDTYPE_IPv6    4
+
+typedef struct owp_access_id {
+	u_int32_t addr4;
+	u_int8_t  addr6[16];
+	u_int8_t  offset; /* not meaningful for KID */
+	char      kid[KID_LEN + 1];
+	u_int8_t  type;  /* OWP_IDTYPE_KID, OWP_IDTYPE_IPv4, OWP_IDTYPE_IPv6 */
+} owp_access_id;
 
 /*
 ** This function fills out a datum structure with the given string.
@@ -63,13 +74,13 @@ str2datum2(const char *bytes, size_t len)
 ** Check if a given IPv6 netmask is legal. Return 1 if yes, 0 otherwise.
 */
 int
-is_valid_netmask6(struct sockaddr_in6 *addr, long num_offset)
+is_valid_netmask6(struct sockaddr_in6 *addr, u_int8_t num_offset)
 {
 	int i;
 	u_int8_t *ptr;
-	long nbytes, nbits;
+	u_int8_t nbytes, nbits;
 
-	if (num_offset < 0 || num_offset > 128)
+	if (num_offset > 128)
 		return 0;
 
 	nbytes = num_offset/8;
@@ -91,6 +102,95 @@ is_valid_netmask6(struct sockaddr_in6 *addr, long num_offset)
 	return 1;
 }
 
+
+I2datum *
+I2datum_new()
+{
+	I2datum *ret;
+	ret = (void *)malloc(sizeof(*ret));
+	if (!ret) {
+		perror("malloc");
+		exit(1);
+	}
+
+	return ret;
+}
+
+owp_access_id *
+owp_access_id_new()
+{
+	owp_access_id *ret;
+	if ((ret = (void *)malloc(sizeof ret)) == NULL) {
+		perror("malloc");
+		exit(1);
+	}
+	return ret;
+}
+
+void
+owp_id2class_store_netmask(void *addr, 
+			   u_int8_t num_offset, 
+			   u_int8_t family, 
+			   char *class, 
+			   I2table id2class_hash)
+{
+	I2datum *key, *val;
+	owp_access_id *ptr;
+
+	key = I2datum_new();
+	key->dptr = (void *)owp_access_id_new();
+	key->dsize = sizeof(owp_access_id);
+
+	ptr = (owp_access_id *)(key->dptr);
+	memset(ptr->kid, 0, KID_LEN + 1);
+	ptr->offset = num_offset;
+
+	switch (family) {
+	case AF_INET:
+		ptr->addr4 = *(u_int32_t *)addr;
+		memset(ptr->addr6, 0, 16);
+		ptr->type = OWP_IDTYPE_IPv4;
+		break;
+	case AF_INET6:
+		ptr->addr4 = (u_int32_t)0;
+		memcpy(ptr->addr6, addr, 16);
+		ptr->type = OWP_IDTYPE_IPv6;
+	default:
+		return;
+		break;
+	}
+	val = str2datum2(class, strlen(class) + 1);
+	I2hash_store(id2class_hash, key, val);
+}
+
+/*
+** Given a string representing a KID, save it in the hash.
+*/ 
+void
+owp_id2class_store_kid(char *kid, char *class, I2table id2class_hash)
+{
+	I2datum *key, *val;
+	owp_access_id *ptr;
+
+	key = I2datum_new();
+
+	key->dptr = (void *)owp_access_id_new();
+	ptr = (owp_access_id *)(key->dptr);
+
+	ptr->addr4 = 0;
+	memset(ptr->addr6, 0, 16);
+	ptr->offset = (u_int8_t)0;
+
+	strncpy(ptr->kid, kid, KID_LEN);
+	ptr->kid[KID_LEN] = '\0';
+
+	ptr->type = OWP_IDTYPE_KID;
+	key->dsize = sizeof(owp_access_id);
+
+	val = str2datum2(class, strlen(class) + 1);
+	I2hash_store(id2class_hash, key, val);
+}
+
 int
 owamp_read_id2class(OWPContext ctx,
 		    const char *id2class, 
@@ -98,7 +198,6 @@ owamp_read_id2class(OWPContext ctx,
 {
 	FILE *fp;
 	char line[MAX_LINE];
-	I2datum *key, *val;
 
 	unsigned long line_num = 0;
 
@@ -109,13 +208,10 @@ owamp_read_id2class(OWPContext ctx,
 			 "FATAL: fopen %s for reading", id2class);
 		return -1;
 	}
-
 	while (fgets(line, sizeof(line), fp) != NULL) {
 		struct addrinfo hints, *res;
-		long num_offset;
+		u_int8_t num_offset;
 		u_int32_t addr;
-		int i;
-		size_t len;
 		char *brkt, *brkb, *id, *class, *slash, *nodename, *offset;
 
 		line_num++;
@@ -132,9 +228,6 @@ owamp_read_id2class(OWPContext ctx,
 			OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, "Warning: reading config file %s...\nLine %lu: no classname given\n", id2class, line_num);
 			continue;
 		}
-		len = strlen(class) + 1;
-		val = str2datum2(class, len);
-
 		/* Prepare the hints structure. */
 		memset(&hints, 0, sizeof(struct addrinfo));
 		hints.ai_flags = AI_NUMERICHOST;
@@ -146,16 +239,13 @@ owamp_read_id2class(OWPContext ctx,
 		if (!slash) { /* Either KID or single IP address. */
 			if (getaddrinfo(nodename, NULL, &hints, &res) < 0) {
 				/* id is KID */
-				len = (strlen(nodename) > 8)?
-					9 : strlen(nodename) + 1;
-				nodename[len] = '\0';
-				key = str2datum2(nodename, len);
-
-				I2hash_store(id2class_hash, key, val);
+				owp_id2class_store_kid(nodename, class, 
+						       id2class_hash);
 				continue;
 			}
 			
-			/* Otherwise this is a single IP address. */
+			/* Otherwise this is a single IP address. 
+			 Assume maximum offset by default.*/
 			switch (res->ai_family) {
 			case AF_INET:
 				num_offset = 32;
@@ -181,7 +271,7 @@ owamp_read_id2class(OWPContext ctx,
 			if (!offset)
 				goto BAD_MASK;
 			
-			num_offset = strtol(offset, NULL, 10);
+			num_offset = (u_int8_t)strtol(offset, NULL, 10);
 			if (num_offset == 0 && strncmp(offset, "0", 2))
 				goto BAD_MASK;
 		}
@@ -191,35 +281,30 @@ owamp_read_id2class(OWPContext ctx,
 		switch (res->ai_family) {
 		case AF_INET:
 			addr = 
-		  ntohl(((struct sockaddr_in *)res->ai_addr)->sin_addr.s_addr);
+		ntohl(((struct sockaddr_in *)(res->ai_addr))->sin_addr.s_addr);
 
 			/* Check if (addr, offset) combination is legal. */
 			if ( (num_offset > 32) 
-			     || (num_offset < 0)
 			     || (!num_offset && addr)
 			     || (num_offset 
 				 && (addr 
 				     & (((u_int8_t)1<<(32-num_offset)) - 1)))
 			     ) 
 				goto BAD_MASK;
+			owp_id2class_store_netmask(&addr, num_offset, 
+					 res->ai_family, class, id2class_hash);
 			break;
 		case AF_INET6:
 			if (!is_valid_netmask6(
 					 (struct sockaddr_in6 *)(res->ai_addr),
 					 num_offset))
 				goto BAD_MASK;
+			owp_id2class_store_netmask(res->ai_addr, num_offset, 
+					 res->ai_family, class, id2class_hash);
 			break;
 		default:
 			continue; /* Should not happen. */
 		}
-
-		/* Now netmask is known to be legal - save it in a hash. */
-		key = netmask2datum(&addr, num_offset, res->ai_family);
-#if 1
-		if (!key)
-			continue; /* XXX - fixit */
-#endif
-		I2hash_store(id2class_hash, key, val);
 		continue;
 
 	BAD_MASK:
@@ -232,15 +317,73 @@ owamp_read_id2class(OWPContext ctx,
 	return 0;
 }
 
+/*!
+** This function reads the file given by the path <passwd_file>,
+** parses it and saves results in <hash>. <password file> contains
+** the mapping from KIDs to OWAMP shared secrets. Its format is the
+** following: lines of the form 
 
+** <KID> <shared_secret>
+
+** where <KID> is an ASCII string of length at most 16,
+** and <shared_secret> is a sequence of hex digits of length 32
+** (corresponding to 16 bytes of binary data).
+*/
+
+#define HEX_SECRET_LEN  32 /* number of hex digits to encode a shared secret */
+ 
 void
 read_passwd_file2(OWPContext ctx, const char *passwd_file, I2table hash)
 {
+	char line[MAX_LINE];
+	char *kid, *secret;
+	FILE *fp;
 	
+	I2datum *key, *val;
+
+	if ( (fp = fopen(passwd_file, "r")) == NULL){
+		OWPError(ctx, OWPErrFATAL, errno, 
+			 "FATAL: fopen %s for reading", passwd_file);
+		exit(1);
+	}
+
+	while ( (fgets(line, sizeof(line), fp)) != NULL) {
+		line[strlen(line) - 1] = '\0';
+		if (line[0] == '#') 
+			continue;
+
+		kid = strtok(line, " \t");
+		if (!kid)
+			continue;
+		if (strlen(kid) > KID_LEN){
+			kid[KID_LEN] = '\0';
+			OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, 
+				 "Warning: KID %s too long - truncating",
+				 " to %d characters\n", kid, KID_LEN);
+		}
+
+		secret = strtok(NULL, " \t");
+		if (!secret)
+			continue;
+		
+		/* truncate if necessary */
+		secret[HEX_SECRET_LEN] = '\0';
+
+		/* Now save the key/class pair in a hash. */
+		key = str2datum2(kid, strlen(kid) + 1);
+		val = str2datum2(secret, strlen(secret) + 1);
+
+		if (I2hash_store(hash, key, val) != 0)
+			continue;
+	}
+
+	if (fclose(fp) < 0)
+		OWPError(ctx, OWPErrWARNING, errno, 
+			 "Warning: fclose(%d)", fp);	;
 }
 
 void
-owamp_read_class2limits2(OWPContext ctx, const char *class2limits, I2table hash)
+owamp_read_class2limits2(OWPContext ctx, const char *class2limits,I2table hash)
 {
 
 }
