@@ -101,7 +101,7 @@ available types of \fIdelays\fR that can be specified:
 .RS
 .IP \fBf\fR
 [\fBf\fR]ixed offsets. This is used to indicate that the \fIvalue\fR is
-a real offset from the packet proceeding it.
+a real offset.
 .IP \fBe\fR
 [\fBe\fR]xponential. This is used to indicate an exponentially distributed
 pseudo-random quantity with a mean about the \fIvalue\fR given. (This
