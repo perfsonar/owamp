@@ -38,14 +38,11 @@
 # 	CONFDIR			=>	1,
 # 	CENTRALDATADIR		=
 
-# scripts_SOURCES = owampd.sh.in
-bin_SCRIPTS = owampd.sh
-
-all: owampd.sh 
+bin_SCRIPTS = owampd.sh collector.pl make_top_html.pl makecron.pl pairs_pages_init.pl powmaster.pl testconf.pl buckets2stats.pl
 
 owampd.sh: owampd.sh.in
-	echo bindir = $(bindir)
-	perl -pe '                                               \
+	@echo bindir = $(bindir)
+	@perl -pe '                                               \
 	s!_OWAMPDVARPATH!OWAMPDVARPATH=$(sysconfdir)!;           \
 	s!_OWAMPDBINDIR!OWAMPDBINDIR=$(bindir)!;                 \
 	s!_DATADIR!DATADIR=/data!;                               \
