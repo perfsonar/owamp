@@ -209,6 +209,8 @@ main(int argc, char *argv[])
 	u_int8_t out_hdrlen = sizeof(magic) + sizeof(version) 
 		+ sizeof(prec) + sizeof(out_hdrlen) + sizeof(sent) 
 		+ sizeof(lost) + sizeof(dup);
+	OWPInitializeConfigRec	owpcfg = {{0,0},NULL,NULL,NULL,NULL,0,NULL};
+	OWPContext		ctx;
 
 	ia.line_info = (I2NAME | I2MSG);
 	ia.fp = stderr;
@@ -222,6 +224,13 @@ main(int argc, char *argv[])
 		fprintf(stderr, "%s : Couldn't init error module\n", progname);
 		exit(1);
 	}
+
+	owpcfg.eh = eh;
+	if(!(ctx = OWPContextInitialize(&owpcfg))){
+		I2ErrLog(eh,"Unable to initialize OWP library.");
+		exit(1);
+	}
+
 
 	while ((ch = getopt(argc, argv, "hp:")) != -1)
              switch (ch) {
@@ -261,7 +270,7 @@ main(int argc, char *argv[])
 		exit(1);
 	}
 		
-	if (!(num_rec = OWPReadDataHeader(fp,&hdr_len))) {
+	if (!(num_rec = OWPReadDataHeader(ctx,fp,&hdr_len,NULL))) {
 		I2ErrLog(eh,"OWPReadDataHeader");
 		exit(1);
 	}

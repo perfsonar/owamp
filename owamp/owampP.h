@@ -105,6 +105,7 @@
  * other useful constants.
  */
 #define _OWP_ERR_MAXSTRING	(1024)
+#define _OWP_MAGIC_FILETYPE	"OwA"
 
 /*
  * Data structures
@@ -374,9 +375,10 @@ OWPReadRequestType(
 	);
 
 extern int
-_OWPEncodeTestRequest(
+_OWPEncodeV3TestRequest(
 	OWPContext	ctx,
-	u_int8_t	*buf,
+	u_int32_t	*msg,
+	u_int32_t	*len_ret,
 	struct sockaddr	*sender,
 	struct sockaddr	*receiver,
 	OWPBoolean	server_conf_sender,
@@ -384,6 +386,22 @@ _OWPEncodeTestRequest(
 	OWPSID		sid,
 	OWPTestSpec	*test_spec
 	);
+
+extern OWPErrSeverity
+_OWPDecodeV3TestRequest(
+	OWPContext	ctx,
+	u_int32_t	*msg,
+	u_int32_t	msg_len,
+	struct sockaddr	*sender,
+	struct sockaddr	*receiver,
+	socklen_t	*socklen,
+	u_int8_t	*ipvn,
+	OWPBoolean	*server_conf_sender,
+	OWPBoolean	*server_conf_receiver,
+	OWPSID		sid,
+	OWPTestSpec	*test_spec
+	);
+	
 
 extern OWPErrSeverity
 _OWPWriteTestRequest(

@@ -898,6 +898,27 @@ OWPSessionDuration(
 	return (OWPnum64)0;
 }
 
+/*
+ * Return NULL for non-existant SID's
+ * This memory is NOT a copy - it is used internally by the library, and
+ * free'd when the session is declared over by the OWPStopSessionsWait
+ * or OWPStopSessions functions.
+ */
+OWPnum64*
+OWPSessionSchedule(
+		OWPControl	cntrl,
+		OWPSID		sid
+		)
+{
+	OWPTestSession	tsession;
+
+	for(tsession=cntrl->tests;tsession;tsession=tsession->next)
+		if(memcmp(sid,tsession->sid,sizeof(OWPSID)) == 0)
+			return tsession->schedule;
+
+	return NULL;
+}
+
 OWPBoolean
 OWPSessionStatus(
 		OWPControl	cntrl,
@@ -1093,7 +1114,8 @@ OWPAddr2string(OWPAddr addr, char *buf, size_t len)
 ** the version as follows:
 **
 ** Version 0: nothing - data records follow.
-** Version 1: 80 bytes of Session Request as per version 3 of the protocol
+** Version 1: 96 bytes of Session Request as per version 3 of the protocol
+** Version 2: XX bytes of Session Request as per version 5 of the protocol
 */
 
 /*
@@ -1103,79 +1125,163 @@ OWPAddr2string(OWPAddr addr, char *buf, size_t len)
 */
 int
 OWPWriteDataHeader(
-	FILE		*fp,
-	u_int32_t	version,
-	u_int8_t	*buf,
-	u_int32_t	len
+	OWPContext		ctx,
+	FILE			*fp,
+	OWPSessionHeader	hdr
 	)
 {
-	static char magic[4] = "OwA";
-	u_int32_t net_ver = htonl(version);
-	u_int32_t hdr_len = htonl(sizeof(magic) + sizeof(version) 
-		+ sizeof(hdr_len) + len);
+	static char	magic[] = _OWP_MAGIC_FILETYPE;
+	u_int32_t	ver;
+	u_int32_t	hdr_len;
+	u_int32_t	msg[_OWP_MAX_MSG/sizeof(u_int32_t)];
+	u_int32_t	len = sizeof(msg);
+
+	if(hdr && hdr->header){
+		if(_OWPEncodeV3TestRequest(ctx,msg,&len,
+				(struct sockaddr*)&hdr->addr_sender,
+				(struct sockaddr*)&hdr->addr_receiver,
+				hdr->conf_sender,hdr->conf_receiver,
+				hdr->sid,&hdr->test_spec) != 0){
+			return 1;
+		}
+		ver = htonl(1);
+	}
+	else{
+		len = 0;
+		ver = htonl(0);
+	}
+
+
+	hdr_len = htonl(sizeof(magic)+sizeof(ver)+sizeof(hdr_len)+len);
 
 	if(fwrite(magic, 1, sizeof(magic), fp) < sizeof(magic))
-		goto error;
-	if(fwrite(&net_ver, sizeof(net_ver), 1, fp) < 1)
-		goto error;
+		return 1;
+	if(fwrite(&ver, sizeof(ver), 1, fp) < 1)
+		return 1;
 	if(fwrite(&hdr_len, sizeof(hdr_len), 1, fp) < 1)
-		goto error;
+		return 1;
 
-	if (buf != NULL)
-		if(fwrite(buf, sizeof(*buf), len, fp) < len)
-			goto error;
+	if(len > 0)
+		if(fwrite(msg,1,len,fp) < len)
+			return 1;
 
 	fflush(fp);
 	return 0;
 
-error:
-	fclose(fp);
-	return 1;
 }
 
 #define OWP_BUFSIZ 960 /* must be divisible by 20 */
 
 /*
- * For now, this function doesn't return any header information - it
- * simply positions the FILE* past the the header.
+ * Mirror of WriteDataHeader
+ * This one is complicated by the fact that it should understand all file
+ * versions...
  *
- * TODO:Change this and all other functions to use FILE*'s.
+ * Version 0: nothing - data records follow.
+ * Version 1: 96 bytes of Session Request as per version 3 of the protocol
+ * Version 2: ?? bytes of Session Request as per version 5 of the protocol
+ *
  */
 u_int32_t
 OWPReadDataHeader(
-	FILE		*fp,
-	u_int32_t	*hdr_len
+	OWPContext		ctx,
+	FILE			*fp,
+	u_int32_t		*hdr_len,
+	OWPSessionHeader	hdr_ret
 	)
 {
-	char		magic[4];
+	static char	magic[] = _OWP_MAGIC_FILETYPE;
+	char		read_magic[sizeof(magic)];
 	u_int32_t	ver;
 	u_int32_t	hlen;
 	struct stat	stat_buf;
 
-	if(fstat(fileno(fp),&stat_buf) < 0)
-		goto error;
-	if(fseek(fp,0,SEEK_SET))
-		goto error;
-	if(fread(magic, 1, sizeof(magic), fp) < sizeof(magic))
-		goto error;
-	if(fread(&ver, sizeof(ver), 1, fp) < 1)
-		goto error;
+	if(hdr_len)
+		*hdr_len = 0;
+	if(hdr_ret)
+		hdr_ret->header = False;
+
+	if(fstat(fileno(fp),&stat_buf) < 0){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fstat():%M");
+		return 0;
+	}
+	if(fseek(fp,0,SEEK_SET)){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fseek():%M");
+		return 0;
+	}
+
+	if(stat_buf.st_size < sizeof(magic)+sizeof(ver)+sizeof(hlen)){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+				"OWPReadDataHeader:Invalid owp file");
+		return 0;
+	}
+	if(fread(read_magic, 1, sizeof(magic), fp) < sizeof(magic)){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fread():%M");
+		return 0;
+	}
+	if(memcmp(read_magic,magic,sizeof(magic)) != 0){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+			"OWPReadDataHeader:Invalid owp file:wrong magic");
+		return 0;
+	}
+
+	if(fread(&ver, sizeof(ver), 1, fp) < 1){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fread():%M");
+		return 0;
+	}
 	ver = ntohl(ver);
-	if(fread(&hlen, sizeof(hlen), 1, fp) < 1)
-		goto error;
+
+	if(fread(&hlen, sizeof(hlen), 1, fp) < 1){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fread():%M");
+		return 0;
+	}
 	hlen = ntohl(hlen);
-
-	if(fseek(fp,hlen,SEEK_SET))
-		goto error;
-
 	if(hdr_len)
 		*hdr_len = hlen;
 
-	return (stat_buf.st_size-hlen)/_OWP_TS_REC_SIZE;
+POSITION:
+	if(!hdr_ret || ver==0){
+		if(fseek(fp,hlen,SEEK_SET)){
+			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fread():%M");
+			return 0;
+		}
+	}
+	else{
+		u_int32_t	msg[_OWP_MAX_MSG/sizeof(u_int32_t)];
+		u_int32_t	size = hlen - sizeof(magic) - sizeof(ver) -
+								sizeof(hlen);
+		if(fread(msg,1,size,fp) < size){
+			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fread():%M");
+			return 0;
+		}
+		switch(ver){
+			socklen_t	slen;
+			u_int8_t	ipvn;
 
-error:
-	fclose(fp);
-	return 0;
+			case 1:
+			slen = sizeof(hdr_ret->addr_sender);
+			if(_OWPDecodeV3TestRequest(ctx,msg,size,
+				(struct sockaddr*)&hdr_ret->addr_sender,
+				(struct sockaddr*)&hdr_ret->addr_receiver,
+				&slen,&ipvn,
+				&hdr_ret->conf_sender,&hdr_ret->conf_receiver,
+				hdr_ret->sid,&hdr_ret->test_spec) != OWPErrOK){
+				return 0;
+			}
+			hdr_ret->header = True;
+			break;
+
+			default:
+			OWPError(ctx,OWPErrINFO,OWPErrUNKNOWN,
+				"OWPReadDataHeader:Unknown file version(%d)",
+				ver);
+			goto POSITION;
+			break;
+		}
+	}
+
+
+	return (stat_buf.st_size-hlen)/_OWP_TS_REC_SIZE;
 }
 
 /*

@@ -1074,18 +1074,18 @@ owp_delay(OWPTimeStamp *send_time, OWPTimeStamp *recv_time)
  * download the entire session in any case, so it doesn't make sense
  * to split the api.)
  *
- * TODO: In v5 this should return complete information about the session
- * in question via the same mechanism used to request a TestSession.
- * (Same datastructures should be used.)
+ * TODO: In v5 OWPSessionHeader should be filled in with the SessionRequest
+ * information. For now, if hdr_ret is passed in, set hdr_ret->header = False.
  */
 int
 OWPFetchSession(
-	OWPControl	cntrl,
-	FILE		*fp,
-	u_int32_t	begin,
-	u_int32_t	end,
-	OWPSID		sid,
-	OWPErrSeverity	*err_ret
+	OWPControl		cntrl,
+	FILE			*fp,
+	u_int32_t		begin,
+	u_int32_t		end,
+	OWPSID			sid,
+	OWPSessionHeader	hdr_ret,
+	OWPErrSeverity		*err_ret
 	)
 {
 	/*
@@ -1131,11 +1131,16 @@ OWPFetchSession(
 	if((*err_ret=_OWPReadFetchHeader(cntrl,&num_rec,NULL)) < OWPErrWARNING)
 		goto failure;
 
+	if(hdr_ret)
+		hdr_ret->header = False;
+
 	/*
 	 * Currently write boring header - again, in v5 this will
-	 * need to save more interesting information.
+	 * need to save more interesting information. (Basically we fill
+	 * in an OWPSessionHeader structure with the ReadFetchHeader function,
+	 * and pass that into this function. (And set hdr_ret with it.)
 	 */
-	if(OWPWriteDataHeader(fp,0,NULL,0) != 0){
+	if(OWPWriteDataHeader(cntrl->ctx,fp,NULL) != 0){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 						"OWPWriteDataHeader():%M");
 		goto failure;

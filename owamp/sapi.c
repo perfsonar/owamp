@@ -1141,7 +1141,11 @@ try_complete_file:
 		}
 	}
 
-	if( !(filerecs = OWPReadDataHeader(fp,&hdr_len))){
+	/*
+	 * TODO:v5 - the fourth arg to ReadDataHeader will read the
+	 * header info so we can send it on to the client here.
+	 */
+	if( !(filerecs = OWPReadDataHeader(cntrl->ctx,fp,&hdr_len,NULL))){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 						"OWPReadDataHeader():%M");
 		goto failed;

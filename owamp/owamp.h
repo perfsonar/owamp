@@ -529,6 +529,21 @@ OWPSessionDuration(
 	);
 
 /*
+ * Returns the schedule of the session as an array of OWPnum64's. These
+ * OWPnum64's are offsets from the "start" time of the session. Also
+ * care must be used because this function is not copying the memory, this
+ * is the array being used internally by the library. It should be considered
+ * READ ONLY. Also - the memory associated with this schedule is freed
+ * when the session is officially over during the StopSessions or
+ * StopSessionsWait functions.
+ */
+extern OWPnum64*
+OWPSessionSchedule(
+	OWPControl	cntrl,
+	OWPSID		sid
+	);
+
+/*
  * Used to determine how many local endpoints are still active.
  * (effectively calls the OWPTestSessionStatus function on all endpoints
  * and determines if they are complete yet.)
@@ -694,6 +709,22 @@ OWPTestPacketSize(
 		);
 
 /*
+ * This data structure is used to read/write a session header. When
+ * reading a header, if the "header" element returns false, the file
+ * did not contain any header information, and the remaining fields
+ * are not valid.
+ */
+typedef struct OWPSessionHeaderRec{
+	OWPBoolean		header;
+	OWPSID			sid;
+	struct sockaddr_storage	addr_sender;
+	struct sockaddr_storage	addr_receiver;
+	OWPBoolean		conf_sender;
+	OWPBoolean		conf_receiver;
+	OWPTestSpec		test_spec;
+} OWPSessionHeaderRec, *OWPSessionHeader;
+
+/*
  * This function is used to request that the data for the TestSession
  * identified by sid be fetched from the server and copied to the
  * file pointed at by fp. This function assumes fp is currently pointing
@@ -712,12 +743,13 @@ OWPTestPacketSize(
  */
 extern int
 OWPFetchSession(
-	OWPControl	cntrl,
-	FILE		*fp,
-	u_int32_t	begin,
-	u_int32_t	end,
-	OWPSID		sid,
-	OWPErrSeverity	*err_ret
+	OWPControl		cntrl,
+	FILE			*fp,
+	u_int32_t		begin,
+	u_int32_t		end,
+	OWPSID			sid,
+	OWPSessionHeader	hdr_ret,
+	OWPErrSeverity		*err_ret
 	);
 /*
  * Write data header to the file. <len> is the length of the buffer - 
@@ -727,10 +759,11 @@ OWPFetchSession(
  * 0	Success
  */
 int
-OWPWriteDataHeader(FILE *fp,
-		u_int32_t version,
-		u_int8_t *buf,
-		u_int32_t len);
+OWPWriteDataHeader(
+		OWPContext		ctx,
+		FILE			*fp,
+		OWPSessionHeader	hdr
+		);
 
 /*
  * Read data header from file. TODO: v5 .. more interesting.
@@ -740,8 +773,10 @@ OWPWriteDataHeader(FILE *fp,
  */
 u_int32_t
 OWPReadDataHeader(
-		FILE		*fp,
-		u_int32_t	*hdr_len
+		OWPContext		ctx,
+		FILE			*fp,
+		u_int32_t		*hdr_len,
+		OWPSessionHeader	hdr_ret
 		);
 
 /*

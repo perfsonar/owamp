@@ -1267,32 +1267,32 @@ _OWPEndpointInitHook(
 	u_int8_t                buf[96]; /* size of Session request */
 	OWPAddr			remoteaddr;
 
-	if(ep->send){
-		remoteaddr = tsession->receiver;
-	}
-	else{
-		remoteaddr = tsession->sender;
+	if(!ep->send){
+		OWPSessionHeaderRec	hdr;
 
 		/*
 		 * Prepare the header -
-		 * this function should just take a tsession...
 		 */
-		if(_OWPEncodeTestRequest(tsession->cntrl->ctx,buf,
-				tsession->sender->saddr,
-				tsession->receiver->saddr,
-				!tsession->send_local,!tsession->recv_local,
-				tsession->sid,&tsession->test_spec) != 0){
+		hdr.header = True;
+		memcpy(&hdr.sid,tsession->sid,sizeof(hdr.sid));
+		memcpy(&hdr.addr_sender,tsession->sender->saddr,
+						tsession->sender->saddrlen);
+		memcpy(&hdr.addr_receiver,tsession->receiver->saddr,
+						tsession->receiver->saddrlen);
+		hdr.conf_sender = !tsession->send_local;
+		hdr.conf_receiver = !tsession->recv_local;
+		hdr.test_spec = tsession->test_spec;
+
+		if(OWPWriteDataHeader(ctx,ep->datafile,&hdr) != 0){
 			EndpointFree(ep);
 			*end_data = NULL;
 			return OWPErrFATAL;
 		}
 
-		if(OWPWriteDataHeader(ep->datafile,(u_int32_t)1,buf,
-							sizeof(buf)-16) != 0){
-			EndpointFree(ep);
-			*end_data = NULL;
-			return OWPErrFATAL;
-		}
+		remoteaddr = tsession->sender;
+	}
+	else{
+		remoteaddr = tsession->receiver;
 	}
 
 	if(connect(ep->sockfd,remoteaddr->saddr,remoteaddr->saddrlen) != 0){

@@ -602,6 +602,7 @@ owp_do_summary(fetch_state_ptr state)
 */
 int
 do_records_all(
+		OWPContext	ctx,
 		FILE		*fp,
 		fetch_state_ptr	state,
 		char		*from,
@@ -644,7 +645,7 @@ do_records_all(
 	for (i = 0; i <= OWP_MAX_BUCKET; i++)
 		state->buckets[i] = 0;
 
-	if(!(num_rec = OWPReadDataHeader(fp,&hdr_len))){
+	if(!(num_rec = OWPReadDataHeader(ctx,fp,&hdr_len,NULL))){
 		I2ErrLog(eh, "OWPReadDataHeader:Empty file?");
 		return -1;
 	}
@@ -733,8 +734,10 @@ owp_fetch_sid(
 	 * Ask for complete session 
 	 * TODO: In v5 this function will return interesting info about
 	 * the session. For now, it just returns the number of records.
+	 * (6th arg)
 	 */
-	num_rec = OWPFetchSession(cntrl,fp,0,(u_int32_t)0xFFFFFFFF,sid,&rc);
+	num_rec = OWPFetchSession(cntrl,fp,0,(u_int32_t)0xFFFFFFFF,sid,NULL,
+									&rc);
 	if(!num_rec){
 		if(path)
 			(void)unlink(path);
@@ -751,7 +754,8 @@ owp_fetch_sid(
 	}
 
 	if (do_stats) {
-		if(do_records_all(fp,statep,local,remote) < 0) {
+		if(do_records_all(OWPGetContext(cntrl),fp,statep,local,remote)
+									< 0){
 			I2ErrLog(eh, "FATAL: do_records_all(to session)");
 		}
 	}
@@ -1232,7 +1236,8 @@ main(
 				      tosid, &state, local_str, remote, 1);
 
 		if(ping_ctx.opt.from){
-			if(do_records_all(fromfp,&state,remote,local_str)<0){
+			if(do_records_all(ctx,fromfp,&state,remote,local_str)
+									< 0){
 				I2ErrLog(eh,"do_records_all(from session):%M");
 				exit(1);
 			}
@@ -1254,12 +1259,12 @@ main(
 			exit(1);
 		}
 
-		if (!(num_rec = OWPReadDataHeader(fp,&hdr_len))) {
+		if (!(num_rec = OWPReadDataHeader(ctx,fp,&hdr_len,NULL))) {
 			I2ErrLog(eh,"do_records_all() failed.");
 			exit(1);
 		}
 		
-		if (do_records_all(fp,&state,NULL,NULL) < 0){
+		if (do_records_all(ctx,fp,&state,NULL,NULL) < 0){
 			I2ErrLog(eh,"do_records_all() failed.");
 			exit(1);
 		}

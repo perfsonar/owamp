@@ -385,7 +385,7 @@ OWPReadRequestType(
 }
 
 /*
- * 	TestRequest message format:
+ * 	V3 TestRequest message format:
  *
  * 	size: 96 octets
  *
@@ -432,9 +432,10 @@ OWPReadRequestType(
  */
 
 int
-_OWPEncodeTestRequest(
+_OWPEncodeV3TestRequest(
 		OWPContext	ctx,
-		u_int8_t	*buf,
+		u_int32_t	*msg,
+		u_int32_t	*len_ret,
 		struct sockaddr	*sender,
 		struct sockaddr	*receiver,
 		OWPBoolean	server_conf_sender, 
@@ -444,7 +445,16 @@ _OWPEncodeTestRequest(
 		)
 {
 	OWPTestSpecPoisson	*ptest = (OWPTestSpecPoisson*)test_spec;
+	u_int8_t		*buf = (u_int8_t*)msg;
 	u_int8_t		version;
+
+	if(*len_ret < 80){
+		OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
+				"_OWPWriteTestRequest:Buffer too small");
+		*len_ret = 0;
+		return OWPErrFATAL;
+	}
+	*len_ret = 0;
 
 	if(!server_conf_sender && !server_conf_receiver){
 		OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
@@ -482,10 +492,10 @@ _OWPEncodeTestRequest(
 		return OWPErrFATAL;
 	}
 
-	*(u_int8_t*)&buf[0] = 1;	/* Request-Session message # */
-	*(u_int8_t*)&buf[1] = (version<<4) | version;
-	*(u_int8_t*)&buf[2] = (server_conf_sender)?1:0;
-	*(u_int8_t*)&buf[3] = (server_conf_receiver)?1:0;
+	buf[0] = 1;	/* Request-Session message # */
+	buf[1] = (version<<4) | version;
+	buf[2] = (server_conf_sender)?1:0;
+	buf[3] = (server_conf_receiver)?1:0;
 
 	switch(version){
 	struct sockaddr_in	*saddr4;
@@ -538,7 +548,8 @@ _OWPEncodeTestRequest(
 
 	*(u_int32_t*)&buf[76] = htonl(ptest->typeP);
 
-	memset(&buf[80],0,16);
+
+	*len_ret = 80;
 
 	return 0;
 }
@@ -554,7 +565,8 @@ _OWPWriteTestRequest(
 	OWPTestSpec	*test_spec
 )
 {
-	u_int8_t		*buf = (u_int8_t*)cntrl->msg;
+	u_int8_t	*buf = (u_int8_t*)cntrl->msg;
+	u_int32_t	buf_len = sizeof(cntrl->msg);
 
 	if(!_OWPStateIsRequest(cntrl) || _OWPStateIsPending(cntrl)){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
@@ -562,11 +574,15 @@ _OWPWriteTestRequest(
 		return OWPErrFATAL;
 	}
 
-	if(_OWPEncodeTestRequest(cntrl->ctx,buf,
+	if((_OWPEncodeV3TestRequest(cntrl->ctx,cntrl->msg,&buf_len,
 				sender,receiver,
 				server_conf_sender,server_conf_receiver,
-				sid,test_spec) != 0)
+				sid,test_spec) != 0) || (buf_len != 80))
 		return OWPErrFATAL;
+	/*
+	 * Final block of zero padding not done by encode.
+	 */
+	memset(&buf[80],0,16);
 
 	/*
 	 * Now - send the request!
@@ -582,8 +598,10 @@ _OWPWriteTestRequest(
 }
 
 OWPErrSeverity
-_OWPReadTestRequest(
-	OWPControl	cntrl,
+_OWPDecodeV3TestRequest(
+	OWPContext	ctx,
+	u_int32_t	*msg,
+	u_int32_t	msg_len,
 	struct sockaddr	*sender,
 	struct sockaddr	*receiver,
 	socklen_t	*socklen,
@@ -594,37 +612,19 @@ _OWPReadTestRequest(
 	OWPTestSpec	*test_spec
 )
 {
-	u_int8_t		*buf = (u_int8_t*)cntrl->msg;
+	u_int8_t		*buf = (u_int8_t*)msg;
 	OWPTestSpecPoisson	*ptest;
 
-	if(!_OWPStateIs(_OWPStateTestRequest,cntrl)){
-		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-				"_OWPReadTestRequest called in wrong state.");
-		return OWPErrFATAL;
-	}
-
-	/*
-	 * Already read the first block - read the rest for this message
-	 * type.
-	 */
-	if(_OWPReceiveBlocks(cntrl,&buf[16],_OWP_TEST_REQUEST_BLK_LEN-1) != 
-			(_OWP_TEST_REQUEST_BLK_LEN-1)){
-		cntrl->state = _OWPStateInvalid;
-		return OWPErrFATAL;
-	}
-
-	if(memcmp(cntrl->zero,&buf[80],_OWP_RIJNDAEL_BLOCK_SIZE)){
-		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-				"_OWPReadTestRequest:Invalid zero padding");
-		cntrl->state = _OWPStateInvalid;
+	if(msg_len != 80){
+		OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
+				"_OWPDecodeV3TestRequest:Invalid message size");
 		return OWPErrFATAL;
 	}
 
 	*ipvn = buf[1] >> 4;
 	if(*ipvn != (buf[1] & 0x0f)){
-		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+		OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
 			"Test request has incompatible address versions...");
-		cntrl->state = _OWPStateInvalid;
 		return OWPErrFATAL;
 	}
 
@@ -636,9 +636,9 @@ _OWPReadTestRequest(
 			*server_conf_sender = True;
 			break;
 		default:
-			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-			"_OWPReadTestRequest:Invalid Conf-Sender (%d)",buf[2]);
-			cntrl->state = _OWPStateInvalid;
+			OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
+			"_OWPDecodeV3TestRequest:Invalid Conf-Sender(%d)",
+				buf[2]);
 			return OWPErrFATAL;
 	}
 	switch(buf[3]){
@@ -649,17 +649,15 @@ _OWPReadTestRequest(
 			*server_conf_receiver = True;
 			break;
 		default:
-			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-			"_OWPReadTestRequest:Invalid Conf-Receiver (%d)",
+			OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
+			"_OWPDecodeV3TestRequest:Invalid Conf-Receiver (%d)",
 					buf[3]);
-			cntrl->state = _OWPStateInvalid;
 			return OWPErrFATAL;
 	}
 
 	if(!*server_conf_sender && !*server_conf_receiver){
-			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-			"_OWPReadTestRequest:Invalid null request");
-			cntrl->state = _OWPStateInvalid;
+			OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
+			"_OWPDecodeV3TestRequest:Invalid null request");
 			return OWPErrFATAL;
 	}
 
@@ -669,8 +667,8 @@ _OWPReadTestRequest(
 	struct sockaddr_in6	*saddr6;
 		case 6:
 			if(*socklen < sizeof(struct sockaddr_in6)){
-				OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-			"_OWPReadTestRequest:socklen not big enough (%d < %d)",
+				OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
+		"_OWPDecodeV3TestRequest:socklen not big enough (%d < %d)",
 					*socklen,sizeof(struct sockaddr_in6));
 				*socklen = 0;
 				return OWPErrFATAL;
@@ -700,8 +698,8 @@ _OWPReadTestRequest(
 		case 4:
 			if(*socklen < sizeof(struct sockaddr_in)){
 				*socklen = 0;
-				OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-			"_OWPReadTestRequest:socklen not big enough (%d < %d)",
+				OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
+		"_OWPDecodeV3TestRequest:socklen not big enough (%d < %d)",
 					*socklen,sizeof(struct sockaddr_in));
 				return OWPErrFATAL;
 			}
@@ -727,8 +725,8 @@ _OWPReadTestRequest(
 
 			break;
 		default:
-			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-			"_OWPReadTestRequest:Unsupported IP version (%d)",
+			OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
+			"_OWPDecodeV3TestRequest:Unsupported IP version (%d)",
 									*ipvn);
 			return OWPErrFATAL;
 	}
@@ -750,6 +748,55 @@ _OWPReadTestRequest(
 	OWPDecodeTimeStamp(&ptest->start_time,&buf[68]);
 
 	ptest->typeP = ntohl(*(u_int32_t*)&buf[76]);
+
+	return OWPErrOK;
+}
+
+OWPErrSeverity
+_OWPReadTestRequest(
+	OWPControl	cntrl,
+	struct sockaddr	*sender,
+	struct sockaddr	*receiver,
+	socklen_t	*socklen,
+	u_int8_t	*ipvn,
+	OWPBoolean	*server_conf_sender,
+	OWPBoolean	*server_conf_receiver,
+	OWPSID		sid,
+	OWPTestSpec	*test_spec
+)
+{
+	u_int8_t		*buf = (u_int8_t*)cntrl->msg;
+
+	if(!_OWPStateIs(_OWPStateTestRequest,cntrl)){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+				"_OWPReadTestRequest called in wrong state.");
+		return OWPErrFATAL;
+	}
+
+	/*
+	 * Already read the first block - read the rest for this message
+	 * type.
+	 */
+	if(_OWPReceiveBlocks(cntrl,&buf[16],_OWP_TEST_REQUEST_BLK_LEN-1) != 
+			(_OWP_TEST_REQUEST_BLK_LEN-1)){
+		cntrl->state = _OWPStateInvalid;
+		return OWPErrFATAL;
+	}
+
+	if(memcmp(cntrl->zero,&buf[80],_OWP_RIJNDAEL_BLOCK_SIZE)){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+				"_OWPReadTestRequest:Invalid zero padding");
+		cntrl->state = _OWPStateInvalid;
+		return OWPErrFATAL;
+	}
+
+	if(_OWPDecodeV3TestRequest(cntrl->ctx,cntrl->msg,80,
+			sender,receiver,socklen,ipvn,
+			server_conf_sender,server_conf_receiver,
+			sid,test_spec) != OWPErrOK){
+		cntrl->state = _OWPStateInvalid;
+		return OWPErrFATAL;
+	}
 
 	/*
 	 * The control connection is now ready to send the response.
