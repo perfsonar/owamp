@@ -375,7 +375,10 @@ owampd_check_pipes(int maxfd, fd_set *mask, fd_set* readfds)
 			}
 			
 			FD_CLR(fd, readfds);
-			close(fd);
+			if (close(fd) < 0){
+				perror("close");
+				exit(1);
+			};
 			if (n == 0)  /* happens only if child closes */
 				return; /* without writing */
 			
@@ -383,10 +386,9 @@ owampd_check_pipes(int maxfd, fd_set *mask, fd_set* readfds)
 			
 			if (strncmp(buf, "1", 1) == 0){ /* auth */
 				free_connections++;
-				/*
-				  pid = fd2pid{new_pipe[0]};
+				/* XXX - TODO:
+				  pid = fd2pid{fd};
 				  is_auth{pid} = 1
-				  
 				*/
 			} 
 		}
@@ -556,7 +558,7 @@ main(int argc, char *argv[])
 			int        new_pipe[2];
 			pid_t      pid;
 			OWPBoolean auth_ok;
-			OWPBoolean again;
+			OWPBoolean again = True;
 
 			FD_CLR(listenfd, &mask);
 
@@ -608,9 +610,12 @@ main(int argc, char *argv[])
 			}
 			
 			/* Child code */
-			exit(0); /* XXX - remove !!! */
-			fprintf(stderr, "DEBUG: Child begins...\n");
-			fprintf(stderr, "DEBUG: Child exits...\n");
+
+			/* XXX - Remove. for debugging only */
+			if (freopen("child.err", "w", stderr) < 0){
+				perror("reopen");
+				exit(1);
+			}
 
 			mode_available = default_offered_mode;
 			close(new_pipe[0]);
