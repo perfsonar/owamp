@@ -1142,12 +1142,11 @@ OWPProcessRetrieveSession(
 	*/
 
 	/* Construct the base pathname */
-	datadir = ((OWPPerConnData)(cntrl->app_data))->datadir;
+	datadir = ((OWPPerConnData)(cntrl->app_data))->link_data_dir;
 	assert(datadir);
 
 	strcpy(path, datadir);
 	strcat(path, OWP_PATH_SEPARATOR);
-	strcat(path, OWP_NODES_DIR);
 	OWPHexEncode(sid_name,sid,sizeof(OWPSID));
 	strcat(path, sid_name);
 
@@ -1181,7 +1180,7 @@ OWPProcessRetrieveSession(
 	}
 
 	if ((begin == 0) && (end == 0xFFFFFFFF)) /* complete session  */ {
-		if( (rc = _OWPWriteControlAck(cntrl, OWP_CNTRL_ACCEPT)) < OWPErrOK)
+		if((rc = _OWPWriteControlAck(cntrl,OWP_CNTRL_ACCEPT))<OWPErrOK)
 			return _OWPFailControlSession(cntrl,rc);
 		return OWPSendFullDataFile(cntrl, fd, stat_buf.st_blksize,
 					   stat_buf.st_size);
