@@ -993,25 +993,27 @@ OWPStartSessions(
 	 * the server to respond. (should not start senders - don't want
 	 * to send packets unless control-ack comes back positive.)
 	 */
-	for(tsession = cntrl->tests;tsession;tsession = tsession->next)
+	for(tsession = cntrl->tests;tsession;tsession = tsession->next){
 		if(tsession->recv_end_data){
 			if(!_OWPCallEndpointStart(tsession,
 						&tsession->recv_end_data,&err))
 				return _OWPFailControlSession(cntrl,err);
 			err2 = MIN(err,err2);
 		}
+	}
 
 	if(((rc = _OWPReadControlAck(cntrl,&acceptval)) < OWPErrOK) ||
 					(acceptval != OWP_CNTRL_ACCEPT))
 		return _OWPFailControlSession(cntrl,OWPErrFATAL);
 
-	for(tsession = cntrl->tests;tsession;tsession = tsession->next)
+	for(tsession = cntrl->tests;tsession;tsession = tsession->next){
 		if(tsession->send_end_data){
 			if(!_OWPCallEndpointStart(tsession,
 						&tsession->send_end_data,&err))
 				return _OWPFailControlSession(cntrl,err);
 			err2 = MIN(err,err2);
 		}
+	}
 
 	return err2;
 }

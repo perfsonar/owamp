@@ -541,6 +541,7 @@ sig_catch(
 					"sig_catch:Invalid signal(%d)",signo);
 			exit(OWP_CNTRL_FAILURE);
 	}
+
 	return;
 }
 
@@ -584,6 +585,11 @@ sig_catch(
 	} while (0)
 #endif
 
+/*
+ * For now assume that if STA_NANO is defined, get_ntptime will return
+ * nanosecond resolution.
+ */
+#ifdef	NTP_RETURNS_TSPEC_NONNANO
 static int	ntp_status;
 
 static int
@@ -599,6 +605,9 @@ InitNTP()
 	ntp_status = ntp_conf.status;
 	return 0;
 }
+#else
+#define	InitNTP()	0
+#endif
 
 
 static struct timespec *
@@ -609,7 +618,7 @@ GetTimespec(
 		)
 {
 	struct ntptimeval	ntv;
-	int		status;
+	int			status;
 
 	status = ntp_gettime(&ntv);
 
@@ -623,6 +632,7 @@ GetTimespec(
 	*esterr = (u_int32_t)ntv.esterror;
 	assert((long)*esterr == ntv.esterror);
 
+#ifdef	NTP_RETURNS_TSPEC_NONNANO
 #ifdef	STA_NANO
 	*ts = ntv.time;
 	if(ntp_status & STA_NANO)
@@ -635,6 +645,14 @@ GetTimespec(
 		 * convert usec to nsec if not STA_NANO
 		 */
 		ts->tv_nsec *= 1000;
+#endif
+
+#ifdef	STA_NANO
+	*ts = ntv.time;
+#else
+	*(struct timeval*)ts = ntv.time;
+	ts->tv_nsec *= 1000;
+#endif
 
 	return ts;
 }
@@ -806,10 +824,12 @@ AGAIN:
 			sleeptime = nexttime;
 			timespecsub(&sleeptime,&currtime);
 			if((nanosleep(&sleeptime,NULL) == 0) ||
-					(errno == EINTR))
+							(errno == EINTR)){
 				goto AGAIN;
+			}
 			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"nanosleep():%M");
+				"nanosleep(%u.%u,nil):%M",
+					sleeptime.tv_sec,sleeptime.tv_nsec);
 			exit(OWP_CNTRL_FAILURE);
 		}
 
@@ -850,7 +870,8 @@ AGAIN:
 
 static void
 run_receiver(
-		_DefEndpoint	ep
+		_DefEndpoint	ep,
+		struct timespec	*signal_time
 		)
 {
 	struct timespec	currtime;
@@ -889,6 +910,8 @@ run_receiver(
 			exit(OWP_CNTRL_FAILURE);
 	}
 	lasttime = ep->relative_offsets[ep->test_spec.any.npackets-1];
+	timespecadd(&lasttime, &ep->start);
+	timespecsub(&lasttime, signal_time);
 	lasttime.tv_sec += ep->lossThreshold;
 	lasttime.tv_sec++;
 
@@ -1079,12 +1102,7 @@ OWPDefEndpointInitHook(
 	OWPnum64		InvLambda,sum,val;
 	OWPrand_context64	*rand_ctx;
 
-	/*
-	 * If we are sender - get the SID. probably don't need it, but
-	 * what the heck.
-	 */
-	if(ep->send)
-		memcpy(ep->sid,sid,sizeof(OWPSID));
+	memcpy(ep->sid,sid,sizeof(OWPSID));
 
 	if(connect(ep->sockfd,remoteaddr->saddr,remoteaddr->saddrlen) != 0){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"connect():%M");
@@ -1239,7 +1257,6 @@ OWPDefEndpointInitHook(
 		val = OWPnum64_mul(sum,InvLambda);
 		OWPnum64totimespec(val,&ep->relative_offsets[i]);
 	}
-
 	OWPrand_context64_free(rand_ctx);
 
 	/*
@@ -1291,7 +1308,7 @@ OWPDefEndpointInitHook(
 			run_sender(ep);
 		}
 		else{
-			run_receiver(ep);
+			run_receiver(ep,&currtime);
 		}
 	}
 

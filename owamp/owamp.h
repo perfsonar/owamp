@@ -797,6 +797,13 @@ OWPHexEncode(
 	unsigned int	nbytes
 	);
 
+void
+OWPHexDecode(
+	char		*buff,
+	u_int8_t	*bytes,
+	unsigned int	nbytes
+	);
+
 /*
  * time.c conversion functions.
  */
