@@ -22,4 +22,4 @@ INCLUDES			= $(OWPINCS) $(OWPCONTRIBINCS) $(I2UTILINCS)
 
 AM_CFLAGS			= $(OWP_PREFIX_CFLAGS)
 lib_LIBRARIES			= libowamp_contrib.a
-libowamp_contrib_a_SOURCES	= access.h test-hash.c print.c unixtime.c access2.c read_class2limits.c
+libowamp_contrib_a_SOURCES	= access.h test-hash.c print.c unixtime.c access2.c read_class2limits.c defaults.c
