@@ -93,10 +93,33 @@ static void
 usage(const char *progname, const char *msg)
 {
 	if(msg) fprintf(stderr, "%s: %s\n", progname, msg);
+	if (!strcmp(progname, "owping")) {
+		fprintf(stderr,
+	 "usage: %s %s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n", 
+	 progname, "[arguments] testaddr [servaddr]",
+			"[arguments] are as follows: ",
+     "   -A authmode    requested modes: [A]uthenticated, [E]ncrypted, [O]pen",
+"   -k keyfile     AES keyfile to use with Authenticated/Encrypted modes",
+"   -u username    username to use with Authenticated/Encrypted modes",
+"   -S srcaddr     use this as a local address for control connection and tests",
+"   -f | -F file   perform one-way test from testhost [and save results to file]",
+"   -t | -T file   perform one-way test to testhost [and save results to file]",
+"   -c count       number of test packets",
+"   -i wait        mean average time between packets (seconds)",
+"   -L timeout     maximum time to wait for a packet before declaring it lost",
+"   -s padding     size of the padding added to each packet (bytes)",
+	"   -h             print this message and exit",
+	"   -Q             run the test and exit without reporting statistics",
+	"   [-v | -V]      print out individual delays, or full timestamps",
+"   -a alpha       report an additional percentile level for the delays"
+			);
+		
 
-	fprintf(stderr,"Usage: %s [options] testaddress [servaddr]\n",
-		progname);
-	fprintf(stderr, "\nWhere \"options\" are:\n\n");
+	} else if (!strcmp(progname, "owstats")) {
+		;
+	} else if (!strcmp(progname, "owfetch")) {
+		;
+	}
 
 	return;
 }
@@ -454,7 +477,8 @@ owp_do_summary(fetch_state_ptr state)
 		fprintf(state->fp, 
 			"only up to %d-reordering is handled\n", OWP_MAX_N);
 
-	if (fabs(ping_ctx.opt.percentile - 50.0) > 0.000001) {
+	if ((ping_ctx.opt.percentile - 50.0) > 0.000001
+	    || (ping_ctx.opt.percentile - 50.0) < -0.000001) {
 		float x = ping_ctx.opt.percentile/100.0;
 		fprintf(state->fp, 
 			"%.2f percentile of one-way delays: %.3f ms\n",
@@ -558,6 +582,76 @@ do_records_all(int fd,
 }
 
 /*
+** Fetch a session with the given <sid> from the remote server.
+** It is assumed that control connection has been opened already.
+*/
+void
+owp_fetch_sid(
+	      char *savefile,        
+	      OWPControl cntrl, 
+	      OWPSID sid,       
+	      fetch_state_ptr statep,
+	      char *local,           
+	      char *remote           
+	      )
+{
+	int fd;
+	u_int32_t num_rec;
+	u_int8_t     typeP[4]; 
+
+	/*
+	 * Prepare paths for datafiles. Unlink if not keeping data.
+	 */
+	if (savefile) {
+		fd = open(ping_ctx.opt.save_to_test, 
+			    O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+		if (fd < 0) {
+			I2ErrLog(eh, "FATAL: open(%s) failed: %M", 
+				 ping_ctx.opt.save_to_test);
+			exit(1);
+		}
+	} else {
+		char *path = strdup(OWP_TMPFILE);
+		if (!path) {
+			I2ErrLog(eh, "FATAL: malloc() failed: %M");
+			exit(1);
+		}
+		if ((fd = mkstemp(path)) < 0) {
+			I2ErrLog(eh, "FATAL: open(%s) failed: %M", 
+				 path);
+			exit(1);	
+		}
+		if (unlink(path) < 0) {
+			I2ErrLog(eh, "WARNING: unlink(%s) failed: %M", 
+				 path);
+		}
+	}
+
+
+	/* Ask for complete session - for now. */
+	if (OWPFetchSessionInfo(cntrl, 0, (u_int32_t)0xFFFFFFFF, sid, 
+				&num_rec, typeP) == OWPErrFATAL) {
+		I2ErrLog(eh, "Failed to fetch remote records");
+		return;
+	}
+
+	OWPWriteDataHeader(cntrl, fd, typeP);
+	
+	if (OWPFetchRecords(cntrl, fd, num_rec) == OWPErrFATAL){
+		I2ErrLog(eh, "Failed to fetch remote records");
+		return;
+	}
+	if(do_records_all(fd, statep, local, remote) < 0) {
+		I2ErrLog(eh, "FATAL: do_records_all(to session)");
+	}
+	
+	if (close(fd) < 0) {
+		I2ErrLog(eh, "WARNING: close() failed: %M");
+	}
+	return;
+}
+
+/*
  * TODO: Find real max padding sizes based upon size of headers
  */
 #define	MAX_PADDING_SIZE	65000
@@ -585,8 +679,6 @@ main(
 	OWPAddr                 local;
 	char                    local_str[NI_MAXHOST], *remote;
 	char                    *endptr;
-
-	int ret;
 
 	ia.line_info = (I2NAME | I2MSG);
 	ia.fp = stderr;
@@ -617,11 +709,11 @@ main(
 	ping_ctx.opt.numPackets = 100;
 	ping_ctx.opt.lossThreshold = 10;
 	ping_ctx.opt.percentile = 50.0;
-	ping_ctx.opt.rate = (float)10;
+	ping_ctx.opt.mean_wait = (float)0.1;
 	ping_ctx.opt.padding = 0;
 
 	while ((ch = getopt(argc, argv, 
-			    "A:F:P:QR:S:T:Va:c:fhl:r:s:tu:vw")) != -1)
+			    "A:F:L:QR:S:T:Va:c:fhi:k:s:tu:vw")) != -1)
              switch (ch) {
              case 'v':
 		     ping_ctx.opt.records = True;
@@ -659,14 +751,14 @@ main(
 		     ping_ctx.opt.numPackets = strtoul(optarg, &endptr, 10);
                      break;
 
-             case 'l':
+             case 'L':
 		     ping_ctx.opt.lossThreshold = strtoul(optarg, &endptr, 10);
                      break;
              case 'a':
 		     ping_ctx.opt.percentile =(float)(strtod(optarg, &endptr));
 		     break;
 
-	     case 'P':
+	     case 'k':
 		     ping_ctx.opt.passwd = strdup(optarg);
                      break;
              case 'S':
@@ -680,8 +772,8 @@ main(
 		     ping_ctx.opt.readfrom = strdup(optarg);
 		     break;
 
-             case 'r':
-		     ping_ctx.opt.rate = (float)(strtod(optarg, &endptr));
+             case 'i':
+		     ping_ctx.opt.mean_wait = (float)(strtod(optarg, &endptr));
                      break;
              case 's':
 		     ping_ctx.opt.padding = strtoul(optarg, &endptr, 10);
@@ -703,6 +795,12 @@ main(
 		exit(0);
 	}
 
+	if ((ping_ctx.opt.percentile < 0.0) 
+		|| (ping_ctx.opt.percentile > 100.0)) {
+		usage(progname, "alpha must be between 0.0 and 100.0");
+		exit(0);
+	}
+
 	if (ping_ctx.opt.readfrom) {
 		int fd = open(ping_ctx.opt.readfrom, O_RDONLY);
 		if (fd < 0) {
@@ -717,27 +815,30 @@ main(
 		}
 		exit(0);
 	}
-
+	
+	/* XXX - this will change for owpfetch case */
 	if((argc < 1) || (argc > 2)){
 		usage(progname, NULL);
 		exit(1);
 	}
+	
+	if (ping_ctx.opt.from || ping_ctx.opt.to) {
+		ping_ctx.remote_test = argv[0];
+		if(argc > 1)
+			ping_ctx.remote_serv = argv[1];
+		else
+			ping_ctx.remote_serv = ping_ctx.remote_test;
 
-	ping_ctx.remote_test = argv[0];
-	if(argc > 1)
-		ping_ctx.remote_serv = argv[1];
-	else
-		ping_ctx.remote_serv = ping_ctx.remote_test;
-
-
-	if ((ping_ctx.opt.percentile < 0.0) 
-		|| (ping_ctx.opt.percentile > 100.0)) {
-		usage(progname, NULL);
-		exit(0);
+		/*
+		 * This is in reality dependent upon the actual protocol used
+		 * (ipv4/ipv6) - it is also dependent upon the auth mode since
+		 * authentication implies 128bit block sizes.
+		 */
+		if(ping_ctx.opt.padding > MAX_PADDING_SIZE)
+			ping_ctx.opt.padding = MAX_PADDING_SIZE;
 	}
 
 	OWPCfg.tm_out.tv_sec = 60;   /* just for now */
-
 	/*
 	 * Initialize library with configuration functions.
 	 */
@@ -760,13 +861,6 @@ main(
 		};
 	}
 
-	/*
-	 * This is in reality dependent upon the actual protocol used
-	 * (ipv4/ipv6) - it is also dependent upon the auth mode since
-	 * authentication implies 128bit block sizes.
-	 */
-	if(ping_ctx.opt.padding > MAX_PADDING_SIZE)
-		ping_ctx.opt.padding = MAX_PADDING_SIZE;
 
 	/*
 	 * Verify/decode auth options.
@@ -825,20 +919,13 @@ main(
 	 */
 	test_spec.typeP = 0;          /* so it's in host byte order then */
 	test_spec.packet_size_padding = ping_ctx.opt.padding;
-	/*
-	 * InvLambda is mean in usec so, to convert from rate_sec:
-	 * rate_usec = rate_sec/1000000 and because
-	 * InvLambda = 1/rate_usec then
-	 * InvLambda = 1/rate_sec/1000000.0 or
-	 * InvLambda = 1000000.0/rate_sec
-	 */
-	test_spec.InvLambda = (double)1000000.0 / ping_ctx.opt.rate;
+
+	 /* InvLambda is mean wait time in usec */
+	test_spec.InvLambda = (double)1000000.0 * ping_ctx.opt.mean_wait;
+	conndata.lossThreshold = ping_ctx.opt.lossThreshold;
 
 	conndata.pipefd = -1;
-
 	conndata.policy = policy; /* or NULL ??? */
-
-	conndata.lossThreshold = ping_ctx.opt.lossThreshold;
 	conndata.node = NULL;
 #ifndef	NDEBUG
 	conndata.childwait = ping_ctx.opt.childwait;
@@ -860,37 +947,8 @@ main(
 	/*
 	 * Prepare paths for datafiles. Unlink if not keeping data.
 	 */
+
 	if(ping_ctx.opt.to) {
-		if (ping_ctx.opt.save_to_test) {
-			tofd = open(ping_ctx.opt.save_to_test, 
-			       O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
-			if (tofd < 0) {
-				I2ErrLog(eh, "FATAL: open(%s) failed: %M", 
-					 ping_ctx.opt.save_to_test);
-				exit(1);
-			}
-
-			if (ftruncate(tofd, 0) < 0) {
-				I2ErrLog(eh, "FATAL: ftruncate() failed: %M");
-				exit(1);
-			}
-
-		} else {
-			char *path = strdup(OWP_TMPFILE);
-			if (!path) {
-				I2ErrLog(eh, "FATAL: malloc() failed: %M");
-				exit(1);
-			}
-			if ((tofd = mkstemp(path)) < 0) {
-				I2ErrLog(eh, "FATAL: open(%s) failed: %M", 
-					 path);
-				exit(1);	
-			}
-			if (unlink(path) < 0) {
-				I2ErrLog(eh, "WARNING: unlink(%s) failed: %M", 
-					 path);
-			}
-		}
 		if (!OWPSessionRequest(ping_ctx.cntrl, NULL, False,
 				       OWPAddrByNode(ctx,ping_ctx.remote_test),
 				       True, (OWPTestSpec*)&test_spec, tosid, 
@@ -898,19 +956,17 @@ main(
 			FailSession(ping_ctx.cntrl);
 	}
 
+
+
 	if(ping_ctx.opt.from) {
 		u_int8_t     typeP[4];
 
 		if (ping_ctx.opt.save_from_test) {
 			fromfd = open(ping_ctx.opt.save_from_test, 
-			       O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+			       O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
 			if (fromfd < 0) {
 				I2ErrLog(eh, "FATAL: open(%s) failed: %M", 
 					 ping_ctx.opt.save_from_test);
-				exit(1);
-			}
-			if (ftruncate(fromfd, 0) < 0) {
-				I2ErrLog(eh, "FATAL: ftruncate() failed: %M");
 				exit(1);
 			}
 		} else {
@@ -971,45 +1027,19 @@ main(
 		}
 	}
 
-	if(ping_ctx.opt.to){
-		u_int32_t num_rec;
-		u_int8_t     typeP[4]; 
+	if(ping_ctx.opt.to)
+		owp_fetch_sid(ping_ctx.opt.save_to_test, conndata.cntrl, tosid,
+			  &state, local_str, remote);
+	
 
-	/* Fetch Info + WriteDataheader + Fetch Records. */
-	/* Ask for complete session - for now. */
-		if (OWPFetchSessionInfo(conndata.cntrl, 0, 
-					(u_int32_t)0xFFFFFFFF, tosid, &num_rec,
-					typeP)
-		    == OWPErrFATAL) {
-			I2ErrLog(eh, "Failed to fetch remote records");
-			goto next_test;
-		}
-
-		OWPWriteDataHeader(conndata.cntrl, tofd, typeP);
-
-		if (OWPFetchRecords(conndata.cntrl,tofd,num_rec)==OWPErrFATAL){
-			I2ErrLog(eh, "Failed to fetch remote records");
-			goto next_test;
-		}
-		ret = do_records_all(tofd, &state, local_str, remote);
-		if(ret < 0) {
-			I2ErrLog(eh, "FATAL: do_records_all(to session)");
-		}
-
-		if (close(tofd) < 0) {
-			I2ErrLog(eh, "WARNING: close() failed: %M");
-		}
-	}
-
- next_test:
 	if(ping_ctx.opt.from){
-		ret = do_records_all(fromfd, &state, remote, local_str);
-		if (ret < 0) {
+		if (do_records_all(fromfd, &state, remote, local_str) < 0) {
 			I2ErrLog(eh,"FATAL: do_records_all(from session)");
 		}
 		if (close(fromfd) < 0) {
 			I2ErrLog(eh, "WARNING: close() failed: %M");
 		}
 	}
+
 	exit(0);
 }

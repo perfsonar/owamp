@@ -58,7 +58,7 @@ typedef	struct {
 
 
 
-		float		rate;             /* -r */
+		float		mean_wait;        /* -i  (seconds) */
 		u_int32_t	padding;          /* -s */
 
 #if 0
