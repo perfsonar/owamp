@@ -535,17 +535,23 @@ owp_get_description(OWPContext ctx,
 
 /*
 ** Read the config file <class2limits> and save the data in the hash
-** for future lookups. 
+** for future lookups. This function should be called before 
+** owp_read_ip2class() and owp_read_passwd_file() since they verify 
+** validity of class names they see by looking them up in the class2limits 
+** hash.
 
 ** Description of the hash: key = class name [ASCII string]
 ** value = address of the owp_tree struct decribing the corresponding
 ** node.
 */
 int
-owp_read_class2limits2(OWPContext ctx, const char *class2limits, I2table hash)
+owp_read_class2limits2(OWPContext ctx, 
+		       const char *class2limits, 
+		       policy_data* policy)
 {
 	FILE* fp;
 	int type, t;
+	I2table hash = policy->class2limits;
 	unsigned int line_num = 1;
 	I2table class2node_hash;
 	owp_tree_node_ptr last, cur_node, root = NULL;
