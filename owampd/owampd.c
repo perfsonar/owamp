@@ -45,103 +45,26 @@ static I2ErrHandle	errhand;
 static I2table		fdtable=NULL;
 static I2table		pidtable=NULL;
 
-static I2OptDescRec	set_options[] = {
-	/*
-	 * Basic application args.
-	 */
-	{"verbose",0,NULL,"blah, blah, blah..."},
-	{"help",0,NULL,"Print this message and exit"},
-
-	/*
-	 * policy config file options.
-	 */
-	{"confdir",1,OWP_CONFDIR,"Configuration directory"},
-	{"ip2class",1,"ip2class.conf","ip2class config filename"},
-	{"class2limits",1,"class2limits.conf","class2limits config filename"},
-	{"passwd",1,"passwd.conf","passwd config filename"},
-
-	/*
-	 * configuration options - should probably add a conf file eventually.
-	 */
-	{"datadir",1,OWP_DATADIR,"Data directory"},
-
-	{"authmode",1,NULL,
-	"Default supported authmodes:[E]ncrypted,[A]uthenticated,[O]pen"},
-	{"nodename",1,NULL,"Local nodename to bind to: addr:port"},
-	{"tmout",1,OWD_TMOUT,
-		"Max time to wait for control connection reads (sec)"},
-	{"lossThreshold",1,"120",
-		"elapsed time when recv declares packet lost (sec)"},
-#ifndef	NDEBUG
-	{"childwait",0,NULL,
-		"Debugging: busy-wait children after fork to allow attachment"},
-#endif
-	{NULL,0,NULL,NULL}
-};
-
-static	I2Option	get_options[] = {
-	{
-	"verbose", I2CvtToBoolean, &opts.verbose,
-	sizeof(opts.verbose)
-	},
-	{
-	"help", I2CvtToBoolean, &opts.help,
-	sizeof(opts.help)
-	},
-	{
-	"confdir", I2CvtToString, &opts.confdir,
-	sizeof(opts.confdir)
-	},
-	{
-	"ip2class", I2CvtToString, &opts.ip2class,
-	sizeof(opts.ip2class)
-	},
-	{
-	"class2limits", I2CvtToString, &opts.class2limits,
-	sizeof(opts.class2limits)
-	},
-	{
-	"passwd", I2CvtToString, &opts.passwd,
-	sizeof(opts.passwd)
-	},
-	{
-	"datadir", I2CvtToString, &opts.datadir,
-	sizeof(opts.datadir)
-	},
-	{
-	"authmode", I2CvtToString, &opts.authmode,
-	sizeof(opts.authmode)
-	},
-	{
-	"nodename", I2CvtToString, &opts.nodename,
-	sizeof(opts.nodename)
-	},
-	{
-	"tmout", I2CvtToInt, &opts.tmout,
-	sizeof(opts.tmout)
-	},
-	{
-	"lossThreshold", I2CvtToInt, &opts.lossThreshold,
-	sizeof(opts.lossThreshold)
-	},
-#ifndef	NDEBUG
-	{
-	"childwait", I2CvtToBoolean, &opts.childwait,
-	sizeof(opts.childwait)
-	},
-#endif
-	{NULL, NULL, NULL,0}
-};
-
 static void
-usage(int od, const char *progname, const char *msg)
+usage(const char *progname, const char *msg)
 {
-	if(msg) fprintf(stderr, "%s: %s\n", progname, msg);
-
 	fprintf(stderr, "Usage: %s [options]\n", progname);
 	fprintf(stderr, "\nWhere \"options\" are:\n\n");
-	I2PrintOptionHelp(od,stderr);
 
+		fprintf(stderr, "%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n",
+			"   -v                verbose output",
+			"   -k                Print this message and exit",
+			"   -C confidr        Configuration directory",
+			"   -c ip2class       ipclass config filename",
+			"   -l class2limits   class2limits config filename",
+			"   -c passwd         passwd config filename",
+			"   -d datadir        Data directory",
+			"   -a authmode       Default supported authmodes:[E]ncrypted,[A]uthenticated,[O]pen",
+		        "   -n nodename       Local nodename to bind to: addr:port",
+			"   -t tmout          Max time to wait for control connection reads (sec)",
+			"   -L timeout        Maximum time to wait for a packet before declaring it lost",
+			"   -w                Debugging: busy-wait children after fork to allow attachment"
+			);
 	return;
 }
 
@@ -585,7 +508,6 @@ main(int argc, char *argv[])
 {
 	char			*progname;
 	I2LogImmediateAttr	ia;
-	int			od;
 	OWPErrSeverity		out = OWPErrFATAL;
 	owp_policy_data		*policy;
 	char			ip2class[MAXPATHLEN],
@@ -607,6 +529,13 @@ main(int argc, char *argv[])
 	FILE                    *pid_fp, *info_fp;
 	OWPTimeStamp	        currtime;	
 	OWPnum64	        cnum;
+	int ch;
+
+#ifndef NDEBUG
+	char *optstring = "vwhC:c:l:p:d:a:n:t:L:";
+#else	
+	char *optstring = "vhC:c:l:p:d:a:n:t:L:";
+#endif
 
 	OWPInitializeConfigRec	cfg  = {
 	/*	tm_out			*/	{0, 
@@ -633,35 +562,115 @@ main(int argc, char *argv[])
 		exit(1);
 	}
 
-	od = I2OpenOptionTbl(errhand);
-
-	if(I2ParseOptionTable(od, &argc, argv, set_options) < 0){
-		I2ErrLog(errhand, "Could not parse command line options");
-		exit(1);
-	}
-
-	/*
-	 * load options into opts
-	 */
-	if(I2GetOptions(od, get_options) < 0){
-		I2ErrLog(errhand, "Could not retrieve command line options");
-		exit(1);
-	}
-
-	/*
-	 * Check options.
-	 */
-	if(opts.help){
-		usage(od,progname,NULL);
-		exit(0);
-	}
-
 	/*
 	 * Initialize the context. (Set the error handler to the app defined
 	 * one.)
 	 */
 	cfg.eh = errhand;
 	ctx = OWPContextInitialize(&cfg);
+
+	/* Set up options defaults */
+	opts.verbose = False;
+	opts.ip2class = "ip2class.conf";
+	opts.class2limits = "class2limits.conf";
+	opts.passwd = "passwd.conf";
+	opts.confdir = opts.datadir = "";
+	opts.authmode = NULL; 
+
+	opts.nodename = NULL;
+
+	opts.lossThreshold = 10;
+	opts.tmout = 10;
+
+	while ((ch = getopt(argc, argv, optstring)) != -1)
+             switch (ch) {
+		     /* Connection options. */
+             case 'v':
+		     opts.verbose = True;
+                     break;
+             case 'C':
+		     if (!(opts.confdir = strdup(optarg))) {
+			     I2ErrLog(cfg.eh,"malloc: %M");
+			     exit(1);
+		     }
+                     break;
+             case 'c':
+		     if (!(opts.ip2class = strdup(optarg))) {
+			     I2ErrLog(cfg.eh,"malloc: %M");
+			     exit(1);
+		     }
+                     break;
+             case 'l':
+		     if (!(opts.class2limits = strdup(optarg))) {
+			     I2ErrLog(cfg.eh,"malloc: %M");
+			     exit(1);
+		     }
+                     break;
+             case 'p':
+		     if (!(opts.passwd = strdup(optarg))) {
+			     I2ErrLog(cfg.eh,"malloc: %M");
+			     exit(1);
+		     }
+                     break;
+             case 'd':
+		     if (!(opts.datadir = strdup(optarg))) {
+			     I2ErrLog(cfg.eh,"malloc: %M");
+			     exit(1);
+		     }
+                     break;
+             case 'a':
+		     if (!(opts.authmode = strdup(optarg))) {
+			     I2ErrLog(cfg.eh,"malloc: %M");
+			     exit(1);
+		     }
+                     break;
+             case 'n':
+		     if (!(opts.nodename = strdup(optarg))) {
+			     I2ErrLog(cfg.eh,"malloc: %M");
+			     exit(1);
+		     }
+                     break;
+             case 't':
+		     {
+			     char                    *endptr = NULL;
+			     opts.tmout = strtoul(optarg, &endptr, 10);
+			     if (*endptr != '\0') {
+				     usage(progname, 
+				   "Invalid value. Positive integer expected");
+				     exit(1);
+			     }
+		     }
+                     break;
+             case 'L':
+		     {
+			     char                    *endptr = NULL;
+			     opts.lossThreshold = strtoul(optarg, &endptr, 10);
+			     if (*endptr != '\0') {
+				     usage(progname, 
+				   "Invalid value. Positive integer expected");
+				     exit(1);
+			     }
+		     }
+                     break;
+#ifndef NDEBUG
+             case 'w':
+		     opts.childwait = True;
+                     break;
+#endif
+             case 'h':
+	     case '?':
+	     default:
+		     usage(progname, "");
+		     exit(0);
+		     /* UNREACHED */ 
+	     }
+	argc -= optind;
+	argv += optind;
+
+	if (argc) {
+		     usage(progname, "");
+		     exit(1);
+	}
 
 	/*  Get exclusive lock for pid file. */
 	strcpy(pid_file, opts.confdir);
@@ -778,7 +787,7 @@ main(int argc, char *argv[])
 				default:
 				I2ErrLogP(errhand,EINVAL,
 						"Invalid -authmode %c",*s);
-				usage(od,progname,NULL);
+				usage(progname,NULL);
 				exit(1);
 			}
 			s++;
