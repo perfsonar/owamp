@@ -40,6 +40,7 @@
  * there is not more than one powstream process writing there.
  */
 #define	POWLOCK	".powlock"
+#define	POWTMPFILEFMT	"pow.XXXXXX"
 
 /*
  * Application "context" structure

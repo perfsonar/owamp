@@ -272,6 +272,7 @@ SetupSession(
 	OWPTimeStamp	currtime;
 	OWPnum64	cnum;
 	unsigned int	stime;
+	int		fd;
 
 	if(p->numPackets)
 		return 0;
@@ -333,10 +334,13 @@ SetupSession(
 
 	cnum = OWPTimeStamp2num64(p->sessionStart);
 
-	sprintf(&p->fname[file_offset],OWP_TSTAMPFMT,cnum);
-	strcpy(&p->fname[ext_offset],OWP_INCOMPLETE_EXT);
-	if(!(p->fp = fopen(p->fname,"wb+"))){
-		I2ErrLog(eh,"fopen(%s):%M",p->fname);
+	strcpy(&p->fname[file_offset],POWTMPFILEFMT);
+	if((fd = mkstemp(p->fname)) < 0){
+		I2ErrLog(eh,"mkstemp(%s):%M",p->fname);
+		return 0;
+	}
+	if(!(p->fp = fdopen(fd,"wb+"))){
+		I2ErrLog(eh,"fdopen(%s:(%d)):%M",p->fname,fd);
 		return 0;
 	}
 	if(unlink(p->fname) != 0){

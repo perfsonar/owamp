@@ -58,6 +58,7 @@
 require 5.005;
 use strict;
 use POSIX;
+use FindBin;
 package OWP::Conf;
 
 $Conf::REVISION = '$Id$';
@@ -87,6 +88,7 @@ my %DEFS = (
 	OWAMPDVARPATH		=>	'/var/run',
 	OWAMPDPIDFILE		=>	'owampd.pid',
 	OWAMPDINFOFILE		=>	'owampd.info',
+	OWPBINDIR		=>	"$FindBin::Bin",
 	CONFDIR			=>	"$Conf::CONFPATH/",
 );
 
@@ -369,10 +371,10 @@ sub init {
 		$file = $self->resolve_home($ENV{$Conf::DEVCONFENV});
 	}
 	if(defined($file) and -e $file){
-		$self->{'NODECONF'} = $file
+		$self->{'DEVNODECONF'} = $file
 	}
-	$self->load_file($self->{'NODECONF'},$nodename)
-		if defined($self->{'NODECONF'});
+	$self->load_file($self->{'DEVNODECONF'},$nodename)
+		if defined($self->{'DEVNODECONF'});
 
 #
 #	args passed in as initializers over-ride everything else.
@@ -465,4 +467,21 @@ sub dump{
 
 	return $self->dump_hash($self,"");
 }
+
+#
+# This is a convienence routine that calls the get_val, but dies with
+# an error message if the value isn't retrievable.
+#
+sub must_get_val{
+	my($self,%args)	= @_;
+	my($rtn,$fname,$line);
+
+	return $rtn if($rtn = $self->get_val(%args));
+
+	my($emsg) = "";
+	$emsg.="$_=>$args{$_}, " for (keys %args);
+	($rtn,$fname,$line) = caller;
+	die "Conf::must_get_val($emsg) undefined, called from $fname\:$line\n";
+}
+	
 1;
