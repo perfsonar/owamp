@@ -64,7 +64,7 @@ OWPServerReadRequest(OWPControl cntrl, char *buf)
 		break;
 	}
 
-	if (_OWPReceiveBlocks(cntrl, buf, more_blocks) < 0)
+	if (_OWPReceiveBlocks(cntrl, buf + 16, more_blocks) < 0)
 		return -1;	
 
 	return request_type;
