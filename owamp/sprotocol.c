@@ -9,7 +9,7 @@
 *									*
 ************************************************************************/
 /*
-**	File:		cprotocol.c
+**	File:		sprotocol.c
 **
 **	Author:		Jeff W. Boote
 **			Anatoly Karp
@@ -144,6 +144,44 @@ _OWPServerOK(OWPControl cntrl, u_int8_t code)
 	_OWPSendBlocks(cntrl, buf, 2);
 }
 
+/*
+** Control connection states - server side.
+*/
+#define OWP_STATE_IDLE   0
+#define OWP_STATE_ACTIVE 1
+
+/*
+** The next four functions process messages from client
+** during a Control session according to their type. 
+** They all assume the the first (16-byte) block of the 
+** request has been read and saved in <msg>. Subsequent calls to 
+** _OWPReceiveBlocks will start from the second block of the message.
+*/
+
+void
+OWPServerProcessTestRequest(OWPControl cntrl, char *msg)
+{
+	
+}
+ 
+void
+OWPServerProcessTestStart(OWPControl cntrl, char *msg)
+{
+	
+}
+
+void
+OWPServerProcessTestStop(OWPControl cntrl, char *msg)
+{
+	
+}
+
+void
+OWPServerProcessSessionRetrieve(OWPControl cntrl, char *msg)
+{
+	
+}
+
 #define OWP_CTRL_REQUEST_SESSION 1
 #define OWP_CTRL_START_SESSION 2
 #define OWP_CTRL_STOP_SESSION 3
@@ -168,15 +206,22 @@ OWPServerControlMain(OWPControl cntrl, OWPErrSeverity *err_ret)
 
 	switch (type) {
 	case OWP_CTRL_REQUEST_SESSION:
+		OWPServerProcessTestRequest(cntrl, msg);
 		break;
 	case OWP_CTRL_START_SESSION:
+		OWPServerProcessTestStart(cntrl, msg);
 		break;
 	case OWP_CTRL_STOP_SESSION:
+		OWPServerProcessTestStop(cntrl, msg);
 		break;
 	case OWP_CTRL_RETRIEVE_SESSION:
+		OWPServerProcessSessionRetrieve(cntrl, msg);
 		break;
-
+	default:
+		return False; /* bad message type */
+		break;
 	}
 	
 	return True;
 }
+
