@@ -118,7 +118,7 @@ typedef struct OWPDLimRec{
 } OWPDLimRec;
 
 /* parent		cname		*/
-/* bandwidth		uint (bytes/sec)*/
+/* bandwidth		uint (bits/sec)*/
 /* disk			uint (bytes)	*/
 /* delete_on_fetch	on/(off)	*/
 /* allow_open_mode	(on)/off	*/

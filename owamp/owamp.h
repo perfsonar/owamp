@@ -1019,7 +1019,7 @@ OWPTestPacketRate(
 		);
 
 /*
- * Returns bytes/second: 0.0 on error.
+ * Returns bits/second: 0.0 on error.
  */
 extern double
 OWPTestPacketBandwidth(

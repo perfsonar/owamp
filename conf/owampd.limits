@@ -71,7 +71,7 @@
 #			key		value-type			def
 #			--------------------------------------------------------
 #			parent		previously defined $classname	null
-#			bandwidth	integer bytes/s			0
+#			bandwidth	integer bits/s			0
 #			disk		integer bytes			0
 #			delete_on_fetch	on/off				off
 #			allow_open_mode	on/off				on

@@ -871,7 +871,7 @@ OWPTestPacketBandwidth(
 	}
 
 	return OWPTestPacketRate(ctx,tspec) *
-			OWPTestPacketSize(af,mode,tspec->packet_size_padding);
+		OWPTestPacketSize(af,mode,tspec->packet_size_padding) * 8;
 }
 
 /*

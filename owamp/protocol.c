@@ -1727,12 +1727,10 @@ _OWPWriteStopSessions(
 #endif
 	memset(&buf[16],0,16);	/* Zero padding */
 
-	n = _OWPSendBlocks(cntrl,buf,2);
-	if((n < 0) && *retn_on_intr && (errno == EINTR)){
+	if(_OWPSendBlocksIntr(cntrl,buf,2,retn_on_intr) != 2){
 		return OWPErrFATAL;
 	}
-	if(n != 2)
-		return OWPErrFATAL;
+
 	return OWPErrOK;
 }
 

@@ -1177,9 +1177,12 @@ OWPProcessFetchSession(
 	 * Read the TestReq from the file and write it to the socket.
 	 * (after this loop - fp is positioned at hdr_off.
 	 */
-	while((tr_size > 0) &&
-			(fread(buf,1,_OWP_RIJNDAEL_BLOCK_SIZE,fp) ==
-			 			_OWP_RIJNDAEL_BLOCK_SIZE)){
+	while(tr_size > 0){
+		if(fread(buf,1,_OWP_RIJNDAEL_BLOCK_SIZE,fp) !=
+			 			_OWP_RIJNDAEL_BLOCK_SIZE){
+			_OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
+			return _OWPFailControlSession(cntrl,OWPErrFATAL);
+		}
 		if(_OWPSendBlocksIntr(cntrl,buf,1,intr) != 1){
 			_OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
 			return _OWPFailControlSession(cntrl,OWPErrFATAL);
