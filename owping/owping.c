@@ -363,7 +363,7 @@ main(
 	}
 
 	/*
-	 * TODO test_spec and verify options.
+	 * Start test one second from now.
 	 */
 	if(!OWPGetTimeOfDay(&start_time_rec)){
 		I2ErrLogP(eh,errno,"Unable to get current time:%M");
@@ -374,9 +374,20 @@ main(
 	test_spec.test_type = OWPTestPoisson;
 	test_spec.start_time = start_time_rec;
 	test_spec.npackets = ping_ctx.opt.numPackets;
+
+	/*
+	 * TODO: Figure out typeP...
+	 */
 	test_spec.typeP = 0;
 	test_spec.packet_size_padding = ping_ctx.opt.padding;
-	test_spec.InvLambda = (double)ping_ctx.opt.rate * 1000000.0;
+	/*
+	 * InvLambda is mean in usec so, to convert from rate_sec:
+	 * rate_usec = rate_sec/1000000 and because
+	 * InvLambda = 1/rate_usec then
+	 * InvLambda = 1/rate_sec/1000000.0 or
+	 * InvLambda = 1000000.0/rate_sec
+	 */
+	test_spec.InvLambda = (double)1000000.0 / ping_ctx.opt.rate;
 
 	/*
 	 * Initialize library with configuration functions.

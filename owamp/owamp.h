@@ -88,6 +88,7 @@ typedef enum {
 
 typedef enum {
 	OWPErrPOLICY,
+	OWPErrINVALID,
 	OWPErrUNKNOWN
 } OWPErrType;
 
@@ -230,6 +231,7 @@ typedef OWPBoolean (*OWPCheckTestPolicyFunc)(
 	void		*app_data,
 	OWPSessionMode	mode,
 	const char	*kid,
+	OWPBoolean	local_sender,
 	struct sockaddr	*local_sa_addr,
 	struct sockaddr	*remote_sa_addr,
 	OWPTestSpec	*test_spec,
@@ -536,6 +538,9 @@ OWPGetContext(OWPControl cntrl);
 /* 
 ** This function does the first policy check on the server. 
 */
+/*
+ * TODO: Tolya - is this supposed to be here? Is this something old?
+ */
 extern OWPBoolean
 OWPServerCheckAddrPolicy(OWPContext ctx, 
 			 struct sockaddr *addr, 

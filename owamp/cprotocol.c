@@ -140,3 +140,28 @@ _OWPClientRequestModeReadResponse(
 
 	return 0;
 }
+
+/*
+ * Function:	_OWPClientRequestTestReadResponse
+ *
+ * Description:	
+ * 		Called to requst a specific test. Returns accept value.
+ *
+ *
+ * Returns:	
+ */
+int
+_OWPClientRequestTestReadResponse(
+	OWPControl	cntrl,
+	OWPAddr		sender,
+	OWPBoolean	server_conf_sender,
+	OWPAddr		receiver,
+	OWPBoolean	server_conf_receiver,
+	OWPTestSpec	*test_spec,
+	OWPSID		sid,		/* ret iff conf_receiver else set */
+	OWPErrSeverity	*err_ret
+)
+{
+
+	return 0;
+}

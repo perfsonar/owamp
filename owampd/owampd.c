@@ -273,7 +273,7 @@ ServerMainControl(OWPControl cntrl, OWPErrSeverity* out)
 		   CNTRLNEXT;
 		   }
 		*/
-		if (_OWPCallCheckTestPolicy(cntrl, 0, NULL, NULL, NULL, 
+		if (_OWPCallCheckTestPolicy(cntrl, NULL, False, NULL, NULL, 
 					    NULL, &out) == False){
 					  
 			/*

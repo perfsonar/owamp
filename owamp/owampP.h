@@ -85,12 +85,29 @@ struct OWPAddrRec{
 	OWPBoolean	ai_free;	/* free ai list directly...*/
 	struct addrinfo	*ai;
 
-	OWPBoolean	saddr_set;
-	struct sockaddr	saddr;
+	struct sockaddr	*saddr;
+	socklen_t	saddrlen;
 
 	OWPBoolean	fd_user;
 	int		fd;
 };
+
+/*
+ * Control state constants.
+ */
+/* initial */
+#define	_OWPStateInitial	(0x00)
+/* during negotiation */
+#define	_OWPStateSetup		(0x01)
+/* after negotiation ready for requests */
+#define	_OWPStateRequest	(0x02)
+/* test sessions are active  */
+#define	_OWPStateTest		(0x04)
+
+#define	_OWPStateIsInitial(c)	(!(c)->state)
+#define	_OWPStateIsSetup(c)	(!(_OWPStateSetup ^ (c)->state))
+#define	_OWPStateIsRequest(c)	(!(_OWPStateRequest ^ (c)->state))
+#define	_OWPStateIsTest(c)	(!(_OWPStateTest ^ (c)->state))
 
 struct OWPControlRec{
 	/*
@@ -127,8 +144,10 @@ struct OWPControlRec{
 };
 
 struct OWPTestSessionRec{
-	struct sockaddr			send_addr;
-	struct sockaddr			recv_addr;
+	OWPControl			cntrl;
+	OWPSID				sid;
+	OWPAddr				sender;
+	OWPAddr				receiver;
 	struct OWPTestSessionRec	*next;
 };
 
@@ -240,5 +259,47 @@ _OWPClientRequestModeReadResponse(
 
 extern 
 _OWPServerOK(OWPControl cntrl, u_int8_t code);
+
+/*
+ * context.c
+ */
+extern OWPBoolean
+_OWPCallGetAESKey(
+	OWPContext	ctx,		/* library context	*/
+	const char	*kid,		/* identifies key	*/
+	OWPByte		*key_ret,	/* key - return		*/
+	OWPErrSeverity	*err_ret	/* error - return	*/
+);
+
+extern OWPBoolean
+_OWPCallCheckAddrPolicy(
+	OWPContext	ctx,		/* library context	*/
+	struct sockaddr	*local_sa_addr,	/* local addr or NULL	*/
+	struct sockaddr	*remote_sa_addr,/* remote addr		*/
+	OWPErrSeverity	*err_ret	/* error - return	*/
+);
+
+extern OWPBoolean
+_OWPCallCheckControlPolicy(
+	OWPContext	ctx,		/* library context		*/
+	OWPSessionMode	mode,		/* requested mode       	*/
+	const char	*kid,		/* key identity			*/
+	struct sockaddr	*local_sa_addr,	/* local addr or NULL		*/
+	struct sockaddr	*remote_sa_addr,/* remote addr			*/
+	OWPErrSeverity	*err_ret	/* error - return		*/
+);
+
+extern OWPBoolean
+_OWPCallCheckTestPolicy(
+	OWPControl	cntrl,		/* control handle		*/
+	OWPBoolean	local_sender,	/* Is local send or recv	*/
+	struct sockaddr	*local,		/* local endpoint		*/
+	struct sockaddr	*remote,	/* remote endpoint		*/
+	OWPTestSpec	*test_spec,	/* test requested		*/
+	OWPErrSeverity	*err_ret	/* error - return		*/
+);
+
+extern OWPContext
+OWPGetContext(OWPControl cntrl);
 
 #endif	/* OWAMPP_H */

@@ -20,6 +20,7 @@
 */
 #include <unistd.h>
 #include <fcntl.h>
+#include <netinet/in.h>
 #include <string.h>
 
 #include "./owampP.h"
@@ -94,7 +95,8 @@ AllocAddr(
 	addr->ai_free = 0;
 	addr->ai = NULL;
 
-	addr->saddr_set = 0;
+	addr->saddr = NULL;
+	addr->saddrlen = 0;
 
 	addr->fd_user = 0;
 	addr->fd= -1;
@@ -130,6 +132,7 @@ OWPAddrFree(
 			}
 		}
 		addr->ai = NULL;
+		addr->saddr = NULL;
 	}
 
 	if((addr->fd >= 0) && !addr->fd_user){
@@ -168,8 +171,8 @@ OWPAddrByNode(
 	/*
 	 * Pull off port if specified. If syntax doesn't match URL like
 	 * node:port - ipv6( [node]:port) - then just assume whole string
-	 * is nodename, and let getaddrinfo report problems later.
-	 * (This service syntax is specified by rfc2732.)
+	 * is nodename and let getaddrinfo report problems later.
+	 * (This service syntax is specified by rfc2396 and rfc2732.)
 	 */
 
 	/*
@@ -304,49 +307,6 @@ OWPAddrBySockFD(
 	return addr;
 }
 
-/*
- * This function just ensure's that there is a valid addr_info pointer in
- * the addr OWPAddr pointer.
- * Returns OWPErrOK on success.
- */
-static OWPErrSeverity
-_OWPAddrInfo(
-	OWPContext	ctx,
-	OWPAddr		addr
-)
-{
-	struct addrinfo	hints, *airet;
-	const char	*node=NULL;
-
-	/*
-	 * Don't need addr_info if we already have a fd.
-	 */
-	if(addr->fd > -1)
-		return OWPErrOK;
-
-	if(addr->ai)
-		return OWPErrOK;
-	/*
-	 * Call getaddrinfo to find useful addresses
-	 */
-
-	if(addr->node_set)
-		node = addr->node;
-
-	memset(&hints,0,sizeof(struct addrinfo));
-	hints.ai_family = AF_UNSPEC;
-	hints.ai_socktype = SOCK_STREAM;
-
-	if((getaddrinfo(node,OWP_CONTROL_SERVICE_NAME,&hints,&airet)!=0)
-								|| !airet){
-		OWPErrorLine(ctx,OWPLine,OWPErrFATAL,errno,":getaddrinfo()");
-		return OWPErrFATAL;
-	}
-
-	addr->ai = airet;
-	return OWPErrOK;
-}
-
 static OWPBoolean
 _OWPClientBind(
 	OWPControl	cntrl,
@@ -366,10 +326,36 @@ _OWPClientBind(
 		return False;
 	}
 
-	if(!local_addr->ai &&
-		(_OWPAddrInfo(cntrl->ctx,local_addr) < OWPErrWARNING)){
-		*err_ret = OWPErrFATAL;
-		return False;
+	if(!local_addr->ai){
+		/*
+		 * Call getaddrinfo to find useful addresses
+		 */
+		struct addrinfo	hints, *airet;
+		const char	*port=NULL;
+
+		if(!local_addr->node_set){
+			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,
+				OWPErrUNKNOWN,"Invalid localaddr specified");
+			*err_ret = OWPErrFATAL;
+			return False;
+		}
+
+		if(local_addr->port_set)
+			port = local_addr->port;
+
+		memset(&hints,0,sizeof(struct addrinfo));
+		hints.ai_family = AF_UNSPEC;
+		hints.ai_socktype = SOCK_STREAM;
+
+		if((getaddrinfo(local_addr->node,port,&hints,&airet)!=0) ||
+									!airet){
+			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,errno,
+					":getaddrinfo()");
+			*err_ret = OWPErrFATAL;
+			return False;
+		}
+
+		local_addr->ai = airet;
 	}
 
 	for(ai=local_addr->ai;ai;ai = ai->ai_next){
@@ -377,10 +363,8 @@ _OWPClientBind(
 			continue;
 		if(ai->ai_socktype != remote_addrinfo->ai_socktype)
 			continue;
-		if(ai->ai_protocol != remote_addrinfo->ai_protocol)
-			continue;
 		if(!_OWPCallCheckAddrPolicy(cntrl->ctx,ai->ai_addr,
-				&remote_addrinfo->ai_addr,&local_err)){
+				remote_addrinfo->ai_addr,&local_err)){
 			if(local_err != OWPErrOK){
 				*err_ret = local_err;
 				return False;
@@ -389,8 +373,8 @@ _OWPClientBind(
 		}
 
 		if(bind(fd,ai->ai_addr,ai->ai_addrlen) == 0){
-			local_addr->saddr = *ai->ai_addr;
-			local_addr->saddr_set = True;
+			local_addr->saddr = ai->ai_addr;
+			local_addr->saddrlen = ai->ai_addrlen;
 			return True;
 		}
 
@@ -493,7 +477,7 @@ _OWPClientConnect(
 			 * Verify address is ok to talk to in policy.
 			 */
 			if(!_OWPCallCheckAddrPolicy(cntrl->ctx,NULL,
-						&server_addr->saddr,&addr_ok)){
+						server_addr->saddr,&addr_ok)){
 				if(addr_ok != OWPErrOK){
 					goto error;
 				}
@@ -509,8 +493,8 @@ _OWPClientConnect(
 		 */
 		if(_OWPConnect(fd,ai->ai_addr,ai->ai_addrlen,&cntrl->ctx->cfg.tm_out) == 0){
 			server_addr->fd = fd;
-			server_addr->saddr = *ai->ai_addr;
-			server_addr->saddr_set = True;
+			server_addr->saddr = ai->ai_addr;
+			server_addr->saddrlen = ai->ai_addrlen;
 			cntrl->remote_addr = server_addr;
 			cntrl->local_addr = local_addr;
 			cntrl->sockfd = fd;
@@ -661,7 +645,8 @@ OWPControlOpen(
 	if(_OWPClientConnect(cntrl,local_addr,server_addr,err_ret) != 0)
 		goto error;
 
-	if(_OWPClientReadServerGreeting(cntrl,&mode_avail,challenge,err_ret) != 0)
+	if(_OWPClientReadServerGreeting(cntrl,&mode_avail,challenge,err_ret)
+			!= 0)
 		goto error;
 
 	/*
@@ -695,20 +680,20 @@ OWPControlOpen(
 	 */
 	if((mode_avail & OWP_MODE_ENCRYPTED) &&
 			_OWPCallCheckControlPolicy(ctx,OWP_MODE_ENCRYPTED,
-						cntrl->kid,&local_addr->saddr,
-						&server_addr->saddr,err_ret)){
+				cntrl->kid,(local_addr)?local_addr->saddr:NULL,
+				server_addr->saddr,err_ret)){
 		cntrl->mode = OWP_MODE_ENCRYPTED;
 	}
 	else if((mode_avail & OWP_MODE_AUTHENTICATED) &&
 			_OWPCallCheckControlPolicy(ctx,OWP_MODE_AUTHENTICATED,
-						cntrl->kid,&local_addr->saddr,
-						&server_addr->saddr,err_ret)){
+				cntrl->kid,(local_addr)?local_addr->saddr:NULL,
+				server_addr->saddr,err_ret)){
 		cntrl->mode = OWP_MODE_AUTHENTICATED;
 	}
 	else if((mode_avail & OWP_MODE_OPEN) &&
 			_OWPCallCheckControlPolicy(ctx,OWP_MODE_OPEN,
-						NULL,&local_addr->saddr,
-						&server_addr->saddr,err_ret)){
+				NULL,(local_addr)?local_addr->saddr:NULL,
+				server_addr->saddr,err_ret)){
 		cntrl->mode = OWP_MODE_OPEN;
 	}
 	else{
@@ -746,6 +731,7 @@ OWPControlOpen(
 	if(_OWPClientRequestModeReadResponse(cntrl,token,err_ret) != 0)
 		goto error;
 
+	cntrl->state = _OWPStateRequest;
 	return cntrl;
 
 error:
@@ -756,6 +742,117 @@ error:
 		OWPAddrFree(server_addr);
 	OWPControlClose(cntrl);
 	return NULL;
+}
+
+static OWPBoolean
+SetEndAddrInfo(
+	OWPControl	cntrl,
+	OWPAddr		addr,
+	OWPErrSeverity	*err_ret
+)
+{
+	int		so_type;
+	socklen_t	so_typesize = sizeof(int);
+	OWPByte		sbuff[SOCK_MAXADDRLEN];
+	socklen_t	so_size = sizeof(sbuff);
+	struct sockaddr	*saddr=NULL;
+	struct addrinfo	*ai=NULL;
+	struct addrinfo	hints;
+	char		*port=NULL;
+
+	if(!addr->ai){
+		if(addr->fd > -1){
+
+			/*
+			 * Get an saddr to describe the fd...
+			 */
+			if(getsockname(addr->fd,(void*)&sbuff,&so_size) != 0){
+				OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,
+					errno,"getsockname():%s",
+					strerror(errno));
+				goto error;
+			}
+
+			if(! (saddr = malloc(so_size))){
+				OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,
+					errno,"malloc():%s",strerror(errno));
+				goto error;
+			}
+			memcpy((void*)saddr,(void*)sbuff,so_size);
+			
+			/*
+			 * Determine "type" of socket.
+			 */
+			so_size = sizeof(so_type);
+			if(getsockopt(addr->fd,SOL_SOCKET,SO_TYPE,
+					(void*)&so_type,&so_typesize) != 0){
+				OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,
+					errno,"getsockopt():%s",
+					strerror(errno));
+				goto error;
+			}
+
+			/*
+			 * create an addrinfo to describe this sockaddr
+			 */
+			if(! (ai = malloc(sizeof(struct addrinfo)))){
+				OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,
+					errno,"malloc():%s",strerror(errno));
+				goto error;
+			}
+
+			ai->ai_flags = 0;
+			ai->ai_family = saddr->sa_family;
+			ai->ai_socktype = so_type;
+			/*
+			 * all necessary info encapsalated by family/socktype,
+			 * so default proto to IPPROTO_IP(0).
+			 */
+			ai->ai_protocol = IPPROTO_IP;
+			ai->ai_addrlen = so_size;
+			ai->ai_canonname = NULL;
+			ai->ai_addr = saddr;
+			ai->ai_next = NULL;
+
+			/*
+			 * Set OWPAddr ai
+			 */
+			addr->ai = ai;
+			addr->ai_free = True;
+		}
+		else if(addr->node_set){
+			/*
+			 * Hey - do the normal thing, call getaddrinfo
+			 * to get an addrinfo, how novil!
+			 */
+			memset(&hints,0,sizeof(struct addrinfo));
+			hints.ai_family = AF_UNSPEC;
+			hints.ai_socktype = SOCK_DGRAM;
+
+			if(addr->port_set)
+				port = addr->port;
+			if((getaddrinfo(addr->node,port,&hints,&ai)!=0) || !ai){
+				OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,
+					errno,"getaddrinfo():%s",
+					strerror(errno));
+				goto error;
+			}
+			addr->ai = ai;
+
+		}else{
+			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+							"Invalid test address");
+			goto error;
+		}
+	}
+
+	return True;
+
+error:
+	if(saddr) free(saddr);
+	if(ai) free(ai);
+	*err_ret = OWPErrFATAL;
+	return FALSE;
 }
 
 OWPBoolean
@@ -770,6 +867,137 @@ OWPRequestTestSession(
 	OWPErrSeverity	*err_ret
 )
 {
+	struct addrinfo		*rai=NULL;
+	struct addrinfo		*sai=NULL;
+	void			*send_endpoint = NULL;
+	void			*recv_endpoint = NULL;
+
+	/*
+	 * Check cntrl state is appropriate for this call.
+	 */
+	if(!cntrl || !_OWPStateIsRequest(cntrl)){
+		*err_ret = OWPErrFATAL;
+		OWPError(cntrl->ctx,*err_ret,OWPErrINVALID,
+		"OWPRequestTestSession called with invalid cntrl record");
+		goto error;
+	}
+
+	/*
+	 * Get addrinfo for address spec's so we can choose between
+	 * the different address possiblities in the next step. (These
+	 * ai will be SOCK_DGRAM unless an fd was passed in directly, in
+	 * which case we trust the application knows what it is doing...)
+	 */
+	if(!SetEndAddrInfo(cntrl,receiver,err_ret) ||
+					!SetEndAddrInfo(cntrl,sender,err_ret))
+		goto error;
+	/*
+	 * Determine proper address specifications for send/recv.
+	 * Loop on ai values to find a match and use that.
+	 * (We prefer IPV6 over others, so loop over IPv6 addrs first...)
+	 * We only support AF_INET and AF_INET6.
+	 */
+#ifdef	AF_INET6
+	for(rai = receiver->ai;rai;rai = rai->ai_next){
+		if(rai->ai_family != AF_INET6) continue;
+		for(sai = sender->ai;sai;sai = sai->ai_next){
+			if(rai->ai_family != sai->ai_family) continue;
+			if(rai->ai_socktype != sai->ai_socktype) continue;
+			goto foundaddr;
+		}
+	}
+#endif
+	for(rai = receiver->ai;rai;rai = rai->ai_next){
+		if(rai->ai_family != AF_INET) continue;
+		for(sai = sender->ai;sai;sai = sai->ai_next){
+			if(rai->ai_family != sai->ai_family) continue;
+			if(rai->ai_socktype != sai->ai_socktype) continue;
+			goto foundaddr;
+		}
+	}
+
+foundaddr:
+	if(!rai || !sai){
+		*err_ret = OWPErrWARNING;
+		OWPError(cntrl->ctx,*err_ret,OWPErrINVALID,
+		"OWPRequestTestSession called with incompatible addresses");
+		goto error;
+	}
+	receiver->saddr = rai->ai_addr;
+	receiver->saddrlen = rai->ai_addrlen;
+	sender->saddr = sai->ai_addr;
+	sender->saddrlen = sai->ai_addrlen;
+
+	/*
+	 * Configure receiver first since the sid comes from there.
+	 */
+	if(server_conf_receiver){
+		/*
+		 * If send local, check local policy for sender
+		 */
+		if(!server_conf_sender){
+			if(!_OWPCallCheckTestPolicy(cntrl,True,
+					sender->saddr,receiver->saddr,
+					test_spec,err_ret)){
+				OWPError(cntrl->ctx,*err_ret,OWPErrPOLICY,
+					"Test not allowed");
+				goto error;
+			}
+			/* TODO: start send endpoint */
+		}
+		if(_OWPClientRequestTestReadResponse(cntrl,
+					sender,server_conf_sender,
+					receiver,server_conf_receiver,
+					test_spec,sid_ret,err_ret) != 0){
+			goto error;
+		}
+		if(!server_conf_sender){
+			/* TODO: start send endpoint_hook */
+		}
+	}
+	else{
+		/*
+		 * Local recv
+		 */
+
+		if(!_OWPCallCheckTestPolicy(cntrl,False,receiver->saddr,
+					sender->saddr,test_spec,err_ret)){
+			OWPError(cntrl->ctx,*err_ret,OWPErrPOLICY,
+					"Test not allowed");
+			goto error;
+		}
+		/* TODO: start recv endpoint */
+
+		if(server_conf_sender){
+			if(_OWPClientRequestTestReadResponse(cntrl,
+					sender,server_conf_sender,
+					receiver,server_conf_receiver,
+					test_spec,sid_ret,err_ret) != 0){
+				goto error;
+			}
+		}else{
+			if(!_OWPCallCheckTestPolicy(cntrl,True,sender->saddr,
+					receiver->saddr,test_spec,err_ret)){
+				OWPError(cntrl->ctx,*err_ret,OWPErrPOLICY,
+					"Test not allowed");
+				goto error;
+			}
+			/* TODO: start send endpoint */
+			/* TODO: start send endpoint_hook */
+		}
+		/* TODO: start recv endpoint_hook */
+
+	}
+
+error:
+	if(send_endpoint){
+		/* TODO: stop send endpoint */
+	}
+	if(recv_endpoint){
+		/* TODO: stop recv endpoint */
+	}
+	OWPAddrFree(receiver);
+	OWPAddrFree(sender);
 	return False;
 }
 
@@ -822,8 +1050,7 @@ OWPControlAccept(
 
 	cntrl->sockfd = connfd;
 	cntrl->server = True;
-	/* XXX TODO: set cntrl->state 
-	   cntrl->mode ???
+	/* XXX TODO:
 	   OWPAddr			remote_addr;
 	   OWPAddr			local_addr;
 	*/
@@ -921,5 +1148,7 @@ OWPControlAccept(
 	
 	/* Apparently everything is ok. Accept the Control session. */
 	_OWPServerOK(cntrl, CTRL_ACCEPT);
+
+	cntrl->state = _OWPStateRequest;
 	return cntrl;
 }

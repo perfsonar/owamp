@@ -178,7 +178,7 @@ AGAIN:
 
 DONE:
 	fcntl(fd,F_SETFL,flags);
-	return fd;
+	return 0;
 }
 
 /*
@@ -238,12 +238,12 @@ _OWPReceiveBlocks(OWPControl cntrl, char* buf, int num_blocks)
 	} else {
 		char msg[MAX_MSG];
 		n = _OWPReadn(cntrl->sockfd, msg, num_blocks*RIJNDAEL_BLOCK_SIZE);
-		_OWPDecryptBlocks(cntrl, msg, num_blocks, buf);
 		if (n < 0){
 			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,errno,
 				     "_OWPReadn failed");
 			return -1;
 		} 
+		_OWPDecryptBlocks(cntrl, msg, num_blocks, buf);
 		return 0;
 	}	
 }
