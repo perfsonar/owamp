@@ -411,6 +411,7 @@ sub get_val {
 	return undef if(!defined($attr));
 
 	$attr .= $type if(defined($type));
+	$attr =~ tr/a-z/A-Z/;
 
 	foreach (@subhash){
 		$val = ${$_}{$attr} if(defined(${$_}{$attr}));
