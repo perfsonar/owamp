@@ -885,7 +885,7 @@ foundaddr:
 		if(!server_conf_sender){
 			if(!_OWPCallEndpointInitHook(cntrl,
 					&tsession->send_end_data,receiver,
-					tsession->sid,err_ret))
+					tsession->sid,err_ret, 1, sender))
 				goto error;
 		}
 	}
@@ -939,12 +939,12 @@ foundaddr:
 				goto error;
 			if(!_OWPCallEndpointInitHook(cntrl,
 					&tsession->send_end_data,receiver,
-					tsession->sid,err_ret))
+					tsession->sid,err_ret, 0, sender))
 				goto error;
 		}
 		if(!_OWPCallEndpointInitHook(cntrl,
 					&tsession->recv_end_data,sender,
-					tsession->sid,err_ret))
+					tsession->sid,err_ret, 0, receiver))
 			goto error;
 	}
 

@@ -669,7 +669,8 @@ OWPProcessTestRequest(
 	memset(recvaddr,0,sizeof(struct sockaddr_storage));
 
 	if( (rc = _OWPReadTestRequest(cntrl,sendaddr,recvaddr,&addrlen,
-			&ipvn,&conf_sender,&conf_receiver,sid,&tspec)) < OWPErrOK){
+				      &ipvn,&conf_sender,&conf_receiver,sid,
+				      &tspec)) < OWPErrOK){
 		err_ret = (OWPErrSeverity)rc;
 		goto error;
 	}
@@ -752,24 +753,25 @@ OWPProcessTestRequest(
 		 * 	deny test
 		 */
 		if(!_OWPCallCheckTestPolicy(cntrl,True,sendaddr,
-						recvaddr,&tspec,&err_ret)){
+					    recvaddr, &tspec, &err_ret)){
 			if(err_ret < OWPErrOK)
 				goto error;
-			OWPError(cntrl->ctx,OWPErrINFO,OWPErrPOLICY,
-							"Test not allowed");
+			OWPError(cntrl->ctx, OWPErrINFO, OWPErrPOLICY,
+				 "Test not allowed");
 			acceptval = OWP_CNTRL_REJECT;
 			err_ret = OWPErrINFO;
 			goto error;
 		}
 		if(!_OWPCallEndpointInit(cntrl, &tsession->send_end_data,
-					True,tsession->sender,
-					&tsession->test_spec,
-					tsession->sid,-1,&err_ret)){
+					 True,tsession->sender,
+					 &tsession->test_spec,
+					 tsession->sid, -1, &err_ret)){
 			goto error;
 		}
 		if(!_OWPCallEndpointInitHook(cntrl,&tsession->send_end_data,
-						tsession->receiver,
-						tsession->sid,&err_ret)){
+					     tsession->receiver,
+					     tsession->sid, &err_ret, 1,
+					     tsession->sender)){
 			goto error;
 		}
 		port = *sendport;
@@ -777,16 +779,17 @@ OWPProcessTestRequest(
 
 	if(conf_receiver){
 		if(!_OWPCallEndpointInitHook(cntrl,
-					&tsession->recv_end_data,
-					tsession->sender,
-					tsession->sid,&err_ret)){
+					     &tsession->recv_end_data,
+					     tsession->sender,
+					     tsession->sid,&err_ret, 0,
+					     tsession->receiver)){
 			goto error;
 		}
 		port = *recvport;
 	}
 
 	if( (rc = _OWPWriteTestAccept(cntrl,OWP_CNTRL_ACCEPT,
-						port,tsession->sid)) < OWPErrOK){
+				      port,tsession->sid)) < OWPErrOK){
 		err_ret = (OWPErrSeverity)rc;
 		goto error;
 	}
@@ -1161,32 +1164,40 @@ OWPProcessRetrieveSession(
 	} else {                        /* range of sequence numbers */
 		u_int8_t buf[16];
 		u_int32_t numrec; 
+		u_int32_t hdr_len = 92; /* XXX - compute it properly !!! */
 
 		begin = ntohl(begin);
 		end = ntohl(end);
 
-		/* First pass - start at offset 4. */
-		if (lseek(fd, 4, SEEK_SET) < 0)
+		/* First pass - start at offset hdr_len. */
+		if (lseek(fd, hdr_len, SEEK_SET) < 0)
 			goto lseek_err;
 		
 		numrec = OWPProcessRecordsInRange(cntrl, fd, begin, end,
 						stat_buf.st_blksize,
-						stat_buf.st_size - 4, 
+						stat_buf.st_size - hdr_len, 
 						OWP_COUNT, &err);
 		if (err != OWPErrOK)
 			goto fail;
 
-		/* Ready to start the second pass through the file. */
-		if (lseek(fd, 0, SEEK_SET) < 0)
+		/* 
+		   Ready to start the second pass through the file. 
+		   Start right at the offset
+		*/
+		if (lseek(fd, hdr_len, SEEK_SET) < 0)
 			goto lseek_err;
 
 		/* Prepare first 16 bytes for transmission. */
 		*(u_int32_t *)buf = htonl(numrec);
+#ifdef CUT
 		if (I2Readn(fd, &buf[4], 4) == -1) {
 			OWPError(cntrl->ctx, OWPErrFATAL, errno, 
 				 "OWPSendDataFile: read failure");
 			return OWPErrFATAL;
 		}
+#endif
+		
+		memset(&buf[4], 0, 4); /* former typeP field */  
 		memset(&buf[8], 0, 8);
 
 		/* 

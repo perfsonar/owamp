@@ -311,7 +311,9 @@ typedef OWPErrSeverity (*OWPEndpointInitHookFunc)(
 	void		*app_data,
 	void		**end_data,
 	OWPAddr		remoteaddr,
-	OWPSID		sid
+	OWPSID		sid,
+	OWPBoolean      send,
+	OWPAddr         localaddr
 );
 
 /*
@@ -960,4 +962,26 @@ OWPCvtTimestamp2Timespec(
 extern OWPBoolean
 OWPIsLostRecord(OWPCookedDataRecPtr rec);
 
+/*
+** Write header to the data file.
+** XXX - for now just works for TestSpecPoissson. Assumes that <buf>
+** has at least 96 bytes (fixed-size of Poisson Session Request).
+*/
+void
+OWPEncodeDataHeader(OWPTestSpec	*test_spec, 
+		    u_int8_t version,
+		    OWPBoolean server_conf_sender, 
+		    OWPBoolean server_conf_receiver,
+		    struct sockaddr *sender,
+		    struct sockaddr *receiver,
+		    OWPSID		sid,
+		    u_int8_t *buf);
+
+/*
+** Write data header to the file. <len> is the length of the buffer - 
+** any other fields have to be accounted for separately in the
+** header length value.
+*/
+void
+OWPWriteDataHeadeR(FILE *fp, u_int32_t version, u_int8_t *buf, u_int32_t len);
 #endif	/* OWAMP_H */

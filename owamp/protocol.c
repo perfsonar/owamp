@@ -437,14 +437,15 @@ _OWPWriteTestRequest(
 	struct sockaddr	*receiver,
 	OWPBoolean	server_conf_sender,
 	OWPBoolean	server_conf_receiver,
-	OWPSID		sid,
+	OWPSID		sid,             /* XXX - unused. remove later */
 	OWPTestSpec	*test_spec
 )
 {
 	u_int8_t		*buf = (u_int8_t*)cntrl->msg;
 	u_int8_t		version;
+#ifdef CUT
 	OWPTestSpecPoisson	*ptest;
-
+#endif
 	if(!_OWPStateIsRequest(cntrl) || _OWPStateIsPending(cntrl)){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
 			"_OWPWriteTestRequest:called in wrong state.");
@@ -486,6 +487,8 @@ _OWPWriteTestRequest(
 				"Invalid test distribution function");
 		return OWPErrFATAL;
 	}
+
+#ifdef CUT
 	ptest = (OWPTestSpecPoisson*)test_spec;
 
 	*(u_int8_t*)&buf[0] = 1;	/* Request-Session message # */
@@ -545,6 +548,8 @@ _OWPWriteTestRequest(
 	*(u_int32_t*)&buf[76] = htonl(ptest->typeP);
 
 	memset(&buf[80],0,16);
+
+#endif /* #ifdef CUT */
 
 	/*
 	 * Now - send the request!
@@ -1266,6 +1271,8 @@ _OWPReadControlAck(
 /*
 ** During Fetch session, read the first 16 bytes of data transmission.
 ** Save the promised number of records into *num_rec (host byte order).
+** NOTE: In version 5 this will change to read the whole Session Request -
+** keeping typeP for now to minimize changes, but won't use it anywhere.
 */
 OWPErrSeverity
 _OWPReadDataHeader(OWPControl cntrl, u_int32_t *num_rec, u_int8_t *typeP)

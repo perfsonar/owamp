@@ -43,7 +43,9 @@ OWPDefEndpointInitHook(
 	void		*app_data,
 	void		**end_data,
 	OWPAddr		remoteaddr,
-	OWPSID		sid
+	OWPSID		sid,
+	OWPBoolean      send,
+	OWPAddr         localaddr
 );
 
 extern OWPErrSeverity

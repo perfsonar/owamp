@@ -87,7 +87,7 @@ _OWPCallCheckControlPolicy(
 	 */
 	if(!cntrl->ctx->cfg.check_control_func)
 		return True;
-
+	
 	return (*cntrl->ctx->cfg.check_control_func)(cntrl,cntrl->app_data,
 			mode,kid,local_sa_addr,remote_sa_addr,err_ret);
 }
@@ -171,7 +171,9 @@ _OWPCallEndpointInitHook(
 	void		**end_data,
 	OWPAddr		remoteaddr,
 	OWPSID		sid,
-	OWPErrSeverity	*err_ret
+	OWPErrSeverity	*err_ret,
+	OWPBoolean      send,
+	OWPAddr         localaddr
 )
 {
 	OWPEndpointInitHookFunc	initH_func = OWPDefEndpointInitHook;
@@ -189,7 +191,8 @@ _OWPCallEndpointInitHook(
 	if(cntrl->ctx->cfg.endpoint_init_hook_func)
 		initH_func = cntrl->ctx->cfg.endpoint_init_hook_func;
 
-	*err_ret=(*initH_func)(cntrl->app_data,end_data,remoteaddr,sid);
+	*err_ret=(*initH_func)(cntrl->app_data,end_data,remoteaddr,sid,
+			       send, localaddr);
 	return (*err_ret > OWPErrFATAL);
 }
 
@@ -204,7 +207,7 @@ _OWPCallEndpointStart(
 
 	if(!tsession){
 		OWPError(NULL,OWPErrFATAL,OWPErrINVALID,
-				"_OWPCallEndpointStart:No TestSession record!");
+			       "_OWPCallEndpointStart:No TestSession record!");
 		*err_ret = OWPErrFATAL;
 		return False;
 	}

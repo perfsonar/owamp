@@ -544,10 +544,23 @@ OWPDefEndpointInit(
 		if(size)
 			setvbuf(ep->datafile,ep->fbuff,_IOFBF,size);
 
+
+		/*
+		  XXX - 
+		  get rid of if:
+		  write data header
+		  flush
+
+		  Also - this part goes into InitHook altogether
+		  but not open/reopen business
+		*/
+		
 		/*
 		 * Write typeP as first 4-octets of file.
 		 */
+#ifdef CUT
 		if (fd < 0) {
+
 			*(u_int32_t *)&ep->payload[0] 
 				= htonl(ep->test_spec.any.typeP);
 			if (fwrite(ep->payload, sizeof(u_int32_t), 1,
@@ -557,7 +570,9 @@ OWPDefEndpointInit(
 				goto error;
 			}
 			fflush(ep->datafile);
+
 		}
+#endif
 
 		/*
 		 * receiver - need to set the recv buffer size large
@@ -1315,7 +1330,9 @@ OWPDefEndpointInitHook(
 	void		*app_data,
 	void		**end_data,
 	OWPAddr		remoteaddr,
-	OWPSID		sid
+	OWPSID		sid,
+	OWPBoolean      send,
+	OWPAddr         localaddr
 )
 {
 	OWPPerConnData		cdata = (OWPPerConnData)app_data;
@@ -1326,6 +1343,7 @@ OWPDefEndpointInitHook(
 	int			i;
 	OWPnum64		InvLambda,sum,val;
 	OWPrand_context64	*rand_ctx;
+	u_int8_t                buf[96]; /* size of Session request */
 
 	memcpy(ep->sid,sid,sizeof(OWPSID));
 
@@ -1425,6 +1443,29 @@ OWPDefEndpointInitHook(
 
 		while(waitfor);
 	}
+#endif
+
+
+	/* Prepare the header - just use stub values for now */
+	OWPEncodeDataHeader(&ep->test_spec,
+			    (u_int8_t)4,      /* XXX - fix these */
+			    1, 0,  /* conf send/recv */
+			    (send)? localaddr->saddr : remoteaddr->saddr, 
+			    (send)? remoteaddr->saddr : localaddr->saddr, 
+			    ep->sid, buf);
+
+	OWPWriteDataHeadeR(ep->datafile, (u_int32_t)1, buf, sizeof(buf) - 16);
+
+#ifdef CUT
+	*(u_int32_t *)&ep->payload[0] 
+		= htonl(ep->test_spec.any.typeP);
+	if (fwrite(ep->payload, sizeof(u_int32_t), 1,
+		   ep->datafile) != 1){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+			 "fwrite(1,u_int32_t):%M");
+		exit(OWP_CNTRL_FAILURE);
+	}
+	fflush(ep->datafile);
 #endif
 
 	/*

@@ -947,3 +947,114 @@ OWPAddr2string(OWPAddr addr, char *buf, size_t len)
 			   NI_NUMERICHOST))
 		strcpy(buf, "");
 }
+
+/*
+** Write header to the data file.
+** XXX - for now just works for TestSpecPoissson. Assumes that <buf>
+** has at least 96 bytes (fixed-size of Poisson Session Request).
+*/
+void
+OWPEncodeDataHeader(OWPTestSpec	*test_spec, 
+		   u_int8_t version,
+		   OWPBoolean server_conf_sender, 
+		   OWPBoolean server_conf_receiver,
+		   struct sockaddr *sender,
+		   struct sockaddr *receiver,
+		   OWPSID		sid,
+		   u_int8_t *buf)
+{
+	OWPTestSpecPoisson *ptest = (OWPTestSpecPoisson*)test_spec;
+
+	*(u_int8_t*)&buf[0] = 1;	/* Request-Session message # */
+	*(u_int8_t*)&buf[1] = (version<<4) | version;
+	*(u_int8_t*)&buf[2] = (server_conf_sender)?1:0;
+	*(u_int8_t*)&buf[3] = (server_conf_receiver)?1:0;
+
+	switch(version){
+	struct sockaddr_in	*saddr4;
+#ifdef	AF_INET6
+	struct sockaddr_in6	*saddr6;
+		case 6:
+			/* sender address  and port */
+			saddr6 = (struct sockaddr_in6*)sender;
+			memcpy(&buf[4],saddr6->sin6_addr.s6_addr,16);
+			*(u_int16_t*)&buf[36] = saddr6->sin6_port;
+
+			/* receiver address and port  */
+			saddr6 = (struct sockaddr_in6*)receiver;
+			memcpy(&buf[20],saddr6->sin6_addr.s6_addr,16);
+			*(u_int16_t*)&buf[38] = saddr6->sin6_port;
+
+			break;
+#endif
+		case 4:
+			/* sender address and port  */
+			saddr4 = (struct sockaddr_in*)sender;
+			*(u_int32_t*)&buf[4] = saddr4->sin_addr.s_addr;
+			*(u_int16_t*)&buf[36] = saddr4->sin_port;
+
+			/* receiver address and port  */
+			saddr4 = (struct sockaddr_in*)receiver;
+			*(u_int32_t*)&buf[20] = saddr4->sin_addr.s_addr;
+			*(u_int16_t*)&buf[38] = saddr4->sin_port;
+
+			break;
+		default:
+			/*
+			 * This can't happen, but default keeps compiler
+			 * warnings away.
+			 */
+			break;
+	}
+
+	if(sid)
+		memcpy(&buf[40],sid,16);
+
+	*(u_int32_t*)&buf[56] = htonl(ptest->InvLambda);
+	*(u_int32_t*)&buf[60] = htonl(ptest->npackets);
+	*(u_int32_t*)&buf[64] = htonl(ptest->packet_size_padding);
+
+	/*
+	 * timestamp...
+	 */
+	OWPEncodeTimeStamp((u_int32_t*)&buf[68],&ptest->start_time);
+
+	*(u_int32_t*)&buf[76] = htonl(ptest->typeP);
+
+	memset(&buf[80],0,16);
+
+	return;
+}
+
+/*
+** Functions for writing and reading headers. The format varies
+** according to the version. In all cases the files starts
+** with 4 bytes of magic number, 4 bytes of version, and
+** 4 bytes of total header length (version and header length
+** fields given in network byte order). The rest depends on
+** the version as follows:
+**
+** Version 0: nothing - data records follow.
+** Version 1: 80 bytes of Session Request as per version 3 of the protocol
+*/
+
+/*
+** Write data header to the file. <len> is the length of the buffer - 
+** any other fields have to be accounted for separately in the
+** header length value.
+*/
+void
+OWPWriteDataHeadeR(FILE *fp, u_int32_t version, u_int8_t *buf, u_int32_t len)
+{
+	static char magic[] = "OwA";
+	u_int32_t net_ver = htonl(version);
+	u_int32_t hdr_len = htonl(sizeof(magic) + sizeof(version) 
+		+ sizeof(hdr_len) + len);
+
+	fwrite(magic, 1, 4, fp);
+	fwrite(&net_ver, sizeof(net_ver), 1, fp);
+	fwrite(&hdr_len, sizeof(hdr_len), 1, fp);
+
+	if (buf != NULL)
+		fwrite(buf, sizeof(*buf), len, fp);
+}

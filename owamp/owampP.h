@@ -507,7 +507,9 @@ _OWPCallEndpointInitHook(
 	void            **end_data,
 	OWPAddr         remoteaddr,
 	OWPSID		sid,
-	OWPErrSeverity  *err_ret
+	OWPErrSeverity  *err_ret,
+	OWPBoolean      send,
+	OWPAddr         localaddr
 );
 
 extern OWPBoolean
