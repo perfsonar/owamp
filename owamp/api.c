@@ -761,7 +761,6 @@ OWPControlAccept(
 	/* Remove what's not needed. */
 	datum *key;
 	keyInstance keyInst;
-	cipherInstance cipherInst;
 
 	/* 
 	   XXX - need to hide this

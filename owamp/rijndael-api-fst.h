@@ -73,40 +73,21 @@ typedef unsigned char   BYTE;
 /*  The structure for key information */
 typedef struct {
     BYTE  direction;                /* Key used for encrypting or decrypting? */
-    int   keyLen;                   /* Length of the key  */
     char  keyMaterial[MAX_KEY_SIZE+1];  /* Raw key data in ASCII, e.g., user input or KAT values */
 	int   Nr;                       /* key-length-dependent number of rounds */
 	u32   rk[4*(MAXNR + 1)];        /* key schedule */
-	u32   ek[4*(MAXNR + 1)];        /* CFB1 key schedule (encryption only) */
 } keyInstance;
-
-/*  The structure for cipher information */
-typedef struct {                    /* changed order of the components */
-    BYTE  mode;                     /* MODE_ECB, MODE_CBC, or MODE_CFB1 */
-    BYTE  IV[MAX_IV_SIZE];          /* A possible Initialization Vector for ciphering */
-} cipherInstance;
 
 /*  Function prototypes  */
 
-int makeKey(keyInstance *key, BYTE direction, int keyLen, char *keyMaterial);
+int makeKey(keyInstance *key, BYTE direction, char *keyMaterial);
 
-int cipherInit(cipherInstance *cipher, BYTE mode, char *IV);
+int cipherInit(BYTE *binIV, char *hexIV);
 
-int blockEncrypt(cipherInstance *cipher, keyInstance *key,
+int blockEncrypt(BYTE *binIV, keyInstance *key,
         BYTE *input, int inputLen, BYTE *outBuffer);
 
-int padEncrypt(cipherInstance *cipher, keyInstance *key,
-		BYTE *input, int inputOctets, BYTE *outBuffer);
-
-int blockDecrypt(cipherInstance *cipher, keyInstance *key,
+int blockDecrypt(BYTE *binIV, keyInstance *key,
         BYTE *input, int inputLen, BYTE *outBuffer);
-
-int padDecrypt(cipherInstance *cipher, keyInstance *key,
-		BYTE *input, int inputOctets, BYTE *outBuffer);
-
-#ifdef INTERMEDIATE_VALUE_KAT
-int cipherUpdateRounds(cipherInstance *cipher, keyInstance *key,
-        BYTE *input, int inputLen, BYTE *outBuffer, int Rounds);
-#endif /* INTERMEDIATE_VALUE_KAT */
 
 #endif /* __RIJNDAEL_API_FST_H */
