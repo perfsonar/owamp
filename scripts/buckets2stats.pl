@@ -376,7 +376,7 @@ sub is_younger_than {
 }
 
 sub printlist {
-    my $mesg = joing " ", @_;
+    my $mesg = join " ", @_;
     warn $mesg;
 }
 

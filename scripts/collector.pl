@@ -709,8 +709,9 @@ sub do_req{
 					warn "Rename $dir/$vtimefile: $!";
 			}
 		}
+		warn "ACCEPTED: $req{'FNAME'}\n" if defined($verbose);
 	}else{
-		warn "$req{'FNAME'} ignored - invalid session";
+		warn "IGNORED: $req{'FNAME'}\n";
 		unlink "$req{'FNAME'}.i";
 	}
 
