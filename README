@@ -11,5 +11,6 @@ owamp/	directory for owamp api - a high level abstraction for speaking the
 	owamp protocol.
 util/	convienient utility functions including sample implementations of
 	some of the "configurable" parts of the owamp library.
-server/	An owamp server implementation.
+owampd/	An owamp server implementation.
 owping/	A command line owamp client (one way ping).
+powstream	A client-daemon for continuous one-way tests.
