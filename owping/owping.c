@@ -40,16 +40,89 @@
  */
 static	ow_ping_trec	ping_ctx;
 
+static I2ErrHandle		eh;
+
+/*
+** Data structures for a window of records being processed.
+** Implemented as a linked list since in the most common case
+** new nodes will just be added at the end.
+*/
+typedef struct rec_link *rec_link_ptr;
+typedef struct rec_link {
+	u_int8_t     record[20];    /* raw timestamp record */
+	rec_link_ptr next;
+} rec_link;
+
+/*
+** The list structure - keep track of tail to make typical insert easier.
+*/
+typedef struct rec_list {
+	rec_link_ptr head;
+	rec_link_ptr tail;
+} rec_list, *rec_list_ptr;
+
+/*
+** Initialize the linked list.
+*/
+void
+list_init(rec_list_ptr list)
+{
+	assert(list);
+	list->head = list->tail = NULL;
+}
+
+/*
+** Insert a new record in the <list> right after the given <current>.
+** If <current> is NULL, insert at the head of the list.
+*/
+int
+rec_insert_next(rec_list *list, rec_link_ptr current, const u_int8_t *data)
+{
+	rec_link_ptr new_record;
+
+	if ((new_record = (rec_link_ptr)malloc(sizeof(*new_record))) == NULL){
+		I2ErrLog(eh, "rec_link_new: malloc(%d) failed", 
+			 sizeof(*new_record));
+		return -1;
+	}
+
+	memcpy(new_record->record, data, 20);
+
+	if (current == NULL) {
+		new_record->next = list->head;
+		list->head = new_record;
+
+		if (list->tail == NULL)
+			list->tail = new_record;
+
+	} else {
+		if (current->next == NULL) /* inserting at the tail */
+			list->tail = new_record;
+
+		new_record->next = current->next;
+		current->next = new_record;
+	}
+
+	return 0;
+}
+
+/* Various styles of owping output. */
+#define OWP_MACHINE_READABLE     0    /* full dump of each record, ASCII     */
+#define OWP_PING_STYLE           1    /* seq_no, one-way delay + final stats */
+
 /*
 ** State to be maintained by client during Fetch.
 */
 typedef struct fetch_state {
-	double    tmin;             /* max delay                    */
-	double    tmax;             /* min delay                    */     
-	double    tsum;             /* sum of delays                */
-	double    tsumsq;           /* sum of squared delays        */
-	u_int32_t numpack_received; /* number of received packets   */
-	FILE*     fp;               /* stream to report records     */
+	double       tmin;             /* max delay                    */
+	double       tmax;             /* min delay                    */     
+	double       tsum;             /* sum of delays                */
+	double       tsumsq;           /* sum of squared delays        */
+	u_int32_t    numpack_received; /* number of received packets   */
+	FILE*        fp;               /* stream to report records     */
+	rec_list_ptr window;           /* window of read records       */
+	int          type;             /* OWP_MACHINE_READABLE,
+					  OWP_PING_STYLE */
 } fetch_state, *fetch_state_ptr;
 
 
@@ -57,7 +130,7 @@ typedef struct fetch_state {
 ** Initialize the state.
 */
 void
-fetch_state_init(fetch_state_ptr state, FILE *fp)
+fetch_state_init(fetch_state_ptr state, FILE *fp, rec_list_ptr window)
 {
 	assert(state);
 
@@ -65,6 +138,7 @@ fetch_state_init(fetch_state_ptr state, FILE *fp)
 	state->tmax = state->tsum = state->tsumsq = 0.0;
 	state->numpack_received = 0;
 	state->fp = fp;
+	state->window = window;
 }
 
 #ifdef	NOT
@@ -240,8 +314,6 @@ static void	usage(int od, const char *progname, const char *msg)
 	return;
 }
 
-static I2ErrHandle		eh;
-
 static void
 FailSession(
 	OWPControl	control_handle	__attribute__((unused))
@@ -329,6 +401,30 @@ owp_do_summary(fetch_state_ptr state)
 	return 0;
 }
 
+/* 
+   Width of Fetch receiver window - MUST be divisible by 4.
+*/
+#define OWP_WIN_WIDTH   16
+
+/*
+** Insert a new timestamp record in a window.
+*/
+int
+fill_window(void *calldata, u_int8_t *rec)
+{
+	return 0;
+}
+
+/*
+** Process newly arrived data record, and do any necessary output
+** as encoded in state.
+*/
+int
+do_rest(void *calldata, u_int8_t *rec)
+{
+	return 0;
+}
+
 /*
 ** Master output function - reads the records sent by the server
 ** and prints them to the stdout in a style specified by <type>.
@@ -341,24 +437,45 @@ owp_do_summary(fetch_state_ptr state)
 int
 do_records_all(OWPControl cntrl, u_int32_t num_rec, int type, FILE *fp)
 {
-	assert(fp);
+	rec_list window;
+	u_int32_t nchunks;
+	fetch_state state;
+	int i;
 
+	assert(fp);
+	list_init(&window);
+	fetch_state_init(&state, fp, &window);
+
+	/* Set up properties of output in state here. */
 	switch (type) {
 	case 0:          /* print the full record in machine-readable form */
-		OWPFetchRecords(cntrl, num_rec, print_record, fp);
 		break;
-	case 1:
-		{
-		      fetch_state state;
-		      
-		      fetch_state_init(&state, fp);
-		      OWPFetchRecords(cntrl, num_rec, print_delay, &state);
-		      owp_do_summary(&state);
-		      break;
-		}
 	default:
 		break;
 	}
+
+	/* If few records - fill the window and flush immediately */
+	if (num_rec <= OWP_WIN_WIDTH) {
+		OWPFetchRecords(cntrl, num_rec, fill_window, fp);
+		
+		/*
+		  XXX - TODO: flush the window and return
+		*/
+	}
+	
+	OWPFetchRecords(cntrl, OWP_WIN_WIDTH, fill_window, &state);
+	OWPFetchRecords(cntrl, num_rec - OWP_WIN_WIDTH, 
+			do_rest, &state);
+	
+	if (OWPCheckPadding(cntrl) == OWPErrFATAL) {
+       		I2ErrLog(eh, "owping: FATAL: bad padding in data stream");
+		return -1;
+	}
+		
+	/*
+	  XXX - TODO: flush the window and return
+	*/
+
 	return 0;
 }
 
