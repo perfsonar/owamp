@@ -26,6 +26,7 @@ owping_SOURCES	= owping.c owpingP.h
 owping_LDADD	= $(OWPLIBS) $(I2UTILLIBS) $(MALLOCDEBUGLIBS)
 owping_DEPENDENCIES = $(OWPLIBDEPS) $(I2UTILLIBDEPS)
 # Unfortunately, automake doesn't follow the BSD tradition here...
+RM = rm -f
 owping_LINKS	= owstats$(exeext) owfetch$(exeext)
 
 owstats$(exeext): owping$(exeext)
@@ -46,7 +47,7 @@ install-exec-hook:
 	@cd $(DESTDIR)$(bindir) && \
 	if test -f owping; then \
 	   for l in $(owping_LINKS); do \
-	      if test -f $$l; then ${RM} $$l; fi \
+	      if test -f $$l; then $(RM) $$l; fi; \
 	      echo "$(LN_S) $(DESTDIR)$(bindir)/owping $(DESTDIR)$(bindir)/$$l"; \
 	      $(LN_S) owping $$l; \
 	   done; \
