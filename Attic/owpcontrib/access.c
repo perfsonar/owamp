@@ -235,42 +235,6 @@ get_offset(const datum * dat)
 	return *(u_int8_t*)((dat->dptr)+4);
 }
 
-hash_ptr
-hash_init(const char *str)
-{
-	return (hash_ptr)dbm_open(str, O_CREAT|O_RDWR, 0660);
-}
-
-int
-hash_store(hash_ptr hash, datum key, datum val, int flags)
-{
-	return dbm_store(hash, key, val, flags);
-}
-
-datum
-hash_firstkey(hash_ptr hash)
-{
-	return dbm_firstkey(hash);
-}
-
-datum
-hash_fetch(hash_ptr hash, datum key)
-{
-	return dbm_fetch(hash, key);
-}
-
-datum
-hash_nextkey(hash_ptr hash)
-{
-	return dbm_nextkey(hash);
-}
-
-void
-hash_close(hash_ptr hash)
-{
-	dbm_close(hash);
-}
-
 /*!
 ** This function reads the configuration file given by the path <ip2class>, 
 ** processes it and saves the results in <hash>. The format of the file
@@ -319,7 +283,7 @@ owamp_read_ip2class(const char *ip2class, hash_ptr hash)
 		if ( (val = str2datum(class)) == NULL )
 			continue;
 
-		if (hash_store(hash, *key, *val, DBM_REPLACE) != 0)
+		if (hash_store(ctx, hash, key, val) != 0)
 			continue;
 	}
 
@@ -332,7 +296,7 @@ owamp_read_ip2class(const char *ip2class, hash_ptr hash)
 		goto CLOSE;
 	if ( (val = str2datum(DEFAULT_OPEN_CLASS)) == NULL)
 		goto CLOSE;
-	if (hash_store(hash, *key, *val, DBM_INSERT) != 0)
+	if (hash_store(ctx, hash, key, val) != 0)
 		OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, 
 			 "WARNING: hash_store failed to insert all key");
  CLOSE:
@@ -400,7 +364,7 @@ read_passwd_file(const char *passwd_file, hash_ptr hash)
 		if ( (val = str2datum(secret)) == NULL )
 			continue;
 
-		if (hash_store(hash, *key, *val, DBM_REPLACE) != 0)
+		if (hash_store(ctx, hash, key, val) != 0)
 			continue;
 	}
 
@@ -413,22 +377,22 @@ char *
 ipaddr2class(u_int32_t ip)
 {
 	int offset;
-	datum *key_dat_ptr, val_dat;
+	datum *key_dat_ptr, *val_dat;
 	u_int32_t mask_template = 0xFFFFFFFF;
 	
 	for(offset=32; offset>0; offset--){
 		int bits = 32 - offset;
 		u_int32_t mask = (mask_template>>bits)<<bits;
 		key_dat_ptr = subnet2datum(ip & mask, offset);
-		val_dat = hash_fetch(ip2class_hash, *key_dat_ptr);
-		if (val_dat.dptr)
-			return val_dat.dptr;
+		val_dat = hash_fetch(ip2class_hash, key_dat_ptr);
+		if (val_dat->dptr)
+			return val_dat->dptr;
 	}
 	
 	key_dat_ptr = subnet2datum(ip, 0);
-	val_dat = hash_fetch(ip2class_hash, *key_dat_ptr);
-	if (val_dat.dptr)
-		return val_dat.dptr;
+	val_dat = hash_fetch(ip2class_hash, key_dat_ptr);
+	if (val_dat->dptr)
+		return val_dat->dptr;
 
 	return DEFAULT_OPEN_CLASS;
 }
@@ -504,9 +468,9 @@ owamp_read_class2limits(const char *class2limits, hash_ptr hash)
 		printf("\n");                     /* DEBUG */
 
 		/* Now save the limits structure in the hash. */
-		key_dat = *(str2datum(class));
+		/*		key_dat = *(str2datum(class)); */
 		val_dat.dptr = (char *)&limits;
 		val_dat.dsize = sizeof(OWAMPLimits);
-		hash_store(hash, key_dat, val_dat, DBM_REPLACE);
+		hash_store(ctx, hash, str2datum(class), &val_dat);
 	}
 }
