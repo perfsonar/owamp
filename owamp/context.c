@@ -31,7 +31,7 @@
  */
 OWPBoolean
 _OWPCallGetAESKey(
-	OWPContext	ctx,		/* library context	*/
+	OWPControl	cntrl,		/* library context	*/
 	const char	*kid,		/* identifies key	*/
 	u_int8_t	*key_ret,	/* key - return		*/
 	OWPErrSeverity	*err_ret	/* error - return	*/
@@ -39,9 +39,9 @@ _OWPCallGetAESKey(
 {
 	*err_ret = OWPErrOK;
 
-	if(!ctx){
-		OWPErrorLine(NULL,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
-					"_OWPCallGetAESKey:No Context!");
+	if(!cntrl){
+		OWPErrorLine(NULL,OWPLine,OWPErrFATAL,OWPErrINVALID,
+					"_OWPCallGetAESKey:No Control Record!");
 		*err_ret = OWPErrFATAL;
 		return False;
 	}
@@ -49,10 +49,10 @@ _OWPCallGetAESKey(
 	/*
 	 * Default action is no encryption support.
 	 */
-	if(!ctx->cfg.get_aes_key_func)
+	if(!cntrl->ctx->cfg.get_aes_key_func)
 		return False;
 
-	return (*ctx->cfg.get_aes_key_func)(ctx->cfg.app_data,kid,key_ret,err_ret);
+	return (*cntrl->ctx->cfg.get_aes_key_func)(cntrl->app_data,kid,key_ret,err_ret);
 }
 
 /*
@@ -65,7 +65,7 @@ _OWPCallGetAESKey(
  */
 OWPBoolean
 _OWPCallCheckControlPolicy(
-	OWPContext	ctx,		/* library context		*/
+	OWPControl	cntrl,		/* control record		*/
 	OWPSessionMode	mode,		/* requested mode       	*/
 	const char	*kid,		/* key identity			*/
 	struct sockaddr	*local_sa_addr,	/* local addr or NULL		*/
@@ -75,9 +75,9 @@ _OWPCallCheckControlPolicy(
 {
 	*err_ret = OWPErrOK;
 
-	if(!ctx){
-		OWPErrorLine(NULL,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
-				"_OWPCallCheckControlPolicy:No Context!");
+	if(!cntrl){
+		OWPErrorLine(NULL,OWPLine,OWPErrFATAL,OWPErrINVALID,
+			"_OWPCallCheckControlPolicy:No Control record!");
 		*err_ret = OWPErrFATAL;
 		return False;
 	}
@@ -85,10 +85,10 @@ _OWPCallCheckControlPolicy(
 	/*
 	 * Default action is to allow anything.
 	 */
-	if(!ctx->cfg.check_control_func)
+	if(!cntrl->ctx->cfg.check_control_func)
 		return True;
 
-	return (*ctx->cfg.check_control_func)(ctx->cfg.app_data,mode,kid,
+	return (*cntrl->ctx->cfg.check_control_func)(cntrl->app_data,mode,kid,
 					local_sa_addr,remote_sa_addr,err_ret);
 }
 
@@ -113,7 +113,7 @@ _OWPCallCheckTestPolicy(
 	*err_ret = OWPErrOK;
 
 	if(!cntrl){
-		OWPErrorLine(NULL,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
+		OWPErrorLine(NULL,OWPLine,OWPErrFATAL,OWPErrINVALID,
 				"_OWPCallCheckTestPolicy:No Control record!");
 		*err_ret = OWPErrFATAL;
 		return False;
@@ -125,7 +125,7 @@ _OWPCallCheckTestPolicy(
 	if(!cntrl->ctx->cfg.check_test_func)
 		return True;
 
-	return (*cntrl->ctx->cfg.check_test_func)(cntrl->ctx->cfg.app_data,
+	return (*cntrl->ctx->cfg.check_test_func)(cntrl->app_data,
 				cntrl->mode,cntrl->kid,local_sender,local,
 				remote,test_spec,err_ret);
 }
@@ -145,26 +145,18 @@ _OWPCallEndpointInit(
 )
 {
 	OWPEndpointInitFunc	init_func = OWPDefEndpointInit;
-	void			*def_app_data;
 
 	if(!cntrl){
-		OWPErrorLine(NULL,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
+		OWPErrorLine(NULL,OWPLine,OWPErrFATAL,OWPErrINVALID,
 				"_OWPCallCheckTestPolicy:No Control record!");
 		*err_ret = OWPErrFATAL;
 		return False;
 	}
 
-	/*
-	 * Default action is to allow anything.
-	 */
-	if(cntrl->ctx->cfg.endpoint_init_func){
+	if(cntrl->ctx->cfg.endpoint_init_func)
 		init_func = cntrl->ctx->cfg.endpoint_init_func;
-		def_app_data = cntrl->ctx->cfg.app_data;
-	}else{
-		def_app_data = cntrl->ctx;
-	}
 
-	if( (*err_ret = (*init_func)(def_app_data,end_data_ret,send,
+	if( (*err_ret = (*init_func)(cntrl->app_data,end_data_ret,send,
 			localaddr,test_spec,sid)) < OWPErrWARNING)
 		return False;
 	return True;
@@ -183,10 +175,9 @@ _OWPCallEndpointInitHook(
 )
 {
 	OWPEndpointInitHookFunc	initH_func = OWPDefEndpointInitHook;
-	void			*def_app_data;
 
 	if(!cntrl){
-		OWPErrorLine(NULL,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
+		OWPErrorLine(NULL,OWPLine,OWPErrFATAL,OWPErrINVALID,
 				"_OWPCallCheckTestPolicy:No Control record!");
 		*err_ret = OWPErrFATAL;
 		return False;
@@ -195,14 +186,10 @@ _OWPCallEndpointInitHook(
 	/*
 	 * Default action is to allow anything.
 	 */
-	if(cntrl->ctx->cfg.endpoint_init_hook_func){
+	if(cntrl->ctx->cfg.endpoint_init_hook_func)
 		initH_func = cntrl->ctx->cfg.endpoint_init_hook_func;
-		def_app_data = cntrl->ctx->cfg.app_data;
-	}else{
-		def_app_data = cntrl->ctx;
-	}
 
-	if( (*err_ret = (*initH_func)(def_app_data,end_data,remoteaddr,sid)) <
+	if( (*err_ret=(*initH_func)(cntrl->app_data,end_data,remoteaddr,sid)) <
 								OWPErrWARNING)
 		return False;
 	return True;
@@ -216,23 +203,19 @@ _OWPCallEndpointStart(
 )
 {
 	OWPEndpointStartFunc	func = OWPDefEndpointStart;
-	void			*def_app_data;
 
 	if(!tsession){
-		OWPErrorLine(NULL,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
+		OWPErrorLine(NULL,OWPLine,OWPErrFATAL,OWPErrINVALID,
 				"_OWPCallEndpointStart:No TestSession record!");
 		*err_ret = OWPErrFATAL;
 		return False;
 	}
 
-	if(tsession->cntrl->ctx->cfg.endpoint_start_func){
+	if(tsession->cntrl->ctx->cfg.endpoint_start_func)
 		func = tsession->cntrl->ctx->cfg.endpoint_start_func;
-		def_app_data = tsession->cntrl->ctx->cfg.app_data;
-	}else{
-		def_app_data = tsession->cntrl->ctx;
-	}
 
-	if( (*err_ret = (*func)(def_app_data,end_data)) < OWPErrWARNING)
+	if( (*err_ret = (*func)(tsession->cntrl->app_data,end_data)) <
+								OWPErrWARNING)
 		return False;
 	return True;
 }
@@ -246,23 +229,19 @@ _OWPCallEndpointStop(
 )
 {
 	OWPEndpointStopFunc	func = OWPDefEndpointStop;
-	void			*def_app_data;
 
 	if(!tsession){
-		OWPErrorLine(NULL,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
+		OWPErrorLine(NULL,OWPLine,OWPErrFATAL,OWPErrINVALID,
 				"_OWPCallEndpointStop:No TestSession record!");
 		*err_ret = OWPErrFATAL;
 		return False;
 	}
 
-	if(tsession->cntrl->ctx->cfg.endpoint_stop_func){
+	if(tsession->cntrl->ctx->cfg.endpoint_stop_func)
 		func = tsession->cntrl->ctx->cfg.endpoint_stop_func;
-		def_app_data = tsession->cntrl->ctx->cfg.app_data;
-	}else{
-		def_app_data = tsession->cntrl->ctx;
-	}
 
-	if( (*err_ret = (*func)(def_app_data,end_data,aval)) < OWPErrWARNING)
+	if( (*err_ret = (*func)(tsession->cntrl->app_data,end_data,aval)) <
+								OWPErrWARNING)
 		return False;
 	return True;
 }

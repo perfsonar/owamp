@@ -30,6 +30,7 @@
 #include <errno.h>
 
 #include <owamp/owamp.h>
+#include <owamp/conndata.h>
 #include <owpcontrib/access.h>
 #include <I2util/util.h>
 
@@ -485,8 +486,10 @@ ACCEPT:
 	}
 	/* Child */
 	else{
-		int		i;
-		ssize_t		n;
+		int			i;
+		ssize_t			n;
+		OWPPerConnDataRec	conndata;
+
 #ifndef	NDEBUG
 		int		childwait;
 
@@ -512,9 +515,14 @@ ACCEPT:
 		if (free_connections <= 0)
 			mode &= OWP_MODE_OPEN;
 
+		conndata.pipefd = new_pipe[1];
+		/*
+		conndata.session_data_path = opts.data_path;
+		*/
+
 		cntrl = OWPControlAccept(ctx,connfd,
 					(struct sockaddr *)sbuff,sbufflen,
-					mode,&out);
+					mode,(void*)&conndata,&out);
 		/*
 		 * session not accepted.
 		 */
@@ -749,7 +757,14 @@ main(int argc, char *argv[])
 	 * OWPError* functions so they all go through the installed error
 	 * handler.
 	 */
+
+	/*
+	 * TODO: clean this up.
+	 *
+	 * The policy pointer is only needed by the parent now - so it
+	 * shouldn't need to be passed into the api.
 	cfg.app_data = (void *)policy;
+	 */
 	ctx = OWPContextInitialize(&cfg);
 
 	/*

@@ -388,6 +388,7 @@ OWPAddrSockLen(
 OWPControl
 _OWPControlAlloc(
 	OWPContext		ctx,
+	void			*app_data,
 	OWPErrSeverity		*err_ret
 )
 {
@@ -404,6 +405,8 @@ _OWPControlAlloc(
 	 * Init state fields
 	 */
 	cntrl->ctx = ctx;
+
+	cntrl->app_data = app_data;
 
 	cntrl->server = 0;
 	cntrl->state = 0;

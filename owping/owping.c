@@ -28,6 +28,7 @@
 
 #include <I2util/util.h>
 #include <owamp/owamp.h>
+#include <owamp/conndata.h>
 #include <owpcontrib/unixtime.h>
 #include <owpcontrib/access.h>
 
@@ -215,6 +216,7 @@ main(
 	OWPTestSpecPoisson	test_spec;
 	OWPSID			sid_ret;
 	OWPTimeStamp		start_time_rec={0,0,0,0};
+	OWPPerConnDataRec	conndata;
 
 	ia.line_info = (I2NAME | I2MSG);
 	ia.fp = stderr;
@@ -402,6 +404,17 @@ main(
 	ctx = ping_ctx.lib_ctx;
 
 	/*
+	 * TODO: Figure out how the client is going to make policy
+	 * requests. could just leave it empty I suppose. (Could also
+	 * make the policy functions make the request directly if
+	 * the pipefd portion of PerConnData is -1....
+	 */
+	conndata.pipefd = -1;
+	/*
+	conndata.session_data_path = ping_ctx.opts.data_path;
+	 */
+
+	/*
 	 * Open connection to owampd.
 	 */
 	if( !(ping_ctx.cntrl = OWPControlOpen(ctx,
@@ -409,6 +422,7 @@ main(
 			OWPAddrByNode(ctx,ping_ctx.remote_addr),
 			ping_ctx.auth_mode,
 			ping_ctx.opt.identity,
+			(void*)&conndata,
 			&err_ret))){
 		I2ErrLog(eh, "Unable to open control connection.");
 		exit(1);

@@ -375,6 +375,7 @@ OWPControlAccept(
 	struct sockaddr	*connsaddr,	/* connected socket addr	*/
 	socklen_t	connsaddrlen,	/* connected socket addr len	*/
 	u_int32_t	mode_offered,	/* advertised server mode	*/
+	void		*app_data,	/* set app_data for this conn	*/
 	OWPErrSeverity	*err_ret	/* err - return			*/
 )
 {
@@ -386,7 +387,7 @@ OWPControlAccept(
 
 	*err_ret = OWPErrOK;
 
-	if ( !(cntrl = _OWPControlAlloc(ctx, err_ret)))
+	if ( !(cntrl = _OWPControlAlloc(ctx, app_data, err_ret)))
 		goto error;
 
 	cntrl->sockfd = connfd;
@@ -459,8 +460,7 @@ OWPControlAccept(
 		u_int8_t binKey[16];
 		
 		/* Fetch the encryption key into binKey */
-		if(!_OWPCallGetAESKey(cntrl->ctx,cntrl->kid_buffer,binKey,
-								err_ret)){
+		if(!_OWPCallGetAESKey(cntrl,cntrl->kid_buffer,binKey,err_ret)){
 			if(*err_ret == OWPErrOK){
 				OWPError(cntrl->ctx,OWPErrINFO,OWPErrPOLICY,
 					"Unknown kid (%s)",cntrl->kid_buffer);
@@ -501,7 +501,7 @@ OWPControlAccept(
 		_OWPMakeKey(cntrl,cntrl->session_key); 
 	}
 
-	if(!_OWPCallCheckControlPolicy(cntrl->ctx,cntrl->mode,cntrl->kid, 
+	if(!_OWPCallCheckControlPolicy(cntrl,cntrl->mode,cntrl->kid, 
 		   cntrl->local_addr->saddr,cntrl->remote_addr->saddr,err_ret)){
 		if(*err_ret > OWPErrWARNING){
 			OWPError(ctx,OWPErrINFO,OWPErrPOLICY,

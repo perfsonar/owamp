@@ -48,7 +48,7 @@ _OWPError(
 
 	vsnprintf(buff,sizeof(buff),fmt,args);
 	if(!ctx || !ctx->cfg.err_func ||
-		(*ctx->cfg.err_func)(ctx->cfg.app_data,severity,etype,buff))
+		(*ctx->cfg.err_func)(ctx->cfg.err_data,severity,etype,buff))
 		OWPDefErrFunc(severity,etype,buff);
 
 	return;

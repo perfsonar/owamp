@@ -148,7 +148,7 @@ typedef union _OWPTestSpec{
  * failure - the default library error function will be called.
  */
 typedef int (*OWPErrFunc)(
-	void		*app_data,
+	void		*err_data,
 	OWPErrSeverity	severity,
 	OWPErrType	etype,
 	const char	*errmsg
@@ -277,7 +277,7 @@ typedef OWPTimeStamp (*OWPGetTimeStampFunc)(
  */ 
 typedef struct {
 	struct timeval			tm_out;
-	void				*app_data;
+	void				*err_data;
 	OWPErrFunc			err_func;
 	OWPGetAESKeyFunc		get_aes_key_func;
 	OWPCheckControlPolicyFunc	check_control_func;
@@ -432,6 +432,7 @@ OWPControlOpen(
 	OWPAddr		server_addr,	/* server addr or NULL	*/
 	u_int32_t	mode_mask,	/* OR of OWPSessionMode */
 	const char	*kid,		/* null if unwanted	*/
+	void		*app_data,	/* set app_data		*/
 	OWPErrSeverity	*err_ret
 );
 
@@ -560,6 +561,7 @@ OWPControlAccept(
 	struct sockaddr	*connsaddr,	/* connected socket addr	*/
 	socklen_t	connsaddrlen,	/* connected socket addr len	*/
 	u_int32_t	mode_offered,	/* advertised server mode	*/
+	void		*app_data,	/* set app_data for conn	*/
 	OWPErrSeverity	*err_ret	/* err - return			*/
 		 );
 

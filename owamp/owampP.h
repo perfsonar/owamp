@@ -166,6 +166,7 @@ struct OWPControlRec{
 	 */
 	OWPContext		ctx;
 
+	void			*app_data;
 	/*
 	 * Control connection state information.
 	 */
@@ -236,6 +237,7 @@ _OWPAddrCopy(
 extern OWPControl
 _OWPControlAlloc(
 	OWPContext	ctx,
+	void		*app_data,	/* set app_data for this conn */
 	OWPErrSeverity	*err_ret
 	);
 
@@ -464,7 +466,7 @@ _OWPReadControlAck(
  */
 extern OWPBoolean
 _OWPCallGetAESKey(
-	OWPContext	ctx,		/* library context	*/
+	OWPControl	cntrl,		/* control record	*/
 	const char	*kid,		/* identifies key	*/
 	u_int8_t	*key_ret,	/* key - return		*/
 	OWPErrSeverity	*err_ret	/* error - return	*/
@@ -472,7 +474,7 @@ _OWPCallGetAESKey(
 
 extern OWPBoolean
 _OWPCallCheckControlPolicy(
-	OWPContext	ctx,		/* library context		*/
+	OWPControl	cntrl,		/* control record		*/
 	OWPSessionMode	mode,		/* requested mode       	*/
 	const char	*kid,		/* key identity			*/
 	struct sockaddr	*local_sa_addr,	/* local addr or NULL		*/

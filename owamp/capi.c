@@ -289,6 +289,7 @@ OWPControlOpen(
 	OWPAddr		server_addr,	/* server addr		*/
 	u_int32_t	mode_req_mask,	/* requested modes	*/
 	const char	*kid,		/* kid or NULL		*/
+	void		*app_data,	/* set app_data for this conn	*/
 	OWPErrSeverity	*err_ret	/* err - return		*/
 )
 {
@@ -303,7 +304,7 @@ OWPControlOpen(
 
 	*err_ret = OWPErrOK;
 
-	if( !(cntrl = _OWPControlAlloc(ctx,err_ret)))
+	if( !(cntrl = _OWPControlAlloc(ctx,app_data,err_ret)))
 		goto error;
 
 	if((!server_addr) &&
@@ -333,7 +334,8 @@ OWPControlOpen(
 	if(kid &&
 		(mode_avail & _OWP_DO_CIPHER)){
 		strncpy(cntrl->kid_buffer,kid,sizeof(cntrl->kid_buffer)-1);
-		if(_OWPCallGetAESKey(ctx,cntrl->kid_buffer,key_value,err_ret)){
+		if(_OWPCallGetAESKey(cntrl,cntrl->kid_buffer,key_value,
+								err_ret)){
 			key = key_value;
 			cntrl->kid = cntrl->kid_buffer;
 		}
@@ -352,21 +354,21 @@ OWPControlOpen(
 	 * Pick "highest" level mode still available to this server.
 	 */
 	if((mode_avail & OWP_MODE_ENCRYPTED) &&
-			_OWPCallCheckControlPolicy(ctx,OWP_MODE_ENCRYPTED,
+			_OWPCallCheckControlPolicy(cntrl,OWP_MODE_ENCRYPTED,
 				cntrl->kid,(local_addr)?local_addr->saddr:NULL,
 				server_addr->saddr,err_ret)){
 		cntrl->mode = OWP_MODE_ENCRYPTED;
 	}
 	else if((*err_ret == OWPErrOK) &&
 			(mode_avail & OWP_MODE_AUTHENTICATED) &&
-			_OWPCallCheckControlPolicy(ctx,OWP_MODE_AUTHENTICATED,
+			_OWPCallCheckControlPolicy(cntrl,OWP_MODE_AUTHENTICATED,
 				cntrl->kid,(local_addr)?local_addr->saddr:NULL,
 				server_addr->saddr,err_ret)){
 		cntrl->mode = OWP_MODE_AUTHENTICATED;
 	}
 	else if((*err_ret == OWPErrOK) &&
 			(mode_avail & OWP_MODE_OPEN) &&
-			_OWPCallCheckControlPolicy(ctx,OWP_MODE_OPEN,
+			_OWPCallCheckControlPolicy(cntrl,OWP_MODE_OPEN,
 				NULL,(local_addr)?local_addr->saddr:NULL,
 				server_addr->saddr,err_ret)){
 		cntrl->mode = OWP_MODE_OPEN;
