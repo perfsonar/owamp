@@ -637,7 +637,7 @@ sub send_file{
 	my(%req,$response);
 	local *SENDFILE;
 
-	print "SEND_DATA:$fname\n" if defined($debug);
+	warn "SEND_DATA:$fname\n" if defined($verbose);
 
 	open SENDFILE, "<".$fname || die "Unable to open $fname";
 	binmode SENDFILE;
