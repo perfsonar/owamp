@@ -161,6 +161,6 @@ AC_CHECK_DECLS([fseeko])
 # AC_CONFIG_FILES([Makefile owamp/Makefile])
 
 AC_SUBST(ac_aux_dir)
-AC_OUTPUT([Makefile owamp/Makefile owampd/Makefile owping/Makefile powstream/Makefile owdigest/Makefile scripts/Makefile scripts/OWP/Makefile conf/Makefile],
+AC_OUTPUT([Makefile owamp/Makefile owampd/Makefile owping/Makefile powstream/Makefile owdigest/Makefile conf/Makefile],
 	[test -z "$CONFIG_HEADERS" || echo timestamp > owamp/stamp-h.in])
 
