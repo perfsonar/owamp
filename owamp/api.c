@@ -582,3 +582,31 @@ OWPControlFree(OWPControl cntrl)
 {
 	return;
 }
+
+
+/*
+** This function sets WriteIV to the contents of the buffer ptr (16 bytes).
+*/
+void
+OWPSetWriteIV(OWPControl ctrl, char* ptr)
+{
+	bcopy(ptr, ctrl->writeIV, 16);
+}
+
+/*
+** This function sets ReadIV to the contents of the buffer ptr (16 bytes).
+*/
+void
+OWPSetReadIV(OWPControl ctrl, char* ptr)
+{
+	bcopy(ptr, ctrl->readIV, 16);
+}
+
+/*
+** This function sets SessionKey to the contents of the buffer ptr (16 bytes).
+*/
+void
+OWPSetSessionKey(OWPControl ctrl, char* ptr)
+{
+	bcopy(ptr, ctrl->session_key, 16);
+}
