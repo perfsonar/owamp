@@ -93,6 +93,14 @@ sub valid_time{
 	die "VALID_TIME arg is required" if(!exists $args{'VALID_TIME'});
 	die "DIRECTORY arg is required" if(!exists $args{'DIRECTORY'});
 
+	if(exists $self->{$args{'DIRECTORY'}} &&
+			$args{'VALID_TIME'} < $self->{$args{'DIRECTORY'}}){
+		warn "Ignoring invalid $args{'DIRECTORY'} VALID_TIME: $args{'VALID_TIME'}";
+		return 0;
+	}
+
+	$self->{$args{'DIRECTORY'}} = $args{'VALID_TIME'};
+
 	return 1;
 }
 

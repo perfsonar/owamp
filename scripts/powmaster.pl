@@ -30,7 +30,7 @@ use strict;
 use FindBin;
 use lib ("$FindBin::Bin");
 use Getopt::Std;
-use POSIX;
+use POSIX qw(SEEK_END SEEK_SET EINTR SIGALRM SIG_BLOCK sigprocmask sigsuspend);
 use IPC::Open3;
 use File::Path;
 use FileHandle;
@@ -39,6 +39,10 @@ use OWP::RawIO;
 use Digest::MD5;
 use Socket;
 use IO::Socket;
+use GDBM_File;
+require 'sys/syscall.ph';
+#require 'time.ph';
+#require 'sys/time.ph';
 
 my @SAVEARGV = @ARGV;
 my %options = (
@@ -89,12 +93,25 @@ my $central_port = $conf->must_get_val(ATTR=>'CENTRALHOSTPORT');
 my $timeout = $conf->must_get_val(NODE=>$me,ATTR=>'SendTimeout');
 
 #
+# live_update values
+#
+my $senduptimeinterval = $conf->must_get_val(NODE=>$me,
+						ATTR=>'UpTimeSendInterval');
+my $senduptimepairs = $conf->must_get_val(NODE=>$me,
+						ATTR=>'UpTimeSendPairs');
+my $owampdinfofile = $conf->must_get_val(NODE=>$me,ATTR=>'OWAMPDVARDIR');
+$owampdinfofile .= '/';
+$owampdinfofile .= $conf->must_get_val(NODE=>$me,ATTR=>'OWAMPDINFOFILE');
+
+#
 # local data/path information
 #
 my $datadir = $conf->must_get_val(NODE=>$me,ATTR=>"DataDir");
 my $powcmd = $conf->must_get_val(NODE=>$me,ATTR=>"OWPBinDir");
 $powcmd .= "/";
 $powcmd .= $conf->must_get_val(ATTR=>"powcmd");
+my $updatedb = $datadir . "/" . $conf->must_get_val(NODE=>$me,
+						ATTR=>'UpTimeDBFile');
 
 #
 # pid2info - used to determine nature of child process that dies.
@@ -104,8 +121,10 @@ my(%pid2info,%node2pids,$pid,$dir);
 
 #
 # setup loop - build the directories needed for the mesh defs.
+#		find the addresses for live_update.
 #
 my @dirlist;
+my @addrlist;
 foreach $mtype (@mtypes){
 	next if(!($myaddr=$conf->get_val(NODE=>$me,TYPE=>$mtype,ATTR=>'ADDR')));
 	foreach $node (@nodes){
@@ -114,9 +133,16 @@ foreach $mtype (@mtypes){
 						TYPE=>$mtype,
 						ATTR=>'ADDR')));
 		push @dirlist, "$mtype/$myaddr/$oaddr";
+		my $upaddr = $conf->must_get_val(NODE=>$node,
+						ATTR=>'UPTIMESENDTOADDR');
+		my $upport = $conf->must_get_val(NODE=>$node,
+						ATTR=>'UPTIMESENDTOPORT');
+		my @tarr = ($upaddr,$upport);
+		push @addrlist, \@tarr;
 	}
 }
 die "No valid paths in mesh?" if(!defined(@dirlist));
+die "No valid nodes in mesh?" if(!defined(@addrlist));
 mkpath([map {join '/',$datadir,$_} @dirlist],0,0775);
 
 chdir $datadir || die "Unable to chdir to $datadir";
@@ -137,6 +163,8 @@ open WRITEPIPE, ">&=$wfd" || die "Can't fdopen write end of pipe";
 # to it's work que.)
 $pid = send_data($conf,$rfd,@dirlist);
 @{$pid2info{$pid}} = ("send_data");
+$pid = live_update(@addrlist);
+@{$pid2info{$pid}} = ("live_update");
 
 #
 # powstream setup loop - creates a recv powstream to all other nodes.
@@ -191,6 +219,10 @@ foreach $mtype (@mtypes){
 my $reset = 0;
 while(1){
 
+	# TODO: This sleep will eventually be replaced with a recv of
+	# live_update udp packets from other nodes. If a node sends
+	# a time that is "later" than the start time of a current
+	# powstream, then the powstream should have a HUP sent to it.
 	sleep;
 	while(@dead_children > 0){
 		my $cpid = shift @dead_children;
@@ -206,6 +238,12 @@ while(1){
 		# restart everything if send_data died.
 		if($$info[0] =~ /send_data/){
 			kill 'HUP', $$;
+		}
+
+		if($$info[0] =~ /live_update/){
+			warn "Restarting live_update!";
+			$pid = live_update(@addrlist);
+			@{$pid2info{$pid}} = ("live_update");
 		}
 	}
 
@@ -377,19 +415,17 @@ sub txfr{
 }
 
 sub send_file{
-	my($fname) = @_;
+	my($fname,$md5) = @_;
 	my(%req,$response);
 	local *SENDFILE;
 
 	print "SEND_DATA:$fname\n" if defined($debug);
 
-	my($md5) = new Digest::MD5 ||
-			warn "Unable to create md5 context",return undef;
-
 	open SENDFILE, "<".$fname || die "Unable to open $fname";
 	binmode SENDFILE;
 
 	# compute the md5 of the file.
+	$md5->reset;
 	$md5->addfile(*SENDFILE);
 	$req{'FILEMD5'} = $md5->hexdigest();
 
@@ -445,6 +481,9 @@ sub send_data{
 		@flist = sort bystart @flist;
 	}
 
+	my($md5) = new Digest::MD5 ||
+			die "Unable to create md5 context";
+
 	my $pid = fork;
 
 	# error
@@ -483,7 +522,7 @@ SEND_FILES:
 
 		next if(!defined(@flist) || (@flist < 1));
 		
-		if(send_file($flist[0])){
+		if(send_file($flist[0],$md5)){
 			shift @flist;
 		}
 		else{
@@ -491,6 +530,169 @@ SEND_FILES:
 			sleep $timeout;
 		}
 	}
+}
+
+sub live_update{
+	my(@addrlist)	= @_;
+
+	#
+	# save only one of each address specification using a hash
+	#
+	my($addr,%contacts);
+	foreach $addr (@addrlist){
+		my($sin);
+		my($ip,$port) = @$addr;
+		$sin = sockaddr_in($port,inet_aton($ip));
+		$contacts{$sin} = 1;
+	}
+
+	my($md5) = new Digest::MD5 ||
+			die "Unable to create md5 context";
+
+	#
+	# test syscall setitimer before the fork to make sure syscall
+	# works.
+	my $itimer_t = 'L4';
+	my($in_timer,$out_timer);
+	# This will unset any alarm in the main prog...
+	$in_timer = $out_timer = pack($itimer_t,0,0,0,0);
+	syscall(&SYS_setitimer,0,$in_timer,$out_timer) &&
+		die "syscall(setitimer) failed!: $!";
+
+	#
+	# Create udp socket for sending updates
+	#
+	my $SendSocket = IO::Socket::INET->new(
+				Type		=>	SOCK_DGRAM,
+				Proto		=>	'udp') ||
+		die "Unable to create udp socket for live_update: $!";
+
+	my $pid = fork;
+
+	# error
+	die "Can't fork send_data: $!" if(!defined($pid));
+
+	#parent
+	return $pid if($pid);
+
+	# child continues.
+	my($bzzt) = 0;
+	$SIG{INT} = $SIG{TERM} = $SIG{HUP} = $SIG{CHLD} = 'DEFAULT';
+	$SIG{PIPE} = 'IGNORE';
+	$SIG{ALRM} = sub{$bzzt++;};
+
+	#
+	# liveupdate database.
+	# (Would be nice to do this before fork, but for sematics for
+	# locking files makes that risky.)
+	#
+	my %state;
+	tie %state, 'GDBM_File', $updatedb, &GDBM_WRCREAT, 0660 ||
+		die "Unable to open liveupdate db $updatedb: $!";
+
+	my @intervals = ();
+	@intervals = split /_/,$state{'UPTIMEINTERVALS'}
+		if defined $state{'UPTIMEINTERVALS'};
+	die "Invalid uptime pairs from db: @intervals"
+		if((@intervals > 0) && !($#intervals % 2)); # Must be pairs
+
+	my $block_mask = new POSIX::SigSet(SIGALRM);
+	my $old_mask = new POSIX::SigSet;
+	# block SIGALRM and fetch current mask
+	sigprocmask(SIG_BLOCK,$block_mask,$old_mask);
+	# remove SIGALRM from old_mask so it can be used for sigsuspend.
+	$old_mask->delset(SIGALRM);
+	# initialize timer to go off in one second, and then every
+	# $senduptimeinterval.
+	$in_timer = pack($itimer_t,$senduptimeinterval+0,0,1,0);
+	syscall(&SYS_setitimer,0,$in_timer,$out_timer) &&
+		die "syscall(setitimer) failed!: $!";
+
+	my($starttime,$owampdpid);
+	while(1){
+		# wait for sigalrm to go off.
+		while(!$bzzt){
+			sigsuspend($old_mask);
+		}
+		$bzzt = 0;
+		# If we don't know the pid/starttime or if the pid is invalid
+		if(!$owampdpid || !$starttime || !kill(0,$owampdpid)){
+			# get new info, and see if the new info works.
+			($starttime,$owampdpid) = get_owp_info($owampdinfofile);
+			next if(!$starttime || !$owampdpid);
+			next if(!kill(0,$owampdpid));
+
+			if(@intervals == 0 || $intervals[-2] ne $starttime){
+				push @intervals, $starttime,
+						OWP::Utils::time2owptime(time);
+			}else{
+				$intervals[$#intervals] =
+						OWP::Utils::time2owptime(time);
+			}
+
+			while((@intervals >= 2) &&
+					(@intervals >= $senduptimepairs)){
+				shift @intervals;
+				shift @intervals;
+			}
+		}else{
+			$intervals[$#intervals] =
+						OWP::Utils::time2owptime(time);
+		}
+		$state{'UPTIMEINTERVALS'} = join '_', @intervals;
+
+		my($key,$line,$msg,%msg);
+		$msg{'NODE'} = $me;
+		$msg{'SECRETNAME'} = $secretname;
+		$msg{'UPTIMEINTERVALS'} = $state{'UPTIMEINTERVALS'};
+
+		$md5->reset;
+		$msg= "";
+		foreach $key (keys %msg){
+			$line = "$key\t$msg{$key}";
+			$md5->add($line);
+			$msg .= $line."\n";
+		}
+		$md5->add($secret);
+		$msg .= "\n".$md5->hexdigest."\n";
+
+		my($toaddr);
+		foreach $toaddr (keys %contacts){
+			$SendSocket->send($msg,0,$toaddr);
+		}
+	}
+}
+
+sub get_owp_info{
+	my($infofile) = @_;
+	my ($start, $pid);
+	local(*INFO);
+
+	# Read owampd start time.
+	if(!open INFO, "<$infofile"){
+		warn "Could not open $infofile: $!";
+		return (undef,undef);
+	}
+
+	while(<INFO>){
+		if(/^START=(\d+)$/){
+			($start) = /^START=(\d+)$/;
+			next;
+		}
+		if(/^PID=(\d+)$/){
+			($pid) = /^PID=(\d+)$/;
+			next;
+		}
+	}
+
+	if(!$start){
+		warn "Could not find start time in $infofile";
+	}
+	if(!$pid){
+		warn "Could not find pid in $infofile";
+	}
+
+	return ($start, $pid)
 }
 
 1;

@@ -112,6 +112,7 @@ my $archive = OWP::Archive->new(DATADIR=>$datadir);
 #
 my $port = $conf->must_get_val(ATTR=>'CentralHostPort');
 my $dbfile = $conf->must_get_val(ATTR=>'CentralPerDirDB');
+my $vtimefile = $conf->must_get_val(ATTR=>'CentralPerDirValidFile');
 
 my $timeout = $conf->must_get_val(ATTR=>'CentralHostTimeout');
 
@@ -280,8 +281,8 @@ sub combine_digests{
 	# that was added at the "lower" resolution.
 	my($filestart,$fileend) = split '_',$base;
 
-	my ($laststart) = split '_',$buildfiles[$#buildfiles];
-	if($filestart <= $laststart){
+	my($dummy,$lastend) = split '_',$buildfiles[$#buildfiles];
+	if($filestart < $lastend){
 		warn "Ignoring OUT-OF-ORDER File: ${dir}/${res}/${base}${digestsuffix}";
 		return 1;
 	}
@@ -294,7 +295,8 @@ sub combine_digests{
 	#
 	# Set newstart/newend to the actual values for the
 	# datarange available.
-	my($dummy,$newend) = split '_',$buildfiles[$#buildfiles];
+	my $newend;
+	($dummy,$newend) = split '_',$buildfiles[$#buildfiles];
 	my $newstart = $buildstart;
 
 	#
@@ -511,21 +513,9 @@ sub do_req{
 	@intervals = split /_/,$state{'UPTIMEINTERVALS'}
 		if defined $state{'UPTIMEINTERVALS'};
 	if($i = valid_session($start,$end,@intervals)){
-		# remove up/down pairs that are no longer needed.
-		while($i>1){
-			shift @intervals;
-			$i--;
-		}
-		$state{'UPTIMEINTERVALS'} = join '_', @intervals
-			if(defined @intervals);
 
 		rename "$req{'FNAME'}.i",$req{'FNAME'} ||
 			die "Unable to rename $req{'FNAME'}";
-
-		if(!$archive->add(FILE=>$req{'FNAME'})){
-			unlink $req{'FNAME'};
-			die "Unable to archive $req{'FNAME'}";
-		}
 
 		my(@res) = @reslist;
 		my($res) = shift @res;
@@ -534,17 +524,51 @@ sub do_req{
 			unlink $req{'FNAME'};
 			die "Unable to digest raw session data";
 		}
+
+		if(!$archive->add(FILE=>$req{'FNAME'})){
+			unlink $req{'FNAME'};
+			die "Unable to archive $req{'FNAME'}";
+		}
 		# file no longer needed.
 		unlink $req{'FNAME'};
 
 		if(!combine_digests($dir,$base,$res,\@res,\%state)){
 			unlink "$dir/$res/$base$digestsuffix";
+			$archive->delete(FILE=>$req{'FNAME'});
 			die "Unable to climb digest tree";
 		}
 
 		my($tstamp) = OWP::Utils::time2owptime(time);
 		foreach $res (@reslist){
 			clean_files($tstamp,$dir,$res,\%state);
+		}
+
+		#
+		# Update interval information.
+		#
+		if(defined @intervals){
+
+			$state{'UPTIMEINTERVALS'} = join '_', @intervals
+
+			# If file end is before last "uptime" reported,
+			# then we can update the "valid" time to the
+			# time of the end of the file.
+			if($end < $intervals[$#intervals]){
+				# inform archive of updated valid_time
+				$archive->valid_time(DIRECTORY=>$dir,
+							VALID_TIME=>$end);
+
+				# inform "plotting" of updated valid_time
+				#
+				# using rename to update the "valid_time" file
+				# so that it is an "atomic" operation.
+				open TFILE, ">$dir/$vtimefile.i" ||
+					warn "Open Error $dir/$vtimefile.i: $!";
+				print TFILE "$end";
+				close TFILE;
+				rename "$dir/$vtimefile.i","$dir/$vtimefile" ||
+					warn "Rename $dir/$vtimefile: $!";
+			}
 		}
 	}else{
 		warn "$req{'FNAME'} ignored - invalid session";

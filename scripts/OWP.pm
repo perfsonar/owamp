@@ -40,21 +40,19 @@ $OWP::REVISION = '$Id$';
 $VERSION = '1.0';
 
 #
-# return 0 if the session defined by start/end is not valid.
-# otherwise return the index for the "down" of the up/down pair.
-# (undefined intervals is an implied index '1' since it will
-# presumably be in the first up/down pair that is reported.)
-# The index is used to clear out up/down pairs that are no longer
-# needed. (Anything before the pair being used can be deleted since
-# we expect data to be sent in time order.)
+# return undef if the session defined by start/end is not valid.
+# otherwise return 1 for a "valid" session.
+# Additionally, this sub deletes any up/downtime pairs before the pair being
+# used to validate this particular session since we expect data to be sent in
+# time order, the past pairs are no longer useful.
 #
 sub valid_session{
-	my($start,$end,@intervals) = @_;
+	my($start,$end,$intervals) = @_;
 
 	# if no pairs defined yet - then the period is assumed valid so far...
-	return 1 if(!defined @intervals);
+	return 1 if(!defined @{$intervals});
 
-	die "Invalid intervals" unless ($#intervals % 2); # must be pairs
+	die "Invalid intervals" unless ($#{$intervals} % 2); # must be pairs
 
 	#
 	# invalid <---- up      down
@@ -65,13 +63,29 @@ sub valid_session{
 	# the down is not really a "down", but a "last message time".
 	# (The return 1 after the loop takes care of this case.)
 	#
-	for(my $i=0;$i<$#intervals;$i+=2){
-		return 0 if($start < $intervals[$i]);
-		next if($start > $intervals[$i+1]);
-		return $i+1 if($end < $intervals[$i+1]);
+	while($#{$intervals} >= 1){
+		# start time was before this interval - invalid.
+		return undef if($start < ${$intervals}[0]);
+		# start time is after this interval - go to next interval.
+		next if($start > ${$intervals}[1]);
+
+		# start time is in this interval, if end time is too, then
+		# the file is valid.
+		
+		return 1 if($end < ${$intervals}[1]);
+
+		# if this is the "last" interval, then we tentatively
+		# call this valid, but it may be declared invalid later.
+		last if($#{$intervals} <= 1);
+	}
+	continue{
+		shift @$intervals; shift @$intervals;
 	}
 
-	return $#intervals;
+	# should only get here if the session file goes past the
+	# last reported uptime interval. In this case, we tentatively
+	# call this session valid, but it may be invalidated later.
+	return 1;
 }
 
 sub get_png_prefix {
