@@ -22,6 +22,7 @@ use OWP;
 my $conf = new OWP::Conf(CONFDIR => "$FindBin::Bin");
 my $outfile = $ARGV[0] || 'crontab';
 my $cmd = "$RealBin/buckets2stats.pl";
+my $suff = '> /dev/null 2>&1';
 
 my @resolutions = $conf->get_val(ATTR=>'DIGESTRESLIST');
 open CRON, ">$outfile" or die "Couldn't open $outfile: $!";
@@ -30,19 +31,19 @@ select CRON;
 foreach my $res (@resolutions) {
     my $min = divide($res, SECPERMIN);
     if ($min <= 59) {
-	print "*/$min * * * * $cmd $res 1\n";
+	print "*/$min * * * * $cmd $res 1 $suff\n";
 	next;
     }
 
     my $hrs = divide($min, MINPERHOUR);
     if ($hrs <= 23) {
-	print "0 */$hrs * * * $cmd $res 1\n";
+	print "0 */$hrs * * * $cmd $res 1 $suff\n";
 	next;
     }
 
     my $days = divide($hrs, HOURSPERDAY);
     if ($days <= 30) {
-	print "0 0 * */$days * $cmd $res 1\n";
+	print "0 0 * */$days * $cmd $res 1 $suff\n";
 	next;
     }
 
@@ -50,7 +51,7 @@ foreach my $res (@resolutions) {
 }
 
 # Add a special command to produce summary data every 5 minutes.
-print "*/5 * * * * $cmd 30 2\n";
+print "*/5 * * * * $cmd 30 2 $suff\n";
 close CRON;
 
 # Division with rounding up.
