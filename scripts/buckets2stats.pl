@@ -34,13 +34,14 @@ die "usage: buckets2stats.pl <dirname> <age_in_hours>"
 ### Configuration section.
 my $digest_suffix = $conf->get_val(ATTR=>'DigestSuffix');
 
-# This file contains gnuplot data - no reason to have a temporary
-# file since this one just gets reused all the time.
+# This files contains gnuplot data and graphs- no reason to have temporary
+# files since these just get reused all the time.
 my $gnu_dat = "$datadir/gnuplot.dat";
+my $gnu_png = "$datadir/gnuplot.png";
 
 ### End of configuration section.
 
-use constant TESTING => 1; # XXX - set to 0 eventually
+use constant TESTING => 0; # XXX - set to 0 eventually
 use constant THOUSAND => 1000;
 
 # All versions of header start with the following fields (all unsigned):
@@ -77,7 +78,14 @@ my $init = time();
 
 foreach my $file (@all) {
     my $sec = is_younger_than($file, 2, $init);
+
     next unless $sec;
+    $sec -= OWP::Utils::JAN_1970;
+
+    my @gm = gmtime($sec);
+    my ($second, $minute, $hour, $day, $mon, $year, $wday, $yday) = @gm;
+    print join "\n", "sec=$second", "min=$minute", "hour=$hour", 
+	    "mon=$mon", "year=$year", '';
 
     # Read the header.
     open(FH, "<$datadir/$file") or die "Could not open $file: $!";
@@ -88,7 +96,7 @@ foreach my $file (@all) {
     my ($magic, $version, $hdr_len) = unpack "a8xCC", $buf;
     my $remain_bytes = $hdr_len - $pre;
 
-    die "Currently only work with version 1." unless ($version == 1);
+    die "Currently only work with version 1: $file" unless ($version == 1);
     die "Cannot read header"
 	    if (read(FH, $buf, $remain_bytes) != $remain_bytes);
     ($prec, $sent, $lost, $dup, $min) = unpack "CLLLL", $buf;
@@ -120,7 +128,6 @@ foreach my $file (@all) {
 	read FH, $buf, 8 or die "Could not read: $!";
 	my ($index, $count) = unpack "LL", $buf;
 	$buckets[$index] = $count;
-#	print "index = $index, count = $count\n" if VERBOSE;
     }
     close FH;
 
@@ -128,14 +135,29 @@ foreach my $file (@all) {
     my $median = get_percentile(0.5, $sent, \@buckets);
     my $ninety_perc = get_percentile(0.9, $sent, \@buckets);
 
-    my @stats = ($min, get_percentile(0.5, $sent, \@buckets),
+    my @stats = (get_percentile(0.5, $sent, \@buckets), $min,
 		 get_percentile(0.9, $sent, \@buckets));
 
     print join "\n", 'Stats for the file are:', @stats, '' if VERBOSE;
-    print GNUDAT join " ", $sec, @stats, "\n";
+    print GNUDAT join " ", "$mon/$day/$hour/$minute/$second", @stats, "\n";
 }
 
 close GNUDAT;
+
+open(GNUPLOT, "| gnuplot") or die "cannot execute gnuplot";
+print GNUPLOT <<"STOP";
+set terminal png small color
+set xdata time
+set format x "%M:%S"
+set timefmt "%m/%d/%H/%M/%S"
+set nokey
+set grid
+set xlabel "Time"
+set ylabel "Delay (ms)"
+set title "One-way delays: Min, Median, and 90th Percentile"
+set output "$gnu_png"
+plot "$gnu_dat" using 1:2:3:4 with errorbars ps 1
+STOP
 
 # convert bucket index to the actual time value
 sub index2pt {
@@ -185,7 +207,8 @@ sub is_younger_than {
     my ($sec, $frac_sec) = $bigstart->brsft(32);
 
     $sec =~ s/^\+//;
-    return $sec if TESTING;
+
+    return $sec if TESTING; # XXX - careful!
 
     my $current = time2time_1970($init);
     return ($current - $start < $age)? $sec : undef;
