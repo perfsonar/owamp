@@ -70,12 +70,14 @@ struct num_128 new_random(keyInstance *key, BYTE *outBuffer);
 void num_add(num_128 x, num_128 y, num_128 z);
 void num_mul(num_128 x, num_128 y, num_128 z);
 int num_cmp(num_128 x, num_128 y);
+void num_leftshift(num_128 x, int count);
+
 /* Conversion operations */
 void num2formatted(num_128 from, OWPFormattedTime to);
 void formatted2num(OWPFormattedTime from, num_128 to);
 void num2timeval(num_128 from, struct timeval *to);
 void timeval2num(struct timeval *from, num_128 to);
-struct num_128 raw2num(unsigned char *raw);
+struct num_128 raw2num(const unsigned char *raw);
 
 void counter_increment(exp_count *counter);
 /* Debugging and auxilliary functions */

@@ -28,7 +28,7 @@
 #include "rijndael-api-fst.h"
 
 /* we often need to scale by 10^6 so let's fix a struct for that */
-static struct num_128 million = {0, 0, 0, 0, 16960, 15, 0, 0};
+static struct num_128 million = {{0, 0, 0, 0, 16960, 15, 0, 0}};
 
 #define K 19 /* As in Knuth: the first k such that Q[k] > 1 - 1/(2^64) */
 
@@ -38,25 +38,25 @@ static struct num_128 million = {0, 0, 0, 0, 16960, 15, 0, 0};
 ** print "0x$4, 0x$3, 0x$2, 0x$1, 0, 0, 0, 0,"' ques.dat.pure
 */
 static struct num_128 Q[K] = {
-	0, 0, 0, 0, 0, 0, 0, 0,  /* fake */
-	0x79AC, 0xD1CF, 0x17F7, 0xB172, 0, 0, 0, 0,
-	0x96FD, 0xD75A, 0x93F6, 0xEEF1, 0, 0, 0, 0,
-	0xF6C2, 0x59AA, 0x1862, 0xFD27, 0, 0, 0, 0,
-	0xC5A7, 0x50F4, 0x6DD0, 0xFF9D, 0, 0, 0, 0,
-	0x626C, 0xEF1E, 0xCFCF, 0xFFF4, 0, 0, 0, 0,
-	0xC62F, 0x86E1, 0xE818, 0xFFFE, 0, 0, 0, 0,
-	0x0BB6, 0x850E, 0xE7FE, 0xFFFF, 0, 0, 0, 0,
-	0xB17E, 0x8731, 0xFE2A, 0xFFFF, 0, 0, 0, 0,
-	0xEADC, 0xAC6E, 0xFFDF, 0xFFFF, 0, 0, 0, 0,
-	0x0068, 0xF964, 0xFFFD, 0xFFFF, 0, 0, 0, 0,
-	0xC79D, 0xE22E, 0xFFFF, 0xFFFF, 0, 0, 0, 0,
-	0x9DEE, 0xFE6A, 0xFFFF, 0xFFFF, 0, 0, 0, 0,
-	0xFF81, 0xFFEB, 0xFFFF, 0xFFFF, 0, 0, 0, 0,
-	0x1417, 0xFFFF, 0xFFFF, 0xFFFF, 0, 0, 0, 0,
-	0xF5CF, 0xFFFF, 0xFFFF, 0xFFFF, 0, 0, 0, 0,
-	0xFF96, 0xFFFF, 0xFFFF, 0xFFFF, 0, 0, 0, 0,
-	0xFFFC, 0xFFFF, 0xFFFF, 0xFFFF, 0, 0, 0, 0,
-	0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0, 0, 0, 0
+	{{     0,      0,      0,      0, 0, 0, 0, 0}},  /* fake */
+	{{0x79AC, 0xD1CF, 0x17F7, 0xB172, 0, 0, 0, 0}},
+	{{0x96FD, 0xD75A, 0x93F6, 0xEEF1, 0, 0, 0, 0}},
+	{{0xF6C2, 0x59AA, 0x1862, 0xFD27, 0, 0, 0, 0}},
+	{{0xC5A7, 0x50F4, 0x6DD0, 0xFF9D, 0, 0, 0, 0}},
+	{{0x626C, 0xEF1E, 0xCFCF, 0xFFF4, 0, 0, 0, 0}},
+	{{0xC62F, 0x86E1, 0xE818, 0xFFFE, 0, 0, 0, 0}},
+	{{0x0BB6, 0x850E, 0xE7FE, 0xFFFF, 0, 0, 0, 0}},
+	{{0xB17E, 0x8731, 0xFE2A, 0xFFFF, 0, 0, 0, 0}},
+	{{0xEADC, 0xAC6E, 0xFFDF, 0xFFFF, 0, 0, 0, 0}},
+	{{0x0068, 0xF964, 0xFFFD, 0xFFFF, 0, 0, 0, 0}},
+	{{0xC79D, 0xE22E, 0xFFFF, 0xFFFF, 0, 0, 0, 0}},
+	{{0x9DEE, 0xFE6A, 0xFFFF, 0xFFFF, 0, 0, 0, 0}},
+	{{0xFF81, 0xFFEB, 0xFFFF, 0xFFFF, 0, 0, 0, 0}},
+	{{0x1417, 0xFFFF, 0xFFFF, 0xFFFF, 0, 0, 0, 0}},
+	{{0xF5CF, 0xFFFF, 0xFFFF, 0xFFFF, 0, 0, 0, 0}},
+	{{0xFF96, 0xFFFF, 0xFFFF, 0xFFFF, 0, 0, 0, 0}},
+	{{0xFFFC, 0xFFFF, 0xFFFF, 0xFFFF, 0, 0, 0, 0}},
+	{{0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0, 0, 0, 0}}
 };
 
 #define LN2 &Q[1] /* this element represents ln2 */
@@ -251,9 +251,9 @@ num_cmp(num_128 x, num_128 y)
 void
 num2formatted(num_128 from, OWPFormattedTime to)
 {
-	to->t[0] = (unsigned long)(from->digits[5]) << 16 + from->digits[4];
-	to->t[1] = (unsigned long)(from->digits[3]) << 8 
-		+ (unsigned long)(from->digits[2])>> 8;
+	to->t[0] = ((unsigned long)(from->digits[5]) << 16) + from->digits[4];
+	to->t[1] = ((unsigned long)(from->digits[3]) << 8)
+		+ ((unsigned long)(from->digits[2])>> 8);
 	to->t[1] <<= 8; /* place the result into 24 most significant bits */
 }
 
@@ -296,13 +296,13 @@ num2timeval(num_128 from, struct timeval *to)
 	to->tv_usec = res.digits[4];
 
 	/* now the integer part */
-	to->tv_sec = (unsigned long)(from->digits[5]) << 16 + from->digits[4];
+	to->tv_sec = ((unsigned long)(from->digits[5])<<16) + from->digits[4];
 }
 
 void 
 timeval2num(struct timeval *from, num_128 to)
 {
-
+	
 }
 
 /*
@@ -347,9 +347,9 @@ ulonglong2num(unsigned long long a)
 		ret.digits[i] = 0;
 
 	ret.digits[7] = (unsigned short)(a >> 48);
-	ret.digits[6] = (unsigned short)((a & 0xffff00000000) >> 32);
-	ret.digits[5] = (unsigned short)((a & 0xffff0000) >> 16);
-	ret.digits[4] = (unsigned short)(a & 0xffff);
+	ret.digits[6] = (unsigned short)((a & 0xffff00000000ULL) >> 32);
+	ret.digits[5] = (unsigned short)((a & 0xffff0000ULL) >> 16);
+	ret.digits[4] = (unsigned short)(a & 0xffffULL);
 
 	return ret;
 }
@@ -359,32 +359,40 @@ ulonglong2num(unsigned long long a)
 ** into num struct (fractional part only). The integer part iz zero.
 */
 struct num_128
-raw2num(unsigned char *raw)
+raw2num(const unsigned char *raw)
 {
 	unsigned short dig[4];
 	int i;
 
 	for (i = 0; i < 4; i++)
 		dig[i] = (((unsigned short)(*(raw + 2*i))) << 8) 
-			+ *(raw + 2*i + 1); 
+			+ *(raw + 2*i + 1);
 
 	return num_new(0, 0, 0, 0, ntohs(dig[0]), ntohs(dig[1]), 
 		       ntohs(dig[2]), ntohs(dig[3]));
 }
 
-
+/*
+** Generate a new uniformly distributed 64-bit random number.
+** Return it in lower part of struct num_128.
+*/
 struct num_128
 new_random(keyInstance *key, BYTE *outBuffer)
 {
+#if 1
+	static int reuse = 1;
+	reuse = 1 - reuse;
+	if (reuse)
+		return raw2num(outBuffer + 8);
+#endif
+
 	if (countermodeEncrypt(key, outBuffer) != 128){
 		fprintf(stderr, "FATAL: counter mode encryption error");
 		exit(1);
 	}
 
-	/* Grab the last 8 bytes of the encrypted block */
-	return raw2num(outBuffer + 8);
-	
-	/* XXX - TODO: use static var to avoid wasting randomness */
+	/* Grab the first 8 bytes of the encrypted block */
+	return raw2num(outBuffer);
 }
 
 /* 
@@ -397,18 +405,17 @@ random_exp(keyInstance *key)
 {
 	struct num_128 ret;
 	int i, j, k, count;
-	int num_blocks, num_bits;
 	BYTE outBuffer[16];
 	struct num_128 U, V; 
 	struct num_128 tmp1, tmp2;   /* structs to hold intermediate results */
 
-	if (countermodeEncrypt(key, outBuffer) != 128){
-		fprintf(stderr, "FATAL: counter mode encryption error");
-		exit(1);
-	}
+	static int gen_calls = 0; /* XXX - DEBUG only */
 
-	/* Grab the last 8 bytes of the encrypted block */
-	U = raw2num(outBuffer + 8);
+	gen_calls++;
+	U = new_random(key, outBuffer);
+	
+	printf("Start of random_exp - generated rand number\n");
+	num_print(&U);
 
 	/* Get U and shift */
 	count = 1;
@@ -429,33 +436,12 @@ random_exp(keyInstance *key)
 		/* XXX - TODO - handle this case */
 	}
 
-	/* Normal case. 1 <= count <= 64. Shift by count bits. */
-	num_blocks = count/16; /* integer number of 16-bit blocks to shift */
-	num_bits   = count%16; /* remaining number of bits                 */
 	j = count - 1;
-
-	if (num_bits == 0) { /* Easy case. Just move the blocks. */
-		for (i = 0; i < 4 - num_blocks; i++)
-		    U.digits[3-i] = 
-			    U.digits[3-(i+num_blocks)];
-
-		for (i = 4 - num_blocks; i < 4; i++)
-			U.digits[3-i] = (unsigned short)0;
-	} else { /* need some cut and paste */
-
-		for (i = 0; i <= 2 - num_blocks; i++){
-			U.digits[3-i] = second(U.digits[3-i-num_blocks], 
-					       num_bits)
-				| first(U.digits[3-(i+1)-num_blocks], 
-					num_bits);
-		}
-
-		U.digits[num_blocks] = 
-			second(U.digits[0], num_bits);
-
-		for (i = 4 - num_blocks; i < 4; i++)
-			U.digits[3-i] = (unsigned short)0;
-	}
+	num_leftshift(&U, count);
+	
+	printf("shifted U now is:\n");
+	num_print(&U);
+		
 
 	/* Immediate acceptance? */
 	if (num_cmp(&U, LN2) < 0){ 
@@ -476,9 +462,11 @@ random_exp(keyInstance *key)
 		exit(1);
 	}
 
+	gen_calls++;
 	V = new_random(key, outBuffer);
 	
 	for (i = 2; i <= k; i++){
+		gen_calls++;
 		tmp1 = new_random(key, outBuffer);
 		if (num_cmp(&tmp1, &V) < 0)
 			V = tmp1;
@@ -538,7 +526,7 @@ countermodeEncrypt(keyInstance *key, BYTE *outBuffer)
 	BYTE input[16];
 	int j;
 	u_long digit; /*  = htonl(*i); */
-	static exp_count i = {0, 0, 0, 0};
+	static exp_count i = {{0, 0, 0, 0}};
 
 	if (key == NULL)
 		return BAD_CIPHER_STATE;
@@ -555,7 +543,6 @@ countermodeEncrypt(keyInstance *key, BYTE *outBuffer)
 		
 	rijndaelEncrypt(key->rk, key->Nr, input, outBuffer);
 
-	/* *i = (*i) + 1; */
 	counter_increment(&i);
 	return 128;
 }
@@ -575,4 +562,35 @@ counter_increment(exp_count *counter)
 
 	if (!finished)
 		counter->d[0] = 1;
+}
+
+
+void
+num_leftshift(num_128 U, int count)
+{
+	int num_blocks, num_bits, i;
+	
+	assert(1 <= count);
+	assert(count <= 64);
+
+	/* Normal case. 1 <= count <= 64. Shift by count bits. */
+	num_blocks = count/16; /* integer number of 16-bit blocks to shift */
+	num_bits   = count%16; /* remaining number of bits                 */
+
+	if (num_blocks > 0){ /* do the whole number of blocks first */
+		for (i = 3; i >= num_blocks; i--)
+			U->digits[i] = U->digits[i - num_blocks];
+
+		for (i = num_blocks - 1; i >= 0; i--)
+			U->digits[i] = (unsigned short)0;
+	}
+
+	for (i = 3; i >= 1; i--){
+		U->digits[i] = second(U->digits[i], num_bits)
+			| first(U->digits[i-1], num_bits);
+	}
+	
+	U->digits[0] = 
+		second(U->digits[0], num_bits);
+	
 }
