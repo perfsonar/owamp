@@ -31,10 +31,12 @@
 typedef struct OWPPerConnDataRec{
 	OWPControl		cntrl;
 
-	int			pipefd;		/* pipe to parent	*/
+	int			pipefd;		  /* pipe to parent	  */
 
 	u_int32_t		lossThreshold;
-	char			*datadir;
+	char			*datadir;        /* global prefix         */
+	char                    *real_data_dir;  /* where file is kept    */
+	char                    *link_data_dir;  /* where link is kept    */
 
 	policy_data		*policy;	/* global policy hash */
 	owp_tree_node_ptr	node;		/* node for the connection
