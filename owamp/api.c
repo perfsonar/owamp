@@ -724,17 +724,13 @@ OWPControlAccept(
 		 OWPErrSeverity *err_ret   /* err - return                  */
 )
 {
+	u_int32_t mode_offered = default_offered_mode;
+	u_int32_t mode_requested;
+ 
+	OWPByte *key = NULL;
+	char buf[MAX_MSG]; /* used to send and receive messages */
+	char token[32];
 	OWPControl cntrl;
-
-	/* Remove what's not needed. */
-	/* 
-	datum *key;
-	keyInstance keyInst;
-
-	   XXX - need to hide this
-	   hash_ptr passwd_hash = ((struct data *)app_data)->passwd; 
-	*/
-
 	*err_ret = OWPErrOK;
 	if ( !(cntrl = _OWPControlAlloc(ctx, err_ret)))
 		return NULL;
@@ -742,46 +738,22 @@ OWPControlAccept(
 	/* XXX - setc cntrl fields, - say,
 	   cntrl->sockfd = connfd, etc
 	*/
-	  
-	/*
-	  XXX - TODO: error-checking.
-	*/
-	_OWPSendServerGreeting(cntrl, err_ret);
+	cntrl->sockfd = connfd;
+
+	/* Compose Server greeting. */
+	memset(buf, 0, sizeof(buf));
+	*(int32_t *)(buf + 12) = htonl(default_offered_mode);
+
+	/* generate 16 random bytes and save them away. */
+	random_bytes(cntrl->challenge, 16);
+	memcpy(buf + 16, cntrl->challenge, 16); /* the last 16 bytes */
+	
+	if (_OWPSendBlocks(cntrl, buf, 2) < 0)
+		return NULL;
+
 	_OWPReadClientGreeting(cntrl, err_ret);
 
 	return cntrl;
-}
-
-/*
-** This function does the initial policy check on the remote host.
-** It returns True if it is ok to start Control protocol converstion,
-** and False otherwise.
-*/
-OWPBoolean
-OWPAddrCheck(
-	     OWPContext ctx,
-	     void *app_data, 
-	     struct sockaddr *local, 
-	     struct sockaddr *remote, 
-	     OWPErrSeverity *err_ret)
-{
-	*err_ret = OWPErrOK;
-	
-	if(!ctx){
-		OWPErrorLine(NULL,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
-			     "OWPAddrCheck:No Context!");
-		*err_ret = OWPErrFATAL;
-		return False;
-	}
-
-
-	/*
-	 * Default action is deny access.
-	 */
-	if(!ctx->cfg.check_addr_func)
-		return False;
-
-	return (*ctx->cfg.check_addr_func)(app_data, local, remote, err_ret);
 }
 
 /*
