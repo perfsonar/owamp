@@ -517,6 +517,7 @@ ACCEPT:
 			mode &= OWP_MODE_OPEN;
 
 		conndata.pipefd = new_pipe[1];
+		conndata.policy = policy;
 		/*
 		conndata.session_data_path = opts.data_path;
 		*/
