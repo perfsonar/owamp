@@ -566,4 +566,6 @@ OWPDecodeTimeStamp(
 	);
 
 extern void owp_print_sockaddr(struct sockaddr *sock);
+extern void owp_print_owpaddr(FILE *fp, OWPAddr addr);
+
 #endif	/* OWAMPP_H */
