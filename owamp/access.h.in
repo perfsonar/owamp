@@ -45,9 +45,9 @@
 #endif
 
 
-#define DEFAULT_OPEN_CLASS "open"
-#define AUTH_CLASS "authenticated"
-#define BANNED_CLASS "banned"
+#define OWP_DEFAULT_OPEN_CLASS "open"
+#define OWP_AUTH_CLASS "authenticated"
+#define OWP_BANNED_CLASS "banned"
 
 #define KID_LEN 16
 #define PASSWD_LEN 16
