@@ -28,32 +28,14 @@
 #define MAXPATHLEN 1024
 #endif
 
-/*
-** XXX - temporary hack until owamp.h compiles.
-*/
-#ifndef OWAMP_H
-typedef int		OWPBoolean;
 
-#define	OWP_MODE_UNDEFINED		(0)
-#define	OWP_MODE_OPEN			(01)
-#define	OWP_MODE_AUTHENTICATED		(02)
-#define	OWP_MODE_ENCRYPTED		(04)
+#define DEFAULT_OPEN_CLASS "open"
+#define AUTH_CLASS "authenticated"
+#define BANNED_CLASS "banned"
 
-typedef enum {
-	OWPErrFATAL=-4,
-	OWPErrWARNING=-3,
-	OWPErrINFO=-2,
-	OWPErrDEBUG=-1,
-	OWPErrOK=0
-} OWPErrSeverity;
-typedef void (*OWPCheckAddrPolicy)(
-				   void *app_data,
-				   struct sockaddr *local,
-				   struct sockaddr *remote,
-				   OWPErrSeverity *err_ret
-				   );
-#endif
-
+#define KID_LEN 16
+#define PASSWD_LEN 16
+#define PASSWD_LEN_HEX (PASSWD_LEN * 2)
 
 /*
 ** This structure is used to keep track of usage resources.
@@ -65,7 +47,6 @@ typedef struct owamp_limits {
 	u_int8_t test_sessions; /* number of concurrent test sessions */
 } OWAMPLimits;
 
-
 typedef DBM* hash_ptr;
 void owamp_print_ip2class(hash_ptr hash);
 void owamp_print_class2limits(hash_ptr hash);
@@ -74,4 +55,3 @@ int hash_store(hash_ptr hash, datum key, datum val, int flags);
 datum hash_firstkey(hash_ptr hash);
 datum hash_fetch(hash_ptr hash, datum key);
 datum hash_nextkey(hash_ptr hash);
-
