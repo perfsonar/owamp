@@ -21,18 +21,23 @@
 #include <stdlib.h>
 #include <owamp/owamp.h>
 
-struct OWPScheduleContextRec {
-	OWPContext	ctx;
-
+struct OWPExpContextRec{
 	/* AES random number generator fields */
 	keyInstance	key;		/* key used to encrypt the counter */
 	u_int8_t	counter[16];	/* 128-bit counter (network order) */
 	u_int8_t	out[16];	/* encrypted block buffer.         */
+};
 
-	u_int64_t	i;		/* current index for generation */
-	u_int64_t	maxi;
-	u_int32_t	nslots;
-	OWPSlot		*slots;
+
+struct OWPScheduleContextRec {
+	OWPContext		ctx;
+
+	struct OWPExpContextRec	exp;
+
+	u_int64_t		i;	/* current index for generation */
+	u_int64_t		maxi;
+	u_int32_t		nslots;
+	OWPSlot			*slots;
 };
 
 /*
@@ -52,10 +57,10 @@ struct OWPScheduleContextRec {
  */
 static OWPNum64
 OWPUnifRand64(
-	OWPScheduleContext	sctx
+	OWPExpContext	ectx
 	)
 {
-	u_int8_t	forth = sctx->counter[15] & (u_int8_t)3;
+	u_int8_t	forth = ectx->counter[15] & (u_int8_t)3;
 	u_int8_t	*buf;
 	int		j;
 	OWPNum64	ret = 0;
@@ -66,8 +71,8 @@ OWPUnifRand64(
 	 * random numbers for the algorithm.
 	 */
 	if (!forth){
-		rijndaelEncrypt(sctx->key.rk,sctx->key.Nr,sctx->counter,
-								sctx->out);
+		rijndaelEncrypt(ectx->key.rk,ectx->key.Nr,
+				ectx->counter,ectx->out);
 	}
 
 	/*
@@ -75,7 +80,7 @@ OWPUnifRand64(
 	 * network byte order for AES counter mode.
 	 */
 	for (j = 15; j >= 0; j--){
-		if (++sctx->counter[j]){
+		if (++ectx->counter[j]){
 			break;
 		}
 	}
@@ -83,7 +88,7 @@ OWPUnifRand64(
 	/*
 	 * Point buf to correct 1/4th of the out buffer.
 	 */
-	buf = &sctx->out[4*forth];
+	buf = &ectx->out[4*forth];
 
 	/*
 	 * Convert the "raw" buffer to an unsigned integer.
@@ -102,7 +107,7 @@ OWPUnifRand64(
 }
 
 /*
- * Function:	OWPRand64Exponent
+ * Function:	OWPExpContextNext
  *
  * Description:	
  *
@@ -179,9 +184,9 @@ static OWPNum64 Q[] = {
 #define	MASK32(n)	(n & 0xFFFFFFFFUL)
 #define LN2 Q[1] /* this element represents ln2 */
 
-static OWPNum64 
-OWPRand64Exponent(
-	OWPScheduleContext	sctx
+OWPNum64 
+OWPExpContextNext(
+	OWPExpContext	ectx
 	)
 {
 	u_int32_t	i, k, j = 0;
@@ -191,7 +196,7 @@ OWPRand64Exponent(
 	 * S1. [Get U and shift.] Generate a (t+1)-bit
 	 */
 	/* Get U and shift */
-	U = OWPUnifRand64(sctx);
+	U = OWPUnifRand64(ectx);
 
 	/*
 	 * shift until bit 31 is 0 (bits 31-0 are the 32 Low-Order bits
@@ -212,12 +217,7 @@ OWPRand64Exponent(
 	 * S2. Immediate acceptance?
 	 */
 	if (U < LN2){
-		/* j is NOT an OWPNum64 so direct  multiplication of j*LN2
-		 * here is correct. Alternatively we could:
-		 * 	return OWPNum64Add(OWPNum64Mult(
-		 * 				OWPULongToNum64(j),LN2),U);
-		 */
-		return OWPNum64Add((j*LN2),U);
+		return OWPNum64Add(OWPNum64Mult(OWPULongToNum64(j),LN2),U);
 	}
 
 	/*
@@ -230,9 +230,9 @@ OWPRand64Exponent(
 		}
 	}
 
-	V = OWPUnifRand64(sctx);
+	V = OWPUnifRand64(ectx);
 	for(i = 2;i <= k; i++){
-		tmp = OWPUnifRand64(sctx);
+		tmp = OWPUnifRand64(ectx);
 		if (tmp < V){
 			V = tmp;
 		}
@@ -356,10 +356,10 @@ OWPScheduleContextCreate(
 	 * (This is only needed for Exponential random numbers, but just
 	 * do it.)
 	 */
-	bytes2Key(&sctx->key, sid);
+	bytes2Key(&sctx->exp.key, sid);
 
-	memset(sctx->out,0,16);
-	memset(sctx->counter,0,16);
+	memset(sctx->exp.out,0,16);
+	memset(sctx->exp.counter,0,16);
 
 	sctx->i = 0;
 	sctx->maxi = tspec->npackets;
@@ -393,8 +393,8 @@ OWPScheduleContextReset(
 	OWPTestSpec		*tspec
 		)
 {
-	memset(sctx->out,0,16);
-	memset(sctx->counter,0,16);
+	memset(sctx->exp.out,0,16);
+	memset(sctx->exp.counter,0,16);
 	sctx->i = 0;
 
 	if(sid && tspec){
@@ -408,7 +408,7 @@ OWPScheduleContextReset(
 		 * (This is only needed for Exponential random numbers, but just
 		 * do it.)
 		 */
-		bytes2Key(&sctx->key, sid);
+		bytes2Key(&sctx->exp.key, sid);
 
 		sctx->maxi = tspec->npackets;
 		sctx->nslots = MIN(tspec->nslots,tspec->npackets);
@@ -449,7 +449,7 @@ OWPScheduleContextGenerateNextDelta(
 
 	switch(slot->slot_type){
 		case OWPSlotRandExpType:
-			return OWPNum64Mult(OWPRand64Exponent(sctx),
+			return OWPNum64Mult(OWPExpContextNext(&sctx->exp),
 					slot->rand_exp.mean);
 		case OWPSlotLiteralType:
 			return slot->literal.offset;
@@ -462,4 +462,66 @@ OWPScheduleContextGenerateNextDelta(
 	/*NOTREACHED*/
 	abort();
 	return 0;
+}
+
+/*
+ * Function:	OWPExpContextFree
+ *
+ * Description:	
+ * 	Free an Exp context.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
+void
+OWPExpContextFree(
+	OWPExpContext	ectx
+	)
+{
+	free(ectx);
+}
+
+/*
+ * Function:	OWPExpContextCreate
+ *
+ * Description:	
+ *	Seed the random number generator using a 16-byte string.
+ *	This is used to initialize the random number generator
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
+OWPExpContext
+OWPExpContextCreate(
+	OWPContext	ctx,
+	u_int8_t	seed[16]
+	)
+{
+	OWPExpContext	ectx;
+
+	ectx = malloc(sizeof(*ectx));
+	if (!ectx){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"malloc(): %M");
+		return NULL;
+	}
+
+	/*
+	 * Initialize Key with seed.
+	 */
+	bytes2Key(&ectx->key, seed);
+
+	memset(ectx->out,0,16);
+	memset(ectx->counter,0,16);
+
+	return(ectx);
 }

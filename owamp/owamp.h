@@ -371,6 +371,32 @@ OWPNum64
 OWPScheduleContextGenerateNextDelta(
 	OWPScheduleContext	sctx
 		);
+void
+OWPScheduleContextFree(
+	OWPScheduleContext	sctx
+		);
+
+/*
+ * These functions expose the exponential deviates for the exponential
+ * distribution used to generate send schedules.
+ */
+typedef struct OWPExpContextRec		*OWPExpContext;
+
+OWPExpContext
+OWPExpContextCreate(
+		OWPContext	ctx,
+		u_int8_t	seed[16]
+		);
+OWPNum64
+OWPExpContextNext(
+		OWPExpContext	exp
+		);
+
+void
+OWPExpContextFree(
+		OWPExpContext	exp
+		);
+
 
 /*
  * Error Reporting:

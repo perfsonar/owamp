@@ -18,7 +18,7 @@
 #
 #	Description:	toplevel build for owamp project
 #
-SUBDIRS = @TOP_BUILD_DIRS@ owamp owampd owping conf powstream
+SUBDIRS = @TOP_BUILD_DIRS@ owamp owampd owping conf powstream test
 #SUBDIRS = owamp owampd owping owdigest conf powstream scripts
 
 # uncomment this when we stop using broken automake 1.5
