@@ -19,6 +19,8 @@
 **	Description:	
 */
 #include <owampP.h>
+extern jmp_buf jmpbuffer;
+extern int free_connections;
 
 static OWPInitializeConfigRec	def_cfg = {
 	/* tm_out.tv_sec		*/	0,
@@ -725,3 +727,81 @@ OWPSetSessionKey(OWPControl ctrl, char* ptr)
 	bcopy(ptr, ctrl->session_key, 16);
 }
 #endif
+
+/*
+ * Function:	OWPControlAccept
+ *
+ * Description:	
+ * 		Used by the server to talk the protocol until
+ *              a Control Connection has been established, or
+ *              rejected, or error occurs.
+ *           
+ * In Args:	
+ *
+ * Returns:	Valid OWPControl handle on success, NULL if
+ *              the request has been rejected, or error has occurred.
+ *
+ * Side Effect:	
+ */
+
+OWPControl
+OWPControlAccept(
+		 OWPContext     ctx,       /* control context               */
+		 void           *app_data, /* policy                        */
+		 socklen_t      len,       /* length of the sockaddr struct */
+		 int            listenfd,  /* listening socket              */
+		 OWPErrSeverity *err_ret   /* err - return                  */
+)
+{
+	int connfd;
+	pid_t pid;
+	socklen_t addrlen = len;
+	struct sockaddr *cliaddr;
+	OWPControl cntrl;
+	*err_ret = OWPErrOK;
+	
+	if ( !(cntrl = _OWPControlAlloc(ctx, err_ret)))
+		return NULL;
+
+	cliaddr = (void*)malloc(addrlen);
+	if (cliaddr == NULL){
+		OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, "malloc");
+		return NULL;
+	}
+
+ AGAIN:
+	if ( (connfd = accept(listenfd, cliaddr, &addrlen)) < 0){
+		if (errno == EINTR)
+			goto AGAIN;
+		else {
+			OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, 
+				 "accept error");
+			return NULL;
+				}
+	}
+
+	if (ctx->cfg.check_addr_func(app_data, NULL, cliaddr, err_ret) == 0){
+		return NULL;     /* access denied */
+	};
+	
+	if (free_connections == 0)
+		return NULL;
+
+	free_connections--;
+
+	if ( (pid = fork()) < 0){
+		OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, "fork");
+		return NULL;
+	}
+
+	if (pid > 0){  /* parent */
+		close(connfd);
+		longjmp(jmpbuffer, 1);
+		/* UNREACHED */
+		return NULL;
+	}
+
+	/* Child */
+	/* XXX - TODO: finish up. */
+	return cntrl;
+}
