@@ -7,6 +7,7 @@
 #include <ndbm.h>
 #include <sys/stat.h>
 #include <assert.h>
+#include <netdb.h>
 
 /* for inet_pton */
 #include <sys/socket.h>
@@ -41,7 +42,11 @@ typedef void (*OWPCheckAddrPolicy)(
 				   );
 #endif
 
-#define DEBUG 0
+#define DEBUG   0
+#define LISTENQ 5
+#define SERV_PORT_STR "5555"
+#define KID_LEN 16
+#define PASSWD_LEN 16
 
 #define DEFAULT_OPEN_CLASS "open"
 #define AUTH_CLASS "authenticated"
@@ -51,15 +56,14 @@ typedef void (*OWPCheckAddrPolicy)(
 ** This structure is used to keep track of usage resources.
 */
 
-typedef struct owamp_limits{
+typedef struct owamp_limits {
 	u_int32_t bandwidth;   /* bytes/sec                          */
 	u_int32_t space;       /* bytes                              */
 	u_int8_t num_sessions; /* number of concurrent test sessions */
 } OWAMPLimits;
 
 typedef DBM* hash_ptr;
-hash_ptr ip2class_hash;
-hash_ptr class2limits_hash;
+hash_ptr ip2class_hash, class2limits_hash, passwd_hash;
 
 const char *DefaultConfigFile = DEFAULT_CONFIG_FILE;
 char *ConfigFile = NULL;
@@ -67,10 +71,13 @@ const char *DefaultIPtoClassFile = DEFAULT_IP_TO_CLASS_FILE;
 char *IPtoClassFile = NULL;
 const char *DefaultClassToLimitsFile = DEFAULT_CLASS_TO_LIMITS_FILE;
 char *ClassToLimitsFile = NULL;
+const char *DefaultPasswdFile = DEFAULT_PASSWD_FILE;
+char *PasswdFile = NULL;
 
 static void
-usage()
+usage(char *name)
 {
+	printf("Usage: %s [-p port] [ip address]\n", name);
 	return;
 }
 
@@ -102,32 +109,6 @@ OWAMPSetSpace(OWAMPLimits * lim, u_int32_t space){
 u_int32_t
 OWAMPSetNumSessions(OWAMPLimits * lim, u_int32_t ns){
 	lim->num_sessions = ns;
-}
-
-/*
-** This function parses command line options.
-*/
-
-static void
-owamp_parse_options(int argc, char *argv[])
-{
-    extern char *optarg;
-    int c;
-    ConfigFile = strdup(DefaultConfigFile);
-
-    while ((c = getopt(argc, argv, "f:h")) != -1) {
-	switch (c) {
-	case 'f':
-		ConfigFile = strdup(optarg);
-		break;
-	case 'h':
-		usage();
-		break;
-	default:
-		usage();
-		break;
-	}
-    }
 }
 
 /*
@@ -220,7 +201,6 @@ is_valid_network(u_int32_t addr, u_int8_t offset)
 ** It returns 0 on success, and -1 on failure.
 */
 
-
 int
 owamp_parse_mask(const char *text, u_int32_t *addr, u_int8_t *off)
 {
@@ -266,23 +246,23 @@ owamp_parse_mask(const char *text, u_int32_t *addr, u_int8_t *off)
 	return 0;
 }
 
-
-
 /*
 ** This function fills out a datum structure with the given string.
 */
 
 datum*
-owamp_datumify(const char *bytes, int dat_len)
+str2datum(const char *bytes)
 {
 	datum *dat;
+	size_t len = strlen(bytes)+1;
+
 	if ( (dat = (void *)malloc(sizeof(datum))) == NULL)
 		return NULL;
-	if ( (dat->dptr = (void *)malloc(dat_len)) == NULL) 
+	if ( (dat->dptr = (void *)malloc(len)) == NULL) 
 		return NULL;
 
-	bcopy(bytes, dat->dptr, dat_len);
-	dat->dsize = dat_len;
+	bcopy(bytes, dat->dptr, len);
+	dat->dsize = len;
 	return dat;
 }
 
@@ -376,7 +356,7 @@ owamp_read_ip2class(const char *ip2class, hash_ptr hash)
 		if ( (key = subnet2datum(addr, off)) == NULL)
 			continue;
 
-		if ( (val = owamp_datumify(class, strlen(class)+1)) == NULL )
+		if ( (val = str2datum(class)) == NULL )
 			continue;
 
 		if (hash_store(hash, *key, *val, DBM_REPLACE) != 0)
@@ -388,12 +368,58 @@ owamp_read_ip2class(const char *ip2class, hash_ptr hash)
 	/* Assign DEFAULT_OPEN_CLASS for the widest mask. */
 	if ( (key = subnet2datum(0, 0)) == NULL)
 		goto CLOSE;
-	if ((val = owamp_datumify(DEFAULT_OPEN_CLASS, strlen(DEFAULT_OPEN_CLASS)+1)) == NULL)
+	if ( (val = str2datum(DEFAULT_OPEN_CLASS)) == NULL)
 		goto CLOSE;
 	if (hash_store(hash, *key, *val, DBM_INSERT) != 0)
 		fprintf(stderr, "\nhash_store failed to insert all key\n\n");
  CLOSE:
 	return;
+}
+
+void
+read_passwd_file(const char *passwd_file, hash_ptr hash)
+{
+	char line[MAX_LINE], kid[KID_LEN], secret[PASSWD_LEN];
+	char err_msg[1024];
+	FILE *fp;
+	u_int32_t addr;
+	u_int8_t off; 
+	
+	datum *key, *val;
+
+	if ( (fp = fopen(passwd_file, "r")) == NULL){
+		snprintf(err_msg, sizeof(err_msg),"fopen %s for reading", 
+			passwd_file);
+		perror(err_msg);
+		exit(1);
+	}
+
+	while ( (fgets(line, sizeof(line), fp)) != NULL) {
+		if (line[0] == '#') 
+			continue;
+		if (sscanf(line, "%s%s", kid, secret) != 2) 
+			continue;
+
+		/* Prevent from overspilling */
+		kid[KID_LEN] = '\0';
+		secret[PASSWD_LEN] = '\0';
+		if (strlen(secret) != PASSWD_LEN){ /* bad password */
+			fprintf(stderr, "Warning: password %s is not "
+                        "%d characters long.\n", secret, PASSWD_LEN);
+			continue;
+		}
+		/* Now save the key/class pair in a hash. */
+		if ( (key = str2datum(kid)) == NULL)
+			continue;
+
+		if ( (val = str2datum(secret)) == NULL )
+			continue;
+
+		if (hash_store(hash, *key, *val, DBM_REPLACE) != 0)
+			continue;
+	}
+
+	fclose(fp);
 }
 
 
@@ -542,7 +568,7 @@ owamp_read_class2limits(const char *class2limits, hash_ptr hash)
 				OWAMPSetNumSessions(&limits, numval);
 			printf("DEBUG: key = %s value =  %lu\n", key, numval);
 			} 
-		printf("DEBUG: ********************************\n");
+		printf("\n");
 
 		/* Now save the limits structure in the hash. */
 		key_dat.dptr = (char *)class;
@@ -552,7 +578,6 @@ owamp_read_class2limits(const char *class2limits, hash_ptr hash)
 		hash_store(hash, key_dat, val_dat, DBM_REPLACE);
 	}
 }
-
 
 void owamp_first_check(void *app_data,
 		       struct sockaddr *local,
@@ -626,18 +651,107 @@ test_policy_check()
 }
 
 int
+tcp_listen(const char *host, const char *serv, socklen_t *addrlenp)
+{
+	int				listenfd, n;
+	const int		on = 1;
+	struct addrinfo	hints, *res, *ressave;
+
+	bzero(&hints, sizeof(struct addrinfo));
+	hints.ai_flags = AI_PASSIVE;
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = SOCK_STREAM;
+
+	if ( (n = getaddrinfo(host, serv, &hints, &res)) != 0)
+		err_quit("tcp_listen error for %s, %s: %s",
+				 host, serv, gai_strerror(n));
+	ressave = res;
+
+	do {
+		listenfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+		if (listenfd < 0)
+			continue;		/* error, try next one */
+
+		Setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
+		if (bind(listenfd, res->ai_addr, res->ai_addrlen) == 0)
+			break;			/* success */
+
+		Close(listenfd);	/* bind error, close and try next one */
+	} while ( (res = res->ai_next) != NULL);
+
+	if (res == NULL)	/* errno from final socket() or bind() */
+		err_sys("tcp_listen error for %s, %s", host, serv);
+
+	Listen(listenfd, LISTENQ);
+
+	if (addrlenp)
+		*addrlenp = res->ai_addrlen;	/* return size of protocol address */
+
+	freeaddrinfo(ressave);
+
+	return(listenfd);
+}
+/* end tcp_listen */
+
+void
+do_control_client(pid_t connfd)
+{
+	;
+}
+
+void
+do_ban(int fd)
+{
+	Close(fd);
+}
+
+int
 main(int argc, char *argv[])
 {
 	char key_bytes[5];
 	datum * dat;
 	char class[128];
 	char err_msg[128];
+	int listenfd, connfd;
+	char buff[MAX_LINE];
+	struct sockaddr *cliaddr;
+	socklen_t addrlen, len;
+	extern char *optarg;
+	extern int optind;
+	int c;
+	char* port = NULL;
+	char* cmd = argv[0];
+	pid_t pid;
+	OWPErrSeverity out;
 
-	owamp_parse_options(argc, argv);
+	/* Parse command line options. */
+	while ((c = getopt(argc, argv, "f:p:h")) != -1) {
+		switch (c) {
+		case 'f':
+			ConfigFile = strdup(optarg);
+			break;
+		case 'h':
+			usage(argv[0]);
+			break;
+		case 'p':
+			port = strdup(optarg);
+			break;
+		default:
+			usage(cmd);
+			break;
+		}
+	}
+	argc -= optind;
+	argv += optind;
+
+	if (!port)
+		port = strdup(SERV_PORT_STR);
 	if (!IPtoClassFile)
 		IPtoClassFile = strdup(DefaultIPtoClassFile);
 	if (!ClassToLimitsFile)
 		ClassToLimitsFile = strdup(DefaultClassToLimitsFile);
+	if (!PasswdFile)
+		PasswdFile = strdup(DefaultPasswdFile);
 
 	/* Open the ip2class hash for writing. */
 	if ((ip2class_hash = hash_init(IPtoClassFile)) == NULL){
@@ -659,7 +773,65 @@ main(int argc, char *argv[])
 	owamp_read_class2limits(ClassToLimitsFile, class2limits_hash);
 	owamp_print_class2limits(class2limits_hash);
 
+	/* Open the passwd hash for writing. */
+	if ((passwd_hash = hash_init(PasswdFile)) == NULL){
+		snprintf(err_msg, sizeof(err_msg),
+			 "hash_init %s.db for writing", PasswdFile);
+		perror(err_msg);
+		exit(1);
+	}
+	read_passwd_file(PasswdFile, passwd_hash);
+
+
+	if (argc == 0)
+		listenfd = tcp_listen(NULL, port, &addrlen);
+	else if (argc == 1)
+		listenfd = tcp_listen(argv[0], port, &addrlen);
+	else
+		usage(cmd);
+
+#if 0
 	test_policy_check();
+#endif
+
+	cliaddr = (void*)Malloc(addrlen);
+
+	for ( ; ; ) {
+		len = addrlen;
+#if 1
+		break; /* XXX - remove */
+#endif
+
+		
+		connfd = Accept(listenfd, cliaddr, &len);
+		owamp_first_check(NULL, NULL, cliaddr, &out);
+		switch (out) {
+		case OWPErrFATAL:
+			fprintf(stderr, "DEBUG: access prohibited\n");
+			do_ban(connfd);
+			continue;
+			break;
+		case OWPErrOK:
+			fprintf(stderr, "DEBUG: access allowed\n");
+			break;
+		default:
+			fprintf(stderr, "DEBUG: policy is confused\n");
+			continue;
+			break;
+		};
+
+
+		if ( (pid = fork()) < 0)
+			sys_quit("fork");
+
+		if (pid == 0) { /* child */
+			do_control_client(connfd);
+			exit(0);
+		}
+
+		/* Parent */
+		Close(connfd);
+	}
 
 	hash_close(ip2class_hash);
 	hash_close(class2limits_hash);
