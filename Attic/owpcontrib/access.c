@@ -22,6 +22,25 @@
 #define MAXPATHLEN 1024
 #endif
 
+/*
+** Need this to define the initial policy check function.
+*/
+#ifndef OWAMP_H
+typedef enum {
+	OWPErrFATAL=-4,
+	OWPErrWARNING=-3,
+	OWPErrINFO=-2,
+	OWPErrDEBUG=-1,
+	OWPErrOK=0
+} OWPErrSeverity;
+typedef void (*OWPCheckAddrPolicy)(
+				   void *app_data,
+				   struct sockaddr *local,
+				   struct sockaddr *remote,
+				   OWPErrSeverity *err_ret
+				   );
+#endif
+
 #define CLASS_NAME 1
 #define LIMIT_NAME 2
 #define NEITHER    3
@@ -193,7 +212,7 @@ is_valid_network(u_int32_t addr, u_int8_t offset)
 		return 0;
 	}
 	if ((offset == 0) && addr)
-		return 0;
+		return 1;
 	off_mask = ((1<<(32-offset)) - 1);
 	return (addr & off_mask)? 0 : 1; 
 }
@@ -402,6 +421,11 @@ ipaddr2class(u_int32_t ip)
 		if (val_dat.dptr)
 			return val_dat.dptr;
 	}
+	
+	key_dat_ptr = subnet2datum(ip, 0);
+	val_dat = hash_fetch(ip2class_hash, *key_dat_ptr);
+	if (val_dat.dptr)
+		return val_dat.dptr;
 
 	return DEFAULT_OPEN_CLASS;
 }
@@ -538,6 +562,78 @@ owamp_read_class2limits(const char *class2limits, hash_ptr hash)
 	}
 }
 
+
+void owamp_first_check(void *app_data,
+		       struct sockaddr *local,
+		       struct sockaddr *remote,
+		       OWPErrSeverity *err_ret
+		       )
+{
+	u_int32_t ip_addr; 
+	switch (remote->sa_family){
+	case AF_INET:
+	    ip_addr = ntohl((((struct sockaddr_in *)remote)->sin_addr).s_addr);
+	    fprintf(stderr, "DEBUG: IP = %s\n", owamp_denumberize(ip_addr));
+	    fprintf(stderr, "DEBUG: class = %s\n", ipaddr2class(ip_addr));
+
+	    if (strcmp(ipaddr2class(ip_addr), BANNED_CLASS) == 0){
+		    *err_ret = OWPErrFATAL; /* prohibit access */
+	    } else {
+		    *err_ret = OWPErrOK;    /* allow access */
+	    };
+	    break;
+	    
+	default:
+		break;
+	}
+}
+
+void
+test_policy_check()
+{
+	int s, connfd;
+	struct sockaddr_in sockaddr, cliaddr;
+	OWPErrSeverity out;
+
+	if ( (s = socket(AF_INET, SOCK_STREAM, 0)) < 0){
+		perror("socket");
+		exit(1);
+	}
+
+	bzero(&sockaddr, sizeof(sockaddr)); 
+	sockaddr.sin_family = AF_INET;
+	sockaddr.sin_port = htons(5555);
+	sockaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+	if (bind(s, (struct sockaddr *)(&sockaddr), sizeof(sockaddr)) < 0){
+		perror("bind");
+		exit(1);
+	}
+
+	if (listen(s, 5) < 0){
+		perror("listen");
+		exit(1);
+	}
+
+	while (1){
+		int len = sizeof(cliaddr);
+		connfd = accept(s, (struct sockaddr *)(&cliaddr), &len);
+		owamp_first_check(NULL,NULL,(struct sockaddr *)&cliaddr, &out);
+		switch (out) {
+		case OWPErrFATAL:
+			fprintf(stderr, "DEBUG: access prohibited\n");
+			break;
+		case OWPErrOK:
+			fprintf(stderr, "DEBUG: access allowed\n");
+			break;
+		default:
+			fprintf(stderr, "DEBUG: policy is confused\n");
+			break;
+		};
+		close(connfd); 
+	}
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -561,7 +657,6 @@ main(int argc, char *argv[])
 	}
 	owamp_read_ip2class(IPtoClassFile, ip2class_hash); 
 	owamp_print_ip2class(ip2class_hash); 
-	hash_close(ip2class_hash);
 
 	/* Open the class2limits hash for writing. */
 	if ((class2limits_hash = hash_init(ClassToLimitsFile)) == NULL){
@@ -572,6 +667,10 @@ main(int argc, char *argv[])
 	}
 	owamp_read_class2limits(ClassToLimitsFile, class2limits_hash);
 	owamp_print_class2limits(class2limits_hash);
+
+	test_policy_check();
+
+	hash_close(ip2class_hash);
 	hash_close(class2limits_hash);
 
 	exit(0);
