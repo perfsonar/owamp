@@ -4,7 +4,7 @@
 /************************************************************************
 *									*
 *			     Copyright (C)  2002			*
-*	     University Corporation for Advanced Internet Development	*
+*				Internet2				*
 *			     All Rights Reserved			*
 *									*
 ************************************************************************/
