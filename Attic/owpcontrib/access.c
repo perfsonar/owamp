@@ -1,5 +1,6 @@
 /* #include "../libowamp/owamp.h" */
 #include "access.h"
+#include "rijndael-api-fst.h"
 
 #define DEBUG   0
 #define LISTENQ 5
@@ -594,23 +595,23 @@ send_data(int sock, char *buf, size_t len, OWPBoolean encrypt)
 	return 0;
 }
 
-
-void
-decrypt(char *in_block, size_t len, char* out_block, char* IV)
-{
-	;
-}
-
 void
 doit(int connfd)
 {
 	char buf[MAX_MSG];
 	char *cur;
 	u_int32_t mode;
-	int i, encrypt;
+	int i, r, encrypt;
 	u_int32_t mode_requested;
-	u_int8_t challenge[16], token[16], session_key[16];
-	char kid[8]; /* XXX - assuming Stas will extend KID to 8 bytes */
+	u_int8_t challenge[16], token[32], session_key[16], client_iv[32];
+	u_int8_t kid[8]; /* XXX - assuming Stas will extend KID to 8 bytes */
+
+	/* Remove what's not needed. */
+	BYTE cv[128/8];
+	keyInstance keyInst;
+	cipherInstance cipherInst;
+
+	datum key;
 
 	/* first generate server greeting */
 	bzero(buf, sizeof(buf));
@@ -646,15 +647,34 @@ doit(int connfd)
 		bcopy(buf + 4, kid, 8);
 
 		/* Decrypt the token and compare the 16 bytes of challenge */
-		decrypt(buf + 12, 32, token, NULL);
+		bzero(client_iv, 16);
+
+		key = hash_fetch(passwd_hash, *(str2datum((const char *)kid)));
+
+		r = makeKey(&keyInst, DIR_DECRYPT, 128, key.dptr);
+		if (TRUE != r) {
+			fprintf(stderr,"makeKey error %d\n",r);
+			exit(-1);
+		}
+		r = cipherInit(&cipherInst, MODE_CBC, NULL);
+		if (TRUE != r) {
+			fprintf(stderr,"cipherInit error %d\n",r);
+			exit(-1);
+		}
+
+		/* Decrypt two 16-byte blocks */
+		blockDecrypt(&cipherInst, &keyInst, buf + 12, 2*(16*8), token);
+
+		/* Decrypted challenge is in the first 16 bytes */
 		if (bcmp(challenge, token, 16)){
 			fprintf(stderr, "Authentication failed.\n");
 			close(connfd);
 			exit(1);
 		}
 
-		/* Save 16 bytes of session key */
+		/* Save 16 bytes of session key and 16 bytes of client IV*/
 		bcopy(token + 16, session_key, 16);
+		bcopy(buf + 44, client_iv, 16);
 	}
 	
 }
