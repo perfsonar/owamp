@@ -46,7 +46,7 @@ Architecture</h3>
 OWAMP is a typical client-server application. The <b>owping</b> client
 contacts the <b>owampd</b> daemon on the peer host to requests a specific
 test. That request includes an indication of the complete send schedule
-as well as parameters to indicate packet charactoristics. <b>owampd</b>
+as well as parameters to indicate packet characteristics. <b>owampd</b>
 is responsible for accepting or denying the request.
 <p><b>owampd</b> has been developed as a classic accept/fork daemon. The
 master daemon process listens for new network connections and also manages
@@ -81,16 +81,16 @@ the exit status of the test to the <i>Control</i> parent process. The client
 can then fetch the results for <i>send</i> test sessions. That data will
 be buffered on the server. (The client will already have the results for
 <i>receive</i>
-sessions since the packets are recieved on the client.) The server can
+sessions since the packets are received on the client.) The server can
 be configured to delete the buffered data when the control connection is
 closed, or when the data is fetched the first time, or it can be buffered
 indefinitely and cleaned by an external process.
 <h3>
 Philosophy</h3>
-OWAMP was written completely as a "user space" application. This has advantages
+OWAMP was written completely as a user space application. This has advantages
 and disadvantages. On the positive side, there are no kernel modifications
 required to run OWAMP and it should be very easy to port to anything remotely
-unix-like. On the negative side, this adds the posibility of two context
+unix-like. On the negative side, this adds the possibility of two context
 switches between the actual receipt of a packet and the fetching of a timestamp.
 (I am currently looking at ways to reduce this for architectures that have
 a clock register available so that timestamp fetching can be done without
@@ -106,10 +106,10 @@ for those timestamps. Currently OWAMP depends upon NTP and regular UNIX
 system calls to get timestamps. Benchmarks have shown that there is a considerable
 amount of jitter involved with fetching timestamp values from typical UNIX
 kernels using system calls. The distribution is similar to that of network
-latencies. This means that *most* measurements will be very accurate and
+latencies. This means that most measurements will be very accurate and
 good, but every once in a while you will get very unlucky and your clock
 reading will be very far off. Additionally, if NTP is not configured in
-a way to privide very stable offset estimates the timestamp jitter can
+a way to provide very stable offset estimates, the timestamp jitter can
 be even worse. (See the next section.)
 <h3>
 <a NAME="NTP"></a>NTP Configuration</h3>
@@ -117,7 +117,7 @@ NTP is required by OWAMP to train the system clock. It does this by determining
 the local clock offsets from other NTP trained clocks (or locally connected
 hardware clocks). NTP continually modifies the clock rate on the local
 system in an attempt to bound the local clock offset from UTC. UTC is estimated
-by the peer clocks. (There are sanity checks, and only "truetickers" are
+by the peer clocks. (There are sanity checks, and only "true tickers" are
 used in the estimate.) Because OWAMP fetches the local time from the system
 clock and the current UTC offset and error estimate from local NTP it is
 important to understand some of the limitations of this model.
@@ -147,27 +147,28 @@ to configure a PPS system peer. (Or at least a peer that you are VERY confident
 you will not be loosing connectivity to.)&nbsp; If the prefer keyword is
 used, the offset of that preferred clock is used instead of a weighted
 average of all the peer clocks that survive the clock combining algorithm.
-This works very well unless that peer becomes unavailable for some reason.
-If that happens, NTP will recompute the local clock offset to UTC and OWAMP
-can see a rather large jump in the offset. If the prefer keyword is not
-used and a peer clock becomes unavailable, then the change in offset is
-usually not so pronounced since it is a weighted average of all the clocks,
-and not just the peer clock. (On the other hand, if you notice a large
-amount of "clock hopping" it might be worth assigning a preferred peer
-- at least if there is a very stable, very available peer clock to use.)</li>
+If that peer is stable and accurate, then this works very well. However,
+if that peer becomes unavailable for some reason, then NTP will re-compute
+the local clock offset to UTC and OWAMP will most likely see a rather large
+jump in the offset. If the prefer keyword is not used and a peer clock
+becomes unavailable, then the change in offset is usually not so pronounced
+since it is a weighted average of all the clocks, and not just the peer
+clock. (On the other hand, if you notice a large amount of "clock hopping"
+it might be worth assigning a preferred peer - at least if there is a very
+stable, very available peer clock to use.)</li>
 </ol>
 More details on configuring NTP can be found at <font color="#000000"><a href="http://www.eecis.udel.edu/~mills/ntp/html/notes.html">http://www.eecis.udel.edu/~mills/ntp/html/notes.html</a></font>
 <h3>
 Understanding the Data</h3>
 Latency distributions in general have a heavy tail. In other words, the
 vast majority of latency measurements will be "close" to the minimum but
-there will be a few very unlucky packets that are delayed by relativly
+there will be a few very unlucky packets that are delayed by relatively
 large amounts. This artifact is exacerbated by the jitter involved with
 fetching a timestamp from the UNIX kernel. It is important to keep this
 in mind when looking at data results from OWAMP. Specifically, typical
 aggregation functions such as mean and standard deviation have very little
 meaning for this data. A single badly delayed packet, or bad timestamp
-will change the mean by a relatively large amount. More resiliant aggregation
+will change the mean by a relatively large amount. More resilient aggregation
 functions such as median are recommended.
 <p>
 <hr WIDTH="100%">

@@ -51,31 +51,70 @@ The results are returned to the client after the test completes. The
 test will not be complete until \fItimeout\fR after the last packet is
 scheduled to be sent.
 .SH OPTIONS
+.SS Test Configuration Arguments:
 .TP
-\fB\-c\fR \fIrecvhost[:port]\fR
-Specifies the host that will run the \fBIperf\fR server. Must specify
-either the \fB\-c\fR or the \fB\-s\fR option.
-The :port suffix is optional
-and is only needed if \fBbwcltd\fR is being run on a non-default
-port number. If an IPv6 address is being specified, note that the accepted
-format contains the \fIrecvhost\fR portion of the specification in square
-brackets as: [fe80::fe9f:62d8]:4823.
-This ensures the port number is distinct from the address specification, and
-is not needed if the :port suffix is not being used.
+\fB\-f\fR
+.br
+Perform a One-way test \fBf\fRrom the target \fIpeerhost\fR.
+.RS
+.IP Default:
+True, unless the \fI\-t\fR or \fI\-T\fR have been specified.
+.RE
 .TP
-\fB\-s\fR \fIsendhost[:port]\fR
-Specifies the host that will run the \fBIperf\fR client. Must specify
-either the \fB\-c\fR or the \fB\-s\fR option.
-The :port suffix is optional
-and is only needed if \fBbwcltd\fR is being run on a non-default
-port number. If an IPv6 address is being specified, note that the accepted
-format contains the \fIsendhost\fR portion of the specification in square
-brackets as: [fe80::fe9f:62d8]:4823.
-This ensures the port number is distinct from the address specification, and
-is not needed if the :port suffix is not being used.
-.SS Throughput Test Arguments:
-(These arguments were named to match their counterparts in \fBIperf\fR
-as closely as possible.)
+\fB\-F\fR \fIfromfile\fR
+.br
+Perform a One-way test \fBf\fRrom the target \fIpeerhost\fR, and
+save the results in \fIfromfile\fR.
+.RS
+.IP Default:
+Unset.
+.RE
+.TP
+\fB\-t\fR
+.br
+Perform a One-way test \fBt\fRoward the target \fIpeerhost\fR.
+.RS
+.IP Default:
+True, unless the \fI\-f\fR or \fI\-F\fR have been specified.
+.RE
+.TP
+\fB\-T\fR \fItofile\fR
+.br
+Perform a One-way test \fBt\fRoward the target \fIpeerhost\fR, and
+save the results in \fItofile\fR.
+.RS
+.IP Default:
+Unset.
+.RE
+.TP
+\fB\-c\fR \fIcount\fR
+.br
+Number of test packets to send in the test session.
+.RS
+.IP Default:
+100
+.RE
+.TP
+\fB\-i\fR \fIwait\fR
+.br
+Wait \fIwait\fR seconds between sending packets. This wait period is not
+a fixed value. The actual \fIwait\fR time between each packet is
+determined using using a pseudo-poisson function. The amount of time
+between each packet will average \fIwait\fR seconds.
+.RS
+.TP Default:
+0.1 (seconds)
+.RE
+.TP
+\fB\-s\fR \fIsize\fR
+Size of the padding to add to each minimally sized test packet. The minimal
+size for a test packet in \fIopen\fR mode is 14 bytes. The minimal size
+for a test packet in \fIauthenticated\fR or \fIencrypted\fR mode is 32 bytes.
+.RS
+.TP Default:
+0 (bytes)
+.RE
+
 .TP
 \fB\-b\fR \fIbandwidth\fR
 Limit UDP send rate to \fIbandwidth\fR (bits/sec).
