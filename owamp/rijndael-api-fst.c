@@ -42,6 +42,8 @@
 #include "rijndael-alg-fst.h"
 #include "rijndael-api-fst.h"
 
+#include <sys/param.h>
+
 /*
 ** This function sets up a binary key based on a 32-byte
 ** hex-encoded raw key material.
@@ -187,4 +189,45 @@ int blockDecrypt(BYTE *binIV, keyInstance *key,
 	}
 	
 	return 128*numBlocks;
+}
+
+/*
+** This function encrypts an unsigned long int with a given key.
+** NOTE: since block length is 16 bytes, we save the unsigned long 
+** (first converted to network byte order) in the last 4 bytes 
+** of the block to be encrypted. The rest are reset to be 0.
+*/
+int 
+countermodeEncrypt(keyInstance *key, unsigned long i, BYTE *outBuffer) 
+{
+	BYTE input[16];
+	u_long counter = htonl(i);
+
+	if (key == NULL)
+		return BAD_CIPHER_STATE;
+	
+	if (input == NULL)
+		return 0; /* nothing to do */
+	
+	/* Prepare the block for encryption */
+	memset(input, 0, 16);
+	memcpy(input + 12, &counter, 4);
+		
+	rijndaelEncrypt(key->rk, key->Nr, input, outBuffer);
+
+	return 128;
+}
+
+int 
+countermodeDecrypt(keyInstance *key, BYTE *input, BYTE *outBuffer) 
+{
+	if (key == NULL) 
+		return BAD_CIPHER_STATE;
+
+	if (input == NULL)
+		return 0; /* nothing to do */
+	
+	rijndaelDecrypt(key->rk, key->Nr, input, outBuffer);
+	
+	return 128;
 }
