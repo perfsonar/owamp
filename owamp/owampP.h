@@ -79,6 +79,9 @@ struct OWPAddrRec{
 	OWPBoolean	node_set;
 	char		node[MAXHOSTNAMELEN+1];
 
+	OWPBoolean	port_set;
+	char		port[MAXHOSTNAMELEN+1];
+
 	OWPBoolean	ai_free;	/* free ai list directly...*/
 	struct addrinfo	*ai;
 
