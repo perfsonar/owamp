@@ -455,7 +455,8 @@ WriteSubSession(
 
 	parse->i++;
 
-	if((rec->seq_no < parse->first) || (rec->seq_no > parse->last))
+	if((rec->seq_no < parse->first) || (rec->seq_no > parse->last) ||
+			OWPIsLostRecord(rec))
 		return 0;
 
 	rec->seq_no -= parse->first;
@@ -465,7 +466,7 @@ WriteSubSession(
 		return -1;
 	}
 
-	if(parse->buckets && !OWPIsLostRecord(rec)){
+	if(parse->buckets){
 		I2Datum	key,val;
 		double	d;
 		int	b;
