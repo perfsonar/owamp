@@ -29,67 +29,56 @@ package OWP;
 require 5.005;
 require Exporter;
 use strict;
+use FindBin;
+use POSIX;
+use Fcntl qw(:flock);
+use FileHandle;
 use vars qw(@ISA @EXPORT $VERSION);
 use OWP::Conf;
 use OWP::Utils;
 
 @ISA = qw(Exporter);
-@EXPORT = qw(valid_session);
+@EXPORT = qw(daemonize);
 
 $OWP::REVISION = '$Id$';
 $VERSION = '1.0';
 
-#
-# return undef if the session defined by start/end is not valid.
-# otherwise return 1 for a "valid" session.
-# Additionally, this sub deletes any up/downtime pairs before the pair being
-# used to validate this particular session since we expect data to be sent in
-# time order, the past pairs are no longer useful.
-#
-sub valid_session{
-	my($start,$end,$intervals) = @_;
+sub daemonize{
+	my(%args)	= @_;
+	my($dnull,$umask) = ('/dev/null','022');
+	my $fh;
 
-	# if no pairs defined yet - then the period is assumed valid so far...
-	return 1 if(!defined @$intervals || (@$intervals < 2));
+	$dnull = $args{'DEVNULL'} if(defined $args{'DEVNULL'});
+	$umask = $args{'UMASK'} if(defined $args{'UMASK'});
 
-	die "Invalid intervals" unless ($#{$intervals} % 2); # must be pairs
-
-	#
-	# invalid <---- up	down
-	#               up    	down
-	#               up	down----->valid
-	# start/end pairs are only valid if they can be competely contained
-	# between an up/down pair. The last one is a special case in that
-	# the down is not really a "down", but a "last message time".
-	# (The return 1 after the loop takes care of this case.)
-	#
-	while(@$intervals >= 2){
-		# start time was before this interval - invalid.
-		return undef if($start < ${$intervals}[0]);
-
-		# start time is after this interval - go to next interval.
-		if($start > ${$intervals}[1]){
-			next if(@$intervals > 2);
-			# if this is the "last" interval, then break out.
-			last;
+	if(defined $args{'PIDFILE'}){
+		$fh = new FileHandle $args{'PIDFILE'}, O_CREAT|O_RDWR;
+		unless($fh && flock($fh,LOCK_EX|LOCK_NB)){
+			die "Unable to lock pid file $args{'PIDFILE'}: $!";
 		}
-
-		# start time is in this interval, if end time is too, then
-		# the file is valid.
-		
-		return 1 if($end <= ${$intervals}[1]);
-
-		# if this is the "last" interval, then we tentatively
-		# call this valid, but it may be declared invalid later.
-		last if(@$intervals <= 2);
-	}
-	continue{
-		shift @$intervals; shift @$intervals;
+		my $pid = <$fh>;
+		if(defined $pid){
+			chomp $pid;
+			die "$FindBin::Script:$pid still running..." if(kill(0,$pid));
+		}
 	}
 
-	# should only get here if the session file goes past the
-	# last reported uptime interval. In this case, we tentatively
-	# call this session valid, but it may be invalidated later.
+	open STDIN, "$dnull"	or die "Can't read $dnull: $!";
+	open STDOUT, ">>$dnull"	or die "Can't write $dnull: $!";
+	open STDERR, ">>$dnull"	or die "Can't write $dnull: $!";
+
+	defined(my $pid = fork)	or die "Can't fork: $!";
+
+	# parent
+	exit if $pid;
+
+	# child
+	$fh->seek(0,0);
+	$fh->print($$);
+	undef $fh;
+	setsid			or die "Can't start new session: $!";
+	umask $umask;
+
 	return 1;
 }
 

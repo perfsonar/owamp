@@ -51,10 +51,12 @@ use Carp qw(cluck);
 my @SAVEARGV = @ARGV;
 
 my %options = (
-	CONFDIR	=>	"c:",
+	CONFDIR		=>	"c:",
+	FOREGROUND	=>	"f",
 	);
 my %optnames = (
 	c	=> "CONFDIR",
+	f	=> "FOREGROUND",
 	);
 my %defaults = (
 	CONFDIR	=> "$FindBin::Bin",
@@ -66,6 +68,9 @@ getopts($options,\%setopts);
 foreach (keys %optnames){
 	$defaults{$optnames{$_}} = $setopts{$_} if(defined($setopts{$_}));
 }
+
+# Don't daemonize any re-exec'd children
+push @SAVEARGV, "-f" if(!defined($setopts{'f'}));
 
 # Fetch configuration options.
 my $conf = new OWP::Conf(%defaults);
@@ -80,6 +85,12 @@ my $slog = tie *MYLOG, 'OWP::Syslog',
 $slog->HandleDieWarn(*STDERR);
 undef $slog;	# Don't need the ref anymore, and untie won't work if
 		# I keep the ref.
+
+#
+# Globals...
+#
+my $debug = $conf->get_val(ATTR=>'DEBUG');
+my $devnull = $conf->must_get_val(ATTR=>"devnull");
 
 #
 # Initialize Mesh info
@@ -110,6 +121,7 @@ my $archive = OWP::Archive->new(DATADIR=>$datadir);
 #
 # deamon values
 #
+my $foreground = $conf->get_val(ATTR=>'FOREGROUND');
 my $serverport = $conf->must_get_val(ATTR=>'CentralHostPort');
 my $dbfile = $conf->must_get_val(ATTR=>'CentralPerDirDB');
 my $vtimefile = $conf->must_get_val(ATTR=>'CentralPerDirValidFile');
@@ -149,14 +161,6 @@ mkpath(\@dirlist,0,0775);
 
 chdir $datadir || die "Unable to chdir to $datadir";
 
-my (%children);
-
-# just in case...
-use constant MAX_UPTIMES_RESTARTS => 5;
-my $uppid = uptimes(%nodeupdate);
-$children{$uppid} = 'uptimes';
-my $uprestarts = 0;
-
 #
 # setup server socket.
 #
@@ -167,35 +171,53 @@ my $Server = IO::Socket::INET->new(
 			ReuseAddr	=>	1,
 			Reuse		=>	1,
 			Timeout		=>	$timeout,
-			Listen		=>	SOMAXCONN) or die;
+			Listen		=>	SOMAXCONN) or
+		die "Unable to create server socket for sessiondata: $!";
 
-my ($reset,$die,$sigchld,$insig) = (0,0,0,0);
+if(!$debug && !$foreground){
+	daemonize(PIDFILE => 'collector.pid') ||
+		die "Unable to daemonize process";
+	# Re-setup syslog
+#	untie *MYLOG;
+#	$slog = tie *MYLOG, 'OWP::Syslog',
+#		facility	=> $conf->must_get_val(ATTR=>'SyslogFacility'),
+#		log_opts	=> 'pid',
+#		setlogsock	=> 'unix';
+	# make die/warn goto syslog, and also to STDERR.
+#	$slog->HandleDieWarn();
+#	undef $slog;	# Don't need the ref anymore, and untie won't work if
+			# I keep the ref.
+}
+
+my (%children);
+
+# just in case...
+use constant MAX_UPTIMES_RESTARTS => 5;
+my $uppid = uptimes(%nodeupdate);
+$children{$uppid} = 'uptimes';
+my $uprestarts = 0;
+
+my ($reset,$die,$sigchld) = (0,0,0);
 
 sub catch{
-	my $signame = $_;
+	my ($signame) = @_;
 
 	return if !defined $signame;
 
 	if($signame =~ /HUP/){
-		$reset = 1;
+		$reset++;
 	}
 	elsif($signame =~ /CHLD/){
 		$sigchld++;
 	}
 	else{
-		$die = 1;
+		$die++;
 	}
 	#
 	# If we are in an eval - die from here to make the function return
 	# and not automatically restart: ie accept.
-	# (protect die from reentrance because it is tied to non-reentrant
-	# syslog.)
 	#
-	if($^S && !$insig){
-		$insig = 1;
-		die "SIG$signame\n";
-		$insig = 0;
-	}
+	die "SIG$signame\n" if($^S);
 
 	#
 	# If we are not in an eval - we have already set our global vars
@@ -219,6 +241,17 @@ while(1){
 	if($sigchld){
 		undef $paddr;
 	}elsif($reset || $die){
+		if($reset == 1){
+			$reset++;
+			warn "Handling SIGHUP... Stop processing...\n";
+			kill 'TERM', (keys %children);
+		}
+		if($die == 1){
+			$die++;
+			warn "Exiting... Deleting sub-processes...\n";
+			kill 'TERM', (keys %children);
+		}
+
 		undef $Server;
 		undef $paddr;
 		$func = "sigsuspend";
@@ -245,18 +278,10 @@ while(1){
 	# Not a connection - do error handling.
 	#
 	if(!defined($paddr)){
-		if($reset == 1){
-			$reset++;
-			warn "Handling SIGHUP... Stop processing...\n";
-			kill 'TERM', (keys %children);
-		}
-		if($die == 1){
-			$die++;
-			warn "Exiting... Deleting sub-processes...\n";
-			kill 'TERM', (keys %children);
-		}
 		if($sigchld){
 			my $wpid;
+			my $opts = 0;
+
 			while(($wpid = waitpid(-1,WNOHANG)) > 0){
 				next unless (exists $children{$wpid});
 
@@ -317,6 +342,8 @@ sub combine_digests{
 	if(exists $state->{$res."PENDING"}){
 		@buildfiles = split /:/,$state->{$res."PENDING"};
 	}
+
+	STARTBUILD:
 	if(@buildfiles < 1){
 		# first one.. can just return.
 		$state->{$res."PENDING"} = $base;
@@ -334,8 +361,13 @@ sub combine_digests{
 
 	my($dummy,$lastend) = split '_',$buildfiles[$#buildfiles];
 	if($filestart < $lastend){
-		warn "Ignoring OUT-OF-ORDER File: ${dir}/${res}/${base}${digestsuffix}";
-		return 1;
+		# The previous file was terminated early... This one
+		# "should" take precedence.
+		my $bogus ="$dir/$res/$buildfiles[$#buildfiles]$digestsuffix";
+		unlink $bogus;
+		$archive->delete(FILE=>$bogus);
+		pop @buildfiles;
+		goto STARTBUILD;
 	}
 
 	#
@@ -472,6 +504,60 @@ sub read_req{
 	die "Invalid end Message: $_" if("" ne $_);
 
 	return %req;
+}
+
+#
+# return undef if the session defined by start/end is not valid.
+# otherwise return 1 for a "valid" session.
+# Additionally, this sub deletes any up/downtime pairs before the pair being
+# used to validate this particular session since we expect data to be sent in
+# time order, the past pairs are no longer useful.
+#
+sub valid_session{
+	my($start,$end,$intervals) = @_;
+
+	# if no pairs defined yet - then the period is assumed valid so far...
+	return 1 if(!defined @$intervals || (@$intervals < 2));
+
+	die "Invalid intervals" unless ($#{$intervals} % 2); # must be pairs
+
+	#
+	# invalid <---- up	down
+	#               up    	down
+	#               up	down----->valid
+	# start/end pairs are only valid if they can be competely contained
+	# between an up/down pair. The last one is a special case in that
+	# the down is not really a "down", but a "last message time".
+	# (The return 1 after the loop takes care of this case.)
+	#
+	while(@$intervals >= 2){
+		# start time was before this interval - invalid.
+		return undef if($start < ${$intervals}[0]);
+
+		# start time is after this interval - go to next interval.
+		if($start > ${$intervals}[1]){
+			next if(@$intervals > 2);
+			# if this is the "last" interval, then break out.
+			last;
+		}
+
+		# start time is in this interval, if end time is too, then
+		# the file is valid.
+		
+		return 1 if($end <= ${$intervals}[1]);
+
+		# if this is the "last" interval, then we tentatively
+		# call this valid, but it may be declared invalid later.
+		last if(@$intervals <= 2);
+	}
+	continue{
+		shift @$intervals; shift @$intervals;
+	}
+
+	# should only get here if the session file goes past the
+	# last reported uptime interval. In this case, we tentatively
+	# call this session valid, but it may be invalidated later.
+	return 1;
 }
 
 sub do_req{
@@ -677,16 +763,11 @@ sub write_response{
 }
 
 sub child_catch{
-	my $signame = $_;
+	my ($signame) = @_;
 
 	$die = 1;
 
-	if(!$insig){
-		$insig = 1;
-		die "SIG$signame caught...\n";
-		$insig = 0;
-	}
-	return;
+	die "SIG$signame caught...\n";
 }
 
 sub handle_req{
@@ -706,7 +787,6 @@ sub handle_req{
 		die "Unable to create md5 context";
 
 	$die = 0;
-	$insig = 0;
 	$SIG{CHLD} = 'DEFAULT';
 	$SIG{HUP} = $SIG{TERM} = $SIG{INT} = \&child_catch;
 
@@ -957,6 +1037,8 @@ sub uptimes{
 
 	# child continues...
 	$SIG{HUP} = $SIG{TERM} = $SIG{INT} = $SIG{CHLD} = 'DEFAULT';
+	my $nomask = new POSIX::SigSet;
+	exit if(sigprocmask(SIG_SETMASK,$nomask) != 0);
 
 	my @uptimes;
 	my $node;

@@ -98,6 +98,7 @@ my %DEFS = (
 my %BOOLS = (
 	DEBUG		=>	1,
 	VERBOSE		=>	1,
+	FOREGROUND	=>	1,
 );
 
 # Opts that are arrays.

@@ -49,10 +49,12 @@ my @SAVEARGV = @ARGV;
 my %options = (
 	CONFDIR		=> "c:",
 	NODE		=> "n:",
+	FOREGROUND	=> "f",
 	);
 my %optnames = (
 	c		=> "CONFDIR",
 	n		=> "NODE",
+	f		=> "FOREGROUND",
 	);
 my %defaults = (
 		CONFDIR	=> "$FindBin::Bin",
@@ -65,6 +67,9 @@ foreach (keys %optnames){
 	$defaults{$optnames{$_}} = $setopts{$_} if(defined($setopts{$_}));
 }
 
+# Add -f flag for re-exec - don't need to re-daemonize.
+push @SAVEARGV, '-f' if(!defined($setopts{'f'}));
+
 $defaults{"NODE"} =~ tr/a-z/A-Z/;
 
 my $conf = new OWP::Conf(%defaults);
@@ -76,7 +81,7 @@ my $slog = tie *MYLOG, 'OWP::Syslog',
 		log_opts	=> 'pid',
 		setlogsock	=> 'unix';
 # make die/warn goto syslog, and also to STDERR.
-$slog->HandleDieWarn(*STDERR);
+$slog->HandleDieWarn();
 undef $slog;	# Don't keep tie'd ref's around unless you need them...
 
 #
@@ -84,6 +89,7 @@ undef $slog;	# Don't keep tie'd ref's around unless you need them...
 #
 my($mtype,$node,$myaddr,$oaddr);
 my $debug = $conf->get_val(ATTR=>'DEBUG');
+my $foreground = $conf->get_val(ATTR=>'FOREGROUND');
 my $devnull = $conf->must_get_val(ATTR=>"devnull");
 my $suffix = $conf->must_get_val(ATTR=>"SessionSuffix");
 
@@ -175,6 +181,19 @@ my($UptimeSocket) = IO::Socket::INET->new(
 my($MD5) = new Digest::MD5 ||
 			die "Unable to create md5 context";
 
+if(!$debug && !$foreground){
+	daemonize(PIDFILE => 'powmaster.pid') ||
+		die "Unable to daemonize process";
+#	untie *MYLOG;
+#	$slog = tie *MYLOG, 'OWP::Syslog',
+#		facility	=> $conf->must_get_val(ATTR=>'SyslogFacility'),
+#		log_opts	=> 'pid',
+#		setlogsock	=> 'unix';
+	# make die/warn goto syslog, and also to STDERR.
+#	$slog->HandleDieWarn();
+#	undef $slog;	# Don't keep tie'd ref's around unless you need them...
+}
+
 # setup pipe - read side used by send_data, write side used by all
 # powsteam children.
 my($rfd,$wfd) = POSIX::pipe();
@@ -217,11 +236,11 @@ foreach $mtype (@mtypes){
 }
 
 
-my ($reset,$die,$sigchld,$insig) = (0,0,0,0);
+my ($reset,$die,$sigchld) = (0,0,0);
 
 
 sub catch_sig{
-	my $signame = $_;
+	my ($signame) = @_;
 
 	return if !defined $signame;
 
@@ -229,19 +248,13 @@ sub catch_sig{
 		$sigchld++;
 	}
 	elsif($signame =~ /HUP/){
-		$reset = 1;
+		$reset++;
 	}
 	else{
-		$die = 1;
+		$die++;
 	}
 
-	if($^S && !$insig){
-		# Because "die" is tied to syslog - die is non-reentrant.
-		# protect it here.
-		$insig = 1;
-		die "SIG$signame\n";
-		$insig = 0;
-	}
+	die "SIG$signame\n" if($^S);
 
 	return;
 }
@@ -267,6 +280,16 @@ while(1){
 		undef $peeraddr;
 	}
 	elsif($reset || $die){
+		if($reset == 1){
+			warn "Handling SIGHUP... Stop processing...\n";
+			kill 'TERM', keys %pid2info;
+			$reset++;
+		}
+		if($die == 1){
+			warn "Exiting... Deleting sub-processes...\n";
+			kill 'TERM', keys %pid2info;
+			$die++;
+		}
 		undef $UptimeSocket;
 		undef $peeraddr;
 		$funcname = "sigsuspend";
@@ -294,24 +317,15 @@ while(1){
 	# Signal received - update run-state.
 	#
 	if(!$peeraddr){
-		if($reset == 1){
-			warn "Handling SIGHUP... Stop processing...\n";
-			kill 'TERM', keys %pid2info;
-			$reset++;
-		}
-		if($die == 1){
-			warn "Exiting... Deleting sub-processes...\n";
-			kill 'TERM', keys %pid2info;
-			$die++;
-		}
 
 		if($sigchld){
 			my $wpid;
+			$sigchld=0;
+
 			while(($wpid = waitpid(-1,WNOHANG)) > 0){
 				next unless (exists $pid2info{$wpid});
 
 				my $info = $pid2info{$wpid};
-
 				syslog('debug',"$$info[0]:$wpid exited: $?");
 
 				delete $pid2info{$wpid};
@@ -349,7 +363,6 @@ while(1){
 						("powstream",$starttime,@$info);
 				}
 			}
-			$sigchld=0;
 		}
 
 		if($reset){
@@ -651,6 +664,9 @@ sub send_data{
 	# child continues.
 	$SIG{INT} = $SIG{TERM} = $SIG{HUP} = $SIG{CHLD} = 'DEFAULT';
 	$SIG{PIPE} = 'IGNORE';
+	my $nomask = new POSIX::SigSet;
+	exit if(sigprocmask(SIG_SETMASK,$nomask) != 0);
+
 	open STDIN, ">&=$rfd" || die "Can't fdopen read end of pipe";
 
 	my($rin,$rout,$ein,$eout,$tmout,$nfound);

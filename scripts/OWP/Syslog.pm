@@ -39,6 +39,7 @@ use FindBin;
 sub HandleDieWarn {
 	my $this = shift;
 	my @fh = @_;
+	my $prio = $this->{'priority'};
 
 	return if (1 == $this->{'isDIEWARN'});  ## already been here
 
@@ -47,11 +48,14 @@ sub HandleDieWarn {
 	$this->{'die_sub'}  = $SIG{__DIE__};
 	$SIG{__WARN__} = sub {
 		print $_ @_ foreach(@fh);
-		syslog $this->{'priority'}, "%s", join('',@_);
+		syslog $prio, "%s", join('',@_);
 		return;
 	};
+	my $insig = 0;
 	$SIG{__DIE__} = sub {  ## still dies upon return
 		die @_ if $^S; ## see perldoc -f die perlfunc
+		die @_ if $insig; ## protect against reentrance.
+		$insig = 1;
 		foreach(@fh){
 			# the "real" die function prints to stderr,
 			# so we want to skip this one if it is
@@ -59,14 +63,13 @@ sub HandleDieWarn {
 			next if($_->fileno == STDERR->fileno);
 			print $_ @_;
 		}
-		syslog $this->{'priority'}, "%s", join('',@_);
+		syslog $prio, "%s", join('',@_);
+		$insig = 0;
 		return;
 	};
 
 	## mark that this object redefined warn/die handlers
 	$this->{'isDIEWARN'} = 1;
-	# Need to do this or bad things can happen in a "die".
-	syslog $this->{'priority'}, "Opened syslog";
 }
 
 my %defs = (
@@ -105,6 +108,7 @@ sub TIEHANDLE {
 	$this->{'log_opts'}.=',nowait' if(!($this->{'log_opts'} =~ /nowait/));
 	## open a syslog connection
 	openlog $this->{'identity'},$this->{'log_opts'},$this->{'facility'};
+	syslog "debug","Opened syslog";
 
 	return bless $this, $class;
 }
