@@ -2091,7 +2091,12 @@ OWPParseRecords(
 
 	for(i=0;i<num_rec;i++){
 		if(fread(rbuf,_OWP_TESTREC_SIZE,1,fp) < 1){
-			OWPError(ctx,OWPErrFATAL,errno,"fread(): %M");
+			if(feof()){
+				OWPError(ctx,OWPErrFATAL,errno,"fread(): EOF");
+			}
+			else{
+				OWPError(ctx,OWPErrFATAL,errno,"fread(): %M");
+			}
 			return OWPErrFATAL;
 		}
 		if(!_OWPDecodeDataRecord(&rec,rbuf)){
