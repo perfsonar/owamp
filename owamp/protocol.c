@@ -1083,7 +1083,7 @@ _OWPWriteRetrieveSession(
 {
 	u_int8_t	*buf = (u_int8_t*)cntrl->msg;
 
-	if(!_OWPStateIs(_OWPStateRequest,cntrl)){
+	if(!_OWPStateIs(_OWPStateRequest,cntrl) || _OWPStateIsTest(cntrl)){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
 			"_OWPWriteRetrieveSession called in wrong state.");
 		return OWPErrFATAL;
