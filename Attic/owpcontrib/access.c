@@ -43,13 +43,16 @@ typedef struct owamp_limits{
 	u_int8_t num_sessions; /* number of concurrent test sessions */
 } OWAMPLimits;
 
+typedef DBM* hash_ptr;
+hash_ptr ip2class_hash;
+hash_ptr class2limits_hash;
+
 const char *DefaultConfigFile = DEFAULT_CONFIG_FILE;
 char *ConfigFile = NULL;
 const char *DefaultIPtoClassFile = DEFAULT_IP_TO_CLASS_FILE;
 char *IPtoClassFile = NULL;
 const char *DefaultClassToLimitsFile = DEFAULT_CLASS_TO_LIMITS_FILE;
 char *ClassToLimitsFile = NULL;
-DBM *ip2class_dbm;
 
 static void usage(void);
 
@@ -283,6 +286,42 @@ get_offset(const datum * dat)
 	return *(u_int8_t*)((dat->dptr)+4);
 }
 
+hash_ptr
+hash_init(const char *str)
+{
+	return (hash_ptr)dbm_open(str, O_CREAT|O_RDWR, 0660);
+}
+
+int
+hash_store(hash_ptr hash, datum key, datum val, int flags)
+{
+	return dbm_store(hash, key, val, flags);
+}
+
+datum
+hash_firstkey(hash_ptr hash)
+{
+	return dbm_firstkey(hash);
+}
+
+datum
+hash_fetch(hash_ptr hash, datum key)
+{
+	return dbm_fetch(hash, key);
+}
+
+datum
+hash_nextkey(hash_ptr hash)
+{
+	return dbm_nextkey(hash);
+}
+
+void
+hash_close(hash_ptr hash)
+{
+	dbm_close(hash);
+}
+
 /* 
 ** This function reads the configuration file given by the path ip2class, 
 ** processes it and saves the results in Berkeley DB file, with the
@@ -305,9 +344,9 @@ owamp_read_config(const char *ip2class)
 	char tmp[5];
 
 	/* Open the database file for writing. */
-	if ((ip2class_dbm = dbm_open(ip2class, O_CREAT|O_RDWR, 0660)) == NULL){
+	if ((ip2class_hash = hash_init(ip2class)) == NULL){
 		snprintf(err_msg, sizeof(err_msg),
-			 "dbm_open %s.db for writing", ip2class);
+			 "hash_init %s.db for writing", ip2class);
 		perror(err_msg);
 		exit(1);
 	}
@@ -338,7 +377,7 @@ owamp_read_config(const char *ip2class)
 		if ( (val = owamp_datumify(class, strlen(class)+1)) == NULL )
 			continue;
 
-		if (dbm_store(ip2class_dbm, *key, *val, DBM_REPLACE) != 0)
+		if (hash_store(ip2class_hash, *key, *val, DBM_REPLACE) != 0)
 			continue;
 	}
 
@@ -348,12 +387,13 @@ owamp_read_config(const char *ip2class)
 		goto CLOSE;
 	if ((val = owamp_datumify(all, strlen(all)+1)) == NULL)
 		goto CLOSE;
-	if (dbm_store(ip2class_dbm, *key, *val, DBM_INSERT) != 0)
-		fprintf(stderr, "\ndbm_store failed to insert all key\n\n");
+	if (hash_store(ip2class_hash, *key, *val, DBM_INSERT) != 0)
+		fprintf(stderr, "\nhash_store failed to insert all key\n\n");
  CLOSE:
-	dbm_close(ip2class_dbm);
+	hash_close(ip2class_hash);
 	return;
 }
+
 
 /*
 ** This function prints out the database, given by the argument <base>.
@@ -363,16 +403,16 @@ owamp_read_config(const char *ip2class)
 void
 owamp_print_dbm(char *base)
 {
-	DBM *dbm;
+	hash_ptr hash;
 	datum key, val;
 
-	dbm = dbm_open(base, O_RDWR | O_CREAT, 0660);
-	for(key = dbm_firstkey(dbm); key.dptr != NULL; key = dbm_nextkey(dbm)){
+	hash = hash_init(base);
+	for(key=hash_firstkey(hash);key.dptr != NULL;key = hash_nextkey(hash)){
 		u_int32_t addr;
 		u_int8_t off;
 		char *valptr;
 
-		val = dbm_fetch(dbm, key);
+		val = hash_fetch(hash, key);
 		assert(val.dptr);
 
 		valptr = (void *)malloc(val.dsize + 1);
@@ -382,7 +422,7 @@ owamp_print_dbm(char *base)
 		fprintf(stderr, "the value of key %s/%u is = %s\n",
 	       owamp_denumberize(get_ip_addr(&key)), get_offset(&key), valptr);
 	}
-	dbm_close(dbm);
+	hash_close(hash);
 }
 
 /* 
@@ -402,15 +442,14 @@ owamp_read_limits(const char *class2limits)
 	char *cur_class;
 	char *tok;
 	
-	DBM *dbm;
 	datum key_dat, val_dat;
+	hash_ptr hash;
 
-	/* Open the database file for writing. */
-	if ( (dbm = dbm_open(class2limits, O_CREAT|O_RDWR, 0660)) == NULL){
+	if ( (hash = hash_init(class2limits)) == NULL){
 		snprintf(err_msg, sizeof(err_msg),
-			 "dbm_open %s.db for writing", class2limits);
+			 "hash_init %s.db for writing", class2limits);
 		perror(err_msg);
-		exit(1);
+		exit(1);		
 	}
 
 	if ( (fp = fopen(class2limits, "r")) == NULL){
@@ -457,7 +496,7 @@ ipaddr2class(u_int32_t ip, char *class)
 		u_int32_t mask = (mask_template>>bits)<<bits;
 		key_dat = subnet2datum(ip & mask, offset);
 		ascii = owamp_denumberize(ip & mask);
-		val_dat = dbm_fetch(ip2class_dbm, *key_dat);
+		val_dat = hash_fetch(ip2class_hash, *key_dat);
 		if (val_dat.dptr){
 			bcopy(val_dat.dptr, class, val_dat.dsize);
 			class[val_dat.dsize] = '\0';
@@ -491,10 +530,9 @@ main(int argc, char *argv[])
 	owamp_print_dbm(IPtoClassFile); 
 	owamp_read_limits(ClassToLimitsFile);
 
-	if ((ip2class_dbm = dbm_open(IPtoClassFile, O_CREAT|O_RDWR, 0660)) 
-	    == NULL){
+	if ((ip2class_hash = hash_init(IPtoClassFile)) == NULL){
 		snprintf(err_msg, sizeof(err_msg),
-			 "dbm_open %s.db for writing", IPtoClassFile);
+			 "hash_open %s.db for writing", IPtoClassFile);
 		perror(err_msg);
 		exit(1);
 	}
