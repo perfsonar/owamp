@@ -34,7 +34,6 @@
 #include <owamp/access.h>
 
 #include "./owpingP.h"
-#include "./localnode.h"
 
 /*
  * The owping context
@@ -80,11 +79,6 @@ static	OWPInitializeConfigRec	OWPCfg = {{
 	/* get_aes_key			*/	owp_get_aes_key,
 	/* check_control_func		*/	NULL,
 	/* check_test_func		*/	NULL,
-	/* endpoint_init_func		*/	NULL,
-	/* endpoint_init_hook_func	*/	NULL,
-	/* endpoint_start_func		*/	NULL,
-	/* endpoint_status_func		*/	NULL,
-	/* endpoint_stop_func		*/	NULL,
 	/* rand_type                    */      I2RAND_DEV,
 	/* rand_data                    */      NULL
 };
@@ -196,8 +190,8 @@ FailSession(
 */
 typedef struct fetch_state {
 	FILE*        fp;               /* stream to report records           */
-	OWPCookedDataRec window[OWP_WIN_WIDTH]; /* window of read records    */
-	OWPCookedDataRec last_out; /* last processed record            */
+	OWPDataRec window[OWP_WIN_WIDTH]; /* window of read records    */
+	OWPDataRec last_out; /* last processed record            */
 	int          cur_win_size;     /* number of records in the window    */
 	double       tmin;             /* min delay                          */
 	double       tmax;             /* max delay                          */
@@ -228,7 +222,7 @@ typedef struct fetch_state {
 ** of the second.
 */
 int
-owp_seqno_cmp(OWPCookedDataRecPtr a, OWPCookedDataRecPtr b)
+owp_seqno_cmp(OWPDataRecPtr a, OWPDataRecPtr b)
 {
 	assert(a); assert(b);
 	return OWP_CMP(a->seq_no, b->seq_no);
@@ -241,7 +235,7 @@ owp_seqno_cmp(OWPCookedDataRecPtr a, OWPCookedDataRecPtr b)
 */
 int
 look_for_spot(fetch_state_ptr state,
-	      OWPCookedDataRecPtr rec)
+	      OWPDataRecPtr rec)
 {
 	int i;
 	assert(state->cur_win_size);
@@ -266,7 +260,7 @@ owp_bits2prec(int nbits)
 ** as encoded in <state>.
 */
 void
-owp_record_out(fetch_state_ptr state, OWPCookedDataRecPtr rec)
+owp_record_out(fetch_state_ptr state, OWPDataRecPtr rec)
 {
 	double delay;
 
@@ -339,7 +333,7 @@ owp_bucket(double delay)
 }
 
 void
-owp_update_stats(fetch_state_ptr state, OWPCookedDataRecPtr rec) {
+owp_update_stats(fetch_state_ptr state, OWPDataRecPtr rec) {
 	double delay;  
 	int bucket;
 
@@ -413,10 +407,10 @@ owp_get_percentile(fetch_state_ptr state, double alpha)
 
 /*
 ** Processs a single record, updating statistics and internal state.
-** Return 0 on success, or -1 on failure.
+** Return 0 on success, or -1 on failure, 1 to stop parsing data.
 */
 int
-do_single_record(void *calldata, OWPCookedDataRecPtr rec) 
+do_single_record(void *calldata, OWPDataRecPtr rec) 
 {
 	int i;
 	fetch_state_ptr state = (fetch_state_ptr)calldata;
@@ -460,11 +454,12 @@ do_single_record(void *calldata, OWPCookedDataRecPtr rec)
 			memmove(&state->window[0], rec, sizeof(*rec));
 		state->cur_win_size++;
 	} else { /* rotate - update state*/
-		OWPCookedDataRecPtr out_rec = rec;		
+		OWPDataRecPtr out_rec = rec;		
 		if (state->num_received
 		    && OWP_OUT_OF_ORDER(rec, &(state->last_out))) {
 				state->order_disrupted = 1;
-				return 0; 
+				/* terminate parsing */
+				return 1; 
 		}
 
 		i = look_for_spot(state, rec);
@@ -551,37 +546,16 @@ owp_do_summary(fetch_state_ptr state)
 **     (original ping style: max/avg/min/stdev) at the end.
 */
 int
-do_records_all(int fd,
-	       fetch_state_ptr	state,
-	       char            *from,
-	       char            *to
-	       )
+do_records_all(
+		FILE		*fp,
+		fetch_state_ptr	state,
+		char		*from,
+		char		*to
+		)
 {
 	int		i, num_buckets;
-	u_int32_t	num_rec, typeP;
-	struct stat	stat_buf;
-	
-	if (lseek(fd, 0, SEEK_SET) < 0) {
-		I2ErrLog(eh, "FATAL: lseek():%M");
-		return -1;
-	}
+	u_int32_t	num_rec,hdr_len;
 
-	if (fstat(fd, &stat_buf) < 0) {
-		I2ErrLog(eh, "FATAL: open():%M");
-		return -1;
-	}   
-	
-	num_rec = (stat_buf.st_size - 4) / 20;
-	if ((stat_buf.st_size - 4)%20) {
-		I2ErrLog(eh, "FATAL: file contains uneven number of records");
-		return -1;
-	}
-
-	if (OWPReadDataHeader(fd, &typeP) != OWPErrOK) {
-		I2ErrLog(eh, "FATAL: could not get data header");
-		return -1;
-	}
-	
 	/*
 	  Initialize fields of state to keep track of.
 	*/
@@ -612,7 +586,15 @@ do_records_all(int fd,
 	for (i = 0; i <= OWP_MAX_BUCKET; i++)
 		state->buckets[i] = 0;
 
-	OWPFetchLocalRecords(fd, num_rec, do_single_record, state);
+	if(!(num_rec = OWPReadDataHeader(fp,&hdr_len))){
+		I2ErrLog(eh, "OWPReadDataHeader:Empty file?");
+		return -1;
+	}
+	
+	if(OWPParseRecords(fp,num_rec,do_single_record,state) < OWPErrWARNING){
+		I2ErrLog(eh,"OWPParseRecords():%M");
+		return -1;
+	}
 	
 	/* Stats are requested and failed to keep records sorted - redo */
 	if (state->order_disrupted) {
@@ -646,66 +628,78 @@ owp_fetch_sid(
 	      int do_stats
 	      )
 {
-	int fd;
-	u_int32_t num_rec;
-	u_int8_t     typeP[4]; 
-	FILE *fp;
+	char		*path;
+	FILE		*fp;
+	u_int32_t	num_rec;
+	OWPErrSeverity	rc=OWPErrOK;
 
 	/*
 	 * Prepare paths for datafiles. Unlink if not keeping data.
 	 */
-	if (savefile) {
-		fd = open(ping_ctx.opt.save_to_test, 
-			    O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
-		if (fd < 0) {
-			I2ErrLog(eh, "FATAL: open(%s) failed: %M", 
-				 ping_ctx.opt.save_to_test);
+	if(savefile){
+		path = savefile;
+		if( !(fp = fopen(path,"wb+"))){
+			I2ErrLog(eh,"owp_fetch_sid:fopen(%s):%M",path);
 			exit(1);
 		}
-	} else {
-		char *path = strdup(OWP_TMPFILE);
-		if (!path) {
-			I2ErrLog(eh, "FATAL: malloc() failed: %M");
+	}
+	else{
+		/*
+		 * Using fd/mkstemp/fdopen to avoid race condition that
+		 * would exist if we used mktemp/fopen.
+		 */
+		int	fd;
+
+		path = strdup(OWP_TMPFILE);
+		if(!path){
+			I2ErrLog(eh,"owp_fetch_sid:strdup(%s):%M",OWP_TMPFILE);
 			exit(1);
 		}
-		if ((fd = mkstemp(path)) < 0) {
-			I2ErrLog(eh, "FATAL: open(%s) failed: %M", path);
-			exit(1);	
+		if((fd = mkstemp(path)) < 0){
+			I2ErrLog(eh,"owp_fetch_sid:mkstemp(%s):%M",path);
+			exit(1);
+		}
+		if(!(fp = fdopen(fd,"wb+"))){
+			I2ErrLog(eh,"owp_fetch_sid:fdopen():%M");
+			exit(1);
 		}
 		if (unlink(path) < 0) {
-			I2ErrLog(eh, "WARNING: unlink(%s) failed: %M", path);
+			I2ErrLog(eh,"owp_fetch_sid:unlink(%s):%M",path);
 		}
 		free(path);
+		path = NULL;
 	}
 
 
-	/* Ask for complete session - for now. Ignore typeP */
-	if (OWPFetchSessionInfo(cntrl, 0, (u_int32_t)0xFFFFFFFF, sid, 
-				&num_rec, typeP) == OWPErrFATAL) {
-		I2ErrLog(eh, "Failed to fetch remote records");
+	/*
+	 * Ask for complete session 
+	 * TODO: In v5 this function will return interesting info about
+	 * the session. For now, it just returns the number of records.
+	 */
+	num_rec = OWPFetchSession(cntrl,fp,0,(u_int32_t)0xFFFFFFFF,sid,&rc);
+	if(!num_rec){
+		if(path)
+			(void)unlink(path);
+		if(rc < OWPErrWARNING){
+			I2ErrLog(eh,"owp_fetch_sid:OWPFetchSession error?");
+			exit(1);
+		}
+		/*
+		 * server denied request...
+		 */
+		I2ErrLog(eh,
+		"owp_fetch_sid:Server denied request for to session data");
 		return;
 	}
 
-	if ((fp = fdopen(fd, "a")) == NULL) {
-		I2ErrLog(eh, "FATAL: fdopen(%d) failed: %M", fd);
-		exit(1);
-	}
-	/* Currently the server does not send Session Request -
-	   so write a simplified (version 0) header. */
-	OWPWriteDataHeadeR(fp, 0, NULL, 0);
-	
-	if (OWPFetchRecords(cntrl, fd, num_rec) == OWPErrFATAL){
-		I2ErrLog(eh, "Failed to fetch remote records");
-		return;
-	}
 	if (do_stats) {
-		if(do_records_all(fd, statep, local, remote) < 0) {
+		if(do_records_all(fp,statep,local,remote) < 0) {
 			I2ErrLog(eh, "FATAL: do_records_all(to session)");
 		}
 	}
 	
-	if (close(fd) < 0) {
-		I2ErrLog(eh, "WARNING: close() failed: %M");
+	if(fclose(fp) != 0) {
+		I2ErrLog(eh,"fclose():%M");
 	}
 	return;
 }
@@ -792,17 +786,20 @@ main(
 	OWPAcceptType		acceptval;
 	OWPErrSeverity		err;
 	fetch_state             state;
-	int			tofd = -1, fromfd = -1;
+	FILE			*fromfp=NULL;
 	OWPAddr                 local;
 	char                    local_str[NI_MAXHOST], *remote;
 
 	int			ch;
 	char                    *endptr = NULL;
 	char                    optstring[128];
-	static char              *conn_opts = "A:S:k:u:";
-	static char              *test_opts = "fF:tT:c:i:s:L:";
-	static char              *out_opts = "a:vVQ";
-	static char              *gen_opts = "h";
+	static char		*conn_opts = "A:S:k:u:";
+	static char		*test_opts = "fF:tT:c:i:s:L:";
+	static char		*out_opts = "a:vVQ";
+	static char		*gen_opts = "h";
+#ifndef	NDEBUG
+	static char		*debug_opts = "w";
+#endif
 
 	ia.line_info = (I2NAME | I2MSG);
 	ia.fp = stderr;
@@ -856,6 +853,9 @@ main(
 		strcat(optstring, out_opts);
 	}
 	strcat(optstring, gen_opts);
+#ifndef	NDEBUG
+	strcat(optstring,debug_opts);
+#endif
 		
 	while ((ch = getopt(argc, argv, optstring)) != -1)
              switch (ch) {
@@ -1090,48 +1090,48 @@ main(
 			if (!OWPSessionRequest(ping_ctx.cntrl, NULL, False,
 				       OWPAddrByNode(ctx,ping_ctx.remote_test),
 				       True, (OWPTestSpec*)&test_spec, tosid, 
-				       tofd, &err_ret))
+				       NULL, &err_ret))
 			FailSession(ping_ctx.cntrl);
 		}
 
 
 
 		if(ping_ctx.opt.from) {
-			u_int8_t     typeP[4];
 
 			if (ping_ctx.opt.save_from_test) {
-				fromfd = open(ping_ctx.opt.save_from_test, 
-			       O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
-				if (fromfd < 0) {
-				I2ErrLog(eh, "FATAL: open(%s) failed: %M", 
-					 ping_ctx.opt.save_from_test);
-				exit(1);
+				fromfp = fopen(ping_ctx.opt.save_from_test,
+									"wb+");
+				if(!fromfp){
+					I2ErrLog(eh,"fopen(%s):%M", 
+						ping_ctx.opt.save_from_test);
+					exit(1);
 				}
 			} else {
+				int	fd;
 				char *path = strdup(OWP_TMPFILE);
-				if (!path) {
-				    I2ErrLog(eh, "FATAL: malloc() failed: %M");
-				    exit(1);
+				if(!path){
+					I2ErrLog(eh,"strdup():%M");
+					exit(1);
 				}
-				if ((fromfd = mkstemp(path)) < 0) {
-				I2ErrLog(eh, "FATAL: open(%s) failed: %M", 
-					 path);
-				exit(1);	
+				if((fd = mkstemp(path)) < 0){
+					I2ErrLog(eh,"mkstemp(%s):%M",path);
+					exit(1);
 				}
-				if (unlink(path) < 0) {
-				I2ErrLog(eh, "WARNING: unlink(%s) failed: %M", 
-					 path);
+				if(!(fromfp = fdopen(fd,"wb+"))){
+					I2ErrLog(eh,"fdopen():%M");
+					exit(1);
 				}
+				if(unlink(path) < 0){
+					I2ErrLog(eh,"unlink(%s):%M",path);
+				}
+				free(path);
 			}
-
-			*(u_int32_t *)typeP = htonl(test_spec.typeP);
-			OWPWriteDataHeader(conndata.cntrl, fromfd, typeP);
 
 			if (!OWPSessionRequest(ping_ctx.cntrl,
 				       OWPAddrByNode(ctx,ping_ctx.remote_test),
 				       True, NULL, False, 
 				       (OWPTestSpec*)&test_spec, fromsid,
-				       fromfd, &err_ret))
+				       fromfp, &err_ret))
 				FailSession(ping_ctx.cntrl);
 		}
 		
@@ -1171,11 +1171,12 @@ main(
 				      tosid, &state, local_str, remote, 1);
 
 		if(ping_ctx.opt.from){
-			if (do_records_all(fromfd,&state,remote,local_str)<0) {
-			I2ErrLog(eh,"FATAL: do_records_all(from session)");
+			if(do_records_all(fromfp,&state,remote,local_str)<0){
+				I2ErrLog(eh,"do_records_all(from session):%M");
+				exit(1);
 			}
-			if (close(fromfd) < 0) {
-				I2ErrLog(eh, "WARNING: close() failed: %M");
+			if(fclose(fromfp) != 0){
+				I2ErrLog(eh,"close():%M");
 			}
 		}
 		
@@ -1184,14 +1185,15 @@ main(
 	}
 
 	if (!strcmp(progname, "owstats")) {
-		int fd = open(argv[0], O_RDONLY);
-		if (fd < 0) {
-			I2ErrLog(eh, "FATAL: open(%s) failed: %M", argv[0]);
+		FILE	*fp;
+
+		if(!(fp = fopen(argv[0],"wb+"))){
+			I2ErrLog(eh,"fopen(%s):%M",argv[0]);
 			exit(1);
 		}
 		
-		if (do_records_all(fd, &state, NULL, NULL) < 0){
-			I2ErrLog(eh, "FATAL: do_records_all failed.");
+		if (do_records_all(fp,&state,NULL,NULL) < 0){
+			I2ErrLog(eh,"do_records_all() failed.");
 			exit(1);
 		}
 		exit(0);

@@ -22,6 +22,6 @@ INCLUDES	= $(OWPINCS) $(I2UTILINCS)
 AM_CFLAGS	= $(OWP_PREFIX_CFLAGS)
 
 bin_PROGRAMS	= owping
-owping_SOURCES	= owping.c owpingP.h localnode.c localnode.h
+owping_SOURCES	= owping.c owpingP.h
 owping_LDADD	= $(OWPLIBS) $(I2UTILLIBS)
 owping_DEPENDENCIES = $(OWPLIBDEPS) $(I2UTILLIBDEPS)
