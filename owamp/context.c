@@ -18,7 +18,8 @@
 **
 **	Description:	
 */
-#include <owampP.h>
+#include "owampP.h"
+#include "endpoint.h"
 
 /*
  * Function:	_OWPCallGetAESKey
@@ -144,7 +145,6 @@ _OWPCallCheckTestPolicy(
 	OWPErrSeverity	*err_ret	/* error - return		*/
 )
 {
-	OWPContext ctx;
 	*err_ret = OWPErrOK;
 
 	if(!cntrl){
@@ -163,6 +163,83 @@ _OWPCallCheckTestPolicy(
 	return (*cntrl->ctx->cfg.check_test_func)(cntrl->ctx->cfg.app_data,
 				cntrl->mode,cntrl->kid,local_sender,local,
 				remote,test_spec,err_ret);
+}
+
+/*
+ * Calls the endpoint_init func defined by the application.
+ */
+OWPBoolean
+_OWPCallEndpointInit(
+	OWPControl	cntrl,
+	void		**end_data_ret,
+	OWPBoolean	send,
+	OWPAddr		localaddr,
+	OWPTestSpec	*test_spec,
+	OWPSID		sid,
+	OWPErrSeverity	*err_ret
+)
+{
+	OWPEndpointInitFunc	init_func = OWPDefEndpointInit;
+	void			*def_app_data;
+
+	*err_ret = OWPErrOK;
+
+	if(!cntrl){
+		OWPErrorLine(NULL,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
+				"_OWPCallCheckTestPolicy:No Control record!");
+		*err_ret = OWPErrFATAL;
+		return False;
+	}
+
+	/*
+	 * Default action is to allow anything.
+	 */
+	if(cntrl->ctx->cfg.endpoint_init_func){
+		init_func = cntrl->ctx->cfg.endpoint_init_func;
+		def_app_data = cntrl->ctx->cfg.app_data;
+	}else{
+		def_app_data = cntrl->ctx;
+	}
+
+	return (*init_func)(def_app_data,end_data_ret,send,localaddr,test_spec,
+								sid,err_ret);
+}
+
+/*
+ * Calls the endpoint_init_hook func defined by the application.
+ */
+OWPBoolean
+_OWPCallEndpointInitHook(
+	OWPControl	cntrl,
+	void		*end_data_ret,
+	OWPAddr		remoteaddr,
+	OWPSID		sid,
+	OWPErrSeverity	*err_ret
+)
+{
+	OWPEndpointInitHookFunc	initH_func = OWPDefEndpointInitHook;
+	void			*def_app_data;
+
+	*err_ret = OWPErrOK;
+
+	if(!cntrl){
+		OWPErrorLine(NULL,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
+				"_OWPCallCheckTestPolicy:No Control record!");
+		*err_ret = OWPErrFATAL;
+		return False;
+	}
+
+	/*
+	 * Default action is to allow anything.
+	 */
+	if(cntrl->ctx->cfg.endpoint_init_hook_func){
+		initH_func = cntrl->ctx->cfg.endpoint_init_hook_func;
+		def_app_data = cntrl->ctx->cfg.app_data;
+	}else{
+		def_app_data = cntrl->ctx;
+	}
+
+	return (*initH_func)(def_app_data,end_data_ret,remoteaddr,sid,err_ret);
 }
 
 /*

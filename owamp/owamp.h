@@ -134,22 +134,6 @@ typedef struct{
 	u_int32_t	padding[4];
 } OWPTestSpec;
 
-typedef struct OWPEndpointRec *OWPEndpoint;
-struct OWPEndpointRec{
-	OWPBoolean	receiver;	/* true if endpoint recv */
-
-	struct sockaddr	local_saddr;
-	struct sockaddr	remote_saddr;
-
-	OWPSID		sid;
-};
-
-typedef enum {
-	OWPEndpointInvalid,	/* invalid value	*/
-	OWPEndpointReciever,
-	OWPEndpointSender
-} OWPEndpointType;
-
 /*
  * The following types are used to initialize the library.
  */
@@ -239,14 +223,22 @@ typedef OWPBoolean (*OWPCheckTestPolicyFunc)(
 );
 
 /*
- * Allocate port and set it in the *endpoint->sa_addr structure.
- * (different for IPV4 and IPV6? May need to call getsockname?)
- * (How do we detect if user passed FD in - don't need to bind!)
- * If "recv" - also allocate and set endpoint->sid
+ * The endpoint_handle data returned from this function is used by the
+ * application to keep track of a particular endpoint of an OWAMP test.
+ * It is opaque from the point of view of the library.
+ * (It is simply a more specific app_data.)
+ *
+ * This function needs to allocate port and return it in the localsaddr
+ * structure.
+ * If "recv" - (send == False) then also allocate and return sid.
  */
-typedef void (*OWPEndpointInitFunc)(
+typedef OWPBoolean (*OWPEndpointInitFunc)(
 	void		*app_data,
-	OWPEndpoint	endpoint,
+	void		**end_data_ret,
+	OWPBoolean	send,
+	OWPAddr		localaddr,
+	OWPTestSpec	*test_spec,
+	OWPSID		sid_ret,	/* only used if !send */
 	OWPErrSeverity	*err_ret
 );
 
@@ -254,10 +246,11 @@ typedef void (*OWPEndpointInitFunc)(
  * Given remote_addr/port (can "connect" to remote addr now)
  * return OK
  */
-typedef void (*OWPEndpointInitHookFunc)(
+typedef OWPBoolean (*OWPEndpointInitHookFunc)(
 	void		*app_data,
-	OWPEndpoint	local_endpoint,
-	OWPEndpoint	remote_endpoint,
+	void		*end_data,
+	OWPAddr		remoteaddr,
+	OWPSID		sid,
 	OWPErrSeverity	*err_ret
 );
 
@@ -266,7 +259,7 @@ typedef void (*OWPEndpointInitHookFunc)(
  */
 typedef void (*OWPEndpointStart)(
 	void		*app_data,
-	OWPEndpoint	endpoint,
+	void		*end_data,
 	OWPErrSeverity	*err_ret
 );
 
@@ -275,7 +268,16 @@ typedef void (*OWPEndpointStart)(
  */
 typedef void (*OWPEndpointStop)(
 	void		*app_data,
-	OWPEndpoint	endpoint,
+	void		*end_data,
+	OWPErrSeverity	*err_ret
+);
+
+/*
+ * Given retrieve session
+ */
+typedef void (*OWPRetrieveSessionData)(
+	void		*app_data,
+	OWPSID		sid,
 	OWPErrSeverity	*err_ret
 );
 

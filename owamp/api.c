@@ -76,7 +76,7 @@ OWPContextFree(
 }
 
 static OWPAddr
-AllocAddr(
+_OWPAddrAlloc(
 	OWPContext	ctx
 )
 {
@@ -163,7 +163,7 @@ OWPAddrByNode(
 	if(!node)
 		return NULL;
 
-	if(!(addr=AllocAddr(ctx)))
+	if(!(addr=_OWPAddrAlloc(ctx)))
 		return NULL;
 
 	strncpy(buff,node,MAXHOSTNAMELEN);
@@ -268,7 +268,7 @@ OWPAddrByAddrInfo(
 	const struct addrinfo	*ai
 )
 {
-	OWPAddr	addr = AllocAddr(ctx);
+	OWPAddr	addr = _OWPAddrAlloc(ctx);
 	struct addrinfo	**aip;
 
 	if(!addr)
@@ -296,7 +296,7 @@ OWPAddrBySockFD(
 	int		fd
 )
 {
-	OWPAddr	addr = AllocAddr(ctx);
+	OWPAddr	addr = _OWPAddrAlloc(ctx);
 
 	if(!addr)
 		return NULL;
@@ -564,6 +564,11 @@ _OWPControlAlloc(
 	memset(cntrl->writeIV,0,sizeof(cntrl->writeIV));
 
 	/*
+	 * Init test sessions list.
+	 */
+	cntrl->tests = NULL;
+
+	/*
 	 * Put this control record on the ctx list.
 	 */
 	cntrl->next = ctx->cntrl_list;
@@ -807,6 +812,9 @@ SetEndAddrInfo(
 			/*
 			 * all necessary info encapsalated by family/socktype,
 			 * so default proto to IPPROTO_IP(0).
+			 * (Could probably set this to IPPROTO_UDP/IPPROTO_TCP
+			 * based upon the socktype, but the 0 default fits
+			 * the model for most "socket" calls.)
 			 */
 			ai->ai_protocol = IPPROTO_IP;
 			ai->ai_addrlen = so_size;
@@ -823,7 +831,7 @@ SetEndAddrInfo(
 		else if(addr->node_set){
 			/*
 			 * Hey - do the normal thing, call getaddrinfo
-			 * to get an addrinfo, how novil!
+			 * to get an addrinfo, how novel!
 			 */
 			memset(&hints,0,sizeof(struct addrinfo));
 			hints.ai_family = AF_UNSPEC;
@@ -855,6 +863,52 @@ error:
 	return FALSE;
 }
 
+static OWPTestSession
+TestSessionAlloc(
+	OWPControl	cntrl,
+	OWPAddr		sender,
+	OWPBoolean	server_conf_sender,
+	OWPAddr		receiver,
+	OWPBoolean	server_conf_receiver,
+	OWPTestSpec	*test_spec
+)
+{
+	OWPTestSession	test = malloc(sizeof(OWPTestSessionRec));
+
+	if(!test){
+		OWPError(cntrl->ctx,OWPErrFATAL,errno,
+						"malloc(OWPTestSessionRec)");
+		return NULL;
+	}
+
+	test->cntrl = cntrl;
+	memset(test->sid,0,sizeof(OWPSID));
+	test->sender = sender;
+	test->server_conf_sender = server_conf_sender;
+	test->receiver = receiver;
+	test->server_conf_receiver = server_conf_receiver;
+	test->send_end_data = test->recv_end_data = NULL;
+	memcpy(&test->test_spec,test_spec,sizeof(OWPTestSpec));
+	test->next = NULL;
+
+	return test;
+}
+
+static void
+TestSessionFree(
+	OWPTestSession	tsession
+)
+{
+	/*
+	 * TODO: call stop on the endpoints.
+	 */
+	/*
+	 * TODO: remove this tsession from the cntrl->tests lists.
+	 */
+	free(tsession);
+}
+
+
 OWPBoolean
 OWPRequestTestSession(
 	OWPControl	cntrl,
@@ -871,6 +925,9 @@ OWPRequestTestSession(
 	struct addrinfo		*sai=NULL;
 	void			*send_endpoint = NULL;
 	void			*recv_endpoint = NULL;
+	OWPTestSession		tsession = NULL;
+
+	*err_ret = OWPErrOK;
 
 	/*
 	 * Check cntrl state is appropriate for this call.
@@ -916,17 +973,27 @@ OWPRequestTestSession(
 		}
 	}
 
-foundaddr:
-	if(!rai || !sai){
-		*err_ret = OWPErrWARNING;
-		OWPError(cntrl->ctx,*err_ret,OWPErrINVALID,
+	/*
+	 * Didn't find compatible addrs - return error.
+	 */
+	*err_ret = OWPErrWARNING;
+	OWPError(cntrl->ctx,*err_ret,OWPErrINVALID,
 		"OWPRequestTestSession called with incompatible addresses");
-		goto error;
-	}
+	goto error;
+
+foundaddr:
 	receiver->saddr = rai->ai_addr;
 	receiver->saddrlen = rai->ai_addrlen;
 	sender->saddr = sai->ai_addr;
 	sender->saddrlen = sai->ai_addrlen;
+
+	/*
+	 * Create a structure to store the stuff we need to keep for
+	 * later calls.
+	 */
+	if( !(tsession = TestSessionAlloc(cntrl,sender,server_conf_sender,
+				receiver,server_conf_receiver,test_spec)))
+		goto error;
 
 	/*
 	 * Configure receiver first since the sid comes from there.
@@ -936,6 +1003,9 @@ foundaddr:
 		 * If send local, check local policy for sender
 		 */
 		if(!server_conf_sender){
+			/*
+			 * check local policy for this sender
+			 */
 			if(!_OWPCallCheckTestPolicy(cntrl,True,
 					sender->saddr,receiver->saddr,
 					test_spec,err_ret)){
@@ -943,51 +1013,93 @@ foundaddr:
 					"Test not allowed");
 				goto error;
 			}
-			/* TODO: start send endpoint */
+			/*
+			 * create the local sender
+			 */
+			if(!_OWPCallEndpointInit(cntrl,&tsession->send_end_data,
+							True,sender,test_spec,
+							tsession->sid,err_ret))
+				goto error;
 		}
+		/*
+		 * Request the server create the receiver & possibly the
+		 * sender.
+		 */
 		if(_OWPClientRequestTestReadResponse(cntrl,
 					sender,server_conf_sender,
 					receiver,server_conf_receiver,
 					test_spec,sid_ret,err_ret) != 0){
 			goto error;
 		}
+
+		/*
+		 * If sender is local, complete it's initialization now that
+		 * we know the receiver port number.
+		 */
 		if(!server_conf_sender){
-			/* TODO: start send endpoint_hook */
+			if(!_OWPCallEndpointInitHook(cntrl,
+					tsession->send_end_data,receiver,
+					tsession->sid,err_ret))
+				goto error;
 		}
 	}
 	else{
 		/*
-		 * Local recv
+		 * Local receiver - first check policy, then create.
 		 */
-
 		if(!_OWPCallCheckTestPolicy(cntrl,False,receiver->saddr,
 					sender->saddr,test_spec,err_ret)){
 			OWPError(cntrl->ctx,*err_ret,OWPErrPOLICY,
 					"Test not allowed");
 			goto error;
 		}
-		/* TODO: start recv endpoint */
+		if(!_OWPCallEndpointInit(cntrl,&tsession->recv_end_data,
+					False,receiver,test_spec,tsession->sid,
+					err_ret))
+			goto error;
 
+
+		/*
+		 * If conf_sender - make request to server
+		 */
 		if(server_conf_sender){
 			if(_OWPClientRequestTestReadResponse(cntrl,
 					sender,server_conf_sender,
 					receiver,server_conf_receiver,
-					test_spec,sid_ret,err_ret) != 0){
+					test_spec,tsession->sid,err_ret) != 0){
 				goto error;
 			}
 		}else{
+			/*
+			 * Otherwise create sender: check policy,then init.
+			 */
 			if(!_OWPCallCheckTestPolicy(cntrl,True,sender->saddr,
 					receiver->saddr,test_spec,err_ret)){
 				OWPError(cntrl->ctx,*err_ret,OWPErrPOLICY,
 					"Test not allowed");
 				goto error;
 			}
-			/* TODO: start send endpoint */
-			/* TODO: start send endpoint_hook */
+			if(!_OWPCallEndpointInit(cntrl,&tsession->send_end_data,
+					True,sender,test_spec,tsession->sid,
+					err_ret))
+				goto error;
+			if(!_OWPCallEndpointInitHook(cntrl,
+					tsession->send_end_data,receiver,
+					tsession->sid,err_ret))
+				goto error;
 		}
-		/* TODO: start recv endpoint_hook */
-
+		if(!_OWPCallEndpointInitHook(cntrl,
+					tsession->recv_end_data,sender,
+					tsession->sid,err_ret))
+			goto error;
 	}
+
+	tsession->next = cntrl->tests;
+	cntrl->tests = tsession;
+
+	memcpy(sid_ret,tsession->sid,sizeof(OWPSID));
+
+	return True;
 
 error:
 	if(send_endpoint){
@@ -996,6 +1108,7 @@ error:
 	if(recv_endpoint){
 		/* TODO: stop recv endpoint */
 	}
+	TestSessionFree(tsession);
 	OWPAddrFree(receiver);
 	OWPAddrFree(sender);
 	return False;

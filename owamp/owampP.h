@@ -109,6 +109,7 @@ struct OWPAddrRec{
 #define	_OWPStateIsRequest(c)	(!(_OWPStateRequest ^ (c)->state))
 #define	_OWPStateIsTest(c)	(!(_OWPStateTest ^ (c)->state))
 
+typedef struct OWPTestSessionRec OWPTestSessionRec, *OWPTestSession;
 struct OWPControlRec{
 	/*
 	 * Application configuration information.
@@ -124,6 +125,7 @@ struct OWPControlRec{
 
 	/*
 	 * Address specification and "network" information.
+	 * (Control socket addr information)
 	 */
 	OWPAddr			remote_addr;
 	OWPAddr			local_addr;
@@ -141,6 +143,7 @@ struct OWPControlRec{
 	OWPByte			writeIV[16];
 
 	struct OWPControlRec	*next;
+	OWPTestSession		tests;
 };
 
 struct OWPTestSessionRec{
@@ -148,7 +151,12 @@ struct OWPTestSessionRec{
 	OWPSID				sid;
 	OWPAddr				sender;
 	OWPAddr				receiver;
-	struct OWPTestSessionRec	*next;
+	OWPBoolean			server_conf_sender;
+	OWPBoolean			server_conf_receiver;
+	void				*send_end_data;
+	void				*recv_end_data;
+	OWPTestSpec			test_spec;
+	OWPTestSession			next;
 };
 
 /*
@@ -297,6 +305,26 @@ _OWPCallCheckTestPolicy(
 	struct sockaddr	*remote,	/* remote endpoint		*/
 	OWPTestSpec	*test_spec,	/* test requested		*/
 	OWPErrSeverity	*err_ret	/* error - return		*/
+);
+
+extern OWPBoolean
+_OWPCallEndpointInit(
+        OWPControl      cntrl,
+	void            **end_data_ret,
+        OWPBoolean      send,
+	OWPAddr         localaddr,
+	OWPTestSpec     *test_spec,
+	OWPSID          sid_ret,	/* only used if !send */
+	OWPErrSeverity  *err_ret
+);
+
+extern OWPBoolean
+_OWPCallEndpointInitHook(
+        OWPControl      cntrl,
+	void            *end_data,
+	OWPAddr         remoteaddr,
+	OWPSID		sid,
+	OWPErrSeverity  *err_ret
 );
 
 extern OWPContext
