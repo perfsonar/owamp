@@ -25,19 +25,24 @@ my @nodes = $conf->get_val(ATTR=>'MESHNODES');
 # my $wwwdir = $conf->get_www_path("");
 my $index_page = join '/', $conf->{'CENTRALWWWDIR'}, 'index.html';
 
+my $del_thresh = 100; # ms
+my $loss_thresh = 1;  # % loss
+
 my $recv;
 
 open INDEXFH, ">$index_page" or die "Could not open $index_page";
 select INDEXFH;
 
-print  start_html('Abilene OWAMP actives meshes.'),
+print  start_html('Abilene OWAMP active meshes.'),
 	h1('Abilene OWAMP active meshes.');
 
-print '<p>';
+print "\n<p>\n";
 print <<"STOP";
 Each mesh (IPv4, IPv6) is described by a separate table. For each
-link within a mesh we print median delay (ms) [...more stuff?].
+link within a mesh we print median delay (ms) and loss percentage.
 Senders are listed going down the column, and receivers along the row.
+Cells with delay of more than $del_thresh ms, or loss of more than
+$loss_thresh\%, are marked in red.
 STOP
 print '</p>';
 
@@ -64,8 +69,11 @@ STOP
 	my $red = 0;
 
 	foreach my $send_datum (@senders_data) {
-	    my $td = ($red)? 'td bgcolor="red"' : 'td';
-	    print "<$td>$send_datum</td>\n";
+#	    warn "$send_datum";
+	    my ($datum, $median, $loss) = split /,/, $send_datum;
+	    my $td = (($median > $del_thresh) || ($loss > $loss_thresh))?
+		    'td bgcolor="red"' : 'td';
+	    print "<$td>$datum</td>\n";
 	}
 	print "</tr>\n";
     }
@@ -85,7 +93,7 @@ sub fetch_sender_data {
 
     unless (-f $summary_file) {
 	warn "summary file $summary_file not found - skipping";
-	return "'N/A'";
+	return join ',', "N/A", "0", "0";
     }
 
     open FH, "<$summary_file" or die "Could not open $summary_file: $!";
@@ -94,8 +102,13 @@ sub fetch_sender_data {
 
     chomp $line;
 
-    my ($median, $med, $ninety_perc) = split / /, $line;
+    my ($median, $med, $ninety_perc, $loss) = split / /, $line, 4;
 
     # create a proper link here
-   return a({href => $rel_wwwdir}, $median);
+    my $tentry = "\n";
+    $tentry .= a({href => "$rel_wwwdir/index.html#delays"}, $median);
+    $tentry .= " / \n" ;
+    $tentry .= a({href => "$rel_wwwdir/index.html#loss"}, "$loss%");
+    $tentry .= "\n";
+    return join ',', $tentry, $median, $loss;
 }

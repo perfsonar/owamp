@@ -70,11 +70,12 @@ my $digest_suffix = $conf->get_val(ATTR=>'DigestSuffix');
 open(GNUPLOT, "| gnuplot") or die "cannot execute gnuplot";
 autoflush GNUPLOT 1;
 
-
 my $age = $conf->must_get_val(DIGESTRES=>$res, ATTR=>'PLOTPERIOD');
 my $res_name = $conf->must_get_val(DIGESTRES=>$res, ATTR=>'COMMONRESNAME');
 my $period_name = $conf->must_get_val(DIGESTRES=>$res,
 				      ATTR=>'PLOT_PERIOD_NAME');
+my $vtimefile = $conf->must_get_val(ATTR=>'CentralPerDirValidFile');
+
 
 foreach my $mtype (@mtypes){
     foreach my $recv (@nodes){
@@ -82,6 +83,17 @@ foreach my $mtype (@mtypes){
 	next unless defined $rec_addr;
 	foreach my $sender (@nodes) {
 	    next if ($recv eq $sender);	# don't test with self.
+	    # Recover the last validated time
+	    my $dir = "$dataroot/$mtype/$recv/$sender";
+	    my $end;
+	    if (open TFILE, "<$dir/$vtimefile") {
+		$end = <TFILE>;
+		close TFILE;
+		chomp $end;
+	    } else {
+		warn "Open Error $dir/$vtimefile: $!";
+	    }
+
 	    $send_addr = $conf->get_val(NODE=>$sender, TYPE=>$mtype,
 					ATTR=>'ADDR');
 	    next unless defined $send_addr;
@@ -96,7 +108,7 @@ sub plot_resolution {
     my $body = "$mtype/$recv/$sender/$res";
     my ($datadir, $summary_file, $wwwdir) =
 	    $conf->get_names_info($mtype, $recv, $sender, $res, $mode);
-    my $png_file = get_png_prefix($res, $mode);
+    my $png_file = OWP::get_png_prefix($res, $mode);
 
     print "plot_resolution: trying datadir = $datadir\n" if VERBOSE;
 
@@ -247,15 +259,25 @@ sub plot_resolution {
     my $fmt_xlabel = join '/', map {code2unit($_)} @tmp;
 
     $fmt = join ':', map {"%$_"} split //, $fmt;
+    warn "DEBUG: fmt=$fmt";
 
     print GNUPLOT <<"STOP";
 set terminal png small color
 set xdata time
 set format x \"$fmt\"
 set timefmt "%m/%d/%H/%M/%S"
-set xrange [\"$xr_start\":\"$xr_end\"]
+STOP
+    unless ($ARGV[2] eq 'fake') {
+	print GNUPLOT "set xrange [\"$xr_start\":\"$xr_end\"]\n";
+    }
+
+    my $xtics = ($res == 30)? "set xtics 300\nset mxtics\n" : "";
+    warn "DEBUG: xtics=\n$xtics";
+
+    print GNUPLOT <<"STOP";
 set nokey
 set grid
+$xtics
 set xlabel "Time ($fmt_xlabel)"
 set ylabel "Delay (ms)"
 set title \"$delays_title\"
@@ -264,10 +286,11 @@ plot "$gnu_dat" using 1:2:3:4 with errorbars ps 1
 set ylabel "Loss (%)"
 set title \"$loss_title\"
 set output "$loss_png"
-plot "$gnu_dat" using 1:5 ps 1
+plot [] [0:100] "$gnu_dat" using 1:5 ps 2
 STOP
 
     warn "plotted files: $delays_png $loss_png" if VERBOSE;
+    warn "data file: $gnu_dat" if VERBOSE;
 }
 
 # convert bucket index to the actual time value
@@ -325,6 +348,7 @@ sub is_younger_than {
 	}
     }
 
+    return $sec if $ARGV[2] eq 'fake';
     return ($current - $start < $age)? $sec : undef;
 }
 
