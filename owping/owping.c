@@ -11,7 +11,8 @@
 /*
  *	File:		owping.c
  *
- *	Author:		Jeff Boote
+ *	Authors:	Jeff Boote
+ *                      Anatoly Karp
  *			Internet2
  *
  *	Date:		Thu Apr 25 12:22:31  2002
@@ -105,28 +106,6 @@ owp_fetch_to_local(OWPControl cntrl, char *datadir, OWPSID sid)
 #define OWP_TMPDIR_TEMPLATE "/tmp/XXXXXXXXXXXXXXXX"
 
 
-/* Width of Fetch receiver window. */
-#define OWP_WIN_WIDTH   64
-
-/*
-** Generic state to be maintained by client during Fetch.
-*/
-typedef struct fetch_state {
-	FILE*        fp;               /* stream to report records           */
-	OWPCookedDataRec window[OWP_WIN_WIDTH]; /* window of read records    */
-	int          cur_win_size;
-
-	I2Boolean    full;             /* print full record instead of delay */
-	I2Boolean    quiet;            /* don't print records - just summary */
-
-	double       tmin;             /* max delay                          */
-	double       tmax;             /* min delay                          */
-	double       tsum;             /* sum of delays                      */
-	double       tsumsq;           /* sum of squared delays              */
-	u_int32_t    numpack_received; /* number of received packets         */
-	int64_t      last_seqno;       /* seqno of last output record        */
-	int          order_disrupted;  /* flag */
-} fetch_state, *fetch_state_ptr;
 
 #ifdef	NOT
 static int
@@ -352,24 +331,178 @@ FailSession(
 
 #define THOUSAND 1000.0
 
+/* Width of Fetch receiver window. */
+#define OWP_WIN_WIDTH   64
+
 /*
-** Update statistics due to the new record having given <delay>.
+** Generic state to be maintained by client during Fetch.
+*/
+typedef struct fetch_state {
+	FILE*        fp;               /* stream to report records           */
+	OWPCookedDataRec window[OWP_WIN_WIDTH]; /* window of read records  */
+	OWPCookedDataRec last_processed; /* last processed record */
+	int          cur_win_size;
+
+	I2Boolean    full;             /* print full record instead of delay */
+	I2Boolean    quiet;            /* don't print records - just summary */
+
+	double       tmin;             /* max delay                          */
+	double       tmax;             /* min delay                          */
+	double       tsum;             /* sum of delays                      */
+	double       tsumsq;           /* sum of squared delays              */
+	u_int32_t    num_received;     /* number of received packets         */
+	int          order_disrupted;  /* flag */
+} fetch_state, *fetch_state_ptr;
+
+#define OWP_CMP(a,b) ((a) < (b))? -1 : (((a) == (b))? 0 : 1)
+
+/*
+** The function returns -1. 0 or 1 if the first record's sequence
+** number is respectively less than, equal to, or greater than that 
+** of the second.
+*/
+int
+owp_seqno_cmp(OWPCookedDataRecPtr a, OWPCookedDataRecPtr b)
+{
+	assert(a); assert(b);
+	return OWP_CMP(a->seq_no, b->seq_no);
+}
+
+/*
+** Find the right spot in the window to insert the new record <rec>
+** Return max {i| 0 <= i <= cur_win_size-1 and <rec> is later than the i_th
+** record in the state window}, or -1 if no such index is found.
+*/
+int
+look_for_spot(fetch_state_ptr state,
+	      OWPCookedDataRecPtr rec)
+{
+	int i;
+	assert(state->cur_win_size);
+
+	for (i = state->cur_win_size - 1; i >= 0; i--) {
+		if (owp_seqno_cmp(&state->window[i], rec) < 0)
+			return i;
+	}
+	
+	return -1;
+}
+
+/*
+** Generic function to output timestamp record <rec> in given format
+** as encoded in <state>.
 */
 void
-owp_update_stats(fetch_state_ptr state, double delay)
+owp_record_out(fetch_state_ptr state, OWPCookedDataRecPtr rec)
 {
+	double delay;
+
+	assert(rec);
 	assert(state);
-	
-	/* Update the state. */
+
+	if (state->quiet)
+		return;
+
+	assert(state->fp);
+	delay = owp_delay(&rec->send, &rec->recv);
+	if (state->full)
+		fprintf(state->fp, 
+	 "seq_no=%u send=%u.%us sync=%u prec=%u recv=%u.%us sync=%u prec=%u\n",
+			rec->seq_no, rec->send.sec, rec->send.frac_sec, 
+			rec->send.sync, rec->send.prec,
+			rec->recv.sec, rec->recv.frac_sec, rec->recv.sync, 
+			rec->recv.prec);
+	else 
+			fprintf(state->fp, "seq_no=%u delay=%.3f ms\n", 
+				rec->seq_no, delay*THOUSAND);
+}
+
+void
+owp_update_stats(fetch_state_ptr state, OWPCookedDataRecPtr rec) {
+	double delay = owp_delay(&rec->send, &rec->recv);
 	if (delay < state->tmin)
 		state->tmin = delay;
-
 	if (delay > state->tmax)
 		state->tmax = delay;
-
+	
 	state->tsum += delay;
 	state->tsumsq += (delay*delay);
-	state->numpack_received++;
+	state->num_received++;
+}
+
+/* True of the first timestamp is earlier than the second. */
+#define OWP_EARLIER_THAN(a, b)                                \
+( ((a).sec < (b).sec)                                         \
+  || ( ((a).sec == (b).sec)                                   \
+       && ((a).frac_sec < (b).frac_sec)                       \
+     )                                                        \
+) 
+
+#define OWP_OUT_OF_ORDER(new, last_out)                       \
+(                                                             \
+((new)->seq_no < (last_out)->seq_no)                          \
+|| (                                                          \
+      ((new)->seq_no == (last_out)->seq_no)                   \
+      && OWP_EARLIER_THAN(((new)->recv), ((last_out)->recv))  \
+   )                                                          \
+)
+
+/*
+** Processs a single record, updating statistics and internal state.
+** Return 0 on success, or -1 on failure.
+*/
+int
+do_single_record(void *calldata, OWPCookedDataRecPtr rec) 
+{
+	int i;
+	fetch_state_ptr state = (fetch_state_ptr)calldata;
+	assert(state);
+
+	owp_record_out(state, rec); /* Output is done in all cases. */
+
+	/* If ordering is important - handle it here. */
+	if (state->order_disrupted)
+		return 0;
+	
+	if (state->cur_win_size < OWP_WIN_WIDTH){/* insert - no stats updates*/
+		if (state->cur_win_size) { /* Grow window. */
+			int num_records_to_move;
+			i = look_for_spot(state, rec);
+			num_records_to_move = state->cur_win_size - i - 1;
+
+			/* Cut and paste if needed - then insert. */
+			if (num_records_to_move) 
+				memmove(&state->window[i+2], 
+					&state->window[i+1], 
+					num_records_to_move*sizeof(*rec));
+			memcpy(&state->window[i+1], rec, sizeof(*rec)); 
+		}  else /* Initialize window. */
+			memmove(&state->window[0], rec, sizeof(*rec));
+		state->cur_win_size++;
+	} else { /* rotate - update state*/
+		OWPCookedDataRecPtr cur_rec = rec;		
+		if (state->num_received
+		    && OWP_OUT_OF_ORDER(rec, &(state->last_processed))) {
+				state->order_disrupted = 1;
+				return 0; 
+		}
+
+		i = look_for_spot(state, rec);
+		if (i != -1)
+			cur_rec = &state->window[i];
+		memcpy(&state->last_processed, cur_rec, sizeof(*cur_rec));
+		owp_update_stats(state, cur_rec);
+
+		/* Update the window.*/
+		if (i != -1) {  /* Shift if needed - then insert.*/
+			if (i) 
+				memmove(&state->window[0],
+					&state->window[i], i*sizeof(&cur_rec));
+			memcpy(&state[i], cur_rec, sizeof(&cur_rec));
+		} 
+	}
+	
+	return 0;
 }
 
 /*
@@ -380,137 +513,15 @@ owp_do_summary(fetch_state_ptr state)
 {
 	double min = ((double)(state->tmin)) * THOUSAND;    /* msec */
 	double max = ((double)(state->tmax)) * THOUSAND;    /* msec */
-	double   n = (double)(state->numpack_received);   
-	double avg = ((state->tsum)/n) * THOUSAND;
-	double vari = ((state->tsumsq / n) - avg * avg) * THOUSAND;
-	
-	fprintf(state->fp, "%u records received\n", state->numpack_received);
+	double   n = (double)(state->num_received);   
+	double avg = ((state->tsum)/n);
+	double vari = ((state->tsumsq / n) - avg * avg);
+
+	fprintf(state->fp, "\n--- owping statistics ---\n");
+	fprintf(state->fp, "%u records received\n", state->num_received);
 	fprintf(state->fp, 
 		"one-way delay min/avg/max/stddev = %.3f/%.3f/%.3f/%.3f ms\n",
-		min, avg, max, sqrt(vari));
-	return 0;
-}
-
-#define OWP_CMP(a,b) ((a) < (b))? -1 : (((a) == (b))? 0 : 1)
-
-/*
-** Given two timestamp records, compare their sequence numbers.
-** The function returns -1. 0 or 1 if the first record's sequence
-** number is respectively less than, equal to, or greater than that 
-** of the second.
-*/
-int
-owp_seqno_cmp(OWPCookedDataRecPtr a, OWPCookedDataRecPtr b)
-{
-	assert(a);
-	assert(b);
-
-	return OWP_CMP(a->seq_no, b->seq_no);
-}
-
-/*
-** Find the right spot to insert the new record.
-*/
-int
-look_for_spot(fetch_state_ptr state,
-	      OWPCookedDataRecPtr data)
-{
-	return state->cur_win_size; /* XXX - fix !!! */
-}
-
-/*
-** Insert a new record in the state window so as to keep it sorted
-** by sequence number. Only used to fill window for now.
-*/
-void
-rec_insert_next(fetch_state_ptr state,
-		OWPCookedDataRecPtr data)
-{
-	int index; 
-
-	assert(state);
-	assert(data);
-
-	if (state->cur_win_size == 0) { /* look for the right index */
-		memmove(&state->window[0], data, sizeof(*data));
-		state->cur_win_size++;
-	}
-
-	index = look_for_spot(state, data);
-	memmove(&state->window[index], data, sizeof(*data));
-	state->cur_win_size++;
-}
-
-/*
-** Generic function to output timestamp record in given format
-** as encoded in <state>.
-*/
-void
-owp_record_out(fetch_state_ptr state, OWPCookedDataRecPtr rec)
-{
-	double delay;
-
-	assert(rec);
-	assert(state);
-	delay = owp_delay(&rec->send, &rec->recv);
-
-	if (state->quiet) 
-		goto update;
-	
-	assert(state->fp);
-	if (state->full)
-		fprintf(state->fp, 
-"seq_no=%u send=%u.%us sync=%u prec=%u recv=%u.%us sync=%u prec=%u\n",
-			rec->seq_no, rec->send.sec, rec->send.frac_sec, 
-			rec->send.sync, rec->send.prec,
-			rec->recv.sec, rec->recv.frac_sec, rec->recv.sync, 
-			rec->recv.prec);
-	else 
-		fprintf(state->fp, "seq_no=%u delay=%.3f ms\n", rec->seq_no, 
-			delay*THOUSAND);
-	
- update:
-	owp_update_stats(state, delay);
-}
-
-/*
-** Insert a new timestamp record in a window. Return 0 on success,
-** or -1 on failure.
-*/
-int
-fill_window(void *calldata, OWPCookedDataRecPtr rec) 
-{
-	fetch_state_ptr state = (fetch_state_ptr)calldata;
-	assert(state);
-
-	owp_record_out(state, rec); /* Output is done in all cases. */
-	rec_insert_next(state, rec);
-
-	return 0;
-}
-
-/*
-** Process newly arrived data record, and do any necessary output
-** as encoded in state.
-*/
-int
-do_rest(void *calldata, OWPCookedDataRecPtr rec)
-{
-	fetch_state_ptr state = (fetch_state_ptr)calldata;
-
-	assert(state);
-	assert(rec);
-
-	owp_record_out(state, rec); /* Output is done in all cases. */
-
-	/* If ordering is important - handle it here. */
-	if (state->order_disrupted)
-		return 0;
-	if ((int64_t)(rec->seq_no) < state->last_seqno) {
-		state->order_disrupted = 1;
-		return 0; /* No error but all stats processing is off now. */
-	}
-
+		min, avg*THOUSAND, max, sqrt(vari)*THOUSAND);
 	return 0;
 }
 
@@ -526,7 +537,7 @@ do_rest(void *calldata, OWPCookedDataRecPtr rec)
 int
 do_records_all(char *datadir, OWPSID sid, fetch_state_ptr state)
 {
-	int fd;
+	int fd, i;
 	u_int32_t num_rec, typeP;
 	char datafile[PATH_MAX]; /* full path to data file */
 	char sid_name[(sizeof(OWPSID)*2)+1];
@@ -538,8 +549,11 @@ do_records_all(char *datadir, OWPSID sid, fetch_state_ptr state)
 	OWPHexEncode(sid_name, sid, sizeof(OWPSID));
 	strcat(datafile, sid_name);
 	
+ open_again:
 	if ((fd = open(datafile, O_RDONLY)) < 0) {
-		I2ErrLog(eh, "FATAL: open():%M");
+		if (errno == EINTR)
+			goto open_again;
+		I2ErrLog(eh, "FATAL: open() failed:%M");
 		return -1;
 	}
 
@@ -567,29 +581,21 @@ do_records_all(char *datadir, OWPSID sid, fetch_state_ptr state)
 	state->cur_win_size = 0;
 	state->tmin = 9999.999;
 	state->tmax = state->tsum = state->tsumsq = 0.0;
-	state->numpack_received = 0;
-	state->last_seqno = -1;
+	state->num_received = 0;
 	state->order_disrupted = 0;
 
-	/* If few records - fill the window and flush immediately */
-	if (num_rec <= OWP_WIN_WIDTH) {
-		OWPFetchLocalRecords(fd, num_rec, fill_window, state);
-		
-		/*
-		  XXX - TODO: flush AND free the window and return
-		*/
-		return 0;
-	}
-	
-	OWPFetchLocalRecords(fd, OWP_WIN_WIDTH, fill_window, state);
-	OWPFetchLocalRecords(fd, num_rec - OWP_WIN_WIDTH, do_rest, state);
+	OWPFetchLocalRecords(fd, num_rec, do_single_record, state);
 	
 	/*
-	  XXX - TODO: flush AND free the window.
+	  XXX - TODO: flush the window.
 	*/
 
-	if (close(fd) < 0)
-		I2ErrLog(eh, "WARNING: close(%d) failed", fd);
+ close_again:
+	if (close(fd) < 0) {
+		if (errno == EINTR)
+			goto close_again;
+		I2ErrLog(eh, "WARNING: close(%d) failed: %M", fd);
+	}
 
 	/* Stats are requested and failed to keep records sorted - redo */
 	if (state->order_disrupted) {
@@ -599,6 +605,10 @@ do_records_all(char *datadir, OWPSID sid, fetch_state_ptr state)
 		exit(1);
 	}
 
+	for (i = 0; i < state->cur_win_size; i++)
+		owp_update_stats(state, &state->window[i]);
+
+	owp_do_summary(state);
 	return 0;
 }
 
@@ -634,7 +644,7 @@ main(
 	progname = (progname = strrchr(argv[0], '/')) ? ++progname : *argv;
 
 	/*
-	* Start an error loggin session for reporing errors to the
+	* Start an error logging session for reporing errors to the
 	* standard error
 	*/
 	eh = I2ErrOpen(progname, I2ErrLogImmediate, &ia, NULL, NULL);
