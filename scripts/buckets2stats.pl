@@ -157,7 +157,7 @@ foreach my $mtype (@mtypes){
 		    my $datafile = "$datadir/$ofile";
 		    my $dat_fh = new FileHandle "<$datafile";
 		    die "Could not open $datafile: $!" unless $dat_fh;
-		    my ($buckets, $sent, $min, $lost) =
+		    my ($sent, $min, $lost, $pairs_ref) =
 			    @{get_buck_ref($dat_fh, $datafile)};
 		    undef $dat_fh;
 
@@ -168,7 +168,7 @@ foreach my $mtype (@mtypes){
 		    my $lost_perc = ($lost/$sent)*100.0;
 
 		    # Compute stats for a new data point.
-		    my $median = get_percentile(0.5, $sent, $buckets);
+		    my $median = get_percentile(0.5, $sent, $pairs_ref);
 		    $worst_loss = $lost_perc if ($lost_perc > $worst_loss);
 		    $worst_median_delay = $median
 			    if ($median > $worst_median_delay);
@@ -241,7 +241,8 @@ sub plot_resolution {
 	my $datafile = "$datadir/$ofile";
 	my $dat_fh = new FileHandle "<$datafile";
 	die "Could not open $datafile: $!" unless $dat_fh;
-	my ($buckets, $sent, $min, $lost)=@{get_buck_ref($dat_fh, $datafile)};
+	my ($sent, $min, $lost, $pairs_ref) =
+		@{get_buck_ref($dat_fh, $datafile)};
 	undef $dat_fh;
 
 	unless ($sent) {
@@ -255,8 +256,8 @@ sub plot_resolution {
 
 	# Compute stats for a new data point.
 	my @stats = map {sprintf "%.6f", $_} 
-		(get_percentile(0.5, $sent, $buckets), $min,
-		 get_percentile(0.9, $sent, $buckets), $lost_perc);
+		(get_percentile(0.5, $sent, $pairs_ref), $min,
+		 get_percentile(0.9, $sent, $pairs_ref), $lost_perc);
 
 	warn join "\n", "Stats for the file $datafile are:",
 		@stats, '' if DEBUG;
@@ -334,19 +335,24 @@ sub index2pt {
 # with a fuzz factor due to use of buckets. Multiply the result
 # by 1000 to convert from sec to ms.
 sub get_percentile {
-    my ($alpha, $sent, $bucketref) = @_;
+    my ($alpha, $sent, $pairs_ref) = @_;
     my $sum = 0;
-    my $i;
 
-    unless ((0.0 <= $alpha) && ($alpha <= 1.0)) {
-	warn "get_percentile: alpha must be between 0 and 1";
-	return undef;
+     unless ((0.0 <= $alpha) && ($alpha <= 1.0)) {
+ 	warn "get_percentile: alpha must be between 0 and 1";
+ 	return undef;
+     }
+
+    for my $pair (@{$pairs_ref}) {
+	my ($index, $count) = @{$pair};
+	return index2pt($index)*THOUSAND if $sum >= $alpha*$sent;
+	$sum += $count;
     }
 
-    for ($i = 0; ($i <= MAX_BUCKET) && ($sum < $alpha*$sent); $i++){
-	$sum += $bucketref->[$i];
-    }
-    return index2pt($i)*THOUSAND;
+#    warn "DEBUG: returning max. buckets printout follows:";
+#    print_pairs($pairs_ref);
+
+    return CUTOFF_D;
 }
 
 # return start time in seconds if the file is younger than a given 
@@ -417,23 +423,28 @@ sub get_buck_ref {
     my @stat = stat $fh;
     die "stat failed: $!" unless @stat;
     my $size = $stat[7];
-    my ($num_records, @buckets);
+    my $num_records;
+    my @pairs = ();
     {
 	use integer;
 	$num_records = ($size - $hdr_len) / 8;
 	warn "num_rec = $num_records\n" if DEBUG;
     }
 
-    for (0..MAX_BUCKET) {
-	$buckets[$_] = 0;
-    }
-
     for (my $i = 0; $i < $num_records; $i++) {
 	my $buf;
 	read $fh, $buf, 8 or die "Could not read: $!";
 	my ($index, $count) = unpack "LL", $buf;
-	$buckets[$index] = $count;
+	next unless $count;
+	push @pairs, [$index, $count];
     }
 
-    return [\@buckets, $sent, $min, $lost];
+    return [$sent, $min, $lost, \@pairs];
+}
+
+sub print_pairs {
+    my @pairs = @{$_[0]};
+    for my $pair (@pairs) {
+	print join " ", @{$pair}, "\n";
+    }
 }
