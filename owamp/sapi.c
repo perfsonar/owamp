@@ -645,7 +645,7 @@ OWPProcessTestRequest(
 #ifdef	AF_INET6
 		struct sockaddr_in6	*saddr6;
 
-		case '6':
+		case 6:
 			af_family = AF_INET6;
 			saddr6 = (struct sockaddr_in6*)sendaddr;
 			sendport = &saddr6->sin6_port;
@@ -653,7 +653,7 @@ OWPProcessTestRequest(
 			recvport = &saddr6->sin6_port;
 			break;
 #endif
-		case '4':
+		case 4:
 			af_family = AF_INET;
 			saddr4 = (struct sockaddr_in*)sendaddr;
 			sendport = &saddr4->sin_port;
@@ -913,16 +913,16 @@ OWPProcessRequests(
 
 		switch (msgtype){
 				/* TestRequest */
-			case '1':
+			case 1:
 				rc = OWPProcessTestRequest(cntrl);
 				break;
-			case '2':
+			case 2:
 				rc = OWPProcessStartSessions(cntrl);
 				break;
-			case '3':
+			case 3:
 				rc = OWPProcessStopSessions(cntrl);
 				break;
-			case '4':
+			case 4:
 				rc = OWPProcessRetrieveSession(cntrl);
 				break;
 			default:

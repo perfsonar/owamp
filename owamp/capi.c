@@ -399,7 +399,7 @@ OWPControlOpen(
 	else{
 		I2RandomBytes(token,32);
 	}
-	I2RandomBytes(cntrl->writeIV,32);
+	I2RandomBytes(cntrl->writeIV,16);
 
 	/*
 	 * Write the client greeting, and see if the Server agree's to it.

@@ -50,6 +50,10 @@ typedef struct {
 
 	int		maxconnections;
 	int		tmout;
+
+#ifndef	NDEBUG
+	I2Boolean	childwait;
+#endif
 } owampd_opts;
 
 #endif	/*	_owampdp_h_	*/

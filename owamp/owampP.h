@@ -98,15 +98,15 @@
  * The following states are for partially read messages on the server.
  */
 #define _OWPStateTestRequest		(0x08)
-#define _OWPStateStartSessions		(0x0F)
-#define _OWPStateStopSessions		(0x010)
-#define _OWPStateRetrieveSession	(0x020)
+#define _OWPStateStartSessions		(0x010)
+#define _OWPStateStopSessions		(0x020)
+#define _OWPStateRetrieveSession	(0x040)
 
 /* from the server side - "Reading" indicates a partially read request */
 #define _OWPStateReading	(_OWPStateTestRequest|_OWPStateStartSessions|_OWPStateStopSessions|_OWPStateRetrieveSession)
 
-#define _OWPStateTestAccept	(0x040)
-#define _OWPStateControlAck	(0x080)
+#define _OWPStateTestAccept	(0x080)
+#define _OWPStateControlAck	(0x0100)
 /*
  * "Pending" indicates waiting for server response to a request.
  */
@@ -119,7 +119,7 @@
 #define _OWPStateIs(teststate,c)	((teststate & (c)->state))
 
 #define	_OWPStateIsRequest(c)	_OWPStateIs(_OWPStateRequest,c)
-#define	_OWPStateIsReading(c)	_OWPStateIs(_OWPStateReading,c)
+#define	_OWPStateIsReading(c)	_OWPStateIs((_OWPStateReading),c)
 #define _OWPStateIsPending(c)	_OWPStateIs(_OWPStatePending,c)
 #define	_OWPStateIsTest(c)	_OWPStateIs(_OWPStateTest,c)
 

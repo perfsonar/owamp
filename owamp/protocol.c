@@ -229,9 +229,13 @@ GetAcceptType(
 			return OWP_CNTRL_ACCEPT;
 		case OWP_CNTRL_REJECT:
 			return OWP_CNTRL_REJECT;
+		case OWP_CNTRL_FAILURE:
+			return OWP_CNTRL_FAILURE;
+		case OWP_CNTRL_UNSUPPORTED:
+			return OWP_CNTRL_UNSUPPORTED;
 		default:
 			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-							"GetAcceptType");
+					"GetAcceptType:Invalid val %u",val);
 			return OWP_CNTRL_INVALID;
 	}
 }
@@ -274,7 +278,7 @@ _OWPWriteServerOK(
 	memset(&buf[0],0,15);
 	*(u_int8_t *)&buf[15] = code & 0x0ff;
 	memcpy(&buf[16],cntrl->writeIV,16);
-	if(_OWPSendBlocks(cntrl, buf, 2) != 2)
+	if(OWPWriten(cntrl->sockfd,buf,32) != 32)
 		return OWPErrFATAL;
 
 	cntrl->state = _OWPStateRequest;
@@ -762,7 +766,7 @@ _OWPWriteTestAccept(
 		memcpy(&buf[4],sid,16);
 	memset(&buf[20],0,12);
 
-	if(_OWPSendBlocks(cntrl,buf,3) != 3){
+	if(_OWPSendBlocks(cntrl,buf,2) != 2){
 		cntrl->state = _OWPStateInvalid;
 		return OWPErrFATAL;
 	}

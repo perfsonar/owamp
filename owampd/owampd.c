@@ -70,6 +70,10 @@ static I2OptDescRec	set_options[] = {
 		"Max unauthenticated control connections"},
 	{"tmout",1,OWD_TMOUT,
 		"Max time to wait for control connection reads (sec)"},
+#ifndef	NDEBUG
+	{"childwait",0,NULL,
+		"Debugging: busy-wait children after fork to allow attachment"},
+#endif
 	{NULL,0,NULL,NULL}
 };
 
@@ -114,6 +118,12 @@ static	I2Option	get_options[] = {
 	"tmout", I2CvtToInt, &opts.tmout,
 	sizeof(opts.tmout)
 	},
+#ifndef	NDEBUG
+	{
+	"childwait", I2CvtToBoolean, &opts.childwait,
+	sizeof(opts.childwait)
+	},
+#endif
 	{NULL, NULL, NULL,0}
 };
 
@@ -159,8 +169,10 @@ owampd_err_func(
 	 * TODO: Add a logging file (OWPErrINFO && OWPErrPOLICY)
 	 * indicates logging information...
 	 */
+#ifdef	NDEBUG
 	if(!opts.verbose && (severity > OWPErrWARNING))
 		return 0;
+#endif
 
 	I2ErrLogP(errhand,etype,errmsg);
 
@@ -475,6 +487,12 @@ ACCEPT:
 	else{
 		int		i;
 		ssize_t		n;
+#ifndef	NDEBUG
+		int		childwait;
+
+		childwait = opts.childwait;
+		while(childwait);
+#endif
 
 		for(i=getdtablesize()-1;i>=0;i--){
 #ifndef	NDEBUG
@@ -663,6 +681,7 @@ main(int argc, char *argv[])
 		exit(1);
 	}
 
+#ifdef	NOTYET
 	policy = PolicyInit(errhand, ip2class, class2limits, passwd, &out);
 	if (out == OWPErrFATAL){
 		I2ErrLog(errhand, "PolicyInit failed. Exiting...");
@@ -671,6 +690,7 @@ main(int argc, char *argv[])
 
 	printf("DEBUG: policy init ok. Printing out ip2class hash...\n");
 	I2hash_print(policy->ip2class, stdout);
+#endif
 
 	/*
 	 * Setup the "default_mode".
@@ -759,8 +779,10 @@ main(int argc, char *argv[])
 		int nfound;
 		fd_set ready;
 
-		if(maxfd < 0)
+		if(maxfd < 0){
 			I2hash_iterate(fdtable,FindMaxFD,&maxfd);
+			maxfd = MAX(maxfd,listenfd);
+		}
 		ready = readfds;
 		nfound = select(maxfd+1,&ready,NULL,NULL,NULL);
 
