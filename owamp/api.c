@@ -1839,7 +1839,7 @@ OWPReadDataHeader(
 	/*
 	 * Decode the header if present(version 2), and wanted (hdr_ret).
 	 */
-	if((ver==2) && hdr_ret){
+	if((ver>=2) && hdr_ret){
 
 		hdr_ret->finished = fin;
 
