@@ -72,15 +72,15 @@ usage(
 	fprintf(stderr, "\nWhere \"options\" are:\n\n");
 
 		fprintf(stderr,
-		"   -v                verbose output\n"
-		"   -h                Print this message and exit\n"
+		"   -a authmode       Default supported authmodes:[E]ncrypted,[A]uthenticated,[O]pen\n"
 		"   -c confidr        Configuration directory\n"
 		"   -d datadir        Data directory\n"
-		"   -a authmode       Default supported authmodes:[E]ncrypted,[A]uthenticated,[O]pen\n"
-	        "   -S nodename:port  Srcaddr to bind to\n"
-		"      -U/-G options only used if run as root\n"
-		"   -U user           Run as user \"user\" :-uid also valid\n"
+		"   -e facility       Syslog \"facility\" to log errors\n"
 		"   -G group          Run as group \"group\" :-gid also valid\n"
+		"   -h                Print this message and exit\n"
+	        "   -S nodename:port  Srcaddr to bind to\n"
+		"   -U user           Run as user \"user\" :-uid also valid\n"
+		"   -v                verbose output\n"
 #ifndef	NDEBUG
 		"   -w                Debugging: busy-wait children after fork to allow attachment\n"
 		"   -Z                Debugging: Run in foreground\n"
