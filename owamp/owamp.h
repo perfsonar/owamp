@@ -842,4 +842,10 @@ OWPCvtTimestamp2Timespec(
 	OWPTimeStamp	*tstamp
 	);
 
+OWPAddr
+AddrByLocalControl(OWPControl cntrl);
+
+void
+OWPAddr2string(OWPAddr addr, char *buf, size_t len);
+
 #endif	/* OWAMP_H */

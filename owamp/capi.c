@@ -644,10 +644,10 @@ _OWPClientRequestTestReadResponse(
 	return -1;
 }
 
-static OWPAddr
+OWPAddr
 AddrByLocalControl(
-		OWPControl	cntrl
-		)
+		   OWPControl	cntrl
+		   )
 {
 	struct addrinfo		*ai=NULL;
 	OWPAddr			addr;
@@ -1025,7 +1025,7 @@ tstamp2int64(OWPTimeStamp *tstamp)
 }
 
 /*
-** Quick hint: we are computing
+** Compute delay in seconds - Quick hint: we are computing
 ** (a + b/(2^24)) - (c + d/(2^24)) = 
 ** [(a*2^24 + b) - (c*2^24 + d)] / 2^24
 */

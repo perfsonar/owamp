@@ -930,3 +930,15 @@ AGAIN:
 	*err_ret = MIN(*err_ret, err2);
 	return 0;
 }
+
+/*
+** Convert sockaddr to numeric name (does not use other fields of OWPAddr)
+*/
+void
+OWPAddr2string(OWPAddr addr, char *buf, size_t len)
+{
+	if (!addr || !(addr->saddr) 
+	    || getnameinfo(addr->saddr, addr->saddr->sa_len, buf, len, NULL, 0,
+			   NI_NUMERICHOST))
+		strcpy(buf, "");
+}

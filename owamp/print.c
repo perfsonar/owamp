@@ -111,7 +111,7 @@ owp_print_class2node_binding(const struct I2binding *p, FILE* fp)
 ** Show the contents of a sockaddr_in struct.
 */
 void
-owp_print_sockaddr(struct sockaddr *sock)
+owp_print_sockaddr(FILE *fp, struct sockaddr *sock)
 {
 	char host[128];
 	unsigned short port;
@@ -145,7 +145,7 @@ owp_print_sockaddr(struct sockaddr *sock)
 		/* UNREACHED */
 	}
 
-	fprintf(stderr, 
+	fprintf(fp, 
 		"DEBUG: socket address is %s, port = %u \n", host, port);
 }
 
@@ -161,7 +161,7 @@ owp_print_owpaddr(FILE *fp, OWPAddr addr)
 	fprintf(fp, "addrlen = %d\n", addr->saddrlen);
 
 	if (addr->saddr)
-		owp_print_sockaddr(addr->saddr);
+		owp_print_sockaddr(fp, addr->saddr);
 }
 
 /*

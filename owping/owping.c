@@ -27,6 +27,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <math.h>
+#include <netdb.h>
 
 #include <I2util/util.h>
 #include <owamp/owamp.h>
@@ -380,11 +381,14 @@ typedef struct fetch_state {
 	int          cur_win_size;     /* number of records in the window    */
 	double       tmin;             /* min delay                          */
 	double       tmax;             /* max delay                          */
-	u_int32_t    num_received;     /* number of received packets         */
+	u_int32_t    num_received;     /* number of good received packets    */
 	u_int32_t    dup_packets;      /* number of duplicate packets        */
 	int          order_disrupted;  /* flag                               */
 	u_int32_t    max_seqno;        /* max sequence number seen           */
 	u_int32_t    *buckets;         /* array of buckets of counts         */
+	char         *from;            /* Endpoints in printable format      */
+	char         *to;
+	u_int32_t    count_out;        /* number of printed packets          */
 
 	/* N-reodering state variables. */
 	u_int32_t        m[OWP_MAX_N];       /* We have m[j-1] == number of
@@ -452,6 +456,12 @@ owp_record_out(fetch_state_ptr state, OWPCookedDataRecPtr rec)
 		return;
 
 	assert(state->fp);
+
+	if (!(state->count_out++ & 31))
+	       fprintf(state->fp,"--- owping test session from %s to %s ---\n",
+		       (state->from)? state->from : "***", 
+		       (state->to)?  state->to : "***");
+
 	delay = owp_delay(&rec->send, &rec->recv);
 	if (ping_ctx.opt.full)
 		fprintf(state->fp, 
@@ -472,7 +482,6 @@ owp_record_out(fetch_state_ptr state, OWPCookedDataRecPtr rec)
 				rec->seq_no, delay*THOUSAND);
 	}
 }
-
 
 #define OWP_MAX_BUCKET  (OWP_NUM_LOW + OWP_NUM_MID + OWP_NUM_HIGH - 1)
 /*
@@ -682,6 +691,8 @@ owp_do_summary(fetch_state_ptr state)
 			ping_ctx.opt.percentile,
 			owp_get_percentile(state, x) * THOUSAND);
 	}
+	
+	fprintf(state->fp, "\n");
 
 	return 0;
 }
@@ -699,7 +710,9 @@ int
 do_records_all(
 		char		*datadir,
 		OWPSID		sid,
-		fetch_state_ptr	state
+		fetch_state_ptr	state,
+		char            *from,
+		char            *to
 		)
 {
 	int		fd, i, num_buckets;
@@ -762,6 +775,10 @@ do_records_all(
 
 	state->order_disrupted = 0;
 
+	state->from = from;
+	state->to = to;
+	state->count_out = 0;
+
 	/* N-reodering fields/ */
 	state->r = state->l = 0;
 	for (i = 0; i < OWP_MAX_N; i++) 
@@ -792,7 +809,7 @@ do_records_all(
 		I2ErrLog(eh, "Severe out-of-order condition observed.");
 		I2ErrLog(eh, 
 	     "Producing statistics for this case is currently unimplemented.");
-		exit(1);
+		return 0;
 	}
 
 	/* Incorporate remaining records left in the window. */
@@ -829,6 +846,8 @@ main(
 	OWPAcceptType		acceptval;
 	OWPErrSeverity		err;
 	fetch_state             state;
+	OWPAddr                 local;
+	char                    local_str[NI_MAXHOST], *remote;
 
 	ia.line_info = (I2NAME | I2MSG);
 	ia.fp = stderr;
@@ -876,7 +895,8 @@ main(
 
 	if (ping_ctx.opt.readfrom) {
 		ping_ctx.opt.keepdata = 1;
-		if (do_records_all(ping_ctx.opt.readfrom, NULL, &state) < 0){
+		if (do_records_all(ping_ctx.opt.readfrom, NULL, &state, NULL,
+				   NULL) < 0){
 			I2ErrLog(eh, 
 			 "FATAL: do_records_all(%s): failure processing data",
 				 ping_ctx.opt.readfrom);
@@ -1048,19 +1068,23 @@ main(
 	/*
 	 * Now ready to make test requests...
 	 */
-	if(ping_ctx.opt.to &&
-		!OWPSessionRequest(ping_ctx.cntrl,
-			NULL,False,
-			OWPAddrByNode(ctx,ping_ctx.remote_test),True,
+	if(ping_ctx.opt.to && 
+	   !OWPSessionRequest(ping_ctx.cntrl, NULL ,False,
+			      OWPAddrByNode(ctx,ping_ctx.remote_test),True, 
 			(OWPTestSpec*)&test_spec, tosid, &err_ret))
 		FailSession(ping_ctx.cntrl);
+
+
 	if(ping_ctx.opt.from &&
 		!OWPSessionRequest(ping_ctx.cntrl,
-			OWPAddrByNode(ctx,ping_ctx.remote_test),True,
-			NULL,False,
-			(OWPTestSpec*)&test_spec, fromsid, &err_ret))
+			 OWPAddrByNode(ctx,ping_ctx.remote_test),True,
+				   NULL,False,                        
+				   (OWPTestSpec*)&test_spec,fromsid, &err_ret))
 		FailSession(ping_ctx.cntrl);
 	
+	local = AddrByLocalControl(ping_ctx.cntrl); /* sender */
+	
+
 	if(OWPStartSessions(ping_ctx.cntrl)< OWPErrINFO)
 		FailSession(ping_ctx.cntrl);
 
@@ -1076,26 +1100,37 @@ main(
 		I2ErrLog(eh, "Test session(s) Questionable...");
 	}
 
+	if (ping_ctx.opt.to || ping_ctx.opt.from) {
+		char *ptr;
+		OWPAddr2string(local, local_str, sizeof(local_str));
+		remote = strdup(ping_ctx.remote_test);
+		if (!remote) {
+			I2ErrLog(eh, "Failed to copy remote host name: %M");
+			remote = "";
+		} else {
+			if ((ptr = strrchr(remote, ':')))
+				*ptr = '\0';
+		}
+	}
+
 	if(ping_ctx.opt.to){
-		if(owp_fetch_to_local(conndata.cntrl, 
-				       conndata.real_data_dir, tosid) < 0){
+		if(owp_fetch_to_local(conndata.cntrl, conndata.real_data_dir, 
+				      tosid) < 0){
 			I2ErrLog(eh, "Failed to fetch remote records");
 			goto next_test;
 		}
-		fprintf(state.fp,"\n--------to session-----------\n");
-		if(do_records_all(conndata.real_data_dir, tosid, &state) < 0){
+		if(do_records_all(conndata.real_data_dir, tosid, &state, 
+				  local_str, remote) < 0){
+				  
 			I2ErrLog(eh,"FATAL: do_records_all(to session)");
 		}
-		fprintf(state.fp,"--------end to session--------\n");
 	}
 next_test:
 	if(ping_ctx.opt.from){
-		fprintf(state.fp,"\n------from session--------\n");
-		if(do_records_all(conndata.real_data_dir, fromsid, &state) < 0){
+		if(do_records_all(conndata.real_data_dir, fromsid, &state, 
+				  remote, local_str) < 0){
 			I2ErrLog(eh,"FATAL: do_records_all(from session)");
 		}
-		fprintf(state.fp,"--------end from session--------\n");
 	}
-
 	exit(0);
 }
