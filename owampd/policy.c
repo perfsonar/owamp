@@ -1555,6 +1555,30 @@ GetNodeDefault(
 }
 
 static OWPDPolicyNode
+GetNodeFromUserID(
+	OWPDPolicy	policy,
+	const OWPUserID	userid,			/* MUST BE VALID MEMORY	*/
+	)
+{
+	OWPDPidRec	pid;
+	I2Datum		key,val;
+
+	memset(&pid,0,sizeof(pid));
+
+	pid.id_type = OWPDPidUserType;
+	key.dptr = &pid;
+	key.dsize = sizeof(pid);
+
+	memcpy(pid.user.userid,userid,sizeof(userid));
+
+	if(I2HashFetch(policy->idents,key,&val)){
+		return (OWPDPolicyNode)val.dptr;
+	}
+
+	return NULL;
+}
+
+static OWPDPolicyNode
 GetNodeFromAddr(
 	OWPDPolicy	policy,
 	struct sockaddr	*remote_sa_addr
@@ -2281,6 +2305,12 @@ OWPDCheckControlPolicy(
 	 * Determine userclass and send that to the parent.
 	 * (First try based on userid.)
 	 */
+	if(((mode & OWP_MODE_DOCIPHER) && userid) &&
+			!(node = GetNodeFromUserID(policy,userid))){
+		OWPError(policy->ctx,OWPErrINFO,OWPErrUNKNOWN,
+				"OWPDCheckControlPolicy: No policy match for userid(%s) - using netmask match",userid);
+	}
+
 	if((mode & OWP_MODE_DOCIPHER) && userid){
 		key.dptr = (void*)userid;
 		key.dsize = strlen(userid);
