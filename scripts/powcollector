@@ -1,0 +1,65 @@
+#!/bin/sh
+#
+# $Id$
+#
+# powcollector	This shell script takes care of starting and stopping
+#		the collection/validation of
+#		Perpetual One-Way delay statistics.
+#
+# chkconfig: - 90 10
+# description: collector.pl - collects owamp data.
+
+fullprog="/home/owamp/bin/collector.pl"
+confdir="/home/owamp/etc"
+cmd="$fullprog -c $confdir "
+
+[ -x $fullprog -a -d $confdir ] || exit 0
+
+RETVAL=0
+prog="collector.pl"
+
+start() {
+        # Start daemons.
+        echo -n $"Starting $prog: "
+	$cmd
+	RETVAL=$?
+        echo
+	return $RETVAL
+}
+
+stop() {
+        # Stop daemons.
+        echo -n $"Shutting down $prog: "
+	$cmd -k
+	RETVAL=$?
+        echo
+	return $RETVAL
+}
+
+reload() {
+        # reload daemons.
+        echo -n $"HUP $prog: "
+	$cmd -h
+	RETVAL=$?
+        echo
+	return $RETVAL
+}
+
+# See how we were called.
+case "$1" in
+  start)
+	start
+        ;;
+  stop)
+	stop
+        ;;
+  restart|reload)
+	reload
+	RETVAL=$?
+	;;
+  *)
+        echo $"Usage: $0 {start|stop|restart}"
+        exit 1
+esac
+
+exit $RETVAL
