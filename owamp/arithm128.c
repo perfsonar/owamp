@@ -19,6 +19,10 @@
  *	Description:	Implementation of extended-precision arithmetic.
  *                      It uses eight 16-bit quantities to represent
  *                      and manipulate Owamp's [64].[64] space of timestamps.
+ *
+ *                      Also, generation of uniform(0,1) and
+ *                      exponential (mean 1) random variates in
+ *                      [64].[64] format.
  */
 
 #include <stdlib.h>
@@ -34,7 +38,9 @@ static rand_context next;
 
 #define K 19 /* As in Knuth: the first k such that Q[k] > 1 - 1/(2^64) */
 
-#define EXPDEBUG 0
+/* Insure that all longs are 32-bit and shorts are 16-bit */
+#define SHORT(x) ((x) & 0xFFFF)
+#define LONG(x) ((x) & 0xFFFFFFFF)
 
 /*
 ** Obtained by running:
@@ -84,19 +90,10 @@ static unsigned short mask2[16] = {
 #define first(x, i)  (((x) & mask1[(i)]) >> (16-(i)))
 #define second(x, i) (((x) & mask2[(i)]) << (i))
 
-/*
-** Constructor function. Create a num struct out of its components.
-** In the argument, more significant digits go first. 
-** Thus, (a, b, c, d, e, f, g, h) gives rise to the number
-**        a*(2^48) + b*(2^32) + c*(2^16) + d + 
-**        e/(2^16) + f/(2^32) + g*(2^48) + h/(2^64)
-*/
-
 #define BASE 0x10000 /* i.e., arithmetic is done modulo 2^16 */
 
 /* 
-** This function embeds the unsigned 32-bit integers into the
-** num space.
+** Convert an unsigned 32-bit integer into a num_128 struct..
 */
 static struct num_128
 ulong2num(unsigned long a)
@@ -107,75 +104,51 @@ ulong2num(unsigned long a)
 	for (i = 0; i < NUM_DIGITS; i++)
 		ret.digits[i] = 0;
 
-	ret.digits[5] = (unsigned short)(a >> 16);
-	ret.digits[4] = (unsigned short)(a & 0xffff);
+	ret.digits[5] = LONG(a) >> 16;
+	ret.digits[4] = LONG(a) & 0xffff;
 
 	return ret;
 }
 
 /*
-** This function is used primarily for debugging.
+** Arithmetic functions on num_128 structs.
 */
-void
-num_print(num_128 x)
-{
-	int i;
-	assert(x);
-	
-	for (i = NUM_DIGITS - 1; i >= 0; i--)
-		fprintf(stdout, "%hx ", x->digits[i]);
-	fprintf(stdout, "\n");
-}
 
 /*
-** This function is used primarily for debugging.
-*/
-void
-num_binprint(num_128 x)
-{
-	int i;
-	assert(x);
-	
-	for (i = (NUM_DIGITS/2) - 1; i >= 0; i--)
-		print_bin(x->digits[i]);
-	fprintf(stdout, "\n");
-}
-
-/*
-** The next two functions implement the basic arithmetic
-** operation in the num space. The result is saved
-** in the variable z.
+** Addition. The result is saved in the variable z.
 */
 static void 
 num_add(num_128 x, num_128 y, num_128 z)
 {
 	int i;
-	unsigned short carry = 0;
+	unsigned short carry = 0; 	 /* can only be 0 or 1 */
 
 	assert(x); assert(y); assert(z);
 	for (i = 0; i < NUM_DIGITS; i++){
-		/* now carry is 0 or 1 */
-		z->digits[i] = x->digits[i] + y->digits[i];
+		z->digits[i] = SHORT(x->digits[i] + y->digits[i]);
 
 		if(z->digits[i] < x->digits[i] || z->digits[i] < y->digits[i]){
- 			z->digits[i] += carry;  /* overflow happened */
-			carry = 1;
+ 			z->digits[i] = SHORT(z->digits[i] + carry);  
+			carry = 1; 	/* overflow happened */
 		} else {
 			if (!carry)
 				continue;
-			z->digits[i] += carry;
+ 			z->digits[i] = SHORT(z->digits[i] + carry);  
 
-			/* now only need to update carry */
-			if (z->digits[i] != 0)
+			if (z->digits[i] != 0) /* update carry */
 				carry = 0;
 		}
 	}
 }
 
+/*
+** Multiplication. The result is saved in the variable z.
+*/
 static void 
 num_mul(num_128 x, num_128 y, num_128 z)
 {
 	int i, j;
+	unsigned long int carry; /* always < 2^32 */
 	unsigned short tmp[(2*NUM_DIGITS)];
 	
 	assert(x); assert(y); assert(z);
@@ -183,7 +156,7 @@ num_mul(num_128 x, num_128 y, num_128 z)
 		tmp[i] = 0UL;
 
 	for (i = 0; i < NUM_DIGITS; i++){
-		unsigned long int carry = 0;
+		carry = 0; 
 		for (j = 0; j < NUM_DIGITS; j++){
 			carry += x->digits[i]*y->digits[j] + tmp[i+j];
 			tmp[i+j] = carry & 0xffff;
@@ -196,6 +169,9 @@ num_mul(num_128 x, num_128 y, num_128 z)
 			carry >>= 16;
 		}
 	}
+
+	if (carry != LONG(carry))
+		assert(0); 
 
 	/* Need to shift by NUM_DIGITS/2 digits now */
 	for (i = 0; i < NUM_DIGITS; i++)
@@ -217,8 +193,8 @@ num_leftshift(num_128 U, int count)
 		return;
 	}
 	
-	num_blocks = count/16; /* integer number of 16-bit blocks to shift */
-	num_bits   = count%16; /* remaining number of bits                 */
+	num_blocks = count >> 4; /* integer number of 16-bit blocks to shift */
+	num_bits   = count & 0xF; /* remaining number of bits                */
 
 	if (num_blocks > 0){ /* do the whole number of blocks first */
 		for (i = 3; i >= num_blocks; i--)
@@ -259,9 +235,7 @@ num_cmp(num_128 x, num_128 y)
 }
 
 /*
-** The next two functions perform conversion between the num space
-** and Owamp 32/24 space of timestamps (32-bit number of integer
-** seconds, and 24-bit number of fractional seconds).
+** Conversion functions.
 */
 
 /*
@@ -270,6 +244,7 @@ num_cmp(num_128 x, num_128 y)
 ** A = c*(2^16) + d, and (multiplying fractional parts by 2^24)
 ** B = e*(2^8) + f/(2^8) [commit to always rounding down - shifting]
 */
+/* XXX - TODO - check for fract.part overflow */
 void
 num2formatted(num_128 from, OWPFormattedTime to)
 {
@@ -290,12 +265,12 @@ void
 formatted2num(OWPFormattedTime from, num_128 to)
 {
 	to->digits[7] = to->digits[6] = 0;
-	to->digits[5] = (unsigned short)(from->t[0] >> 16);
-	to->digits[4] = (unsigned short)(from->t[0] & 0xffff);
+	to->digits[5] = (unsigned short)(LONG(from->t[0]) >> 16);
+	to->digits[4] = (unsigned short)(LONG(from->t[0]) & 0xffff);
 
 	/* the fractional part has been left-shifted by 8 bits already */
-	to->digits[3] = (unsigned short)(from->t[1] >> 16);
-	to->digits[2] = (unsigned short)(from->t[1] & 0xffff);
+	to->digits[3] = (unsigned short)(LONG(from->t[1]) >> 16);
+	to->digits[2] = (unsigned short)(LONG(from->t[1]) & 0xffff);
 	to->digits[1] = to->digits[0] = 0;
 }
 
@@ -338,45 +313,6 @@ num2ulong(num_128 x)
 }
 
 /*
-** This function treats a num struct as representing an unsigned long long
-** integer, and returns that integer. 
-**
-** NOTE: used for debugging only - not included in the final distribution.
-*/
-unsigned long long 
-num2ulonglong(num_128 x)
-{
-	unsigned long long ret = ((unsigned long long)(x->digits[7]) << 48)
-	        + ((unsigned long long)(x->digits[6]) << 32)
-		+ ((unsigned long long)(x->digits[5]) << 16)
-		+ x->digits[4]; 
-
-	return ret;
-}
-
-/*
-** This function converts an unsigned long long integer into a num struct.
-**
-** NOTE: used for debugging only - not included in the final distribution.
-*/
-struct num_128
-ulonglong2num(unsigned long long a)
-{
-	int i;
-	struct num_128 ret;
-	
-	for (i = 0; i < NUM_DIGITS; i++)
-		ret.digits[i] = 0;
-
-	ret.digits[7] = (unsigned short)(a >> 48);
-	ret.digits[6] = (unsigned short)((a & 0xffff00000000ULL) >> 32);
-	ret.digits[5] = (unsigned short)((a & 0xffff0000ULL) >> 16);
-	ret.digits[4] = (unsigned short)(a & 0xffffULL);
-
-	return ret;
-}
-
-/*
 ** This function converts a 64-bit binary string (network byte order)
 ** into num struct (fractional part only). The integer part iz zero.
 */
@@ -392,6 +328,25 @@ raw2num(const unsigned char *raw)
 
 	return x;
 }
+
+/*
+** Exported functions.
+*/
+
+/*
+** Seed the random number generator using a 16-byte string.
+*/
+void 
+rand_context_init(BYTE *sid)
+{
+	int i;
+	
+	bytes2Key(&next.key, sid);
+	memset(next.out, 0, 16);
+	for (i = 0; i < 4; i++)
+		next.counter[i] = 0UL;
+}
+
 
 /* 
 ** Generate an exponential deviate using 64-bit binary string as an input
@@ -452,58 +407,6 @@ exp_rand()
 }
 
 /*
-** DEBUG only.
-*/
-void
-print_macros()
-{
-	int i;
-
-	fprintf(stderr, "DEBUG: printing values of macros:\n");
-	for (i = 1; i <= 15; i++)
-		fprintf(stderr, "first(150, %d) = %x, second(150, %d) = %x\n", 
-			i, first(150, i), i, second(150, i));
-}
-
-/*
-** DEBUG only. Print out binary expansion of an unsigned short.
-*/
-void
-print_bin(unsigned short n)
-{
-	int i;
-	unsigned short tmp = n;
-	unsigned short div = (unsigned short)1 << 15;
-	
-	for (i = 1; i <= 15; i++){
-		/* fprintf(stderr, "div = %hu\n", div); */
-		if ((tmp/div) == 0){
-			fprintf(stderr, "0");
-		} else {
-			fprintf(stderr, "1");
-			tmp -= div;
-		}
-		div >>= 1;
-	}
-	fprintf(stderr, "%hu ", tmp);
-}
-
-
-/*
-** Seed the random number generator using a 16-byte string.
-*/
-void 
-rand_context_init(BYTE *sid)
-{
-	int i;
-	
-	bytes2Key(&next.key, sid);
-	memset(next.out, 0, 16);
-	for (i = 0; i < 4; i++)
-		next.counter[i] = 0UL;
-}
-
-/*
 ** Generate a 64-bit uniform random string and save it in the lower
 ** part of the struct.
 */
@@ -521,14 +424,114 @@ unif_rand()
 
 	/* Prepare the block for encryption */
 	memset(input, 0, 16);
-	for (j = 0; j < 4; j++){ /* most significant digits come first */
-		dig = htonl(next.counter[3-j]);
+	for (j = 0; j < 4; j++){ /* more significant digits come first */
+		dig = LONG(htonl(next.counter[3-j]));
 		memcpy(input + 4*j, &dig, 4);
 	}
 		
 	rijndaelEncrypt(next.key.rk, next.key.Nr, input, next.out);
-
-	next.counter[0]++;
-	/* XXX - TODO - do the real counter increment */
+	
+	for (j = 0; j < 4; j++){
+		if (LONG(++next.counter[j]) != 0) /* no overflow */
+			break;
+		else
+			next.counter[j] = 0UL;
+	}
+	
 	return raw2num(next.out);
 }
+
+/*
+**  Debugging functions.
+*/
+
+/*
+** Print out a num_128 struct. More significant digits are printed first.
+*/
+void
+num_print(num_128 x)
+{
+	int i;
+	assert(x);
+	
+	for (i = NUM_DIGITS - 1; i >= 0; i--)
+		fprintf(stdout, "%hx ", x->digits[i]);
+	fprintf(stdout, "\n");
+}
+
+/*
+** DEBUG only. Print out binary expansion of an unsigned short.
+*/
+void
+print_bin(unsigned short n)
+{
+	int i;
+	unsigned short tmp = n;
+	unsigned short div = (unsigned short)1 << 15;
+	
+	for (i = 1; i <= 15; i++){
+		if ((tmp/div) == 0){
+			fprintf(stderr, "0");
+		} else {
+			fprintf(stderr, "1");
+			tmp -= div;
+		}
+		div >>= 1;
+	}
+	fprintf(stderr, "%hu ", tmp);
+}
+
+/*
+** Print out the binary expansion of a num_128 struct.
+*/
+void
+num_binprint(num_128 x)
+{
+	int i;
+	assert(x);
+	
+	for (i = (NUM_DIGITS/2) - 1; i >= 0; i--)
+		print_bin(SHORT(x->digits[i]));
+	fprintf(stdout, "\n");
+}
+#ifdef LONGLONG
+/*
+** This function treats a num struct as representing an unsigned long long
+** integer, and returns that integer. 
+**
+** NOTE: used for debugging only - not included in the final distribution.
+*/
+static unsigned long long 
+num2ulonglong(num_128 x)
+{
+	unsigned long long ret = ((unsigned long long)(x->digits[7]) << 48)
+	        + ((unsigned long long)(x->digits[6]) << 32)
+		+ ((unsigned long long)(x->digits[5]) << 16)
+		+ x->digits[4]; 
+
+	return ret;
+}
+
+/*
+** This function converts an unsigned long long integer into a num struct.
+**
+** NOTE: used for debugging only - not included in the final distribution.
+*/
+static struct num_128
+ulonglong2num(unsigned long long a)
+{
+	int i;
+	struct num_128 ret;
+	
+	for (i = 0; i < NUM_DIGITS; i++)
+		ret.digits[i] = 0;
+
+	ret.digits[7] = (unsigned short)(a >> 48);
+	ret.digits[6] = (unsigned short)((a & 0xffff00000000ULL) >> 32);
+	ret.digits[5] = (unsigned short)((a & 0xffff0000ULL) >> 16);
+	ret.digits[4] = (unsigned short)(a & 0xffffULL);
+
+	return ret;
+}
+#endif
+
