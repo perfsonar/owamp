@@ -331,6 +331,8 @@ owamp_read_ip2class(OWPContext ctx,
 ** and <shared_secret> is a sequence of hex digits of length 32
 ** (corresponding to 16 bytes of binary data).
 */
+
+#define HEX_SECRET_LEN  32 /* number of hex digits to encode a shared secret */
  
 void
 read_passwd_file(OWPContext ctx, const char *passwd_file, I2table hash)
@@ -366,12 +368,11 @@ read_passwd_file(OWPContext ctx, const char *passwd_file, I2table hash)
 		}
 
 		secret = strtok(NULL, " \t");
-		if ( strlen(secret) != PASSWD_LEN_HEX ){
-		OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, 
-		   "Warning: shared_secret %s must consist of %d hex digits.", 
-			 secret, PASSWD_LEN_HEX);
+		if (!secret)
 			continue;
-		}
+		
+		/* truncate if necessary */
+		secret[HEX_SECRET_LEN] = '\0';
 
 		/* Now save the key/class pair in a hash. */
 		if ( (key = str2datum(kid)) == NULL)
