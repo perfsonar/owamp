@@ -30,6 +30,7 @@ extern u_int32_t default_offered_mode;
 void
 _OWPServerOK(OWPControl ctrl, u_int8_t code);
 
+#ifdef 0
 int
 _OWPSendServerGreeting(
 		       OWPControl cntrl,          /* cntrl state structure  */
@@ -37,6 +38,7 @@ _OWPSendServerGreeting(
 		       )
 {
 	char buf[MAX_MSG];
+	char challenge[16];
 	int encrypt = 0;
 	u_int32_t mode = cntrl->mode;	  /* modes available */
 
@@ -45,8 +47,8 @@ _OWPSendServerGreeting(
 	*(int32_t *)(buf + 12) = htonl(mode); /* first 12 bytes unused */
 
 	/* generate 16 random bytes and save them away. */
-	random_bytes(cntrl->challenge, 16);
-	memcpy(buf + 16, cntrl->challenge, 16); /* the last 16 bytes */
+	random_bytes(challenge, 16);
+	memcpy(buf + 16, challenge, 16); /* the last 16 bytes */
 
 	if (_OWPSendBlocks(cntrl, buf, 2) < 0){
 		close(cntrl->sockfd);
@@ -126,6 +128,8 @@ _OWPReadClientGreeting(
 	      XXX - TODO: make sure all fields off cntrl are set.
 	*/
 }
+#endif
+
 
 /*
 ** Accept or reject the Control Connection request.
