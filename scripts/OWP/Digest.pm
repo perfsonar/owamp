@@ -62,6 +62,7 @@ sub merge {
     my ($total_sent, $total_lost, $total_dup) = (0, 0, 0);
 
     foreach my $file (@files) {
+    	next if(!-r $file);
 	open(FH, "<$file") or die "Could not open $file: $!";
 
 	my ($header, $prec, $sent, $lost, $dup, $buf, $min, $pre);

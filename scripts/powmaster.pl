@@ -37,10 +37,12 @@ use FileHandle;
 use OWP;
 use OWP::RawIO;
 use OWP::Syslog;
+use Sys::Syslog;
 use Digest::MD5;
 use Socket;
 use IO::Socket;
 use DB_File;
+use Fcntl qw(:flock);
 require 'sys/syscall.ph';
 
 my @SAVEARGV = @ARGV;
@@ -113,6 +115,12 @@ $owampdinfofile .= '/';
 $owampdinfofile .= $conf->must_get_val(NODE=>$me,ATTR=>'OWAMPDINFOFILE');
 
 #
+# receiving uptime reports on...
+#
+my $uptimeport = $conf->must_get_val(NODE=>$me,ATTR=>'UPTIMESENDTOPORT');
+my $udpmsglen = $conf->must_get_val(ATTR=>'UpTimeMaxMesgLen') + 0;
+
+#
 # local data/path information
 #
 my $datadir = $conf->must_get_val(NODE=>$me,ATTR=>"DataDir");
@@ -126,7 +134,7 @@ my $updatedb = $datadir . "/" . $conf->must_get_val(NODE=>$me,
 # pid2info - used to determine nature of child process that dies.
 # node2pids - used to send sig to powstreams that need to restart based on
 #		uptime messages.
-my(%pid2info,%node2pids,$pid,$dir);
+my(%pid2info,%node2pids,$dir);
 
 #
 # setup loop - build the directories needed for the mesh defs.
@@ -156,9 +164,16 @@ mkpath([map {join '/',$datadir,$_} @dirlist],0,0775);
 
 chdir $datadir || die "Unable to chdir to $datadir";
 
-# catch_sig should push dead child pid's onto @dead_children
-my @dead_children;
-$SIG{INT} = $SIG{TERM} = $SIG{HUP} = $SIG{CHLD} = \&catch_sig;
+my($UptimeSocket) = IO::Socket::INET->new(
+				LocalPort	=>	$uptimeport,
+				Type		=>	SOCK_DGRAM,
+				Proto		=>	'udp',
+				ReuseAddr	=>	1,
+				Reuse		=>	1) ||
+		die "Unable to create udp socket for uptimes: $!";
+
+my($MD5) = new Digest::MD5 ||
+			die "Unable to create md5 context";
 
 # setup pipe - read side used by send_data, write side used by all
 # powsteam children.
@@ -166,11 +181,12 @@ my($rfd,$wfd) = POSIX::pipe();
 local(*WRITEPIPE);
 open WRITEPIPE, ">&=$wfd" || die "Can't fdopen write end of pipe";
 
+
 #
 # send_data first adds all files in dirlist onto it's workque, then forks
 # and returns. (As powsteam finishes files, send_data adds each file
 # to it's work que.)
-$pid = send_data($conf,$rfd,@dirlist);
+my $pid = send_data($conf,$rfd,@dirlist);
 @{$pid2info{$pid}} = ("send_data");
 $pid = live_update(@addrlist);
 @{$pid2info{$pid}} = ("live_update");
@@ -181,109 +197,238 @@ $pid = live_update(@addrlist);
 # (powstream outputs the filenames it produces on stdout.)
 #
 foreach $mtype (@mtypes){
-	my (@mcmd,$val);
-
-	print "Starting Mesh=$mtype\n" if(defined($debug));
+	warn "Starting Mesh=$mtype\n" if(defined($debug));
 	next if(!($myaddr=$conf->get_val(NODE=>$me,TYPE=>$mtype,ATTR=>'ADDR')));
 
-	@mcmd = ();
-	push @mcmd, ($powcmd,"-p","-S",$myaddr);
-	push @mcmd, ("-i", $val) if($val = $conf->get_val(MESH=>$mtype,
-							ATTR=>'OWPINTERVAL'));
-	push @mcmd, ("-c", $val) if($val = $conf->get_val(MESH=>$mtype,
-						ATTR=>'OWPSESSIONFILESIZE'));
-	push @mcmd, ("-L", $val) if($val = $conf->get_val(MESH=>$mtype,
-						ATTR=>'OWPLOSSTHRESH'));
-	push @mcmd, ("-I", $val) if($val = $conf->get_val(MESH=>$mtype,
-						ATTR=>'OWPSESSIONDURATION'));
-	push @mcmd, ("-s", $val) if($val = $conf->get_val(MESH=>$mtype,
-						ATTR=>'OWPPACKETSIZE'));
 	foreach $node (@nodes){
-		local(*CHWFD,*CHRFD);
-		my(@cmd,$cmd);
-
-		print "Starting Node=$node\n" if(defined($debug));
-
+		my $starttime;
 		next if($me eq $node);
+		warn "Starting Node=$node\n" if(defined($debug));
+
 		next if(!($oaddr=$conf->get_val(NODE=>$node,
 						TYPE=>$mtype,
 						ATTR=>'ADDR')));
-		@cmd = @mcmd;
-		$dir = "$mtype/$myaddr/$oaddr";
-		push @cmd, ("-d", $dir);
-		push @cmd, $oaddr;
-
-		$cmd = join(" ", @cmd);
-		print "Executing: $cmd\n" if(defined($debug));
-		open \*CHWFD, ">&WRITEPIPE" || die "Can't dup pipe";
-		open \*CHRFD, "<$devnull" || die "Can't open $devnull";
-		$pid = open3("<&CHRFD",">&CHWFD",">&STDERR",@cmd);
-		die "Can't exec $cmd" if(!defined($pid));
-		@{$pid2info{$pid}} =
-				("powstream",$mtype,$me,$myaddr,$node,$oaddr);
+		$starttime = OWP::Utils::time2owptime(time);
+		$pid = powstream($mtype,$myaddr,$node,$oaddr);
 		push @{$node2pids{$node}},$pid;
+		@{$pid2info{$pid}} =
+			("powstream",$starttime,$mtype,$myaddr,$node,$oaddr);
 	}
 }
 
-my $reset = 0;
-while(1){
 
-	# TODO: This sleep will eventually be replaced with a recv of
-	# live_update udp packets from other nodes. If a node sends
-	# a time that is "later" than the start time of a current
-	# powstream, then the powstream should have a HUP sent to it.
-	sleep;
-	while(@dead_children > 0){
-		my $cpid = shift @dead_children;
-		my ($pid,$status) = @$cpid;
-		my $info = $pid2info{$pid};
+my ($reset,$die,$sigchld) = (0,0,0);
 
-		warn "Dead Child!:$pid:$$info[0]:status $status\n"
-			if(defined($debug) or !$reset);
-		delete $pid2info{$pid};
-
-		next if($reset);
-
-		# restart everything if send_data died.
-		if($$info[0] =~ /send_data/){
-			kill 'HUP', $$;
-		}
-
-		if($$info[0] =~ /live_update/){
-			warn "Restarting live_update!";
-			$pid = live_update(@addrlist);
-			@{$pid2info{$pid}} = ("live_update");
-		}
-	}
-
-	if($reset){
-		next if((keys %pid2info) > 0);
-		warn "Restarting...\n";
-		exec $FindBin::Bin."/".$FindBin::Script, @SAVEARGV;
-	}
-}
 
 sub catch_sig{
 	my $signame = shift;
 
+	return if !defined $signame;
+
 	if($signame =~ /CHLD/){
-		my($pid);
-		if(($pid = wait) != -1){
-			my @tarr = ($pid,$?);
-			push @dead_children, \@tarr;
-		}
-		return;
+		$sigchld++;
 	}
-
-	if($signame =~ /HUP/){
-		warn "Handling SIG$signame... Stop processing...\n";
-		kill 'TERM', keys %pid2info;
+	elsif($signame =~ /HUP/){
 		$reset = 1;
-		return;
+	}
+	else{
+		$die = 1;
 	}
 
-	kill $signame, keys %pid2info;
-	die "Handling SIG$signame...\n";
+	die "SIG$signame\n" if($^S);
+
+	return;
+}
+
+my $block_mask = new POSIX::SigSet(SIGCHLD,SIGHUP,SIGTERM,SIGINT);
+my $old_mask = new POSIX::SigSet;
+sigprocmask(SIG_BLOCK,$block_mask,$old_mask);
+$SIG{INT} = $SIG{TERM} = $SIG{HUP} = $SIG{CHLD} = \&catch_sig;
+
+#
+# Main control loop. Gets uptime reports from all other nodes. If it notices
+# a node has restarted since a current powstream has been notified, it sends
+# a HUP to that powstream to make it reset tests with that node.
+# This loop also watches all child processes and restarts them as necessary.
+MESSAGE:
+while(1){
+	my $funcname;
+	my $fullmsg;
+	my $peeraddr;
+
+	$@ = '';
+	if($sigchld){
+		undef $peeraddr;
+	}
+	elsif($reset || $die){
+		undef $UptimeSocket;
+		undef $peeraddr;
+		$funcname = "sigsuspend";
+		# Wait for children to exit
+		if((keys %pid2info) > 0){
+			eval{
+				sigsuspend($old_mask);
+			};
+		}
+	}
+	else{
+		$funcname = "recv";
+		eval{
+			return if(sigprocmask(SIG_SETMASK,$old_mask) != 0);
+			$peeraddr = $UptimeSocket->recv($fullmsg,$udpmsglen,0);
+			sigprocmask(SIG_BLOCK,$block_mask);
+		};
+	}
+	for($@){
+		(/^$/ || /^SIG/)	and last;
+		die "$funcname(): $!";
+	}
+
+	#
+	# Signal received - update run-state.
+	#
+	if(!$peeraddr){
+		if($reset == 1){
+			warn "Handling SIGHUP... Stop processing...\n";
+			kill 'TERM', keys %pid2info;
+			$reset++;
+		}
+		if($die == 1){
+			warn "Exiting... Deleting sub-processes...\n";
+			kill 'TERM', keys %pid2info;
+			$die++;
+		}
+
+		if($sigchld){
+			my $wpid;
+			while(($wpid = waitpid(-1,WNOHANG)) > 0){
+				next unless (exists $pid2info{$wpid});
+
+				my $info = $pid2info{$wpid};
+
+				syslog('debug',"$$info[0]:$wpid exited: $?");
+
+				delete $pid2info{$wpid};
+
+				next if($reset || $die);
+
+				# restart everything if send_data died.
+				if($$info[0] =~ /send_data/){
+					kill 'HUP', $$;
+				}
+				elsif($$info[0] =~ /live_update/){
+					warn "Restarting live_update!";
+					$pid = live_update(@addrlist);
+					@{$pid2info{$pid}} = ("live_update");
+				}
+				elsif($$info[0] =~ /powstream/){
+					shift @$info;
+					shift @$info;
+					# $$info[2] is now "node"
+					warn "Restart powstream->$$info[2]:!";
+
+					# remove old pid from list
+					foreach (@{$node2pids{$$info[2]}}){
+						if(/^$pid$/){
+							undef $_;
+							last;
+						}
+					}
+
+					my $starttime =
+						OWP::Utils::time2owptime(time);
+					$pid = powstream(@$info);
+					push @{$node2pids{$$info[2]}},$pid;
+					@{$pid2info{$pid}} =
+						("powstream",$starttime,@$info);
+				}
+			}
+			$sigchld=0;
+		}
+
+		if($reset){
+			next if((keys %pid2info) > 0);
+			next if(defined $UptimeSocket);
+			warn "Restarting...\n";
+			exec $FindBin::Bin."/".$FindBin::Script, @SAVEARGV;
+		}
+
+		if($die){
+			next if((keys %pid2info) > 0);
+			die "Dead\n"
+		}
+
+		next;
+	}
+
+	#
+	# Process the UDP message.
+	#
+
+	my %msg = ();
+	my ($key,$val);
+
+	$MD5->reset;
+
+	my @lines = split '\n',$fullmsg;
+	while($_ = shift @lines){
+		last if /^$/;
+		if(($key,$val) = /^(\w+)\s+(.*)/o){
+			$msg{$key} = $val;
+			$MD5->add($_);
+			next;
+		}
+		warn "Invalid UDP uptime message received";
+		next MESSAGE;
+	}
+	if(!defined $msg{'SECRETNAME'}){
+		warn "No UDP secret?";
+		next;
+	}
+
+	# fetch secret for validation
+	my $secret = $conf->get_val(ATTR=>$msg{'SECRETNAME'});
+	if(!$secret){
+		warn "Invalid secretname";
+		next;
+	}
+
+	$MD5->add($secret);
+	if($MD5->hexdigest ne shift @lines){
+		warn "Unable to validate uptime message:bad hash";
+		next;
+	}
+
+	warn "Extra UDP message?" if(@lines > 0);
+
+	# $msg now contains a validated uptime message.
+
+	$node = $msg{'NODE'};
+	next unless($node && $node2pids{$node});
+
+	# fetch "uptime" pairs. This process is only interested in the
+	# "last" uptime, to make sure that it is "before" the powstream
+	# was started/signalled.
+	my @newuptimes = ();
+	@newuptimes = split '_',$msg{'UPTIMEINTERVALS'}
+		if(defined $msg{'UPTIMEINTERVALS'});
+	if(!($#newuptimes % 2)){
+		warn "Invalid uptimes in UDP message";
+		next;
+	}
+
+	foreach $pid (@{$node2pids{$node}}){
+		if(!$pid2info{$pid}){
+			warn "\$node2pids and \$pid2info mismatch!";
+			next;
+		}
+
+		if($newuptimes[-2] > ${$pid2info{$pid}}[1]){
+			kill 'HUP', $pid;
+			${$pid2info{$pid}}[1] = $newuptimes[-2];
+		}
+	}
+
 }
 
 my($SendServer) = undef;
@@ -319,34 +464,34 @@ sub fail_server{
 }
 
 sub txfr{
-	my($fh,$md5,%req) = @_;
+	my($fh,%req) = @_;
 	my(%resp);
 
 	OpenServer;
 	return undef if(!$SendServer);
 
 	my($line) = "OWP 1.0";
-	$md5->reset;
+	$MD5->reset;
 	return undef if(!sys_writeline(FILEHANDLE=>$SendServer,
 					LINE=>$line,
-					MD5=>$md5,
+					MD5=>$MD5,
 					TIMEOUT=>$timeout,
 					CALLBACK=>\&fail_server));
 	foreach (keys %req){
 		return undef if(!sys_writeline(FILEHANDLE=>$SendServer,
 					LINE=>"$_\t$req{$_}",
-					MD5=>$md5,
+					MD5=>$MD5,
 					TIMEOUT=>$timeout,
 					CALLBACK=>\&fail_server));
 	}
 	return undef if(!sys_writeline(FILEHANDLE=>$SendServer,
 					TIMEOUT=>$timeout,
 					CALLBACK=>\&fail_server));
-	$md5->add($secret);
+	$MD5->add($secret);
 	return undef if(!sys_writeline(FILEHANDLE=>$SendServer,
 					TIMEOUT=>$timeout,
 					CALLBACK=>\&fail_server,
-					LINE=>$md5->hexdigest));
+					LINE=>$MD5->hexdigest));
 	return undef if(!sys_writeline(FILEHANDLE=>$SendServer,
 					TIMEOUT=>$timeout,
 					CALLBACK=>\&fail_server));
@@ -391,13 +536,13 @@ sub txfr{
 		}
 	}
 
-	$md5->reset;
+	$MD5->reset;
 	my($pname,$pval);
 	while(1){
 		$_ = sys_readline(FILEHANDLE=>$SendServer,TIMEOUT=>$timeout);
 		if(defined $_){
 			last if(/^$/); # end of message
-			$md5->add($_);
+			$MD5->add($_);
 			next if(/^\s*#/); # comments
 			next if(/^\s*$/); # blank lines
 
@@ -411,8 +556,8 @@ sub txfr{
 		warn ("Socket closed or Invalid message from server!");
 		return fail_server;
 	}
-	$md5->add($secret);
-	if($md5->hexdigest ne
+	$MD5->add($secret);
+	if($MD5->hexdigest ne
 		sys_readline(FILEHANDLE=>$SendServer,TIMEOUT=>$timeout)){
 		warn ("Invalid MD5 for server response!");
 		return fail_server;
@@ -426,7 +571,7 @@ sub txfr{
 }
 
 sub send_file{
-	my($fname,$md5) = @_;
+	my($fname) = @_;
 	my(%req,$response);
 	local *SENDFILE;
 
@@ -436,9 +581,9 @@ sub send_file{
 	binmode SENDFILE;
 
 	# compute the md5 of the file.
-	$md5->reset;
-	$md5->addfile(*SENDFILE);
-	$req{'FILEMD5'} = $md5->hexdigest();
+	$MD5->reset;
+	$MD5->addfile(*SENDFILE);
+	$req{'FILEMD5'} = $MD5->hexdigest();
 
 	$req{'FILESIZE'} = sysseek SENDFILE,0,SEEK_END;
 	return undef
@@ -447,15 +592,12 @@ sub send_file{
 	# seek the file to the beginning for transfer
 	sysseek SENDFILE,0,SEEK_SET;
 
-	# reset md5 context so it can be used for the message verification.
-	$md5->reset;
-
 	# Set all the req options.
 	$req{'OP'} = 'TXFR';
 	$req{'FNAME'} = $fname;
 	$req{'SECRETNAME'} = $secretname;
 
-	return undef if(!($response = txfr(\*SENDFILE,$md5,%req)));
+	return undef if(!($response = txfr(\*SENDFILE,%req)));
 
 	return undef if(!exists $response->{'FILEMD5'} ||
 			($response->{'FILEMD5'} ne $req{'FILEMD5'}));
@@ -491,9 +633,6 @@ sub send_data{
 		}
 		@flist = sort bystart @flist;
 	}
-
-	my($md5) = new Digest::MD5 ||
-			die "Unable to create md5 context";
 
 	my $pid = fork;
 
@@ -533,7 +672,7 @@ SEND_FILES:
 
 		next if(!defined(@flist) || (@flist < 1));
 		
-		if(send_file($flist[0],$md5)){
+		if(send_file($flist[0],$MD5)){
 			shift @flist;
 		}
 		else{
@@ -554,11 +693,8 @@ sub live_update{
 		my($sin);
 		my($ip,$port) = @$addr;
 		$sin = sockaddr_in($port,inet_aton($ip));
-		$contacts{$sin} = 1;
+		$contacts{$sin} = "$ip:$port";
 	}
-
-	my($md5) = new Digest::MD5 ||
-			die "Unable to create md5 context";
 
 	#
 	# test syscall setitimer before the fork to make sure syscall
@@ -578,6 +714,17 @@ sub live_update{
 				Proto		=>	'udp') ||
 		die "Unable to create udp socket for live_update: $!";
 
+	#
+	# liveupdate database.
+	#
+	my %state;
+	my $fh = new FileHandle "$updatedb.lck", O_RDWR|O_CREAT;
+
+	die "Unable to lock liveupdate db $updatedb: $!"
+		unless($fh && flock($fh,LOCK_EX));
+	my $db = tie %state,'DB_File',$updatedb,O_RDWR|O_CREAT,0660,$DB_HASH ||
+		die "Unable to open liveupdate db $updatedb: $!";
+
 	my $pid = fork;
 
 	# error
@@ -592,15 +739,6 @@ sub live_update{
 	$SIG{PIPE} = 'IGNORE';
 	$SIG{ALRM} = sub{$bzzt++;};
 
-	#
-	# liveupdate database.
-	# (Would be nice to do this before fork, but for sematics for
-	# locking files makes that risky.)
-	#
-	my %state;
-	my $db = tie %state,'DB_File',$updatedb,O_RDWR|O_CREAT|O_EXLOCK,
-								0660,$DB_HASH ||
-		die "Unable to open liveupdate db $updatedb: $!";
 
 	my @intervals = ();
 	@intervals = split /_/,$state{$me}
@@ -609,11 +747,9 @@ sub live_update{
 		if((@intervals > 0) && !($#intervals % 2)); # Must be pairs
 
 	my $block_mask = new POSIX::SigSet(SIGALRM);
-	my $old_mask = new POSIX::SigSet;
-	# block SIGALRM and fetch current mask
-	sigprocmask(SIG_BLOCK,$block_mask,$old_mask);
-	# remove SIGALRM from old_mask so it can be used for sigsuspend.
-	$old_mask->delset(SIGALRM);
+	my $nomask = new POSIX::SigSet;
+	# block SIGALRM
+	sigprocmask(SIG_BLOCK,$block_mask);
 	# initialize timer to go off in one usec, and then every
 	# $senduptimeinterval.
 	$in_timer = pack($itimer_t,$senduptimeinterval+0,0,0,1);
@@ -624,7 +760,7 @@ sub live_update{
 	while(1){
 		# wait for sigalrm to go off.
 		while(!$bzzt){
-			sigsuspend($old_mask);
+			sigsuspend($nomask);
 		}
 		$bzzt = 0;
 		# If we don't know the pid/starttime or if the pid is invalid
@@ -662,18 +798,20 @@ sub live_update{
 		$msg{'SECRETNAME'} = $secretname;
 		$msg{'UPTIMEINTERVALS'} = $state{$me};
 
-		$md5->reset;
+		$MD5->reset;
 		$msg= "";
 		foreach $key (keys %msg){
 			$line = "$key\t$msg{$key}";
-			$md5->add($line);
+			$MD5->add($line);
 			$msg .= $line."\n";
 		}
-		$md5->add($secret);
-		$msg .= "\n".$md5->hexdigest;
+		$MD5->add($secret);
+		$msg .= "\n".$MD5->hexdigest;
 
 		my($toaddr);
 		foreach $toaddr (keys %contacts){
+			print "SEND_UPTIME:$contacts{$toaddr}\n"
+				if defined($debug);
 			$SendSocket->send($msg,0,$toaddr);
 		}
 	}
@@ -710,5 +848,35 @@ sub get_owp_info{
 
 	return ($start, $pid)
 }
+
+sub powstream{
+	my($mtype,$myaddr,$node,$oaddr)	= @_;
+	local(*CHWFD,*CHRFD);
+	my $val;
+	my @cmd = ($powcmd,"-p","-S",$myaddr);
+
+	push @cmd, ("-i", $val) if($val = $conf->get_val(MESH=>$mtype,
+							ATTR=>'OWPINTERVAL'));
+	push @cmd, ("-c", $val) if($val = $conf->get_val(MESH=>$mtype,
+						ATTR=>'OWPSESSIONFILESIZE'));
+	push @cmd, ("-L", $val) if($val = $conf->get_val(MESH=>$mtype,
+						ATTR=>'OWPLOSSTHRESH'));
+	push @cmd, ("-I", $val) if($val = $conf->get_val(MESH=>$mtype,
+						ATTR=>'OWPSESSIONDURATION'));
+	push @cmd, ("-s", $val) if($val = $conf->get_val(MESH=>$mtype,
+						ATTR=>'OWPPACKETSIZE'));
+	push @cmd, ("-d","$mtype/$myaddr/$oaddr",$oaddr);
+
+	my $cmd = join " ", @cmd;
+	warn "Executing: $cmd" if(defined($debug));
+
+	open \*CHWFD, ">&WRITEPIPE" || die "Can't dup pipe";
+	open \*CHRFD, "<$devnull" || die "Can't open $devnull";
+	my $powpid = open3("<&CHRFD",">&CHWFD",">&STDERR",@cmd) ||
+		die "Can't exec $cmd";
+	return $powpid;
+}
+
+
 
 1;

@@ -709,9 +709,12 @@ main(
 	if(appctx.opt.seriesInterval%sessionTime)
 		numSessions++;
 
-	if(sessionTime <  SETUP_ESTIMATE + appctx.opt.lossThreshold){
-		I2ErrLog(eh,"Holes in data are likely because lossThreshold"
-				" is too large a fraction of sessionTime");
+	if((sessionTime * numSessions) <
+				SETUP_ESTIMATE + appctx.opt.lossThreshold){
+		I2ErrLog(eh,"Holes in data are likely because lossThreshold(%d)"
+				" is too large a fraction of seriesLength(%d)",
+				appctx.opt.lossThreshold,
+				sessionTime*numSessions);
 	}
 
 
@@ -945,10 +948,13 @@ AGAIN:
 					break;
 			}
 			if(rc==2){
-				/* system event - eventually handle
-				 * signals here. (reopen connections,
-				 * unlink files - whatever.)
+				/*
+				 * system event
 				 */
+				if(!OWPSessionsActive(p->cntrl,NULL)){
+					break;
+				}
+
 				if(sig_check())
 					goto NextConnection;
 				goto AGAIN;

@@ -149,11 +149,13 @@ mkpath(\@dirlist,0,0775);
 
 chdir $datadir || die "Unable to chdir to $datadir";
 
-my ($reset,$die) = (0,0);
 my (%children);
 
+# just in case...
+use constant MAX_UPTIMES_RESTARTS => 5;
 my $uppid = uptimes(%nodeupdate);
 $children{$uppid} = 'uptimes';
+my $uprestarts = 0;
 
 #
 # setup server socket.
@@ -167,13 +169,14 @@ my $Server = IO::Socket::INET->new(
 			Timeout		=>	$timeout,
 			Listen		=>	SOMAXCONN) or die;
 
-my $sigchld = 0;
+my ($reset,$die,$sigchld) = (0,0,0);
+
 sub catch{
 	my $signame = shift;
 
+	return if !defined $signame;
 
 	if($signame =~ /HUP/){
-		kill 'TERM', (keys %children);
 		$reset = 1;
 	}
 	elsif($signame =~ /CHLD/){
@@ -181,7 +184,6 @@ sub catch{
 	}
 	else{
 		$die = 1;
-		kill $signame, (keys %children);
 	}
 	#
 	# If we are in an eval - die from here to make the function return
@@ -238,21 +240,34 @@ while(1){
 	#
 	if(!defined($paddr)){
 		if($reset == 1){
-			warn "Handling SIGHUP... Stop processing...\n";
 			$reset++;
+			warn "Handling SIGHUP... Stop processing...\n";
+			kill 'TERM', (keys %children);
 		}
 		if($die == 1){
-			warn "Exiting... Deleting sub-processes...\n";
 			$die++;
+			warn "Exiting... Deleting sub-processes...\n";
+			kill 'TERM', (keys %children);
 		}
 		if($sigchld){
 			my $wpid;
 			while(($wpid = waitpid(-1,WNOHANG)) > 0){
-				if(exists $children{$wpid}){
-					delete $children{$wpid};
-					syslog('debug',
-						"PID#$wpid exit status: $?");
+				next unless (exists $children{$wpid});
+
+				syslog('debug',
+					"$children{$wpid}:$wpid exited: $?");
+				if($children{$wpid} eq 'uptimes' &&
+							!$reset && !$die){
+					if($uprestarts++>MAX_UPTIMES_RESTARTS){
+						warn
+					"Uptimes process critical failures!";
+						kill 'TERM', $$;
+					}
+					$uppid = uptimes(%nodeupdate);
+					$children{$uppid} = 'uptimes';
 				}
+
+				delete $children{$wpid};
 			}
 			$sigchld=0;
 		}
@@ -532,8 +547,12 @@ sub do_req{
 	$dir =~ s#/$##;
 
 	my %state;
-	if(!tie %state,'DB_File',"$dir/$dbfile",O_RDWR|O_CREAT|O_EXLOCK,
-								0660, $DB_HASH){
+	my $dbfh = new FileHandle "$dir/$dbfile.lck", O_CREAT|O_RDWR;
+	unless($dbfh && flock($dbfh,LOCK_EX)){
+		unlink "$req{'FNAME'}.i";
+		die "Unable to lock db file $dir/$dbfile: $!";
+	}
+	if(!tie %state,'DB_File',"$dir/$dbfile",O_CREAT|O_RDWR,0660, $DB_HASH){
 		unlink "$req{'FNAME'}.i";
 		die "Unable to open db file $dir/$dbfile: $!";
 	}
@@ -609,6 +628,7 @@ sub do_req{
 	}
 
 	untie %state;
+	undef $dbfh;
 
 	$resp{'STATUS'} = 'OK';
 	$resp{'FILEMD5'} = $req{'FILEMD5'};
@@ -706,9 +726,8 @@ REQ_LOOP:
 		%req = read_req($fh,$md5);
 		last if($die);
 		#
-		# Once we start doing the request - we don't die until
+		# Once we start doing the request - we block sigs until
 		# after trying to write the response.
-		# (block sigs)
 		eval{
 			sigprocmask(SIG_BLOCK,$block_mask);
 		};
@@ -728,6 +747,7 @@ sub update_node{
 	my($node,$upref,@dirs)	= @_;
 	my($skip,$dir);
 	my %state;
+	my $fh;
 
 	# $skip is the number of elements to shift off the upref array
 	# at the end because the earlier elements are no longer needed.
@@ -736,11 +756,17 @@ sub update_node{
 	$skip = @$upref - 2;
 	SENDDIR:
 	while($dir = shift @dirs){
+		undef %state;
 		# open per-dir database - this locks the directory as well
 		# as allowing this process to update the last "valid" time.
-
-		if(!tie %state, 'DB_File', "$dir/$dbfile",
-				O_RDWR|O_CREAT|O_EXLOCK, 0660, $DB_HASH){
+		$fh = new FileHandle "$dir/$dbfile.lck", O_CREAT|O_RDWR;
+		unless($fh && flock($fh,LOCK_EX)){
+			warn "Unable to lock db file $dir/$dbfile: $!";
+			$skip = 0;
+			next;
+		}
+		if(!tie %state, 'DB_File', "$dir/$dbfile",O_CREAT|O_RDWR,0660,
+								$DB_HASH){
 			warn "Unable to open db file $dir/$dbfile: $!";
 			$skip = 0;
 			next;
@@ -846,8 +872,8 @@ sub update_node{
 
 		$state{'UPTIMEINTERVALS'} = join '_', @intervals;
 
-		# TODO: Update VALIDTIME file with end timestamp of last
-		#	file in the "lowest" res "completely" in the range.
+		# Update VALIDTIME file with end timestamp of last
+		# file in the "lowest" res "completely" in the range.
 		if($validend){
 			local (*TFILE);
 
@@ -871,9 +897,11 @@ sub update_node{
 		}
 	}
 	continue{
-		untie %state;
+		untie %state if(defined %state);
+		undef $fh;
 	}
-	untie %state;
+	untie %state if(defined %state);
+	undef $fh;
 
 	while($skip--){
 		shift @$upref;
@@ -889,7 +917,11 @@ sub uptimes{
 		die "Unable to create md5 context";
 
 	my %state;
-	tie(%state,'DB_File',$uptimedb,O_RDWR|O_CREAT|O_EXLOCK,0660,$DB_HASH) ||
+	my $fh = new FileHandle "$uptimedb.lck", O_CREAT|O_RDWR;
+	unless($fh && flock($fh,LOCK_EX)){
+		die "Unable to lock node uptime db file $uptimedb: $!";
+	}
+	my $db = tie(%state,'DB_File',$uptimedb,O_CREAT|O_RDWR,0660,$DB_HASH) ||
 		die "Unable to open node uptime db $uptimedb: $!";
 
 	#
@@ -926,6 +958,7 @@ sub uptimes{
 		update_node($node,\@uptimes,@{$node2dirs{$node}});
 		$state{$node} = join '_',@uptimes;
 	}
+	$db->sync;
 
 	my($peeraddr);
 	my($fullmsg);
@@ -1014,6 +1047,7 @@ sub uptimes{
 		# to be. i.e. It deletes older values that are no
 		# longer needed.
 		$state{$node} = join '_',@uptimes;
+		$db->sync;
 	}
 	die "recv error on udp socket: $!";
 }
