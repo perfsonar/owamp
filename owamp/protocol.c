@@ -2233,14 +2233,19 @@ _OWPDecodeDataRecord(
 	/*
 	 * Have to memcpy buf because it is not 32bit aligned.
 	 */
+	memset(rec,0,sizeof(OWPDataRec));
 	memcpy(&rec->seq_no,&buf[0],4);
 	rec->seq_no = ntohl(rec->seq_no);
 
 	_OWPDecodeTimeStamp(&rec->send,&buf[4]);
+	_OWPDecodeTimeStamp(&rec->recv,&buf[14]);
+	if(OWPIsLostRecord(rec)){
+		return True;
+	}
+
 	if(!_OWPDecodeTimeStampErrEstimate(&rec->send,&buf[12])){
 		return False;
 	}
-	_OWPDecodeTimeStamp(&rec->recv,&buf[14]);
 	if(!_OWPDecodeTimeStampErrEstimate(&rec->recv,&buf[22])){
 		return False;
 	}

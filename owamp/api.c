@@ -2132,5 +2132,5 @@ OWPIsLostRecord(
 	OWPDataRec *rec
 	)
 {
-	return (rec->recv.owptime & 0xFFFFFFFFFFFFFFFFULL)? False : True;
+	return !(rec->recv.owptime & 0xFFFFFFFFFFFFFFFFULL);
 }
