@@ -100,9 +100,9 @@ struct OWPControlRec{
 	 * Encryption fields
 	 */
 	OWPKID			kid;
-	OWPKey			key;
+	OWPByte			key[16];
 	OWPByte			challenge[16];
-	OWPKey			session_key[16];
+	OWPByte			session_key[16];
 	OWPByte			readIV[16];
 	OWPByte			writeIV[16];
 
