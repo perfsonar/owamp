@@ -119,7 +119,7 @@ check_control(
 	if (mode_req & (OWP_MODE_AUTHENTICATED|OWP_MODE_ENCRYPTED)){
 		if ((class = OWPGetClass((void *)kid)) == NULL)
 			class = OWP_AUTH_CLASS;
-	} else if (class = (OWPGetClass((void *)remote)) == NULL)
+	} else if ((class = OWPGetClass((void *)remote)) == NULL)
 		class = OWP_DEFAULT_OPEN_CLASS;
 	
 	if ((OWPGetMode(class) & mode_req) == 0)
