@@ -27,9 +27,9 @@
 #
 #	Options:
 # Process this file with autoconf to produce a configure script.
-AC_INIT(owamp, 1.6a, owamp-bugs@internet2.edu)
+AC_INIT(owamp, 1.6b, owamp-bugs@internet2.edu)
 AC_CONFIG_AUX_DIR(config)
-AM_INIT_AUTOMAKE(owamp, 1.6a, [no-define])
+AM_INIT_AUTOMAKE(owamp, 1.6b, [no-define])
 AC_CONFIG_SRCDIR(owamp/context.c)
 AM_CONFIG_HEADER(owamp/config.h)
 
@@ -128,6 +128,7 @@ AC_SUBST(TOP_BUILD_DIRS)
 # Checks for programs.
 AC_PROG_CC
 AC_PROG_RANLIB
+AC_PROG_LN_S
 
 # possible solution to config location
 OWP_PREFIX='${prefix}'

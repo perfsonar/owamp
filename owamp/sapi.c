@@ -283,6 +283,10 @@ OpenSocket(
 			goto failsock;
 		}
 
+		/*
+		 * TODO Check for the superseded IPV6_BINDV6ONLY sockopt too?
+		 * (No - not unless someone complains.)
+		 */
 #if	defined(IPPROTO_IPV6) && defined(IPV6_V6ONLY)
 		on=0;
 		if(setsockopt(addr->fd,IPPROTO_IPV6,IPV6_V6ONLY,&on,
