@@ -89,12 +89,10 @@ _OWPReadClientGreeting(
 	}
 	
 	if (mode_requested & OWP_MODE_AUTHENTICATED){
-		OWPByte *ptr = cntrl->key;
-
 		memcpy(cntrl->kid, buf + 4, 8); /* Save 8 bytes of kid */
 
 		(*cntrl->ctx->cfg.get_aes_key_func)(app_data, buf + 4, 
-					       &ptr, &err_ret);
+					       cntrl->key, &err_ret);
 		/* if all ok - set up key + cipher now 
 		     XXX - TODO
 		*/
