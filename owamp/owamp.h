@@ -30,9 +30,11 @@
 
 /*
  * This structure is opaque to the API user...
+ * It encodes parameters used by a party in Control session.
  */
 typedef struct OWAMPConnectionRec *OWAMPclient, *OWAMPserver;
 
+/* Codes for returning error severity and type. */
 typedef enum {
 	OWAMPErrFATAL=-4,
 	OWAMPErrWARNING=-3,
@@ -43,6 +45,7 @@ typedef enum {
 typedef enum {
 	OWAMPErrUNDEFINED
 } OWAMPErrType;
+
 typedef int		OWAMPBoolean;
 typedef u_int8_t	OWAMP_SID[16];
 typedef u_int32_t	OWAMP_Sequence;
@@ -73,11 +76,12 @@ typedef int (*OWAMPErrFunc)(
 
 /*
  * This type is used to define the function that is called to open a
- * test session log. It should return the SID that is to be used for
- * the test stream.
+ * test 'session log', meaning,  whatever the receiver may choose
+ * to do with the test stream: write to disk, memory, file descriptor etc. 
+ * It should return the SID that is to be used for the test stream.
  * (It will be called by the recv side.)
  */
-typedef OWAMP_SID (*OWAMPSaveSessionOpen)(
+typedef OWAMP_SID (*OWAMPSessionLogOpen)(
 	void			*session_closure,
 	OWAMPErrSeverity	*err_ret
 );
@@ -86,7 +90,7 @@ typedef OWAMP_SID (*OWAMPSaveSessionOpen)(
  * This type is used to define the function that is called to write an
  * entry to the session log.
  */
-typedef void (*OWAMPSaveSessionWrite)(
+typedef void (*OWAMPSessionLogWrite)(
 	void			*session_closure,
 	OWAMPSequence		n,
 	OWAMPTimeStamp		sent,
@@ -98,7 +102,7 @@ typedef void (*OWAMPSaveSessionWrite)(
  * This type is used to define the function that is called to close a
  * session log.
  */
-typedef void (*OWAMPSaveSessionClose)(
+typedef void (*OWAMPSessionLogClose)(
 	void			*session_closure,
 	OWAMPErrSeverity	*err_ret
 );
@@ -123,6 +127,9 @@ typedef OWAMPKey	(*OWAMPGetKey)(
 );
 
 
+/* 
+ * This structure encodes parameters needed to initialize the library.
+ */ 
 typedef struct {
 	OWAMPErrFunc		*errfunc;
 	void			*err_closure;
@@ -130,7 +137,7 @@ typedef struct {
 	OWAMPSessionLogWrite	*session_write;	/* called by recv	*/
 	OWAMPSessionLogClose	*session_close;	/* called by recv	*/
 	void			*session_closure;
-	OWAMPGetTimeStampFunc	*timestamp;	/* retn time/prec values */
+	OWAMPGetTimeStamp	*timestamp;	/* retn time/prec values */
 	void			*timestamp_closure;
 	OWAMPGetKey		*get_aes_key;
 	void			*get_key_closure;
@@ -254,7 +261,7 @@ typedef struct{
 
 /*
  * This function is used to configure the address specification
- * for either one of the sender or reciever endpoints prior to
+ * for either one of the sender or receiver endpoints prior to
  * requesting the server to configure that endpoint.
  *
  * name refers to a hostname or address in textual format.
@@ -276,7 +283,7 @@ OWAMPConfigEndpoint(
 );
 
 extern OWAMPTestEndpoint
-OWAMPCreateReciever(
+OWAMPCreateReceiver(
 		local_addr
 		openlog
 		writelog
@@ -296,7 +303,7 @@ extern OWAMPSID
 OWAMPRequestSession(
 	OWAMPclient		OWAMPptr,
 	OWAMPTestEndpoint	sender,
-	OWAMPTestEndpoint	reciever,
+	OWAMPTestEndpoint	receiver,
 	OWAMPTestSpec		test_spec
 	OWAMPErrSeverity	*err_ret
 );
