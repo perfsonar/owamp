@@ -72,8 +72,7 @@ typedef unsigned char   BYTE;
 
 /*  The structure for key information */
 typedef struct {
-    BYTE  direction;                /* Key used for encrypting or decrypting? */
-    char  keyMaterial[MAX_KEY_SIZE+1];  /* Raw key data in ASCII, e.g., user input or KAT values */
+	/*BYTE  direction;*/                /* Key used for encrypting or decrypting? */
 	int   Nr;                       /* key-length-dependent number of rounds */
 	u32   rk[4*(MAXNR + 1)];        /* key schedule */
 } keyInstance;

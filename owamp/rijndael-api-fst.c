@@ -56,18 +56,9 @@ makeKey(keyInstance *key, BYTE direction, char *keyMaterial) {
 		return BAD_KEY_INSTANCE;
 	}
 
-	if ((direction == DIR_ENCRYPT) || (direction == DIR_DECRYPT)) {
-		key->direction = direction;
-	} else {
-		return BAD_KEY_DIR;
-	}
-
-	if (keyMaterial != NULL) {
-		strncpy(key->keyMaterial, keyMaterial, 128/4);
-	}
 
 	/* initialize key schedule: */
-	keyMat = key->keyMaterial;
+	/*	keyMat = key->keyMaterial; */
  	for (i = 0; i < 128/8; i++) {
 		int t, v;
 
@@ -85,11 +76,15 @@ makeKey(keyInstance *key, BYTE direction, char *keyMaterial) {
 		
 		cipherKey[i] = (u8)v;
 	}
+
+	/*
 	if (direction == DIR_ENCRYPT) {
 		key->Nr = rijndaelKeySetupEnc(key->rk, cipherKey, 128);
 	} else {
 		key->Nr = rijndaelKeySetupDec(key->rk, cipherKey, 128);
 	}
+	*/
+
 	return TRUE;
 }
 
@@ -133,11 +128,10 @@ int blockEncrypt(BYTE *binIV, keyInstance *key,
 	int i, k, t, numBlocks;
 	u8 block[16], *iv;
 
-	if (binIV == NULL ||
-		key == NULL ||
-		key->direction == DIR_DECRYPT) {
+	if (binIV == NULL || key == NULL)
 		return BAD_CIPHER_STATE;
-	}
+	
+	
 	if (input == NULL || inputLen <= 0) {
 		return 0; /* nothing to do */
 	}
@@ -156,6 +150,9 @@ int blockEncrypt(BYTE *binIV, keyInstance *key,
 		outBuffer += 16;
 	}
 	
+	/* Update the IV */
+	
+
 	return 128*numBlocks;
 }
 
