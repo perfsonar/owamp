@@ -1,7 +1,7 @@
 /*! \file owampd.c */
 
-#include "../owamp/owampP.h"
-#include "access.h"
+#include <owamp.h>
+#include <access.h>
 #include "rijndael-api-fst.h"
 
 #define LISTENQ 5
@@ -9,7 +9,7 @@
 
 #define MAX_MSG 60 /* XXX - currently 56 but KID to be extended by 4 bytes */
 
-#define DEFAULT_CONFIG_DIR              "/home/karp/projects/contrib"
+#define DEFAULT_CONFIG_DIR              "/home/karp/projects/owamp/contrib"
 #define DEFAULT_CONFIG_FILE 	 	"policy.conf"
 #define DEFAULT_IP_TO_CLASS_FILE 	"ip2class.conf"
 #define DEFAULT_CLASS_TO_LIMITS_FILE 	"class2limits.conf" 
@@ -26,7 +26,6 @@ char *PasswdFile = NULL;
 u_int32_t DefaultMode = OWP_MODE_OPEN;
 
 char* ipaddr2class(u_int32_t ip_addr);
-/* datum hash_fetch(hash_ptr hash, datum key); */
 datum* str2datum(const char *bytes);
 
 OWPContext ctx;
@@ -349,6 +348,36 @@ owampd_err_func(
 	return 0;
 }
 
+/*
+** Basic function to print out ip2class.
+*/
+
+void
+print_ip2class_binding(const struct binding *p, FILE* fp)
+{
+	fprintf(fp, "DEBUG: the value of key %s/%u is = %s\n",
+	       owamp_denumberize(get_ip_addr(p->key)), 
+	       get_offset(p->key), p->value->dptr);
+}
+
+void
+print_limits(OWAMPLimits * limits, FILE* fp)
+{
+	fprintf(fp, "bw = %lu, space = %lu, num_sessions = %u\n",
+	       OWAMPGetBandwidth(limits),
+	       OWAMPGetSpace(limits),
+	       OWAMPGetNumSessions(limits)
+	       );
+}
+
+void
+print_class2limits_binding(const struct binding *p, FILE* fp)
+{
+	fprintf(fp, "the limits for class %s are: ", p->key->dptr);
+	print_limits((OWAMPLimits *)(p->value->dptr), fp);
+}
+
+
 int
 main(int argc, char *argv[])
 {
@@ -441,31 +470,38 @@ main(int argc, char *argv[])
 	
 	/* Open the ip2class hash for writing. */
 	snprintf(path,sizeof(path), "%s/%s", DEFAULT_CONFIG_DIR,IPtoClassFile);
-	fprintf(stderr, "DEBUG: trying to open %s\n", path);
-	if ((ip2class_hash = hash_init(ctx, 0, NULL, NULL)) == NULL){
+	if ((ip2class_hash = hash_init(ctx, 0, NULL, NULL, 
+				       print_ip2class_binding)) == NULL){
 		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
 			 "Could not initialize hash for %s", IPtoClassFile);
 		exit(1);
 	}
-	owamp_read_ip2class(IPtoClassFile, ip2class_hash); 
-	/* owamp_print_ip2class(ip2class_hash);  */
+	owamp_read_ip2class(path, ip2class_hash); 
+	hash_print(ip2class_hash, stderr);
 
 	/* Open the class2limits hash for writing. */
-	if ((class2limits_hash = hash_init(ctx, 0, NULL, NULL)) == NULL){
+	if ((class2limits_hash = hash_init(ctx, 0, NULL, NULL, 
+					   print_class2limits_binding))==NULL){
 		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
 			"Could not initialize hash for %s", ClassToLimitsFile);
 		exit(1);
 	}
-	owamp_read_class2limits(ClassToLimitsFile, class2limits_hash);
-	/* 	owamp_print_class2limits(class2limits_hash); */
+	snprintf(path,sizeof(path), "%s/%s", 
+		 DEFAULT_CONFIG_DIR,ClassToLimitsFile);
+	owamp_read_class2limits(path, class2limits_hash);
+
+	hash_print(class2limits_hash, stderr); 
 
 	/* Open the passwd hash for writing. */
-	if ((passwd_hash = hash_init(ctx, 0, NULL, NULL)) == NULL){
+	if ((passwd_hash = hash_init(ctx, 0, NULL, NULL, NULL)) == NULL){
 		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
 			"Could not initialize hash for %s", PasswdFile);
 		exit(1);
 	}
-	read_passwd_file(PasswdFile, passwd_hash);
+	snprintf(path,sizeof(path), "%s/%s", 
+		 DEFAULT_CONFIG_DIR,PasswdFile);
+	read_passwd_file(path, passwd_hash);
+	hash_print(passwd_hash, stderr);
 
 	listenfd = tcp_listen(host, port, &addrlen);
 	if (signal(SIGCHLD, sig_chld) == SIG_ERR){
@@ -474,6 +510,8 @@ main(int argc, char *argv[])
 		exit(1);
 	}
 
+	fprintf(stderr, "DEBUG: exiting...\n");
+	exit(0);
 #if 0
 	test_policy_check();
 #endif
