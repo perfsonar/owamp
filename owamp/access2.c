@@ -46,7 +46,11 @@ owamp_read_id2class(OWPContext ctx,
 
 	while (fgets(line, sizeof(line), fp) != NULL) {
 		struct addrinfo hints, *res;
-		long num_offset;
+		long num_offset, nbytes, nbits;
+		u_int32_t addr;
+		u_int8_t *ptr;
+		int i;
+		int bad_mask = 0;
 		char *brkt, *brkb, *id, *class, *slash, *nodename, *offset;
 
 		line_num++;
@@ -125,7 +129,92 @@ owamp_read_id2class(OWPContext ctx,
 			}
 		}
 
-		/* At this point both addrinfo and num_offset are set. */
+		/* At this point both addrinfo and num_offset are set. 
+		   First check if netmask is correctly specified. */
+
+		switch (res->ai_family) {
+		case AF_INET:
+			addr = 
+		  ntohl(((struct sockaddr_in *)res->ai_addr)->sin_addr.s_addr);
+			
+			if ((num_offset > 32) || (num_offset < 0)) {
+				OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, 
+			     "Warning: reading config file %s...\nLine %lu: numeric offset for IPv4 address must be between 0 and 32.\n", id2class, line_num); 
+				continue;
+			}
+			
+			if (!num_offset) {
+				if (addr){
+				  OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, 
+				    "Warning: reading config file %s...\nLine %lu: numeric offset 0 requires network address to be 0.\n", id2class, line_num); 
+					continue;
+					
+				} else {
+					/* 
+					   TODO: handle 0/0 case here 
+					*/
+					continue;
+				}
+			}
+			/* Now 1 <= num_offset <= 32. */
+			if (addr & (((unsigned long)1<<(32-num_offset)) - 1)) {
+				OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, 
+				    "Warning: reading config file %s...\nLine %lu: bad netmask.\n", id2class, line_num); 
+				continue;
+			}
+			/* (addr, num_offset) pair is sane. */
+			/* 
+			   TODO: process it here
+			*/
+			
+			continue;
+			break;
+		case AF_INET6:
+			nbytes = num_offset / 8;
+			nbits = num_offset%8;
+			ptr = 
+	  (((struct sockaddr_in6 *)res->ai_addr)->sin6_addr.s6_addr) + nbytes;
+			if (nbits){
+				if (*ptr++ 
+				  && (((unsigned long)1 << (8 - nbits)) - 1)) {
+				/*
+				  bad netmask
+				*/
+
+					continue;
+				}
+				
+				nbytes++;
+			}
+
+			/* Make sure all subsequent bytes are zero. */
+			for (i = 0; i < 16 - nbytes; i++) {
+				if (*ptr++) {
+					/*
+					  bad netmask
+					*/
+					bad_mask++;
+					break;
+				}
+				
+			}
+
+			if (bad_mask)
+				continue;
+			
+			/* If got this far: (addr, num_offset) pair is sane. */
+			/* 
+			   TODO: process it here
+			*/
+					
+			continue;
+			break;
+			
+
+		default:
+			break;
+		} /* switch */
+		
 		
 	} /* while */
 
