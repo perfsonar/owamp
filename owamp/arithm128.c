@@ -141,7 +141,7 @@ num_print(num_128 x)
 	assert(x);
 	
 	for (i = NUM_DIGITS - 1; i >= 0; i--)
-		fprintf(stderr, "%hu ", x->digits[i]);
+		fprintf(stderr, "%hx ", x->digits[i]);
 	fprintf(stderr, "\n");
 }
 
@@ -396,21 +396,43 @@ random_exp(keyInstance *key, unsigned long in)
 	/* Grab the last 8 bytes of the encrypted block */
 	U = raw2num(outBuffer + 8);
 
+	/* XXX - remove later */
+
+	/*
+	fprintf(stderr, "DEBUG: in = %lu, initial U = \n", in);
+	num_print(&U);
+	*/
+
 	/* Get U and shift */
 	count = 1;
-	for (i = 0; i < 4; i++){
+	for (i = 3; i >= 0; i--){
 		unsigned short mask = 0x8000;
+
+		/*
+		fprintf(stderr, "DEBUG: looking for '1' - digit = %d\n", i);
+		fprintf(stderr, "DEBUG: U.digits[%d] = %hx\n", i, U.digits[i]);
+		*/
+
 		for (j = 0; j < 16; j++){
-			if (U.digits[i] & mask)
+
+			/*
+			fprintf(stderr, "DEBUG: j = %d, mask = %hx, digit & mask = %hx\n", j, mask, U.digits[i] & mask);
+			*/
+
+			if (!(U.digits[i] & mask))
 				goto FOUND; /* found the first '1' */
 			mask >>= 1;
 			count++;
 		}
 	}
+
  FOUND: 
 	if (count == 65){ /* '1' was never found. */
 		/* XXX - TODO - handle this case */
 	}
+
+	/* fprintf(stderr, "DEBUG: in = %lu, count = %d\n\n", in, count); */
+
 
 	/* Normal case. 1 <= count <= 64. Shift by count bits. */
 
