@@ -69,6 +69,7 @@ static	u_int32_t		sessionTime;
 static	u_int32_t		file_offset,ext_offset;
 static	int			pow_reset = 0;
 static	int			pow_exit = 0;
+static	double			inf_delay;
 
 static void
 print_conn_args()
@@ -472,10 +473,18 @@ WriteSubSession(
 					OWPGetTimeStampError(&rec->recv);
 		parse->maxerr = MAX(parse->maxerr,d);
 
+		d = OWPDelay(&rec->send,&rec->recv);
+
 		/*
-		 * Compute bucket value.
+		 * Save max/min delays
 		 */
-		d = OWPDelay(&rec->send,&rec->recv)/appctx.opt.bucketWidth;
+		parse->max_delay = MAX(parse->max_delay,d);
+		parse->min_delay = MIN(parse->min_delay,d);
+
+		/*
+		 * Compute bucket index value.
+		 */
+		d /= appctx.opt.bucketWidth;
 		b = (d<0)?floor(d):ceil(d);
 
 		key.dsize = b;
@@ -889,6 +898,12 @@ main(
 	tspec.npackets = appctx.opt.numPackets * numSessions;
 
 	/*
+	 * inf_delay is used as the next largest number over lossThreshold
+	 * in our time resolution.
+	 */
+	inf_delay = OWPNum64ToDouble(tspec.loss_timeout + 1);
+
+	/*
 	 * powstream uses a single slot with exp distribution.
 	 */
 	slot.slot_type = OWPSlotRandExpType;
@@ -1042,6 +1057,8 @@ NextConnection:
 			parse.sync = 1;
 			parse.maxerr = 0.0;
 			parse.dups = parse.lost = 0;
+			parse.min_delay = inf_delay;
+			parse.max_delay = -inf_delay;
 			parse.nbuckets = 0;
 			assert(!parse.buckets ||
 					(I2HashNumEntries(parse.buckets)==0));
@@ -1252,10 +1269,6 @@ AGAIN:
 								errno==EINTR);
 				/* (Ignore errors...) */
 				if(parse.sfp){
-					/*
-					 * TODO: compute session stats!
-					 */
-
 					/* PRINT version 1 STATS */
 					fprintf(parse.sfp,"SUMMARY\t1.0\n");
 					fprintf(parse.sfp,"SENT\t%u\n",
@@ -1268,6 +1281,16 @@ AGAIN:
 								parse.dups);
 					fprintf(parse.sfp,"LOST\t%u\n",
 								parse.lost);
+					if(parse.min_delay < inf_delay){
+						fprintf(parse.sfp,"MIN\t%g\n",
+							parse.min_delay);
+					}
+					if(parse.max_delay > -inf_delay){
+						fprintf(parse.sfp,"MAX\t%g\n",
+							parse.max_delay);
+					}
+
+
 					fprintf(parse.sfp,"BUCKETWIDTH\t%g\n",
 							appctx.opt.bucketWidth);
 

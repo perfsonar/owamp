@@ -131,5 +131,7 @@ struct pow_parse_rec{
 	u_int32_t		sync;
 	u_int32_t		dups;
 	u_int32_t		lost;
+	double			min_delay;
+	double			max_delay;
 };
 #endif
