@@ -25,22 +25,25 @@
 /*
  * Data structures
  */
+
+struct OWAMPAddrRec{
+	char			node[MAXHOSTNAMELEN];
+
+	struct addrinfo		*ai;
+
+	int			af;
+	struct in_addr		v4addr;
+	struct in6_addr		v6addr;
+};
+
 struct OWAMPControlConnectionRec{
 	int			server;	/* connection represents server */
 	int			state;	/* current state of connection */
 	OWAMPSessionMode	mode;
 };
 
-struct OWAMPEndpointRec{
-	OWAMPBoolean		endpoint_active;
-	OWAMPBoolean		reciever;
-	pid_t			chld;
-
-	int			af;
-	struct	in_addr		in_addr;
-	struct	in6_addr	in6_addr;
-	u_int16_t		port;
-
-	OWAMPSID		sid;
-	OWAMPTestSpec		test_spec;
+struct OWAMPTestSessionRec{
+	struct sockaddr			send_addr,
+	struct sockaddr			recv_addr,
+	struct OWAMPTestSessionRec	*next;
 };

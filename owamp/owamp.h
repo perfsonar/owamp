@@ -4,7 +4,7 @@
 /************************************************************************
 *									*
 *			     Copyright (C)  2002			*
-*	     University Corporation for Advanced Internet Development	*
+*				Internet2				*
 *			     All Rights Reserved			*
 *									*
 ************************************************************************/
@@ -20,19 +20,23 @@
 **	This header file describes the owamp API. The owamp API is intended
 **	to provide a portable layer for implementing the owamp protocol.
 */
+#ifndef	OWAMP_H
+#define	OWAMP_H
 #include <sys/types.h>
 #include <netdb.h>
 #include <sys/socket.h>
 
-/*
- * Data structure
- */
+#define	OWAMP_MODE_UNDEFINED		(0)
+#define	OWAMP_MODE_UNAUTHENTICATED	(01)
+#define	OWAMP_MODE_AUTHENTICATED	(02)
+#define	OWAMP_MODE_ENCRYPTED		(04)
 
 /*
  * This structure is opaque to the API user...
  * It encodes parameters used by a party in Control session.
  */
 typedef struct OWAMPControlConnectionRec *OWAMPControl;
+typedef struct OWAMPAddrRec *OWAMPAddr;
 
 /* Codes for returning error severity and type. */
 typedef enum {
@@ -42,14 +46,18 @@ typedef enum {
 	OWAMPErrDEBUG=-1,
 	OWAMPErrOK=0
 } OWAMPErrSeverity;
+
 typedef enum {
+	OWAMPErrPOLICY,
 	OWAMPErrUNDEFINED
 } OWAMPErrType;
 
 typedef int		OWAMPBoolean;
-typedef u_int8_t	OWAMP_SID[16];
-typedef u_int32_t	OWAMP_Sequence;
-typedef u_int32_t	OWAMP_KID;
+typedef u_int32_t	OWAMPSID[4];
+typedef u_int32_t	OWAMPSequence;
+typedef char		OWAMPKID[8];
+typedef u_int32_t	OWAMPSessionModes;
+
 
 typedef struct OWAMPTimeStampRec{
 	u_int32_t		sec;
@@ -57,6 +65,40 @@ typedef struct OWAMPTimeStampRec{
 	OWAMPBoolean		sync;
 	u_int8_t		prec;
 } OWAMPTimeStamp;
+
+typedef enum {
+	OWAMPUnspecifiedTest,	/* invalid value	*/
+	OWAMPPoissonTest
+} OWAMPTestType;
+
+typedef struct{
+	OWAMPTestType	test_type;
+	OWAMPTimeStamp	start_time;
+	u_int32_t	npackets;
+	u_int32_t	typeP;
+	u_int32_t	packet_size_padding;
+	u_int32_t	InvLambda;
+} OWAMPPoissonTestSpec;
+
+typedef struct{
+	OWAMPTestType	test_type;
+	OWAMPTimeStamp	start_time;
+	u_int32_t	npackets;
+	u_int32_t	typeP;
+	u_int32_t	packet_size_padding;
+	/* make sure this is larger then any other TestSpec struct. */
+	u_int32_t	padding[4];
+} OWAMPTestSpec;
+
+struct OWAMPEndpointRec{
+	OWAMPBoolean		receiver;	/* true if endpoint recv */
+
+	struct sockaddr		sa_addr;
+
+	OWAMPSID		sid;
+};
+
+typedef struct OWAMPEndpointRec *OWAMPEndpoint;
 
 /*
  * The following types are used to initialize the library.
@@ -75,35 +117,81 @@ typedef int (*OWAMPErrFunc)(
 );
 
 /*
- * This type is used to define the function that is called to open a
- * test 'session log', meaning,  whatever the receiver may choose
- * to do with the test stream: write to disk, memory, file descriptor etc. 
- * It should return the SID that is to be used for the test stream.
- * (It will be called by the recv side.)
+ * The value that is returned from this function will be passed
+ * as app_data to the OWAMPCheckTestPolicyFunc,
+ * EndpointInitFunc, EndpointInitHookFunc,
+ * EndpointStartFunc and EndpointStopFunc.
+ *
+ * If the application defines the OWAMPCheckControlPolicyFunc, and
+ * the return value represents dynamic memory - the application must
+ * also define the OWAMPFreeControlPolicyDataFunc as a way to free
+ * that memory.
  */
-typedef OWAMP_SID (*OWAMPLogOpenFunc)(
-	void			*session_closure,
+typedef void* (*OWAMPCheckControlPolicyFunc)(
+	OWAMPSessionModes	mode_req,
+	OWAMPKID		kid,
+	struct sockaddr		*local_sa_addr,
+	struct sockaddr		*remote_sa_addr,
 	OWAMPErrSeverity	*err_ret
 );
 
 /*
- * This type is used to define the function that is called to write an
- * entry to the session log.
+ * This function will be called by OWAMPRequestTestSession if
+ * one of the endpoints of the test is on the localhost before
+ * it calls the EndpointInit*Func's. If err_ret returns
+ * OWAMPErrFATAL, OWAMPRequestTestSession will not continue, and return
+ * OWAMPErrFATAL as well.
+ *
+ * endpoint->sid will not be valid yet.
+ * Only the IP address values will be set in the sockaddr structures -
+ * i.e. port numbers will not be valid.
  */
-typedef void (*OWAMPLogWriteFunc)(
-	void			*session_closure,
-	OWAMPSequence		n,
-	OWAMPTimeStamp		sent,
-	OWAMPTimeStamp		recv,
+typedef void (*OWAMPCheckTestPolicyFunc)(
+	void			*app_data,
+	OWAMPTestSpec		*test_spec,
+	OWAMPEndpoint		local,
+	OWAMPEndpoint		remote,
 	OWAMPErrSeverity	*err_ret
 );
 
 /*
- * This type is used to define the function that is called to close a
- * session log.
+ * Allocate port and set it in the *endpoint->sa_addr structure.
+ * (different for IPV4 and IPV6? May need to call getsockname?)
+ * (How do we detect if user passed FD in - don't need to bind!)
+ * If "recv" - also allocate and set endpoint->sid
  */
-typedef void (*OWAMPLogCloseFunc)(
-	void			*session_closure,
+typedef void (*OWAMPEndpointInitFunc)(
+	void			*app_data,
+	OWAMPEndpoint		endpoint,
+	OWAMPErrSeverity	*err_ret
+);
+
+/*
+ * Given remote_addr/port (can "connect" to remote addr now)
+ * return OK
+ */
+typedef void (*OWAMPEndpointInitHookFunc)(
+	void			*app_data,
+	OWAMPEndpoint		local_endpoint,
+	OWAMPEndpoint		remote_endpoint,
+	OWAMPErrSeverity	*err_ret
+);
+
+/*
+ * Given start session
+ */
+typedef void (*OWAMPEndpointStart)(
+	void			*app_data,
+	OWAMPEndpoint		endpoint,
+	OWAMPErrSeverity	*err_ret
+);
+
+/*
+ * Given stop session
+ */
+typedef void (*OWAMPEndpointStop)(
+	void			*app_data,
+	OWAMPEndpoint		endpoint,
 	OWAMPErrSeverity	*err_ret
 );
 
@@ -112,7 +200,7 @@ typedef void (*OWAMPLogCloseFunc)(
  * current timestamp.
  */
 typedef OWAMPTimeStamp (*OWAMPGetTimeStampFunc)(
-	void			*closure,
+	void			*app_data,
 	OWAMPErrSeverity	*err_ret
 );
 
@@ -131,93 +219,53 @@ typedef OWAMPKey	(*OWAMPGetKeyFunc)(
  * This structure encodes parameters needed to initialize the library.
  */ 
 typedef struct {
-	OWAMPErrFunc		*errfunc;
-	void			*err_closure;
-	OWAMPLogOpenFunc	*session_open;	/* opens logfile-retn SID */
-	OWAMPLogWriteFunc	*session_write;	/* called by recv	*/
-	OWAMPLogCloseFunc	*session_close;	/* called by recv	*/
-	void			*session_closure;
-	OWAMPGetTimeStampFunc	*timestamp;	/* retn time/prec values */
-	void			*timestamp_closure;
-	OWAMPGetKeyFunc		*get_aes_key;
-	void			*get_key_closure;
+	time_sec_perhaps		tm_out;
+	OWAMPErrFunc			*errfunc;
+	void				*err_closure;
+	OWAMPGetKeyFunc			*get_aes_key;
+	void				*get_aes_key_closure;
+	OWAMPCheckControlPolicyFunc	*check_control_func;
+	OWAMPCheckTestPolicyFunc	*check_test_func;
+	OWAMPEndpointInitFunc		*check_control_func;
+	OWAMPEndpointInitHookFunc	*check_control_func;
+	OWAMPEndpointStart		*check_control_func;
+	OWAMPEndpointStop		*check_control_func;
+	OWAMPGetTimeStampFunc		*timestamp;
 } *OWAMPInitializeConfig;
+
+
+/*
+ * API Functions
+ *
+ */
 
 extern void
 OWAMPInitialize(
 	OWAMPInitializeConfig	config
 );
 
-#define	OWAMP_MODE_NONE			(0)
-#define	OWAMP_MODE_UNAUTHENTICATED	(01)
-#define	OWAMP_MODE_AUTHENTICATED	(02)
-#define	OWAMP_MODE_ENCRYPTED		(04)
-typedef u_int32_t	OWAMPSessionModes;
-
-#define OWAMP_CONTROL_SESSIONMODE	(01)
-#define OWAMP_CONTROL_SERVERNAME	(02)
-#define OWAMP_CONTROL_SERVERADDR	(04)
-#define OWAMP_CONTROL_SERVERSOCK	(010)
-#define OWAMP_CONTROL_KEY		(011)
-typedef u_int32_t	OWAMPControlConfigMask;
-
 /*
- * Configure how the API makes the OWAMPOpenControl call.
+ * The OWAMPAddrBy* functions are used to allow the OWAMP API to more
+ * adequately manage the memory associated with the many different ways
+ * of specifying an address - and to provide a uniform way to specify an
+ * address to the main API functions.
+ * These functions return NULL on failure. (They call the error handler
+ * to specify the reason.)
  */
-typedef struct {
-			/*
-			 * OWAMP_CONTROL_SESSIONMODE
-			 *
-			 * mode is hierarchical - highest
-			 * level mode that is supported by
-			 * server that matches this mask
-			 * will be selected.
-			 * enc->auth->unauth
-			 *	default:OWAMP_MODE_UNAUTHENTICATED
-			 */
-	OWAMPSessionModes	mode;		/* mode mask requested */
+extern OWAMPAddr
+OWAMPAddrByNode(
+	char	*node	/* dns or valid charactor representation of addr */
+);
 
-			/*
-			 * OWAMP_CONTROL_SERVERNAME
-			 *
-			 * serv_name is name of host to connect to
-			 * as a dns resolvable hostname or as an
-			 * ipv4 or ipv6 address in inet_ntop format.
-			 *	default:localhost
-			 */
-	char			serv_name[MAXHOSTNAMELEN];
-			/*
-			 * OWAMP_CONTROL_SERVERADDR
-			 *
-			 * serv_af must be AF_INET or AF_INET6 and determines
-			 * which variable contains the address:
-			 * serv_in_addr or serv_in6_addr
-			 */
-	int			serv_af;
-	struct	in_addr		serv_in_addr;
-	struct	in6_addr	serv_in6_addr;
-			/*
-			 * OWAMP_CONTROL_SERVERSOCK
-			 *
-			 * If server_sock is set - then it should
-			 * specify an already connected socket to the
-			 * server. Only one of server_sock or serv_addr
-			 * should be used.
-			 * 	default:unused
-			 */
-	int			server_sock;
-			/*
-			 * OWAMP_CONTROL_KEY
-			 *
-			 * kid/key only used if mode includes
-			 * auth or enc and OWAMPControlConfigMask
-			 * sets OWAMP_CONTROL_KEY - then both must
-			 * be set.
-			 * 	default:unused
-			 */
-	OWAMPKID		kid;		/* kid of key for auth/enc*/
-	OWAMPKey		key;		/* key for auth/enc */
-} OWAMPControlConfig;
+extern OWAMPAddr
+OWAMPAddrByAddrInfo(
+	struct addrinfo	*ai	/* valid addrinfo linked list	*/
+);
+
+extern OWAMPAddr
+OWAMPAddrBySockFD(
+	int	fd	/* fd must be an already connected socket */
+);
 
 /*
  * OWAMPOpenControl allocates an OWAMPclient structure, opens a connection to
@@ -241,62 +289,41 @@ typedef struct {
  */
 extern OWAMPControl
 OWAMPOpenControl(
-	OWAMPControlConfig	config,
-	OWAMPControlConfigMask	mask,
+	OWAMPAddr		server_addr,
+	int			mode_mask,	/* OR of OWAMPSessionModes */
+	OWAMPKID		*kid,		/* null if unwanted	*/
+	OWAMPKey		*key,		/* null if unwanted	*/
 	OWAMPErrSeverity	*err_ret
 );
-
-typedef u_int32_t	OWAMPSID[4];
-
-typedef struct OWAMPEndpointRec *OWAMPEndpoint;
 
 /*
  * This function is used to configure the address specification
  * for either one of the sender or receiver endpoints prior to
  * requesting the server to configure that endpoint.
- *
- * name refers to a hostname or address in textual format.
- * addr refers to either a (*struct in_addr) or a
- * (*struct in6_addr) depending upon value of af.
- *
- * af is also used to determine if IPv4 or IPv6 addresses are
- * valid when looking up "name" from the resolver. It should
- * be set to either AF_INET, AF_INET6, or AF_UNSPEC. (UNSPEC
- * means the api should use 6 if it can, and fall back to 4 if
- * not.)
  */
 extern OWAMPEndpoint
-OWAMPConfigEndpoint(
-	char			*name,	/* endpoint hostname */
-	char			*addr,	/* endpoint addr either in or in6 */
-	int			af,	/* AF_UNSPEC if any *name* ok */
+OWAMPServerConfigEndpoint(
+	OWAMPAddr		addr,
 	OWAMPErrSeverity	*err_ret
 );
 
+/*
+ * This function is used to configure a reciever on this host
+ */
 extern OWAMPEndpoint
 OWAMPCreateRecvEndpoint(
-		local_addr
-		openlog
-		writelog
-		closelog
-		port
-		gettimestamp
+	OWAMPAddr		addr,
+	OWAMPErrSeverity	*err_ret
 );
 
+/*
+ * This function is used to configure a sender on this host
+ */
 extern OWAMPEndpoint
 OWAMPCreateSendEndpoint(
-		local_addr
-		port
-		gettimestamp
+	OWAMPAddr		addr,
+	OWAMPErrSeverity	*err_ret
 );
-
-typedef struct{
-	u_int32_t	InvLambda;
-	u_int32_t	npackets;
-	u_int32_t	padding;
-	OWAMPTimeStamp	start_time;
-	u_int32_t	typeP;
-} OWAMPTestSpec;
 
 /*
  * Request a test session - if err_ret is OWAMPErrOK - then the function
@@ -376,3 +403,4 @@ OWAMPSendStopSessions(
 	OWAMPErrSeverity	*err_ret
 );
 
+#endif	/* OWAMP_H */
