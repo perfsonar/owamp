@@ -44,6 +44,7 @@
 #endif	/* HAVE_CONFIG_H */
 
 #include <owamp.h>
+#include "rijndael-api-fst.h"
 
 #define	_OWP_ERR_MAXSTRING	1024
 #define	_OWP_DO_ENCRYPT		(OWP_MODE_AUTHENTICATED|OWP_MODE_ENCRYPTED)
@@ -100,7 +101,8 @@ struct OWPControlRec{
 	 * Encryption fields
 	 */
 	OWPKID			kid;
-	OWPByte			key[16];
+	keyInstance             encrypt_key;
+	keyInstance             decrypt_key;
 	OWPByte			challenge[16];
 	OWPByte			session_key[16];
 	OWPByte			readIV[16];
