@@ -103,6 +103,10 @@ AC_SUBST(TOP_BUILD_DIRS)
 AC_PROG_CC
 AC_PROG_RANLIB
 
+# possible solution to config location
+OWP_CONFDIR_CFLAGS="-DOWP_CONF_DIR=\\\"$sysconfdir\\\""
+AC_SUBST(OWP_CONFDIR_CFLAGS)
+
 # Checks for libraries.
 
 # Checks for header files.

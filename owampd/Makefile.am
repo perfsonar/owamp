@@ -18,6 +18,9 @@
 #
 #	Description:	owampd build description
 
+# possible solution to conf dir location
+AM_CFLAGS = $(OWP_CONFDIR_CFLAGS)
+
 INCLUDES			= -I$(top_builddir) -I$(top_builddir)/contrib \
 				-I$(top_srcdir) -I$(top_srcdir)/contrib \
 				$(I2UTILINCS)
