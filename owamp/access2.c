@@ -426,6 +426,41 @@ owp_netmask2class(owp_access_netmask *netmask, policy_data* policy)
 	return NULL;
 }
 
+/*
+** Given a sockaddr struct, return the tightest class containing 
+** its IP address (i.e. corresponding to the netmask with the largest offset).
+** If no such class is found, NULL is returned.
+*/
+char *
+owp_sockaddr2class(struct sockaddr *addr, policy_data* policy)
+{
+	owp_access_netmask mask;
+
+	assert(addr); assert(policy);
+	mask.offset = (u_int8_t)0;
+
+	switch (addr->sa_family) {
+	case AF_INET:
+		mask.addr4 
+			= ntohl(((struct sockaddr_in *)addr)->sin_addr.s_addr);
+		memset(mask.addr6, 0, 16);
+		mask.af = AF_INET;
+		return owp_netmask2class(&mask, policy);
+		/* UNREACHED */
+	case AF_INET6:
+		/* Prepare the address part of the mask */
+		mask.addr4 = 0;
+		memcpy(mask.addr6, 
+		       ((struct sockaddr_in6 *)addr)->sin6_addr.s6_addr, 16);
+		mask.af = AF_INET6;
+		return owp_netmask2class(&mask, policy);
+		/* UNREACHED */
+	default:
+		break;
+	}
+	return NULL;
+}
+
 /*!
 ** Read the file given by the path <passwd_file>, parse it and save 
 ** results in <hash>. <password file> assigns to each KID its OWAMP 
@@ -570,12 +605,12 @@ PolicyInit(
 
 unsigned long
 OWAMPGetBandwidth(owp_lim *lim){
-	return lim->bandwidth;
+	return lim->values[0];
 }
 
 unsigned long
 OWAMPGetSpace(owp_lim *lim){
-	return lim->space;
+	return lim->values[1];
 }
 
 #endif
