@@ -23,6 +23,7 @@ use strict;
 use strict;
 use constant DEBUG => 1;
 use constant VERBOSE => 1;
+
 use FindBin;
 use lib ("$FindBin::Bin");
 use IO::Handle;
@@ -141,13 +142,14 @@ sub plot_resolution {
 
 	# Read the header.
 	my $datafile = "$datadir/$ofile";
-	open(FH, "<$datafile") 
-		or die "Could not open $datadir/$ofile: $!";
+	open(FH, "<$datafile") or die "Could not open $datafile: $!";
 	my ($header, $prec, $sent, $lost, $dup, $buf, $min, $pre);
 
 	$pre = MAGIC_SIZE + VERSION_SIZE + HDRSIZE_SIZE;
+
 	die "Cannot read header: $!" if (read(FH, $buf, $pre) != $pre);
 	my ($magic, $version, $hdr_len) = unpack "a8xCC", $buf;
+
 	my $remain_bytes = $hdr_len - $pre;
 
 	die "Currently only work with version 1: $file" unless ($version == 1);
@@ -245,9 +247,6 @@ sub plot_resolution {
     my $fmt_xlabel = join '/', map {code2unit($_)} @tmp;
 
     $fmt = join ':', map {"%$_"} split //, $fmt;
-
-#    print "DEBUG: set format x \"$fmt\""; die;
-#    print "set xrange [\"$xr_start\":\"$xr_end\"]"; die;
 
     print GNUPLOT <<"STOP";
 set terminal png small color
