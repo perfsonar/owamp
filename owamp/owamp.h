@@ -64,6 +64,9 @@
 #ifndef	OWP_INCOMPLETE_EXT
 #define	OWP_INCOMPLETE_EXT         ".i"
 #endif
+#ifndef	OWP_FILE_EXT
+#define	OWP_FILE_EXT	".owp"
+#endif	/* OWP_FILE_EXT */
 
 #include <sys/types.h>
 #include <sys/time.h>
@@ -87,7 +90,6 @@
 #endif
 
 #include <owamp/rijndael-api-fst.h>
-#include <owamp/arithm64.h>
 #include <I2util/util.h>
 
 #define	OWP_MODE_UNDEFINED		(0)
@@ -116,6 +118,18 @@
 typedef struct OWPContextRec	*OWPContext;
 typedef struct OWPControlRec	*OWPControl;
 typedef struct OWPAddrRec	*OWPAddr;
+
+typedef struct OWPTimeStampRec{
+	u_int32_t		sec;
+	u_int32_t		frac_sec;
+	u_int8_t		sync;
+	u_int8_t		prec;
+} OWPTimeStamp;
+
+/*
+ * This must be included after the definition of the TimeStamp.
+ */
+#include <owamp/arithm64.h>
 
 /* Codes for returning error severity and type. */
 /* values are mapped to syslog "priorities" we want to use. */
@@ -184,13 +198,6 @@ typedef u_int8_t	OWPSID[16];
 typedef u_int8_t	OWPSequence[4];
 typedef u_int8_t	OWPKey[16];
 typedef u_int32_t	OWPSessionMode;
-
-typedef struct OWPTimeStampRec{
-	u_int32_t		sec;
-	u_int32_t		frac_sec;
-	u_int8_t		sync;
-	u_int8_t		prec;
-} OWPTimeStamp;
 
 
 typedef enum {

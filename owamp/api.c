@@ -950,6 +950,8 @@ OWPStopSessionsWait(
 	OWPErrSeverity	err2=OWPErrOK;
 	OWPAcceptType	aval=OWP_CNTRL_ACCEPT;
 
+	*err_ret = OWPErrOK;
+
 	if(!cntrl || cntrl->sockfd < 0){
 		*err_ret = OWPErrFATAL;
 		return -1;

@@ -1423,8 +1423,8 @@ _OWPEndpointInitHook(
 	 */
 	assert(tsession->schedule);
 	for(i=0;(unsigned)i<ep->test_spec.poisson.npackets;i++)
-		OWPnum64totimespec(tsession->schedule[i],
-						&ep->relative_offsets[i]);
+		OWPnum64totimespec(&ep->relative_offsets[i],
+					tsession->schedule[i]);
 
 	/*
 	 * SIGUSR1 is StartSessions

@@ -77,11 +77,18 @@ S4. [Deliver the answer.] Set X <- mu*(j + V)*ln2.
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
-#include "arithm64.h"
+#include <owamp/owamp.h>
+#include "rijndael-alg-fst.h"
 
 #define K 12 /* So (K - 1) is the first k such that Q[k] > 1 - 1/(2^64). */
 
 #define MASK32(x) ((x) & 0xFFFFFFFF)
+
+struct OWPrand_context64 {
+	unsigned char counter[16]; /* 128-bit counter (network byte ordered) */
+	keyInstance key;           /* key used to encrypt the counter.       */
+	BYTE out[16];              /* the encrypted block is kept there.     */
+};
 
 /*
 ** The array has been computed according to the formula:
@@ -185,6 +192,7 @@ OWPnum64_mul(OWPnum64 x, OWPnum64 y)
 #define MILLION 1000000UL
 #define BILLION 1000000000UL
 
+#if	NOT
 /*
 ** Discussion: A + B/(2^32) = C + D/(10^6), so
 ** C = A, and
@@ -213,7 +221,7 @@ OWPtimeval2num64(struct timeval *from)
 	return (res*4294) + (res*15114)/0x3D09; 
 }
 
-
+#endif	/* NOT */
 
 /*
 ** Discussion: A + B/(2^32) = C + D/(10^9), so
@@ -221,7 +229,10 @@ OWPtimeval2num64(struct timeval *from)
 ** D = (B*10^9)/(2^32)
 */
 void
-OWPnum64totimespec(OWPnum64 from, struct timespec *to)
+OWPnum64totimespec(
+	struct timespec	*to,
+	OWPnum64	from
+	)
 {
 	to->tv_sec = from >> 32;
 	to->tv_nsec = (MASK32(from)*BILLION) >> 32;
@@ -258,6 +269,31 @@ OWPusec2num64(u_int32_t usec)
 {
 	return ((u_int64_t)usec*4294) + ((u_int64_t)usec*15114)/0x3D09;
 }
+
+void
+OWPnum64toTimeStamp(
+	OWPTimeStamp	*to,
+	OWPnum64	from
+	)
+{
+	assert(to);
+
+	to->sec = from >> 32;
+	to->frac_sec = from & 0xFFFFFFFF;
+
+	return;
+}
+
+OWPnum64
+OWPTimeStamp2num64(
+	OWPTimeStamp	*from
+	)
+{
+	assert(from);
+	return ((((u_int64_t)from->sec)<<32) + from->frac_sec);
+}
+
+
 /*
 ** This function converts a 32-bit binary string (network byte order)
 ** into a OWPnum64 number (32 least significant bits).
