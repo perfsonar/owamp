@@ -73,10 +73,13 @@ my $slog = tie *MYLOG, 'OWP::Syslog',
 		log_opts	=> 'pid',
 		setlogsock	=> 'unix';
 # make die/warn goto syslog, and also to STDERR.
-my $run_cmd_line = 1;
-my $errfh = \*STDERR if $run_cmd_line;
-$slog->HandleDieWarn($errfh);
-$slog->HandleDieWarn();
+my $run_cmd_line = 0;
+if ($run_cmd_line) {
+    my $errfh = \*STDERR;
+    $slog->HandleDieWarn($errfh);
+} else {
+    $slog->HandleDieWarn();
+}
 undef $slog;	# Don't keep tie'd ref's around unless you need them...
 
 my(@mtypes, @nodes, $val, $rec_addr, $send_addr);
