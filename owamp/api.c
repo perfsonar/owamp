@@ -803,7 +803,8 @@ OWPControlAccept(
 )
 {
 	u_int32_t mode_requested;
- 
+	char challenge[16];
+
 	char buf[MAX_MSG]; /* used to send and receive messages */
 	char token[32];
 	char *class;
@@ -819,11 +820,11 @@ OWPControlAccept(
 
 	/* Compose Server greeting. */
 	memset(buf, 0, sizeof(buf));
-	*(int32_t *)(buf + 12) = htonl(mode_offered);
+	*(u_int32_t *)(buf + 12) = htonl(mode_offered);
 
 	/* generate 16 random bytes of challenge and save them away. */
-	random_bytes(cntrl->challenge, 16);
-	memcpy(buf + 16, cntrl->challenge, 16); /* the last 16 bytes */
+	random_bytes(challenge, 16);
+	memcpy(buf + 16, challenge, 16); /* the last 16 bytes */
 	
 	if (_OWPSendBlocks(cntrl, buf, 2) < 0)
 		return NULL;
