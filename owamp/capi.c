@@ -943,3 +943,34 @@ OWPStopTestSessions(
 
 	return MIN(err,err2);
 }
+
+/*
+** Request records with numbers from <begin> to <end>
+** of a given session <SID>. Process server response (Control-Ack).
+** On success, read the first 16 octets of data transmitted
+** by the server, save the number of records promised into
+** *numrec, and return OWPErrOK. Else return OWPErrFATAL.
+*/
+OWPErrSeverity
+OWPFetchSession(OWPControl cntrl,
+		u_int32_t  begin,
+		u_int32_t  end,
+		OWPSID	   sid,
+		u_int32_t  *num_rec)
+{
+	OWPAcceptType acc_type;
+
+	if (_OWPWriteRetrieveSession(cntrl, begin, end, sid) != OWPErrOK) 
+		return OWPErrFATAL;
+
+	if (_OWPReadControlAck(cntrl, &acc_type) != OWPErrOK)
+		return OWPErrFATAL;
+	
+	if (acc_type != OWP_CNTRL_ACCEPT)
+		return OWPErrFATAL;
+	
+	if (_OWPReadDataHeader(cntrl, num_rec) != OWPErrOK)
+		return OWPErrFATAL;
+	
+	return OWPErrOK;
+}

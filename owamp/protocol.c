@@ -1092,6 +1092,9 @@ _OWPWriteRetrieveSession(
 
 	if(_OWPSendBlocks(cntrl,buf,3) != 3)
 		return OWPErrFATAL;
+
+	cntrl->state |= (_OWPStateControlAck | _OWPStateFetch);
+	cntrl->state &= ~(_OWPStateRequest);
 	return OWPErrOK;
 }
 
@@ -1232,8 +1235,55 @@ _OWPReadControlAck(
 		return OWPErrFATAL;
 	}
 
+	/* If FetchRequest was rejected get back into StateRequest */
+	if (_OWPStateIsFetch(cntrl) && (*acceptval != OWP_CNTRL_ACCEPT)){
+		cntrl->state &= ~(_OWPStateFetch);
+		cntrl->state |= _OWPStateRequest;
+	}
+
 	cntrl->state &= ~_OWPStateControlAck;
 
+	return OWPErrOK;
+}
+
+/*
+** During Fetch session, read the first 16 bytes of data transmission.
+** Save the promised number of records into *num_rec.
+*/
+int
+_OWPReadDataHeader(OWPControl cntrl, u_int32_t *num_rec)
+{
+	u_int8_t *buf = (u_int8_t*)cntrl->msg;
+	u_int8_t *tmp;
+	int i;
+
+	if(!_OWPStateIs(_OWPStateFetch,cntrl)){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+			 "_OWPReadDataHeader called in wrong state.");
+		return OWPErrFATAL;
+	};
+
+	if(_OWPReceiveBlocks(cntrl, buf, 1) != 1){
+		cntrl->state = _OWPStateInvalid;
+		return OWPErrFATAL;
+	}
+
+	/* Check for 8 bytes of zero padding. */
+	tmp = &buf[8];
+	for (i = 0; i < 8; i++) {
+		if (*tmp) {
+			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+			    "Non-zero padding in data header sent by server.");
+			return OWPErrFATAL;
+		}
+	}
+
+	*num_rec = ntohl(*(u_int32_t *)buf);
+	
+	/*
+	  XXX - Type-P descriptor (octets 8-11)
+	*/
+	
 	return OWPErrOK;
 }
 

@@ -112,6 +112,7 @@
  */
 #define	_OWPStatePending	(_OWPStateTestAccept|_OWPStateControlAck|_OWPStateStopSessions)
 
+#define _OWPStateFetch          (0x0200)   /* during fetch-session */
 
 #define	_OWPStateIsInitial(c)	(!(c)->state)
 #define	_OWPStateIsSetup(c)	(!(_OWPStateSetup ^ (c)->state))
@@ -121,6 +122,7 @@
 #define	_OWPStateIsRequest(c)	_OWPStateIs(_OWPStateRequest,c)
 #define	_OWPStateIsReading(c)	_OWPStateIs((_OWPStateReading),c)
 #define _OWPStateIsPending(c)	_OWPStateIs(_OWPStatePending,c)
+#define _OWPStateIsFetch(c)	_OWPStateIs(_OWPStateFetch,c)
 #define	_OWPStateIsTest(c)	_OWPStateIs(_OWPStateTest,c)
 
 /*
@@ -560,4 +562,5 @@ OWPDecodeTimeStamp(
 	u_int32_t	buf[2]
 	);
 
+extern void owp_print_sockaddr(struct sockaddr *sock);
 #endif	/* OWAMPP_H */
