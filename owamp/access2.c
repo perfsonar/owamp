@@ -31,6 +31,8 @@
 /*
 ** This function fills out a datum structure with the given string.
 ** When saving a string, <len> typically should be strlen(bytes) + 1.
+** The memory is dynamically allocated, but normally will not be
+** free()-ed because the key/value just get saved in a hash.
 */
 I2datum*
 owp_raw2datum(const void *bytes, size_t len)
@@ -394,7 +396,8 @@ owp_kid2class(const char *kid, int len, policy_data* policy)
 	
 	assert(kid); assert(policy);
 	hash = policy->passwd;
-	key = owp_raw2datum(kid, len);
+	key->dptr = kid;
+	key->dsize = len;
 	val = I2hash_fetch(hash, key);
 
 	return val? val->dptr : NULL;
@@ -413,7 +416,8 @@ owp_kid2passwd(const char *kid, int len, policy_data* policy)
 	
 	assert(kid); assert(policy);
 	hash = policy->passwd;
-	key = owp_raw2datum(kid, len);
+	key->dptr = kid;
+	key->dsize = len;
 	val = I2hash_fetch(hash, key);
 
 	return val? ((owp_kid_data *)(val->dptr))->passwd : NULL;

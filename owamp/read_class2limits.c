@@ -274,8 +274,6 @@ static int
 owp_str2num(char *str, owp_lim_t *val)
 {
 	char *tmp, *endptr;
-	int t;
-	
 	unsigned long long ret, mult = 1;
 
 	if ((!str) || isspace(*str) || (! isdigit(*str)))
@@ -353,7 +351,8 @@ owp_class2node(char *class, I2table hash)
 {
 	I2datum *key, *val;
 
-	key = owp_raw2datum(class, strlen(class) + 1);
+	key->dptr = class;
+	key->dsize = strlen(class) + 1;
 	val = I2hash_fetch(hash, key);
 	return val? (owp_tree_node_ptr)(val->dptr) : NULL;
 }
