@@ -520,14 +520,14 @@ sub dump{
 # name for the summary line
 # $mode indicates whether the summary file is needed.
 sub get_names_info {
-    my ($self, $mtype, $recv, $sender, $res, $mode) = @_;
+    my ($self, $mtype, $recv, $sender, $res) = @_;
     my $rel_dir = $self->get_rel_path($mtype, $recv, $sender);
     my $datadirname = join('/', $self->must_get_val(ATTR=>'CENTRALDATADIR'),
 			   $rel_dir, $res);
 
     my $full_www = join('/', $self->must_get_val(ATTR=>'CENTRALWWWDIR'), $rel_dir);
 
-    my $summary_file = ($mode == 1)? undef : "$full_www/last_summary";
+    my $summary_file = "$full_www/last_summary";
 
     my $www_reldir = "$rel_dir/$res";
 

@@ -73,6 +73,9 @@ my $slog = tie *MYLOG, 'OWP::Syslog',
 		log_opts	=> 'pid',
 		setlogsock	=> 'unix';
 # make die/warn goto syslog, and also to STDERR.
+my $run_cmd_line = 1;
+my $errfh = \*STDERR if $run_cmd_line;
+$slog->HandleDieWarn($errfh);
 $slog->HandleDieWarn();
 undef $slog;	# Don't keep tie'd ref's around unless you need them...
 
@@ -196,8 +199,8 @@ sub plot_resolution {
     my ($conf, $mtype, $recv, $sender, $age) = @_;
     my $body = "$mtype/$recv/$sender/$res";
     my ($datadir, $summary_file, $wwwdir) =
-	    $conf->get_names_info($mtype, $recv, $sender, $res, $mode);
-    my $png_file = OWP::get_png_prefix($res, $mode);
+	    $conf->get_names_info($mtype, $recv, $sender, $res);
+    my $png_file = $res;
 
     warn "plot_resolution: trying datadir = $datadir" if VERBOSE;
 
@@ -317,7 +320,7 @@ STOP
 
 # convert bucket index to the actual time value
 sub index2pt {
-    my $index = $_[0];
+    my $index = $_[0] + 1;
     die "Index over-run: index = $index"
 	    if ($index < 0 || $index > MAX_BUCKET);
 
@@ -345,14 +348,17 @@ sub get_percentile {
 
     for my $pair (@{$pairs_ref}) {
 	my ($index, $count) = @{$pair};
-	return index2pt($index)*THOUSAND if $sum >= $alpha*$sent;
 	$sum += $count;
+
+	# XXX - note - this presumes 0.1ms precision.
+	return sprintf "%.1f", index2pt($index)*THOUSAND
+		if $sum >= $alpha*$sent;
     }
 
 #    warn "DEBUG: returning max. buckets printout follows:";
 #    print_pairs($pairs_ref);
 
-    return CUTOFF_D;
+    return CUTOFF_D*THOUSAND;
 }
 
 # return start time in seconds if the file is younger than a given 

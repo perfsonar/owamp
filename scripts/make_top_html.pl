@@ -107,7 +107,8 @@ sub fetch_sender_data {
     my $rel_wwwdir = $conf->get_rel_path($mtype, $recv, $sender);
 
     unless (-f $summary_file) {
-	warn "summary file $summary_file not found - skipping";
+	warn "summary file $summary_file not found - skipping"
+		if $sender eq $recv;
 	return join ',', "N/A", "0", "0";
     }
 

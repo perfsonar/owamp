@@ -34,8 +34,7 @@ foreach my $mtype (@mtypes) {
 	foreach my $sender (@nodes) {
 	    my ($rel_dir, $wwwdir, $rel_wwwdir);
 	    (undef, undef, $wwwdir) =
-		    $conf->get_names_info($mtype, $recv, $sender,
-					  $fake_res, $mode);
+		    $conf->get_names_info($mtype, $recv, $sender, $fake_res);
 
 	    if (-f $wwwdir) {
 		warn "$wwwdir exists and is a file - skipping";
@@ -65,7 +64,7 @@ foreach my $mtype (@mtypes) {
 		    my $period_name = $conf->must_get_val(DIGESTRES=>$res,
 						     ATTR=>'PLOT_PERIOD_NAME');
 
-		    my $png_name = OWP::get_png_prefix($res, $mode);
+		    my $png_name = $res;
 		    my $title = "Sample period: $period_name. Frequency: " .
 			    "$res_name";
 		    print h4({-align=>'CENTER'}, $title), "\n";

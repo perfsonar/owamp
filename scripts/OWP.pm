@@ -84,9 +84,4 @@ sub daemonize{
 	return 1;
 }
 
-sub get_png_prefix {
-    my ($res, $mode) = @_;
-    return ($mode == 1)? "$res" : "data-$res";
-}
-
 1;
