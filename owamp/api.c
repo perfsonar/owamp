@@ -789,6 +789,8 @@ OWPStartTestSessions(
 	return OWPErrFATAL;
 }
 
+#define IS_LEGAL_MODE(x) ((x) == OWP_MODE_OPEN | (x) == OWP_MODE_AUTHENTICATED | (x) == OWP_MODE_ENCRYPTED)
+
 /*
  * Function:	OWPControlAccept
  *
@@ -801,8 +803,11 @@ OWPStartTestSessions(
  *
  * Returns:	Valid OWPControl handle on success, NULL if
  *              the request has been rejected, or error has occurred.
- *
- * Side Effect:	
+ *              Return value does not distinguish between illegal
+ *              requests, those rejected on policy reasons, or
+ *              errors encountered by the server during execution.
+ * 
+ * Side Effect:
  */
 OWPControl
 OWPControlAccept(
@@ -813,7 +818,6 @@ OWPControlAccept(
 		 OWPErrSeverity *err_ret   /* err - return                  */
 )
 {
-	u_int32_t mode_requested;
 	char challenge[16];
 
 	char buf[MAX_MSG]; /* used to send and receive messages */
@@ -824,10 +828,13 @@ OWPControlAccept(
 	if ( !(cntrl = _OWPControlAlloc(ctx, err_ret)))
 		return NULL;
 
-	/* XXX - setc cntrl fields, - say,
-	   cntrl->sockfd = connfd, etc
-	*/
 	cntrl->sockfd = connfd;
+	cntrl->server = True;
+	/* XXX TODO: set cntrl->state 
+	   cntrl->mode ???
+	   OWPAddr			remote_addr;
+	   OWPAddr			local_addr;
+	*/
 
 	/* Compose Server greeting. */
 	memset(buf, 0, sizeof(buf));
@@ -837,55 +844,78 @@ OWPControlAccept(
 	random_bytes(challenge, 16);
 	memcpy(buf + 16, challenge, 16); /* the last 16 bytes */
 	
-	if (_OWPSendBlocks(cntrl, buf, 2) < 0)
-		return NULL;
-
-	if (_OWPReadn(cntrl->sockfd, buf, 60) != 60){
+	if (_OWPSendBlocks(cntrl, buf, 2) < 0){
+		*err_ret = OWPErrFATAL;
+		OWPControlClose(cntrl);
 		return NULL;
 	}
 
-	mode_requested = ntohl(*(u_int32_t *)buf);
+	/* Read client greeting */
+	if (_OWPReadn(cntrl->sockfd, buf, 60) != 60){
+		*err_ret = OWPErrFATAL;
+		OWPControlClose(cntrl);
+		return NULL;
+	}
+
+	cntrl->mode = ntohl(*(u_int32_t *)buf); /* requested mode */
 	
 	/* insure that exactly one is chosen */
-	if ( !(mode_requested == OWP_MODE_OPEN 
+	if ( ! IS_LEGAL_MODE(cntrl->mode))
+	     /*(mode_requested == OWP_MODE_OPEN 
 	       | mode_requested == OWP_MODE_AUTHENTICATED
-	       | mode_requested == OWP_MODE_ENCRYPTED ))
+	       | mode_requested == OWP_MODE_ENCRYPTED ) */
 		{
 			*err_ret = OWPErrFATAL;
-			return cntrl;
+			OWPControlClose(cntrl);
+			return NULL;
 				}
 
-	if (mode_requested & ~mode_offered){ /* can't provide requested mode */
-		_OWPServerOK(cntrl, CTRL_REJECT);
+	if (cntrl->mode & ~mode_offered){ /* can't provide requested mode */
+		if (_OWPServerOK(cntrl, CTRL_REJECT) < 0)
+			*err_ret = OWPErrFATAL;
+		OWPControlClose(cntrl);
 		return NULL;
 	}
 	
-	if (mode_requested & (OWP_MODE_AUTHENTICATED|OWP_MODE_ENCRYPTED)){
+	if (cntrl->mode & (OWP_MODE_AUTHENTICATED|OWP_MODE_ENCRYPTED)){
 		OWPByte binKey[16];
-
-		memcpy(cntrl->kid, buf + 4, 8); /* Save 8 bytes of kid */
-
+		
+		memcpy(cntrl->kid_buffer, buf + 4, 8); /* 8 bytes of kid */
+		cntrl->kid = cntrl->kid_buffer;
+		
+		/* Fetch the encryption key into binKey */
 		if(!_OWPCallGetAESKey(cntrl->ctx, buf + 4, binKey, err_ret)){
 			if(*err_ret != OWPErrOK){
 				*err_ret = OWPErrFATAL;
+				OWPControlClose(cntrl);
 				return NULL;
 			}
 		}
-
-
-		if (OWPDecryptToken(binKey, buf + 12, token) < 0)
+		
+		if (OWPDecryptToken(binKey, buf + 12, token) < 0){
+			OWPControlClose(cntrl);
 			return NULL;
-
+		}
+		
 		/* Decrypted challenge is in the first 16 bytes */
 		if (memcmp(challenge, token, 16) != 0){
 			_OWPServerOK(cntrl, CTRL_REJECT);
+			OWPControlClose(cntrl);
 			return NULL;
 		}
-
+		
+		if (_OWPCallCheckControlPolicy(
+			   cntrl->ctx, cntrl->mode, cntrl->kid, 
+			    cntrl->local_addr, cntrl->remote_addr, 
+			   err_ret) == False){
+			_OWPServerOK(cntrl, CTRL_REJECT);
+			OWPControlClose(cntrl);
+			return NULL;
+		}	
 		/* XXX - Authentication ok - determine usage class now. 
 		   BUT: libowamp doesn't know about policy!!!
 		   Must make use of hook function here.
-		if (class = (GetClass(cntrl->kid)) == NULL)
+		if ((class = GetClass(cntrl->kid)) == NULL)
 			class = OWP_MODE_AUTHENTICATED;
 		
 		if ((GetMode(class) & mode_requested) == 0){
@@ -915,7 +945,6 @@ OWPControlAccept(
 	}
 
 	/* Apparently everything is ok. Accept the Control session. */
-	cntrl->mode = mode_requested;
 	_OWPServerOK(cntrl, CTRL_ACCEPT);
 	return cntrl;
 }
