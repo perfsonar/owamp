@@ -11,6 +11,10 @@
 #define DEFAULT_CLASS_TO_LIMITS_FILE 	"class2limits.conf" 
 #define DEFAULT_PASSWD_FILE 		"owamp_secrets.conf"
 
+#define CNTRLNEXT return True
+#define CNTRLSTOP return False
+
+
 int ip2class_flag = 0;
 int class2limits_flag = 0;
 int passwd_flag = 0;
@@ -203,17 +207,6 @@ tcp_listen(OWPContext ctx,
 }
 /* end tcp_listen */
 
-/* 
-** This function is called when the server doesn't even want
-** to speak Control protocol with a particular host.
-*/
-
-void
-do_ban(int fd)
-{
-	close(fd);
-}
-
 /*
 ** Handler function for SIG_CHLD. It updates the number
 ** of available Control connections.
@@ -246,6 +239,103 @@ owampd_err_func(
 	return 0;
 }
 
+
+OWPBoolean
+ServerMainControl(OWPControl cntrl, OWPErrSeverity* out)
+{
+	pid_t pidlet;
+	char buf[MAX_MSG];
+	int msg_type;
+	
+	if ((msg_type = OWPServerReadRequest(cntrl, buf)) < 0)
+		/* CNTRLNEXT; */
+		return True;
+				
+	switch (msg_type) {
+	case OWP_CTRL_REQUEST_SESSION:
+		/* DEBUG only */
+		fprintf(stderr, 
+			"DEBUG: client issued a session request");
+		CNTRLNEXT;
+		
+		/* XXX fill in!
+		   if (ParseRest(cntrl) < 0){
+		   rude_close();
+		   clean_up();
+		   again = False;
+		   CNTRLNEXT;
+		   }
+		*/
+		if (_OWPCallCheckTestPolicy(cntrl, 0, NULL, NULL, NULL, 
+					    NULL, &out) == False){
+					  
+			/*
+			  polite_close();
+			  clean_up();
+			*/
+			CNTRLSTOP;
+		}
+		/*
+		  prepare_for fork();  
+		  data for kid,
+		  sig_handlers etc
+		*/
+		
+		pidlet = fork();
+		switch (pidlet) {
+		case -1:
+			/* loud_complain(); */
+			exit(1);
+			break;
+			
+		case 0: /* child */
+			/*
+			  do_descriptors();
+			  OWPDoTest();
+			  clean_up(0);
+			*/
+			exit(0);
+			break;
+			
+		default: /* parent */
+			/* bond_with(pidlet); */
+			/* XXX 
+			   - work this out
+			*/
+			CNTRLNEXT;
+			break;
+		}
+		
+	case OWP_CTRL_START_SESSION:
+		/* DEBUG only */
+		fprintf(stderr, 
+			"DEBUG: client issued a session start");
+		CNTRLNEXT;
+		
+		OWPServerProcessTestStart(cntrl, buf);
+		break;
+	case OWP_CTRL_STOP_SESSION:
+		/* DEBUG only */
+		fprintf(stderr, 
+			"DEBUG: client issued a session stop");
+		CNTRLNEXT;
+		
+		OWPServerProcessTestStop(cntrl, buf);
+		break;
+	case OWP_CTRL_RETRIEVE_SESSION:
+		/* DEBUG only */
+		fprintf(stderr, 
+			"DEBUG: client issued a session retrieve");
+		CNTRLNEXT;
+		
+		OWPServerProcessSessionRetrieve(cntrl, buf);
+		break;
+	default:
+		return False; /* bad message type */
+		break;
+	}
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -261,6 +351,8 @@ main(int argc, char *argv[])
 	char*                  port = NULL;
 	char*                  host = NULL; 
 	pid_t                  pid; 
+	fd_set                 readfds, mask;/* listenfd, and pipes to kids */
+	int                    maxfd;    /* max fd in readfds               */
 	OWPErrSeverity         out;
 	OWPContext             ctx;
 	OWPControl             cntrl; /* XXX - remember to initialize. */
@@ -272,8 +364,8 @@ main(int argc, char *argv[])
 		NULL,
 		owampd_err_func, 
 		NULL,
-		owamp_first_check,
-		check_control, 
+		/* owamp_first_check, */ NULL,
+		/* check_control, */ NULL,
 		NULL,
 		NULL,
 		NULL,
@@ -340,161 +432,134 @@ main(int argc, char *argv[])
 
 	listenfd = tcp_listen(ctx, NULL, SERV_PORT_STR, &addrlen);
 
-	while (1) {
-		OWPBoolean again = True;
-		socklen_t len = addrlen;
+	FD_ZERO(&readfds);
+	FD_SET(listenfd, &readfds);
+	maxfd = listenfd;
 
-		if ( (connfd = accept(listenfd, &cliaddr, &addrlen)) < 0){
-			if (errno == EINTR)
-				continue;
+	while (1) {
+		int nfound, fd;
+		fd_set mask = readfds;
+		socklen_t len = addrlen;
+	AGAIN:
+		nfound = select(maxfd + 1, &mask, NULL, NULL, NULL);
+		if (nfound < 0){
+			if (errno = EINTR)
+				goto AGAIN;
 			else {
-				perror("accept()");
+				I2ErrLog(eh, "select() failed. Exiting...");
 				exit(1);
 			}
 		}
 
-		if (OWPServerCheckAddrPolicy(ctx, &cliaddr, &out)
-		    == False){
-			do_ban(connfd);     /* access denied */
+		if (nfound == 0)  /* should not happen with infinite timeout */
 			continue;
-		}
 
-		if (free_connections == 0){
-			do_ban(connfd);
-			continue;
-		}
+		if (FD_ISSET(listenfd, &mask)){ /* new connection */
+			int mode_available;
+			int        new_pipe[2];
+			pid_t      pid;
+			OWPBoolean auth_ok;
+			OWPBoolean again;
 
-		free_connections--;
+			fprintf(stderr, "DEBUG: received new connection\n");
 
-		if ( (pid = fork()) < 0){
-			perror("fork");
-			exit(1);
-		}
-		
-		if (pid > 0) { /* parent */
-			close(connfd);
-			continue;
-		}
-		
-		/* child */
-		cntrl = OWPControlAccept(ctx, connfd, default_offered_mode,
-					 policy, &out);
-		
-		if (cntrl == NULL){
-			close(connfd);
-			exit(0);
-		}
-		
-		while (again == True) {
-			pid_t pidlet;
-			char buf[MAX_MSG];
-			int msg_type;
-			/*
-			  if ( OWPGetRequestType(cntrl, &msg_type) < 0){
-			  clean_up(); 
-			  exit(0);
-			  }
-			*/
-
-			if ((msg_type = OWPServerReadRequest(cntrl, buf)) < 0)
-				continue;
-			
-			switch (msg_type) {
-			case OWP_CTRL_REQUEST_SESSION:
-				/* DEBUG only */
-				fprintf(stderr, 
-				    "DEBUG: client issued a session request");
-				continue;
-
-				/* XXX fill in!
-				if (ParseRest(cntrl) < 0){
-					rude_close();
-					clean_up();
-					again = False;
-					continue;
-				}
-				*/
-				if (_OWPCallCheckTestPolicy(cntrl, 0, NULL,
-				     NULL, NULL, NULL, &out) == False){
-					/*
-					polite_close();
-					clean_up();
-					*/
-					again = False;
-					continue;
-				}
-				/*
-				prepare_for fork();  
-				data for kid,
-				sig_handlers etc
-				*/
-
-				pidlet = fork();
-				switch (pidlet) {
-				case -1:
-					/* loud_complain(); */
+		ACCEPT:
+			connfd = accept(listenfd, &cliaddr, &len);
+			if (connfd < 0){
+				if (errno == EINTR)
+					goto ACCEPT;
+				else {
+					perror("accept()");
 					exit(1);
-					break;
-
-				case 0: /* child */
-					/*
-					do_descriptors();
-					OWPDoTest();
-					clean_up(0);
-					*/
-					exit(0);
-					break;
-
-				default: /* parent */
-					/* bond_with(pidlet); */
-					/* XXX 
-					   - work this out
-					*/
-					continue;
-					break;
 				}
-			
-			case OWP_CTRL_START_SESSION:
-				/* DEBUG only */
-				fprintf(stderr, 
-				    "DEBUG: client issued a session start");
-				continue;
-
-				OWPServerProcessTestStart(cntrl, buf);
-				break;
-			case OWP_CTRL_STOP_SESSION:
-				/* DEBUG only */
-				fprintf(stderr, 
-				    "DEBUG: client issued a session stop");
-				continue;
-
-				OWPServerProcessTestStop(cntrl, buf);
-				break;
-			case OWP_CTRL_RETRIEVE_SESSION:
-				/* DEBUG only */
-				fprintf(stderr, 
-				    "DEBUG: client issued a session retrieve");
-				continue;
-
-				OWPServerProcessSessionRetrieve(cntrl, buf);
-				break;
-			default:
-				return False; /* bad message type */
-				break;
 			}
 			
-			/*
-			  again = OWPServerControlMain(cntrl, &out);
-			*/
-		}
+			if (pipe(new_pipe) < 0){
+				I2ErrLog(eh, "pipe() failed. Exiting...");
+				exit(1);
+			}
+
+			free_connections--;
+			pid = fork();
+
+			if (pid < 0){
+				I2ErrLog(eh, "fork() failed. Exiting...");
+				exit(1);	
+			}
+			
+			if (pid > 0){ /* Parent */
+				FD_SET(new_pipe[0], &readfds);
+				close(new_pipe[1]);
+				
+				if (new_pipe[0] > maxfd)
+					maxfd = new_pipe[0];
+
+				/* fd2pid{new_pipe[0]} = pid */
+
+				/* Go to check the pipes and then continue; */
+			}
+
+			goto PARENT_CHECK_PIPES;
+			
+			/* Child code */
+			mode_available = default_offered_mode;
+			close(new_pipe[0]);
+			close(listenfd);
+
+			if (free_connections <= 0)
+				mode_available &= OWP_MODE_OPEN;
+
+			if (OWPServerCheckAddrPolicy(ctx, &cliaddr, &out) 
+			    == False){
+				fprintf(stderr,"DEBUG: policy check failed\n");
+				close(connfd);     /* access denied */
+				exit(0);
+			}
+
+			fprintf(stderr, "DEBUG: policy check succeeded\n");
+
+			cntrl = OWPControlAccept(ctx, connfd, mode_available,
+						 policy, &out);
+			if (cntrl == NULL)
+				exit(0);
+			
+			while (again == True) {
+				again = ServerMainControl(cntrl, &out);
+			}
+			
+			/* Child done - exiting.*/
+			exit(0); /* May need more sophisticated decision */
+
+		} /* FD_ISSET(listenfd) */
 		
-		/* 
-		   Now start working with the valid OWPControl handle. 
-		   ...
-		   ...
-		   ...
+		/* In any case, parent checks the pipes here. 
+		   NOTE: may be better to a make a short function
+		   out of it.
 		*/
+	PARENT_CHECK_PIPES:
+		/* blah blah ... */
 		
+		for (fd = 0; fd <= maxfd; fd++){
+			if (FD_ISSET(fd, &mask)){
+				char buf[1];
+				int n = read(fd, buf, 1);
+				close(fd);
+
+				if (n < 0){
+					perror("read");
+				}
+				if (strncmp(buf, "1", 1) == 0){ /* auth */
+					free_connections++;
+					/*
+					  pid = fd2pid{new_pipe[0]};
+					  is_auth{pid} = 1
+
+					*/
+				} 
+			}
+		}
+
+		continue;
 	}
 	
 	I2hash_close(&policy->ip2class);
@@ -503,4 +568,3 @@ main(int argc, char *argv[])
 
 	exit(0);
 }
-
