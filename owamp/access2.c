@@ -11,7 +11,7 @@
 *									*
 ************************************************************************/
 /*
-**	File:		access.c
+**	File:		access2.c
 **
 **	Author:		Anatoly Karp
 **
@@ -27,6 +27,70 @@
 #include <owamp/owamp.h>
 #include "access.h"
 
+/*
+** Create a datum struct out of a netmask and return a pointer.
+*/
+static I2datum*
+netmask2datum(void *addr, long num_offset, int af)
+{
+	return NULL; /* XXX - TODO */
+}
+
+/*
+** This function fills out a datum structure with the given string.
+** <len> typically should be strlen(bytes) + 1.
+*/
+static I2datum*
+str2datum2(const char *bytes, size_t len)
+{
+	I2datum *dat;
+
+	if ( (dat = (void *)malloc(sizeof(I2datum))) == NULL){
+		perror("malloc");
+		exit(1);
+	}
+	if ( (dat->dptr = (void *)malloc(len)) == NULL) {
+		perror("malloc");
+		exit(1);
+	}		
+
+	bcopy(bytes, dat->dptr, len);
+	dat->dsize = len;
+	return dat;
+}
+
+/*
+** Check if a given IPv6 netmask is legal. Return 1 if yes, 0 otherwise.
+*/
+int
+is_valid_netmask6(struct sockaddr_in6 *addr, long num_offset)
+{
+	int i;
+	u_int8_t *ptr;
+	long nbytes, nbits;
+
+	if (num_offset < 0 || num_offset > 128)
+		return 0;
+
+	nbytes = num_offset/8;
+	nbits = num_offset%8;
+	ptr = (addr->sin6_addr.s6_addr) + nbytes;
+
+	if (nbits){     /* The last (8-nbits) bits must be zero. */
+		if (*ptr++ && (((u_int8_t)1 << (8 - nbits)) - 1))
+			return 0;
+		nbytes++;
+	}
+	
+	/* Make sure all subsequent bytes are zero. */
+	for (i = 0; i < 16 - nbytes; i++) {
+		if (*ptr++) 
+			return 0;
+	}
+
+	return 1;
+}
+
 int
 owamp_read_id2class(OWPContext ctx,
 		    const char *id2class, 
@@ -34,6 +98,8 @@ owamp_read_id2class(OWPContext ctx,
 {
 	FILE *fp;
 	char line[MAX_LINE];
+	I2datum *key, *val;
+
 	unsigned long line_num = 0;
 
 	printf("DEBUG: reading file %s...\n", id2class);
@@ -46,11 +112,10 @@ owamp_read_id2class(OWPContext ctx,
 
 	while (fgets(line, sizeof(line), fp) != NULL) {
 		struct addrinfo hints, *res;
-		long num_offset, nbytes, nbits;
+		long num_offset;
 		u_int32_t addr;
-		u_int8_t *ptr;
 		int i;
-		int bad_mask = 0;
+		size_t len;
 		char *brkt, *brkb, *id, *class, *slash, *nodename, *offset;
 
 		line_num++;
@@ -67,6 +132,8 @@ owamp_read_id2class(OWPContext ctx,
 			OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, "Warning: reading config file %s...\nLine %lu: no classname given\n", id2class, line_num);
 			continue;
 		}
+		len = strlen(class) + 1;
+		val = str2datum2(class, len);
 
 		/* Prepare the hints structure. */
 		memset(&hints, 0, sizeof(struct addrinfo));
@@ -76,20 +143,19 @@ owamp_read_id2class(OWPContext ctx,
 
 		slash = strchr(id, '/');
 
-		if (!slash) { 
+		if (!slash) { /* Either KID or single IP address. */
 			if (getaddrinfo(nodename, NULL, &hints, &res) < 0) {
-			
-			/* id is KID */
+				/* id is KID */
+				len = (strlen(nodename) > 8)?
+					9 : strlen(nodename) + 1;
+				nodename[len] = '\0';
+				key = str2datum2(nodename, len);
 
-			/*
-			  TODO: turn KID into a key, and add to the hash
-			*/
-
-			return 0;
-
+				I2hash_store(id2class_hash, key, val);
+				continue;
 			}
 			
-			/* Otherwise this is an IP address. */
+			/* Otherwise this is a single IP address. */
 			switch (res->ai_family) {
 			case AF_INET:
 				num_offset = 32;
@@ -101,120 +167,65 @@ owamp_read_id2class(OWPContext ctx,
 				continue;
 				break;
 			}
-			
-		} else { /* The IP address case. */
+		} else { /* The IP netmask case. */
 			nodename = strtok_r(id, "/", &brkb);
 			if (!nodename)           /* paranoia */
 				continue;
 			
-			if (getaddrinfo(nodename, NULL, &hints, &res) < 0) {
-			    OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, "Warning: reading config file %s...\nLine %lu: bad IP address\n", id2class, line_num);
-			    continue;
-			}
+			if (getaddrinfo(nodename, NULL, &hints, &res) < 0)
+				goto BAD_MASK;
 			
 			/* check if there is CIDR offset */
 			offset = strtok_r(NULL, "/", &brkb);
 			
-			if (!offset){
-				OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, 
-				  "Warning: reading config file %s...\nLine %lu: netmask must have a numeric offset after the slash.\n", id2class, line_num); 
-				continue;
-			}
+			if (!offset)
+				goto BAD_MASK;
 			
 			num_offset = strtol(offset, NULL, 10);
-			if (num_offset == 0 && strncmp(offset, "0", 2)) {
-				OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, 
-					 "Warning: reading config file %s...\nLine %lu: bad numeric offset after the slash.\n", id2class, line_num); 
-				continue;
-			}
+			if (num_offset == 0 && strncmp(offset, "0", 2))
+				goto BAD_MASK;
 		}
 
 		/* At this point both addrinfo and num_offset are set. 
 		   First check if netmask is correctly specified. */
-
 		switch (res->ai_family) {
 		case AF_INET:
 			addr = 
 		  ntohl(((struct sockaddr_in *)res->ai_addr)->sin_addr.s_addr);
-			
-			if ((num_offset > 32) || (num_offset < 0)) {
-				OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, 
-			     "Warning: reading config file %s...\nLine %lu: numeric offset for IPv4 address must be between 0 and 32.\n", id2class, line_num); 
-				continue;
-			}
-			
-			if (!num_offset) {
-				if (addr){
-				  OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, 
-				    "Warning: reading config file %s...\nLine %lu: numeric offset 0 requires network address to be 0.\n", id2class, line_num); 
-					continue;
-					
-				} else {
-					/* 
-					   TODO: handle 0/0 case here 
-					*/
-					continue;
-				}
-			}
-			/* Now 1 <= num_offset <= 32. */
-			if (addr & (((unsigned long)1<<(32-num_offset)) - 1)) {
-				OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, 
-				    "Warning: reading config file %s...\nLine %lu: bad netmask.\n", id2class, line_num); 
-				continue;
-			}
-			/* (addr, num_offset) pair is sane. */
-			/* 
-			   TODO: process it here
-			*/
-			
-			continue;
+
+			/* Check if (addr, offset) combination is legal. */
+			if ( (num_offset > 32) 
+			     || (num_offset < 0)
+			     || (!num_offset && addr)
+			     || (num_offset 
+				 && (addr 
+				     & (((u_int8_t)1<<(32-num_offset)) - 1)))
+			     ) 
+				goto BAD_MASK;
 			break;
 		case AF_INET6:
-			nbytes = num_offset / 8;
-			nbits = num_offset%8;
-			ptr = 
-	  (((struct sockaddr_in6 *)res->ai_addr)->sin6_addr.s6_addr) + nbytes;
-			if (nbits){
-				if (*ptr++ 
-				  && (((unsigned long)1 << (8 - nbits)) - 1)) {
-				/*
-				  bad netmask
-				*/
-
-					continue;
-				}
-				
-				nbytes++;
-			}
-
-			/* Make sure all subsequent bytes are zero. */
-			for (i = 0; i < 16 - nbytes; i++) {
-				if (*ptr++) {
-					/*
-					  bad netmask
-					*/
-					bad_mask++;
-					break;
-				}
-				
-			}
-
-			if (bad_mask)
-				continue;
-			
-			/* If got this far: (addr, num_offset) pair is sane. */
-			/* 
-			   TODO: process it here
-			*/
-					
-			continue;
+			if (!is_valid_netmask6(
+					 (struct sockaddr_in6 *)(res->ai_addr),
+					 num_offset))
+				goto BAD_MASK;
 			break;
-			
-
 		default:
-			break;
-		} /* switch */
-		
+			continue; /* Should not happen. */
+		}
+
+		/* Now netmask is known to be legal - save it in a hash. */
+		key = netmask2datum(&addr, num_offset, res->ai_family);
+#if 1
+		if (!key)
+			continue; /* XXX - fixit */
+#endif
+		I2hash_store(id2class_hash, key, val);
+		continue;
+
+	BAD_MASK:
+		OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, 
+			 "Warning: reading config file %s...\nLine %lu: bad netmask.\n", id2class, line_num); 
+		continue;		
 		
 	} /* while */
 
@@ -237,9 +248,8 @@ owamp_read_class2limits2(OWPContext ctx, const char *class2limits, I2table hash)
 /* 
 ** This function initializes policy database and returns the
 ** resulting handle (to be passed to any policy checks) on success,
-** or NULL on error.
-** It expects fulls paths to configuration files (to be specified
-** by application).
+** or NULL on error. It expects fulls paths to configuration files 
+** (to be specified by application).
 */
 
 policy_data *
