@@ -517,4 +517,19 @@ OWPControlAccept(
 		 OWPErrSeverity *err_ret   /* err - return                  */
 		 );
 
+/*
+** Fetch context field of OWPControl structure.
+*/
+extern OWPContext
+OWPGetContext(OWPControl cntrl);
+
+/* 
+** This function does the first policy check on the server. 
+*/
+extern OWPBoolean
+OWPServerCheckAddrPolicy(OWPContext ctx, 
+			 struct sockaddr *addr, 
+			 OWPErrSeverity *err_ret
+			 );
+
 #endif	/* OWAMP_H */
