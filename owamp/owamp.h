@@ -50,6 +50,14 @@
 #define CTRL_ACCEPT 0
 #define CTRL_REJECT 1
 
+/*
+** Types of Control protocol messages.
+*/
+#define OWP_CTRL_REQUEST_SESSION         1
+#define OWP_CTRL_START_SESSION           2
+#define OWP_CTRL_STOP_SESSION            3
+#define OWP_CTRL_RETRIEVE_SESSION        4
+
 /* Default mode offered by the server */
 #define OWP_DEFAULT_OFFERED_MODE 	(OWP_MODE_OPEN|OWP_MODE_AUTHENTICATED|OWP_MODE_ENCRYPTED)
 
@@ -516,6 +524,8 @@ OWPControlAccept(
 		 void           *app_data, /* policy                        */
 		 OWPErrSeverity *err_ret   /* err - return                  */
 		 );
+int
+OWPServerReadRequest(OWPControl cntrl, char *buf);
 
 /*
 ** Fetch context field of OWPControl structure.
