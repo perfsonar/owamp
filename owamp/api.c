@@ -371,14 +371,13 @@ _OWPClientConnect(
 
 	if((!server_addr) &&
 		!(server_addr = OWPAddrByNode(cntrl->ctx,"localhost"))){
-		return -1;
+		goto error;
 	}
 
 	if(server_addr->fd > -1){
 		cntrl->remote_addr = server_addr;
 		cntrl->sockfd = server_addr->fd;
-
-		return 0;
+		goto error;
 	}
 
 	if(!server_addr->ai){
@@ -399,8 +398,7 @@ _OWPClientConnect(
 								|| !airet){
 			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,errno,
 					":getaddrinfo()");
-			*err_ret = OWPErrFATAL;
-			return -1;
+			goto error;
 		}
 
 		server_addr->ai = airet;
@@ -420,8 +418,7 @@ _OWPClientConnect(
 			 */
 			if(!_OWPClientBind(cntrl,fd,local_addr,ai,&addr_ok)){
 				if(addr_ok != OWPErrOK){
-					*err_ret = addr_ok;
-					return -1;
+					goto error;
 				}
 				goto next;
 			}
@@ -436,8 +433,7 @@ _OWPClientConnect(
 			if(!_OWPCallCheckAddrPolicy(cntrl->ctx,NULL,
 						&server_addr->saddr,&addr_ok)){
 				if(addr_ok != OWPErrOK){
-					*err_ret = addr_ok;
-					return -1;
+					goto error;
 				}
 				goto next;
 			}
@@ -454,6 +450,7 @@ _OWPClientConnect(
 			server_addr->saddr = *ai->ai_addr;
 			server_addr->saddr_set = True;
 			cntrl->remote_addr = server_addr;
+			cntrl->local_addr = local_addr;
 			cntrl->sockfd = fd;
 
 			return 0;
@@ -469,7 +466,11 @@ next:
 
 	OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,OWPErrUNKNOWN,
 			"No Valid Addr's");
+error:
 	*err_ret = OWPErrFATAL;
+	OWPAddrFree(local_addr);
+	OWPAddrFree(server_addr);
+
 	return -1;
 }
 
@@ -575,7 +576,7 @@ OWPControlOpen(
 )
 {
 	int		fd;
-	OWPControl	cntrl = _OWPControlAlloc(ctx,err_ret);
+	OWPControl	cntrl;
 	u_int32_t	mode_avail;
 	OWPByte		key_value[16];
 	OWPByte		*key=NULL;
@@ -583,20 +584,14 @@ OWPControlOpen(
 
 	*err_ret = OWPErrOK;
 
-	if( !(cntrl = _OWPControlAlloc(ctx,err_ret))){
-		OWPAddrFree(server_addr);
-		return NULL;
-	}
+	if( !(cntrl = _OWPControlAlloc(ctx,err_ret)))
+		goto error;
 
-	if(_OWPClientConnect(cntrl,local_addr,server_addr,err_ret) != 0){
-		_OWPControlFree(cntrl);
-		return NULL;
-	}
+	if(_OWPClientConnect(cntrl,local_addr,server_addr,err_ret) != 0)
+		goto error;
 
-	if(_OWPClientReadServerGreeting(cntrl,&mode_avail,err_ret) != 0){
-		_OWPControlFree(cntrl);
-		return NULL;
-	}
+	if(_OWPClientReadServerGreeting(cntrl,&mode_avail,err_ret) != 0)
+		goto error;
 
 	/*
 	 * Select mode wanted...
@@ -608,10 +603,8 @@ OWPControlOpen(
 	if(kid &&
 		(mode_avail & (OWP_MODE_ENCRYPTED|OWP_MODE_AUTHENTICATED))){
 		if(!_OWPCallGetAESKey(ctx,kid,&key_value,err_ret)){
-			if(*err_ret != OWPErrOK){
-				_OWPControlFree(cntrl);
-				return NULL;
-			}
+			if(*err_ret != OWPErrOK)
+				goto error;
 		}
 		else
 			key = key_value;
@@ -633,9 +626,7 @@ OWPControlOpen(
 		cntrl->mode = OWP_MODE_OPEN;
 	}else{
 		OWPError(ctx,OWPErrFATAL,OWPErrPOLICY,"No Common Modes");
-		*err_ret = OWPErrFATAL;
-		_OWPControlFree(cntrl);
-		return NULL;
+		goto error;
 	}
 
 	/*
@@ -644,8 +635,8 @@ OWPControlOpen(
 	 */
 	if(!_OWPCallCheckControlPolicy(ctx,cntrl->mode,kid,cntrl->key,
 			&local_addr->saddr,&server_addr->saddr,err_ret)){
-		_OWPControlFree(cntrl);
-		return NULL;
+		OWPError(ctx,OWPErrFATAL,OWPErrPOLICY,"Failed policy check");
+		goto error;
 	}
 
 	/*
@@ -654,10 +645,8 @@ OWPControlOpen(
 	 * session key and the challenge from the server. It also generates
 	 * the ClientIV for encryption.
 	 */
-	if(_OWPClientInitEncryptionValues(cntrl,err_ret)!=0){
-		_OWPControlFree(cntrl);
-		return NULL;
-	}
+	if(_OWPClientInitEncryptionValues(cntrl,err_ret)!=0)
+		goto error;
 
 	/*
 	 * This function requests the cntrl->mode communication from the
@@ -665,12 +654,19 @@ OWPControlOpen(
 	 * server accepts this, it will return 0 - otherwise it will
 	 * return with an error.
 	 */
-	if(_OWPClientRequestModeReadResponse(cntrl,err_ret) != 0){
-		_OWPControlFree(cntrl);
-		return NULL;
-	}
+	if(_OWPClientRequestModeReadResponse(cntrl,err_ret) != 0)
+		goto error;
 
 	return cntrl;
+
+error:
+	*err_ret = OWPErrFATAL;
+	if(cntrl->local_addr != local_addr)
+		OWPAddrFree(local_addr);
+	if(cntrl->remote_addr != server_addr)
+		OWPAddrFree(server_addr);
+	_OWPControlFree(cntrl);
+	return NULL;
 }
 
 /*
