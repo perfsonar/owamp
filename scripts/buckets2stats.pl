@@ -14,13 +14,21 @@ use strict;
 
 # usage: buckets2stats.pl <resolution>
 
+# The script operates in two modes:
+# mode 1 just produces the graphs;
+# mode 2 also places a brief summary into a designated file - it can
+# be later fetched by make_top_html.pl to fill in values in the
+# front page table.
+
 use strict;
-use constant DEBUG => 1;
+use constant DEBUG => 0;
 use constant VERBOSE => 1;
 use FindBin;
 use lib ("$FindBin::Bin");
 use IO::Handle;
 use File::Path;
+use File::Temp qw/ tempfile /;
+
 use OWP;
 
 use constant TESTING => 0; # XXX - set to 0 eventually
@@ -44,8 +52,9 @@ my $mesh_low = (CUTOFF_B - CUTOFF_A)/NUM_LOW;
 my $mesh_mid = (CUTOFF_C - CUTOFF_B)/NUM_MID;
 my $mesh_high = (CUTOFF_D - CUTOFF_C)/NUM_HIGH;
 
-die "Usage: buckets2stats.pl <resolution>" unless (@ARGV == 1);
+die "Usage: buckets2stats.pl <resolution> [mode]" unless (@ARGV >= 1);
 my $res = $ARGV[0]; # current resolution we are working with
+my $mode = $ARGV[1] || 1;
 
 $| = 1;
 
@@ -56,10 +65,6 @@ my(@mtypes, @nodes, $val, $rec_addr, $send_addr);
 @nodes = $conf->get_val(ATTR=>'MESHNODES');
 my $dataroot = $conf->{'CENTRALUPLOADDIR'};
 my $digest_suffix = $conf->get_val(ATTR=>'DigestSuffix');
-my $wwwdir = $conf->{'CENTRALWWWDIR'};
-
-# my @reslist = $conf->get_val(ATTR=>'DIGESTRESLIST');
-# print $conf->dump;
 
 open(GNUPLOT, "| gnuplot") or die "cannot execute gnuplot";
 autoflush GNUPLOT 1;
@@ -75,32 +80,41 @@ foreach my $mtype (@mtypes){
 	    $send_addr = $conf->get_val(NODE=>$sender, TYPE=>$mtype,
 					ATTR=>'ADDR');
 	    next unless defined $send_addr;
-	    my $body = "$mtype/$recv/$sender/$res";
-	    plot_resolution($dataroot, $body, $age,
-			    "$wwwdir/$body", "$res.png");
+	    plot_resolution($conf, $mtype, $recv, $sender, $age, $mode);
 	}
     }
 }
 
+# This sub creates plots for the given combination of parameters.
 sub plot_resolution {
-    my ($prefix, $body, $age, $outdir, $outfile) = @_;
-    printlist(@_);
-    my $datadir = "$prefix/$body";
-    print "datadir = $datadir\n";
-    my @all = split /\n/, `ls $datadir`;
-    printlist(@all);
+    my ($conf, $mtype, $recv, $sender, $age, $mode) = @_;
+    my $body = "$mtype/$recv/$sender/$res";
+    my ($datadir, $rel_wwwdir, $filename, $png_file) =
+	    $conf->get_names_info($mtype, $recv, $sender, $res, $mode);
 
-    if (-f $outdir) {
-	warn "designated directory $outdir is a file! - skipping";
+    my $wwwdir = $conf->get_www_path($rel_wwwdir);
+
+    print "plot_resolution: trying datadir = $datadir\n" if VERBOSE;
+
+    unless (-d $datadir) {
+	warn "directory $datadir does not exist - skipping";
 	return;
     }
 
-    unless (-d $outdir) {
-	mkpath([$outdir], 0, 0755) or die "Could not create dir $outdir: $!";
+    my @all = split /\n/, `ls $datadir`;
+    printlist(@all) if DEBUG;
+
+    if (-f $wwwdir) {
+	warn "designated directory $wwwdir is a file! - skipping";
+	return;
+    }
+
+    unless (-d $wwwdir) {
+	mkpath([$wwwdir], 0, 0755) or die "Could not create dir $wwwdir: $!";
     }
 
     my $gnu_dat = "$datadir/$res.dat";
-    open(GNUDAT, ">>$gnu_dat") or die "Could not open a gnuplot data file";
+    open(GNUDAT, ">$gnu_dat") or die "Could not open a gnuplot data file";
 
     my $init = time();
     my $got_data = 0;
@@ -109,7 +123,7 @@ sub plot_resolution {
 	my $ofile = $file;
 	next unless $file =~ s/$digest_suffix$//;
 
-	my $sec = is_younger_than($file, 2, $init);
+	my $sec = is_younger_than($file, $age, $init);
 
 	next unless $sec;
 	$sec -= OWP::Utils::JAN_1970;
@@ -120,7 +134,8 @@ sub plot_resolution {
 		"mon=$mon", "year=$year", '' if DEBUG;
 
 	# Read the header.
-	open(FH, "<$datadir/$ofile") 
+	my $datafile = "$datadir/$ofile";
+	open(FH, "<$datafile") 
 		or die "Could not open $datadir/$ofile: $!";
 	my ($header, $prec, $sent, $lost, $dup, $buf, $min, $pre);
 
@@ -134,11 +149,10 @@ sub plot_resolution {
 		if (read(FH, $buf, $remain_bytes) != $remain_bytes);
 	($prec, $sent, $lost, $dup, $min) = unpack "CLLLL", $buf;
 	$min /= THOUSAND; # convert from usec to ms
-	if (DEBUG) {
-	    print join("\n", "magic = $magic", "version = $version",
+	if (VERBOSE) {
+	    printlist("magic = $magic", "version = $version",
 		       "hdr_len = $hdr_len", "prec = $prec", "sent = $sent",
 		       "lost = $lost", "dup = $dup", "min = $min");
-	    print "\n";
 	}
 
 	# Compute the number of non-empty buckets (== records in the file).
@@ -164,25 +178,43 @@ sub plot_resolution {
 	}
 	close FH;
 
-
 	# Compute stats for a new data point.
-	my $median = get_percentile(0.5, $sent, \@buckets);
-	my $ninety_perc = get_percentile(0.9, $sent, \@buckets);
-
 	my @stats = (get_percentile(0.5, $sent, \@buckets), $min,
 		     get_percentile(0.9, $sent, \@buckets));
 
-	print join "\n", 'Stats for the file are:', @stats, '' if VERBOSE;
+	print join "\n", "Stats for the file $datafile are:",
+		@stats, '' if DEBUG;
 	print GNUDAT join " ", "$mon/$day/$hour/$minute/$second", @stats, "\n";
 	$got_data = 1;
+
+	next if ($mode == 1);
+
+	# Create a plain-text file with data for the last period -
+	# it will be picked up by make_top_html.pl to fill entries
+	# in its tables.
+	unless (-d $datadir) {
+	    mkpath([$datadir], 0, 0755)
+		    or die "Could not create dir $datadir: $!";
+	}
+	my ($tmp_fh, $tmp_name) = tempfile("XXXXXX", DIR => $datadir,
+					   SUFFIX => "last$res.tmp");
+	print $tmp_fh join " ", @stats, "\n";
+	close $tmp_fh;
+
+	my $newname = "$datadir/$filename";
+	warn "renaming to newname $newname" if DEBUG;
+	rename $tmp_name, "$newname"
+		or die "Could not rename $tmp_name to $newname: $!";
+
     }
 
     close GNUDAT;
     unless ($got_data) {
-	warn "no new data found in $prefix/$body - no plot is done";
+	warn "no new data found in $datadir - no plot is done";
 	return;
     }
 
+    my $full_png = "$wwwdir/$png_file";
     print GNUPLOT <<"STOP";
 set terminal png small color
 set xdata time
@@ -193,10 +225,11 @@ set grid
 set xlabel "Time"
 set ylabel "Delay (ms)"
 set title "One-way delays: Min, Median, and 90th Percentile"
-set output "$outdir/$outfile"
+set output "$full_png"
 plot "$gnu_dat" using 1:2:3:4 with errorbars ps 1
 STOP
 
+    warn "plotted file: $full_png" if VERBOSE;
 }
 
 # convert bucket index to the actual time value
@@ -235,7 +268,7 @@ sub get_percentile {
 }
 
 # return start time in seconds if the file is younger than a given 
-# number of seconds
+# number of seconds, and undef otherwise.
 sub is_younger_than {
     my ($filename, $age, $init) = @_;
 
