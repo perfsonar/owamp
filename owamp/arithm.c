@@ -29,15 +29,21 @@
 
 #define T OWPTime
 
+/* we often need to scale by 10^6 so let's fix a struct for that */
+static struct T million = {0, 0, 0, 0, 16960, 15, 0, 0};
+
 /*
-** This implementation uses eight 18-bit quantities to represent
+** This implementation uses eight 16-bit quantities to represent
 ** and manipulate Owamp's [64].[64] space of timestamps.
 */
 
 /*
-** Constructor function. More significant digits go first.
+** Constructor function. In the argument, more significant digits go first. 
+** Thus, (a, b, c, d, e, f, g, h) gives rise to the number
+**        a*(2^48) + b*(2^32) + c*(2^16) + d + 
+**        e/(2^16) + f/(2^32) + g*(2^48) + h/(2^64)
 */
-T OWPTime_new(unsigned short a, 
+struct T OWPTime_new(unsigned short a, 
 	      unsigned short b, 
 	      unsigned short c, 
 	      unsigned short d,
@@ -48,23 +54,19 @@ T OWPTime_new(unsigned short a,
 	      int set_flag
 	      )
 {
-	T x = malloc(sizeof(*x));
-	if (x == NULL){
-		perror("malloc");
-		return NULL;
-	}
-
+	struct T x = { {0, 0, 0, 0, 0, 0, 0, 0} };
+	
 	if (!set_flag)
 		return x;
 
-	x->digits[0] = h;
-	x->digits[1] = g;
-	x->digits[2] = f;
-	x->digits[3] = e;
-	x->digits[4] = d;
-	x->digits[5] = c;
-	x->digits[6] = b;
-	x->digits[7] = a;
+	x.digits[0] = h;
+	x.digits[1] = g;
+	x.digits[2] = f;
+	x.digits[3] = e;
+	x.digits[4] = d;
+	x.digits[5] = c;
+	x.digits[6] = b;
+	x.digits[7] = a;
 
 	return x;
 }
@@ -75,14 +77,20 @@ T OWPTime_new(unsigned short a,
 ** This function embeds the unsigned 32-bit integers into the
 ** OWPTime space.
 */
-T OWPTime_from_ulong(unsigned long a)
+
+struct T
+OWP_ulong2Time(unsigned long a)
 {
-	unsigned short tmp1, tmp2;
+	int i;
+	struct T ret;
+	
+	for (i = 0; i < NUM_DIGITS; i++)
+		ret.digits[i] = 0;
 
-	tmp1 = (unsigned short)(a/BASE);
-	tmp2 = (unsigned short)(a%BASE);
+	ret.digits[5] = (unsigned short)(a >> 16);
+	ret.digits[4] = (unsigned short)(a & 0xffff);
 
-	return OWPTime_new(0, 0, tmp1, tmp2, 0, 0, 0, 0, 1);
+	return ret;
 }
 
 /*
@@ -99,15 +107,6 @@ OWPTime_print(T x)
 	fprintf(stderr, "\n");
 }
 
-/*
-** Destructor function.
-*/
-void
-OWPTime_destroy(T x)
-{
-	free(x);
-}
-
 static
 int owp_overflow_happened(unsigned short a, unsigned short b, unsigned short c)
 {
@@ -119,7 +118,8 @@ int owp_overflow_happened(unsigned short a, unsigned short b, unsigned short c)
 ** operation in the OWPTime space. The result is saved
 ** in the variable z.
 */
-void OWPTime_add(T x, T y, T z)
+void 
+OWPTime_add(T x, T y, T z)
 {
 	int i;
 	unsigned short carry = 0;
@@ -163,14 +163,14 @@ OWPTime_mul(T x, T y, T z)
 		unsigned short int carry = 0;
 		for (j = 0; j < NUM_DIGITS; j++){
 			carry += x->digits[i]*y->digits[j] + tmp[i+j];
-			tmp[i+j] = carry%BASE;
-			carry /= BASE;
+			tmp[i+j] = carry & 0xffff;
+			carry >>= 16;
 		}
 
 		for ( ; j < (2*NUM_DIGITS) - i; j++){
 			carry += tmp[i+j];
-			tmp[i+j] = carry%BASE;
-			carry /= BASE;
+			tmp[i+j] = carry & 0xffff;
+			carry >>= 16;
 		}
 	}
 
@@ -191,42 +191,80 @@ OWPTime2Formatted(T from, OWPFormattedTime to)
 	to->t[0] = (unsigned long)(from->digits[5]) << 16 + from->digits[4];
 	to->t[1] = (unsigned long)(from->digits[3]) << 8 
 		+ (unsigned long)(from->digits[2])>> 8;
+	to->t[1] <<= 8; /* place the result into 24 most significant bits */
 }
 
+/*
+** Discussion: only handling of the fractional parts is interesting.
+** Let e/(2^16) + f/(2^32) = B/(2^24), then (multiplying by 2^32)
+** e*(2^16) + f = B*(2^8) [which is the same as from->t[1] below].
+** Thus both e and f can be recovered by performing division
+** with remainder by 2^16.
+*/
 void
 OWPFormatted2Time(OWPFormattedTime from, T to)
 {
 	to->digits[7] = to->digits[6] = 0;
-	to->digits[5] = (unsigned short)(from->t[0]/BASE);
-	to->digits[4] = (unsigned short)(from->t[0]%BASE);
+	to->digits[5] = (unsigned short)(from->t[0] >> 16);
+	to->digits[4] = (unsigned short)(from->t[0] & 0xffff);
 
 	/* the fractional part has been left-shifted by 8 bits already */
-	to->digits[3] = (unsigned short)(from->t[1]/BASE);
-	to->digits[2] = (unsigned short)(from->t[1]%BASE);
+	to->digits[3] = (unsigned short)(from->t[1] >> 16);
+	to->digits[2] = (unsigned short)(from->t[1] & 0xffff);
 	to->digits[1] = to->digits[0] = 0;
 }
 
-void OWPTime2timeval(T from, struct timeval *to)
+void 
+OWPTime2timeval(T from, struct timeval *to)
 {
+	struct T res;
+
 	/* first convert the fractional part */
 	unsigned short a = from->digits[3];
 	unsigned short b = from->digits[2];
-	T tmp1 = OWPTime_new(0, 0, 0, 0, a, b, 0, 0, 1);
-	T tmp2 = OWPTime_from_ulong(1000000);
-	T res = OWPTime_new(0, 0, 0, 0, 0, 0, 0, 0, 0);
+	struct T tmp = OWPTime_new(0, 0, 0, 0, a, b, 0, 0, 1);
 
-	OWPTime_mul(tmp1, tmp2, res);
-	to->tv_usec = res->digits[4];
+	OWPTime_mul(&tmp, &million, &res);
+	to->tv_usec = res.digits[4];
 
 	/* now the integer part */
 	to->tv_sec = (unsigned long)(from->digits[5]) << 16 + from->digits[4];
-
-	OWPTime_destroy(tmp1);
-	OWPTime_destroy(tmp2);
-	OWPTime_destroy(res);
 }
 
-void OWPtimeval2Time(struct timeval *from, T to)
+void 
+OWPtimeval2Time(struct timeval *from, T to)
 {
 
+}
+
+unsigned long 
+OWPTime2ulong(T x)
+{
+	return (x->digits[5] << 16) + x->digits[4];
+}
+
+unsigned long long 
+OWPTime2ulonglong(T x)
+{
+	return x->digits[7] << 48 
+		+ x->digits[6] << 32
+		+ x->digits[5] << 16
+		+ x->digits[4];
+}
+
+struct T
+OWP_ulonglong2Time(unsigned long long a)
+{
+	int i;
+	struct T ret;
+	
+	for (i = 0; i < NUM_DIGITS; i++)
+		ret.digits[i] = 0;
+
+	ret.digits[7] = (unsigned short)(a >> 48);
+	ret.digits[6] = (unsigned short)(a & 0xffff00000000);
+	ret.digits[5] = (unsigned short)(a & 0xffff0000);
+	ret.digits[4] = (unsigned short)(a & 0xffff);
+
+	return ret;
 }

@@ -26,16 +26,30 @@
 #ifndef XP_INCLUDED
 #define XP_INCLUDED
 
+#include <sys/time.h>
 #define T OWPTime
 
 #define NUM_DIGITS 8
 
-typedef struct {
+typedef struct T {
 	unsigned short digits[NUM_DIGITS];
 } *T;
 
+/* 
+** This structure represents 32.24 style time format
+** (32-bit number of seconds, and 24-bit number of
+** fractional seconds), i.e. A + (B/2^24), where
+** 0 <= A <= 2^32 - 1, and 0 <= B <= 2^24 - 1.
+** The interpretation is: 
+** t[0] = A
+** t[1] = B << 8 (thus, the 8 least significant bits are unused)
+*/
+typedef struct {
+	unsigned long t[2];
+} *OWPFormattedTime;
+
 /* Constructors. */
-T OWPTime_new(unsigned short a, 
+struct T OWPTime_new(unsigned short a, 
 		 unsigned short b, 
 		 unsigned short c, 
 		 unsigned short d,
@@ -45,16 +59,24 @@ T OWPTime_new(unsigned short a,
 		 unsigned short h, 
 		 int set_flag
 		 );
-T OWPTime_from_ulong(unsigned long a);
-
-/* Destructor */
-void OWPTime_destroy(T x); 
-
-void OWPTime_print(T x);
+struct T OWP_ulong2Time(unsigned long a);
 
 /* Arithmetic operations */
 void OWPTime_add(T x, T y, T z);
 void OWPTime_mul(T x, T y, T z);
+
+/* Conversion operations */
+void OWPTime2Formatted(T from, OWPFormattedTime to);
+void OWPFormatted2Time(OWPFormattedTime from, T to);
+
+void OWPTime2timeval(T from, struct timeval *to);
+void OWPtimeval2Time(struct timeval *from, T to);
+
+/* Debugging and auxilliary functions */
+void OWPTime_print(T x);
+unsigned long OWPTime2ulong(T x);
+unsigned long long OWPTime2ulonglong(T x);
+struct T OWP_ulonglong2Time(unsigned long long a);
 
 #undef T 
 #endif
