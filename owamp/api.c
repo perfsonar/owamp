@@ -407,9 +407,9 @@ connect_tmout(
 	if(gettimeofday(&curr_time,NULL) != 0)
 		return -1;
 
-	timevalclear(end_time);
-	tvaladd(end_time,curr_time);
-	tvaladd(end_time,*tm_out);
+	timevalclear(&end_time);
+	tvaladd(&end_time,&curr_time);
+	tvaladd(&end_time,tm_out);
 
 AGAIN:
 	FD_ZERO(&rset);
@@ -421,9 +421,9 @@ AGAIN:
 	 * if there is an intr, so this is the "time left" from the original
 	 * timeout.
 	 */
-	timevalclear(tout);
-	tvaladd(tout,end_time);
-	tvalsub(tout,curr_time);
+	timevalclear(&tout);
+	tvaladd(&tout,&end_time);
+	tvalsub(&tout,&curr_time);
 	rc = select(fd+1,&rset,&wset,NULL,&tout);
 	if(rc == 0){
 		errno = ETIMEDOUT;
@@ -514,7 +514,7 @@ _OWPClientConnect(
 	 * connect.
 	 * (Binding will call the policy function internally.)
 	 */
-	for(ai=server_addr->ai;ai;ai->ai_next){
+	for(ai=server_addr->ai;ai;ai=ai->ai_next){
 		OWPErrSeverity	addr_ok=OWPErrOK;
 		fd = socket(ai->ai_family,ai->ai_socktype,ai->ai_protocol);
 		if(fd < 0)
@@ -577,8 +577,6 @@ next:
 			"No Valid Addr's");
 error:
 	*err_ret = OWPErrFATAL;
-	OWPAddrFree(local_addr);
-	OWPAddrFree(server_addr);
 
 	return -1;
 }

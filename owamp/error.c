@@ -84,11 +84,11 @@ OWPErrorLine(
 )
 {
 	va_list		args;
-	int		ret;
+	int		rc;
 	char		buff[OWP_ERR_MAXSTRING];
 
-	ret = snprintf(buff,sizeof(buff),"%s(%d):",file,line);
-	strncat(buff,fmt,sizeof(buff-ret));
+	rc = snprintf(buff,sizeof(buff),"%s(%d):",file,line);
+	strncat(buff,fmt,sizeof(buff)-rc);
 
 	va_start(args,fmt);
 	_OWPError(ctx,severity,etype,buff,args);
