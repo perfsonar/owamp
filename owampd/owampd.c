@@ -28,11 +28,20 @@ const char *DefaultPasswdFile = DEFAULT_PASSWD_FILE;
 char *PasswdFile = NULL;
 u_int32_t DefaultMode = OWP_MODE_OPEN;
 
-hash_ptr ip2class_hash, class2limits_hash, passwd_hash;
+jmp_buf jmpbuffer;
+
+/* XXX - try to get rid of these later */
+hash_ptr ip2class_hash, class2limits_hash, passwd_hash; 
 
 /* Global variable - the total number of allowed Control connections. */
 #define DEFAULT_NUM_CONN 100
 int free_connections = DEFAULT_NUM_CONN;
+
+struct data {
+	hash_ptr ip2class;
+	hash_ptr class2limits;
+	hash_ptr passwd;
+};
 
 static void
 usage(char *name)
@@ -55,11 +64,11 @@ OWPBoolean
 owamp_first_check(void *app_data,
 		  struct sockaddr *local,
 		  struct sockaddr *remote,
-		  OWPErrSeverity *err_ret,
-		  hash_ptr ip2class_hash
+		  OWPErrSeverity *err_ret
 		  )
 {
 	u_int32_t ip_addr; 
+	hash_ptr ip2class_hash = ((struct data *)&app_data)->ip2class;
 	switch (remote->sa_family){
 	case AF_INET:
 	    ip_addr = ntohl((((struct sockaddr_in *)remote)->sin_addr).s_addr);
@@ -191,7 +200,7 @@ OWPServerOK(OWPControl ctrl, int sock, u_int8_t code, char* buf)
 	*(u_int8_t *)(buf+15) = code;
 	if (code == 0){ /* accept */
 		random_bytes(buf + 16, 16); /* Generate Server-IV */
-		OWPSetWriteIV(ctrl, buf + 16);
+		/* OWPSetWriteIV(ctrl, buf + 16); */
 	}
 	send_data(sock, buf, 32, 0);
 }
@@ -209,6 +218,7 @@ doit(OWPControl ctrl, int connfd)
 	u_int32_t mode_requested;
 	u_int8_t challenge[16], token[32], read_iv[16], write_iv[16];
 	u_int8_t kid[8]; /* XXX - assuming Stas will extend KID to 8 bytes */
+
 
 	/* Remove what's not needed. */
 	keyInstance keyInst;
@@ -275,14 +285,13 @@ doit(OWPControl ctrl, int connfd)
 		}
 
 		/* Save 16 bytes of session key and 16 bytes of client IV*/
-		OWPSetSessionKey(ctrl, token + 16);
+		/* OWPSetSessionKey(ctrl, token + 16); */
 		bcopy(buf + 44, read_iv, 16);
 
 		/* Apparently everything is ok. Accept the Control session. */
 		OWPServerOK(ctrl, connfd, CTRL_ACCEPT, buf);
 
 	}
-	
 }
 
 /* 
@@ -368,7 +377,7 @@ main(int argc, char *argv[])
 	int listenfd, connfd;
 	char buff[MAX_LINE];
 	struct sockaddr *cliaddr;
-	socklen_t addrlen, len;
+	socklen_t len;
 	char path[MAXPATHLEN]; /* various config files */
 	extern char *optarg;
 	extern int optind;
@@ -378,14 +387,14 @@ main(int argc, char *argv[])
 	pid_t pid; 
 	OWPErrSeverity out;
 	OWPContext ctx;
-	OWPControl ctrl; /* XXX - remember to initialize. */
+	OWPControl cntrl; /* XXX - remember to initialize. */
 	OWPInitializeConfigRec cfg  = {
 		0, 
 		0,
 		NULL,
 		owampd_err_func, 
 		NULL,
-		NULL,
+		owamp_first_check,
 		NULL,
 		NULL,
 		NULL,
@@ -393,7 +402,12 @@ main(int argc, char *argv[])
 		NULL,
 		NULL
 	};
-
+	
+	struct data app_data = {
+		NULL,
+		NULL,
+		NULL
+	};
 	/* Parse command line options. */
 	while ((c = getopt(argc, argv, "f:a:p:n:h")) != -1) {
 		switch (c) {
@@ -444,17 +458,17 @@ main(int argc, char *argv[])
 	
 	/* Open the ip2class hash for writing. */
 	snprintf(path,sizeof(path), "%s/%s", DEFAULT_CONFIG_DIR,IPtoClassFile);
-	if ((ip2class_hash = hash_init(ctx, 0, NULL, NULL, 
+	if ((app_data.ip2class = hash_init(ctx, 0, NULL, NULL, 
 				       print_ip2class_binding)) == NULL){
 		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
 			 "Could not initialize hash for %s", IPtoClassFile);
 		exit(1);
 	}
-	owamp_read_ip2class(ctx, path, ip2class_hash); 
-	hash_print(ip2class_hash, stderr);
+	owamp_read_ip2class(ctx, path, app_data.ip2class); 
+	hash_print(app_data.ip2class, stderr);
 
 	/* Open the class2limits hash for writing. */
-	if ((class2limits_hash = hash_init(ctx, 0, NULL, NULL, 
+	if ((app_data.class2limits = hash_init(ctx, 0, NULL, NULL, 
 					   print_class2limits_binding))==NULL){
 		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
 			"Could not initialize hash for %s", ClassToLimitsFile);
@@ -462,22 +476,22 @@ main(int argc, char *argv[])
 	}
 	snprintf(path,sizeof(path), "%s/%s", 
 		 DEFAULT_CONFIG_DIR,ClassToLimitsFile);
-	owamp_read_class2limits(path, class2limits_hash);
+	owamp_read_class2limits(path, app_data.class2limits);
 
-	hash_print(class2limits_hash, stderr); 
+	hash_print(app_data.class2limits, stderr); 
 
 	/* Open the passwd hash for writing. */
-	if ((passwd_hash = hash_init(ctx, 0, NULL, NULL, NULL)) == NULL){
+	if ((app_data.passwd = hash_init(ctx, 0, NULL, NULL, NULL)) == NULL){
 		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
 			"Could not initialize hash for %s", PasswdFile);
 		exit(1);
 	}
 	snprintf(path,sizeof(path), "%s/%s", 
 		 DEFAULT_CONFIG_DIR,PasswdFile);
-	read_passwd_file(path, passwd_hash);
-	hash_print(passwd_hash, stderr);
+	read_passwd_file(path, app_data.passwd);
+	hash_print(app_data.passwd, stderr);
 
-	listenfd = tcp_listen(ctx, host, port, &addrlen);
+	listenfd = tcp_listen(ctx, host, port, &len);
 	if (signal(SIGCHLD, sig_chld) == SIG_ERR){
 		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
 			 "signal() failed. errno = %d", errno);	
@@ -486,71 +500,24 @@ main(int argc, char *argv[])
 
 	fprintf(stderr, "DEBUG: exiting...\n");
 	exit(0);
-#if 0
-	test_policy_check();
-#endif
 
-	cliaddr = (void*)malloc(addrlen);
-	if (cliaddr == NULL){
-		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, "malloc");
-		exit(1);
-	}
-
-	for ( ; ; ) {
-		len = addrlen;
-		
-		if ( (connfd = accept(listenfd, cliaddr, &len)) < 0){
-			if (errno == EINTR)
-				continue;
-			else
-				OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
-					 "accept error");
-		}
-		owamp_first_check(NULL, NULL, cliaddr, &out, ip2class_hash);
-		switch (out) {
-		case OWPErrFATAL:
-			fprintf(stderr, "DEBUG: access prohibited\n");
-			do_ban(connfd);
+	setjmp(jmpbuffer);
+	while (1) {
+		cntrl = OWPControlAccept(ctx, &app_data, len, listenfd, &out);
+		if (cntrl == NULL)
 			continue;
-			break;
-		case OWPErrOK:
-			fprintf(stderr, "DEBUG: access allowed\n");
-			break;
-		default:
-			fprintf(stderr, "DEBUG: policy is confused\n");
-			do_ban(connfd);
-			continue;
-			break;
-		};
 
-		if (free_connections == 0){
-			do_ban(connfd);
-			continue;
-		}
-		free_connections--;
-
-		if ( (pid = fork()) < 0){
-			OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, "fork");
-			exit(1);
-		}
-
-		if (pid == 0) { /* child */
-			doit(ctrl, connfd);
-			exit(0);
-		}
-
-		/* Parent */
-		if (close(connfd) < 0)
-			OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, "fork");
+		/* 
+		   Now start working with the valid OWPControl handle. 
+		                      ...
+		                      ...
+		                      ...
+		*/
 	}
 	
 	hash_close(&ip2class_hash);
 	hash_close(&class2limits_hash);
 	hash_close(&passwd_hash);
-
-#if SCRATCH
-	fclose(scratch);
-#endif
 
 	exit(0);
 }
