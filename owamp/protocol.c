@@ -698,6 +698,7 @@ _OWPEncodeTestRequestPreamble(
 OWPErrSeverity
 _OWPDecodeTestRequestPreamble(
 	OWPContext	ctx,
+	OWPBoolean	request,
 	u_int32_t	*msg,
 	u_int32_t	msg_len,
 	struct sockaddr	*sender,
@@ -775,7 +776,7 @@ _OWPDecodeTestRequestPreamble(
 			saddr6 = (struct sockaddr_in6*)sender;
 			saddr6->sin6_family = AF_INET6;
 			memcpy(saddr6->sin6_addr.s6_addr,&buf[16],16);
-			if(*server_conf_sender)
+			if(request && *server_conf_sender)
 				saddr6->sin6_port = 0;
 			else
 				saddr6->sin6_port = *(u_int16_t*)&buf[12];
@@ -784,7 +785,7 @@ _OWPDecodeTestRequestPreamble(
 			saddr6 = (struct sockaddr_in6*)receiver;
 			saddr6->sin6_family = AF_INET6;
 			memcpy(saddr6->sin6_addr.s6_addr,&buf[32],16);
-			if(*server_conf_receiver)
+			if(request && *server_conf_receiver)
 				saddr6->sin6_port = 0;
 			else
 				saddr6->sin6_port = *(u_int16_t*)&buf[14];
@@ -805,7 +806,7 @@ _OWPDecodeTestRequestPreamble(
 			saddr4 = (struct sockaddr_in*)sender;
 			saddr4->sin_family = AF_INET;
 			saddr4->sin_addr.s_addr = *(u_int32_t*)&buf[16];
-			if(*server_conf_sender)
+			if(request && *server_conf_sender)
 				saddr4->sin_port = 0;
 			else
 				saddr4->sin_port = *(u_int16_t*)&buf[12];
@@ -814,7 +815,7 @@ _OWPDecodeTestRequestPreamble(
 			saddr4 = (struct sockaddr_in*)receiver;
 			saddr4->sin_family = AF_INET;
 			saddr4->sin_addr.s_addr = *(u_int32_t*)&buf[32];
-			if(*server_conf_receiver)
+			if(request && *server_conf_receiver)
 				saddr4->sin_port = 0;
 			else
 				saddr4->sin_port = *(u_int16_t*)&buf[14];
@@ -1346,7 +1347,8 @@ _OWPReadTestRequest(
 	 * Now - fill in the Addr records, ipvn, server_conf varaibles,
 	 * sid and "tspec" with the values in the msg buffer.
 	 */
-	if( (err_ret = _OWPDecodeTestRequestPreamble(cntrl->ctx,cntrl->msg,
+	if( (err_ret = _OWPDecodeTestRequestPreamble(cntrl->ctx,
+					(accept_ret!=NULL),cntrl->msg,
 			_OWP_TEST_REQUEST_BLK_LEN*_OWP_RIJNDAEL_BLOCK_SIZE,
 			(struct sockaddr*)&sendaddr_rec,
 			(struct sockaddr*)&recvaddr_rec,&addrlen,&ipvn,

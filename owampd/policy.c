@@ -57,12 +57,8 @@ parsekeys(
 	size_t		*lbuf_max
 	)
 {
-	char		*line;
 	int		rc;
-	int		i;
 	OWPUserID	username;
-	const int	keylen=sizeof(OWPKey)*2; /* len hex-encoded key */
-	char		*keystart;
 	OWPKey		tkey;
 	I2Datum		key,val;
 	I2ErrHandle	eh = OWPContextGetErrHandle(policy->ctx);

@@ -458,10 +458,10 @@ OWPError_(
  * opening test connections.
  */
 #define	OWPTestPortRange	"OWPTestPortRange"
-typedef	struct OWPTestPortRangeRec{
-	u_int16_t	low;	/* If 0, indictes ephemeral, and high unused */
+typedef	struct OWPPortRangeRec{
+	u_int16_t	low;
 	u_int16_t	high;
-} OWPTestPortRangeRec, *OWPTestPortRange;
+} OWPPortRangeRec, *OWPPortRange;
 
 /*
  * This type is used to define the function that retrieves the shared

@@ -492,6 +492,7 @@ _OWPEncodeTestRequestPreamble(
 extern OWPErrSeverity
 _OWPDecodeTestRequestPreamble(
 	OWPContext	ctx,
+	OWPBoolean	request,
 	u_int32_t	*msg,
 	u_int32_t	msg_len,
 	struct sockaddr	*sender,

@@ -51,8 +51,9 @@ static int			owpd_exit = 0;
 static int			owpd_alrm = 0;
 static int			owpd_intr = 0;
 static owampd_opts		opts;
+static OWPPortRangeRec		portrec;
 static I2ErrLogSyslogAttr	syslogattr;
-static I2ErrHandle		errhand;
+static I2ErrHandle		errhand=NULL;
 static I2Table			fdtable=NULL;
 static I2Table			pidtable=NULL;
 static OWPNum64			uptime;
@@ -483,19 +484,11 @@ ACCEPT:
 	}
 	}
 #endif
-	/*
-	 * Close all open file descriptors not needed by this child.
-	 */
-	for(;*maxfd>=0;*maxfd--){
-		if(*maxfd == new_pipe[1]) continue;
-		if(*maxfd == connfd) continue;
 
-		/*
-		 * If close is interupted, continue to try and close,
-		 * otherwise, ignore the error.
-		 */
-		while((close(*maxfd) < 0) && (errno == EINTR));
-	}
+	/*
+	 * reset error logging
+	 */
+	I2ErrReset(errhand);
 
 	/*
 	 * check/set signal vars.
@@ -722,6 +715,78 @@ ClosePipes(
 	return True;
 }
 
+static I2Boolean
+parse_ports(
+		char	*pspec
+		)
+{
+	char	*tstr,*endptr;
+	long	tint;
+
+	if(!pspec) return False;
+
+	tstr = pspec;
+	endptr = NULL;
+
+	while(isspace(*tstr)) tstr++;
+	tint = strtol(tstr,&endptr,10);
+	if(!endptr || (tstr == endptr) || (tint < 0) || (tint > (int)0xffff)){
+		goto failed;
+	}
+	portrec.low = (u_int16_t)tint;
+
+	while(isspace(*endptr)) endptr++;
+
+	switch(*endptr){
+		case '\0':
+			portrec.high = portrec.low;
+			goto done;
+			break;
+		case '-':
+			endptr++;
+			break;
+		default:
+			goto failed;
+	}
+
+	tstr = endptr;
+	endptr = NULL;
+	while(isspace(*tstr)) tstr++;
+	tint = strtol(tstr,&endptr,10);
+	if(!endptr || (tstr == endptr) || (tint < 0) || (tint > (int)0xffff)){
+		goto failed;
+	}
+	portrec.high = (u_int16_t)tint;
+
+	if(portrec.high < portrec.low){
+		portrec.high = portrec.low;
+		portrec.low = (u_int16_t)tint;
+	}
+
+done:
+	/*
+	 * If ephemeral is specified, shortcut by not setting.
+	 */
+	if(!portrec.high && !portrec.low)
+		return True;
+
+	/*
+	 * Set.
+	 */
+	opts.portspec = &portrec;
+	return True;
+
+failed:
+	if(errhand){
+		I2ErrLogP(errhand,EINVAL,"Invalid port-range: \"%s\"",pspec);
+	}
+	else{
+		fprintf(stderr,"Invalid port-range: \"%s\"",pspec);
+	}
+
+	return False;
+}
+
 static void
 LoadConfig(
 	char	**lbuf,
@@ -820,6 +885,14 @@ LoadConfig(
 			if(!(opts.srcnode = strdup(val))) {
 				fprintf(stderr,"strdup(): %s\n",
 							strerror(errno));
+				rc=-rc;
+				break;
+			}
+		}
+		else if(!strncasecmp(key,"testports",10)){
+			if(!parse_ports(val)){
+				fprintf(stderr,
+					"Invalid test port range specified.");
 				rc=-rc;
 				break;
 			}
@@ -929,9 +1002,9 @@ main(int argc, char *argv[])
 	sigset_t		sigs;
 
 #ifndef NDEBUG
-	char *optstring = "hvc:d:R:a:S:e:ZU:G:w";
+	char *optstring = "hvc:d:R:a:S:e:ZU:G:P:w";
 #else	
-	char *optstring = "hvc:d:R:a:S:e:ZU:G:";
+	char *optstring = "hvc:d:R:a:S:e:ZU:G:P:";
 #endif
 
 	/*
@@ -956,6 +1029,7 @@ main(int argc, char *argv[])
 	opts.diskfudge = 1.0;
 	opts.dieby = 30;
 	opts.controltimeout = 1800;
+	opts.portspec = NULL;
 
 	if(!getcwd(opts.cwd,sizeof(opts.cwd))){
 		perror("getcwd()");
@@ -1028,6 +1102,7 @@ main(int argc, char *argv[])
 		fprintf(stderr, "%s : Couldn't init error module\n", progname);
 		exit(1);
 	}
+	I2ErrSetResetFunc(errhand,I2ErrLogSyslogReset);
 
 	/*
 	 * Initialize the context. (Set the error handler to the app defined
@@ -1078,6 +1153,13 @@ main(int argc, char *argv[])
 				exit(1);
 			}
 			break;
+		case 'P':
+			if(!parse_ports(optarg)){
+				I2ErrLog(errhand,
+					"Invalid test port range specified.");
+				exit(1);
+			}
+			break;
 		case 'R':	/* -R "var/run directory" */
 			if (!(opts.vardir = strdup(optarg))) {
 				I2ErrLog(errhand,"strdup(): %M");
@@ -1107,6 +1189,16 @@ main(int argc, char *argv[])
 	if (argc) {
 		     usage(progname, "");
 		     exit(1);
+	}
+
+	/*
+	 * Setup portrange
+	 */
+	if(opts.portspec && !OWPContextConfigSet(ctx,OWPTestPortRange,
+				(void*)opts.portspec)){
+		I2ErrLog(errhand,
+		"OWPContextConfigSet(): Unable to set OWPTestPortRange?!");
+		exit(1);
 	}
 
 	if(!opts.vardir)

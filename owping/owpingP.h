@@ -40,32 +40,32 @@ typedef	struct {
 	*/
 	struct  {
 		/* Flags */
-		I2Boolean		records;	/* -v */
-		I2Boolean		quiet;		/* -Q */
-		I2Boolean		raw;		/* -R */
+		I2Boolean	records;	/* -v */
+		I2Boolean	quiet;		/* -Q */
+		I2Boolean	raw;		/* -R */
 
-		I2Boolean		to;		/* -t */
-		I2Boolean		from;		/* -f */
-		char			*save_to_test;	/* -T */
-		char			*save_from_test;/* -F */
+		I2Boolean	to;		/* -t */
+		I2Boolean	from;		/* -f */
+		char		*save_to_test;	/* -T */
+		char		*save_from_test;/* -F */
 
-		char			*authmode;	/* -A */
-		char			*identity;	/* -u */
-		char			*keyfile;	/* -k */
-		u_int32_t		numPackets;	/* -c */
+		char		*authmode;	/* -A */
+		char		*identity;	/* -u */
+		char		*keyfile;	/* -k */
+		u_int32_t	numPackets;	/* -c */
 
-		double			lossThreshold;	/* -L */
-		float			percentile;	/* -a */
+		double		lossThreshold;	/* -L */
+		float		percentile;	/* -a */
 
-		char			*srcaddr;	/* -S */
+		char		*srcaddr;	/* -S */
 
-		OWPTestPortRange	portspec;	/* -P */
+		OWPPortRange	portspec;	/* -P */
 
 #ifndef	NDEBUG
-		I2Boolean		childwait;	/* -w */
+		I2Boolean	childwait;	/* -w */
 #endif
 
-		u_int32_t		padding;	/* -s */
+		u_int32_t	padding;	/* -s */
 
 	} opt;
 
@@ -81,7 +81,7 @@ typedef	struct {
 	u_int32_t		nslots;
 	OWPSlot			*slots;
 
-	OWPTestPortRangeRec	portrec;
+	OWPPortRangeRec		portrec;
 } ow_ping_trec, *ow_ping_t;
 
 #endif

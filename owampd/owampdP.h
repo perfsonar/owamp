@@ -44,6 +44,8 @@ typedef struct {
 	u_int32_t	auth_mode;	/* cooked version of authmode */
 	char		*srcnode;
 
+	OWPPortRange	portspec;
+
 	char		*user;
 	char		*group;
 

@@ -1097,7 +1097,7 @@ DONE:
 	return True;
 
 FAILED:
-	I2ErrLogP(eh,errno,"Invalid port-range (-P): \"%s\": %M",pspec);
+	I2ErrLogP(eh,EINVAL,"Invalid port-range (-P): \"%s\": %M",pspec);
 	return False;
 }
 
@@ -1292,6 +1292,7 @@ main(
 					"Invalid test port range specified.");
 				exit(1);
 			}
+			break;
 		/* Output options */
 		case 'v':
 			ping_ctx.opt.records = True;

@@ -1852,7 +1852,7 @@ OWPReadDataHeader(
 		/*
 		 * Now decode it into the hdr_ret variable.
 		 */
-		if(_OWPDecodeTestRequestPreamble(ctx,msg,
+		if(_OWPDecodeTestRequestPreamble(ctx,False,msg,
 				_OWP_TEST_REQUEST_PREAMBLE_SIZE,
 				(struct sockaddr*)&hdr_ret->addr_sender,
 				(struct sockaddr*)&hdr_ret->addr_receiver,

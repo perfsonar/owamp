@@ -347,7 +347,7 @@ _OWPEndpointInit(
 	u_int16_t		port=0;
 	u_int16_t		p;
 	u_int16_t		range;
-	OWPTestPortRange	portrange=NULL;
+	OWPPortRange		portrange=NULL;
 	int			saveerr=0;
 
 	*err_ret = OWPErrFATAL;
@@ -410,8 +410,8 @@ _OWPEndpointInit(
 			port = ntohs(s6->sin6_port);
 			break;
 #endif
-		case AF_INET4:
-			s4 = (struct sockaddr_in*)loacladdr->saddr;
+		case AF_INET:
+			s4 = (struct sockaddr_in*)localaddr->saddr;
 			port = ntohs(s4->sin_port);
 			break;
 		default:
@@ -427,12 +427,11 @@ _OWPEndpointInit(
 		 */
 		p = port;
 	}
-	else if(!(portrange = (OWPTestPortRange)OWPContextConfigGet(cntrl->ctx,
+	else if(!(portrange = (OWPPortRange)OWPContextConfigGet(cntrl->ctx,
 							OWPTestPortRange))){
 		p = port = 0;
 	}else{
 		u_int32_t	r;
-		double		d;
 
 		/*
 		 * Get a random 32 bit number to aid in selecting first
@@ -463,8 +462,8 @@ _OWPEndpointInit(
 				s6->sin6_port = htons(p);
 				break;
 #endif
-			case AF_INET4:
-				s4 = (struct sockaddr_in*)loacladdr->saddr;
+			case AF_INET:
+				s4 = (struct sockaddr_in*)localaddr->saddr;
 				s4->sin_port = htons(p);
 				break;
 			default:
@@ -502,7 +501,9 @@ _OWPEndpointInit(
 bind_fail:
 	if(!saveerr) saveerr = errno;
 	OWPError(cntrl->ctx,OWPErrFATAL,saveerr,
-			"bind([%s]:%s): %M",localaddr->node,p);
+			"bind([%s]:%d): %M",localaddr->node,p);
+	goto error;
+
 success:
 
 	/*
