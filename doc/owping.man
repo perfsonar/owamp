@@ -31,12 +31,12 @@ owping \- Client application to request one-way latency tests.
 \fBowping\fR is a command line client application that is used to
 initiate one-way latency tests.
 .PP
-Roundtrip latency measurements (ping) are
+Round-trip latency measurements (ping) are
 an accepted technique to look for network problems. One-way measurements
-have the potential to be even more useful. With roundtrip measurements
+have the potential to be even more useful. With round-trip measurements
 it is difficult to isolate the direction in which congestion is experienced.
 Traffic is often asymmetric with many sites being either primarily producers
-or consumers of dtaa. One-way measurements allow more informative
+or consumers of data. One-way measurements allow more informative
 measurements. It is much easier to isolate the effects of traffic on
 specific parts of a network.
 .PP
@@ -91,7 +91,7 @@ Unset.
 .br
 Wait \fIwait\fR seconds between sending packets. This wait period is not
 a fixed value. The actual \fIwait\fR time between each packet is
-determined using using a pseudo-poisson function. The amount of time
+determined using using a pseudo-Poisson function. The amount of time
 between each packet will average \fIwait\fR seconds.
 .RS
 .IP Default:

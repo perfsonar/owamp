@@ -54,7 +54,7 @@ Unset.
 \fB\-Q\fR
 .br
 Suppress the printing of summary statistics. (Not really useful in the
-context of \fBowstats\fR but documented here for consistancy.)
+context of \fBowstats\fR but documented here for consistency.)
 .RS
 .IP Default:
 Unset.
