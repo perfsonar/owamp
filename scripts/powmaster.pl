@@ -113,18 +113,19 @@ foreach $mtype (@mtypes){
 	}
 }
 die "No valid paths in mesh?" if(!defined(@dirlist));
-
-mkpath((map {join '/',$datadir,$_} @dirlist),0,0775);
+mkpath([map {join '/',$datadir,$_} @dirlist],0,0775);
 
 chdir $datadir || die "Unable to chdir to $datadir";
 
 # catch_sig should push dead child pid's onto @dead_children
 my @dead_children;
-$SIG{INT} = $SIG{HUP} = $SIG{CHLD} = \&catch_sig;
+$SIG{INT} = $SIG{TERM} = $SIG{HUP} = $SIG{CHLD} = \&catch_sig;
 
 # setup pipe - read side used by send_data, write side used by all
 # powsteam children.
 my($rfd,$wfd) = POSIX::pipe();
+local(*WRITEPIPE);
+open WRITEPIPE, ">&=$wfd" || die "Can't fdopen write end of pipe";
 
 #
 # send_data first adds all files in dirlist onto it's workque, then forks
@@ -173,7 +174,7 @@ foreach $mtype (@mtypes){
 
 		$cmd = join(" ", @cmd);
 		print "Executing: $cmd\n" if(defined($debug));
-		open \*CHWFD, ">&=$wfd" || die "Can't fdopen write end of pipe";
+		open \*CHWFD, ">&WRITEPIPE" || die "Can't dup pipe";
 		open \*CHRFD, "<$devnull" || die "Can't open $devnull";
 		$pid = open3("<&CHRFD",">&CHWFD",">&STDERR",@cmd);
 		die "Can't exec $cmd" if(!defined($pid));
@@ -184,7 +185,6 @@ foreach $mtype (@mtypes){
 }
 
 my $reset = 0;
-my $newsend = 0;
 while(1){
 
 	sleep;
@@ -206,8 +206,8 @@ while(1){
 	}
 
 	if($reset){
-		my @alive = keys %pid2info;
-		next if(@alive > 0);
+		next if((keys %pid2info) > 0);
+		warn "Restarting...\n";
 		exec $FindBin::Bin."/".$FindBin::Script, @SAVEARGV;
 	}
 }
@@ -225,12 +225,14 @@ sub catch_sig{
 	}
 
 	if($signame =~ /HUP/){
+		warn "Handling SIG$signame... Stop processing...\n";
 		kill 'TERM', keys %pid2info;
 		$reset = 1;
 		return;
 	}
 
-	die "Someone sent $signame";
+	kill $signame, keys %pid2info;
+	die "Handling SIG$signame...\n";
 }
 
 sub sys_readline{
@@ -251,7 +253,7 @@ sub sys_readline{
 sub send_file{
 	my($conf,$fname) = @_;
 
-	print "SEND_DATA:$fname\n" if(defined($debug));
+	print "SEND_DATA:$fname\n";
 	unlink $fname || warn "unlink: $!";
 
 	return 1;
@@ -279,8 +281,8 @@ sub send_data{
 	return $pid if($pid);
 
 	# child continues.
-	$SIG{INT} = $SIG{HUP} = $SIG{CHLD} = 'DEFAULT';
-	open STDIN, ">&=$rfd" || die "Can't fdopen write end of pipe";
+	$SIG{INT} = $SIG{TERM} = $SIG{HUP} = $SIG{CHLD} = 'DEFAULT';
+	open STDIN, ">&=$rfd" || die "Can't fdopen read end of pipe";
 
 	my($rin,$rout,$ein,$eout,$timeout,$nfound);
 

@@ -72,8 +72,6 @@ $Conf::GLOBALCONFNAME='owmesh.conf';
 # This hash is used to privide default values for "some" parameters.
 #
 my %DEFS = (
-	DEBUG			=>	0,
-	VERBOSE			=>	0,
 	DEFSECRET		=>	'abcdefgh12345678',
 	SECRETNAME		=>	'DEFSECRET',
 	SECRETNAMES		=>	['DEFSECRET'],
@@ -181,7 +179,7 @@ sub load_line{
 	return 1 if(/^\s*$/); # blank lines
 
 	# reset
-	if(($pname) = /^\!(\w+)\s*$/o){
+	if(($pname) = /^\!(\w+)\s+/o){
 		$pname =~ tr/a-z/A-Z/;
 		delete ${$href}{$pname} if(!defined($skip));
 		return 1;

@@ -709,10 +709,6 @@ main(
 	if(appctx.opt.seriesInterval%sessionTime)
 		numSessions++;
 
-	I2ErrLog(eh,
-		"%d sub-sessions per session:approx seriesInterval:%d seconds",
-				numSessions,numSessions*sessionTime);
-
 	if(sessionTime <  SETUP_ESTIMATE + appctx.opt.lossThreshold){
 		I2ErrLog(eh,"Holes in data are likely because lossThreshold"
 				" is too large a fraction of sessionTime");

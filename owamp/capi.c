@@ -102,7 +102,6 @@ _OWPClientBind(
 	/*
 	 * None found.
 	 */
-	*err_ret = OWPErrFATAL;
 	return False;
 }
 
