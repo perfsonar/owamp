@@ -155,7 +155,7 @@ any or all of the characters "AEO". The modes are:
 digitally signs part of each test packet.
 .IP \fBE\fR
 [\fBE\fR]ncrypted. This mode encrypts the control connection and
-encrypts the all of each test packet. (This mode forces an encryption step
+encrypts each test packet in full. (This mode forces an encryption step
 between the fetching of a timestamp and when the packet is sent. This
 adds more computational delay to the time reported by \fBOWAMP\fR for each
 packet.)

@@ -1,0 +1,187 @@
+." The first line of this file must contain the '"[e][r][t][v] line
+." to tell man to run the appropriate filter "t" for table.
+."
+."	$Id$
+."
+."######################################################################
+."#									#
+."#			   Copyright (C)  2004				#
+."#	     			Internet2				#
+."#			   All Rights Reserved				#
+."#									#
+."######################################################################
+."
+."	File:		owampd.8
+."
+."	Author:		Jeff Boote
+."			Internet2
+."
+."	Date:		Fri May  7 15:24:16 MDT 2004
+."
+."	Description:	
+."
+.TH owampd 8 "$Date$"
+.SH NAME
+owampd \- One-way latency server.
+.SH SYNOPSIS
+.B owampd
+[
+.BI \-a " authmode"
+] [
+.BI \-c " confdir"
+] [
+.BI \-d " datadir"
+] [
+.BI \-e " facility"
+] [
+.BI \-G " group"
+] [
+.B \-h
+] [
+.BI \-R " vardir"
+] [
+.BI \-S " nodename:port"
+] [
+.BI \-U " user"
+] [
+.B \-v
+] [
+.B \-Z
+]
+.SH DESCRIPTION
+.B owampd
+is a server program specifically designed to run one side of one-way
+latency tests. The client program \fBowping\fR is available to run
+the other side of the test.
+.PP
+Aside from actually running the tests, the main funciton of \fBowampd\fR
+is to determine which tests are allowable based upon the policy restrictions
+configured by the system administrator.
+.PP
+\fBowampd\fR was designed to be run as a standalone daemon process. It
+uses the classic accept/fork model of handling new requests.
+.PP
+Most of the command line options for \fBowampd\fR have analogous options
+in the \fBowampd.conf\fR file. The command line takes precedence.
+.SH OPTIONS
+.TP
+.BI \-a " authmode"
+Specify the authentication modes the server is willing to use for
+communication. \fIauthmode\fR should be set as a character string with
+any or all of the characters "AEO". The modes are:
+.RS
+.IP \fBA\fR
+[\fBA\fR]uthenticated. This mode encrypts the control connection and
+digitally signs part of each test packet.
+.IP \fBE\fR
+[\fBE\fR]ncrypted. This mode encrypts the control connection and
+encrypts each test packet in full. (This mode forces an encryption step
+between the fetching of a timestamp and when the packet is sent. This
+adds more computational delay to the time reported by \fBOWAMP\fR for each
+packet.)
+.IP \fBO\fR
+[\fBO\fR]pen. No encryption of any kind is done.
+.PP
+The server can specify all the modes with which it is willing to communicate.
+The most strict mode that both the server and the client are willing to use
+will be selected.
+.IP Default:
+"AEO".
+.RE
+.TP
+.BI \-c " confdir"
+Specify the directory that holds the \fBowampd\fR configuration files.
+.RS
+.IP Default:
+Current working directory.
+.RE
+.TP
+.BI \-d " datadir"
+Specify the directory that holds the output data files. The data files are
+the result of one-way latency tests where the server is the receiving
+host. The data files are used to buffer the data at least until a client
+downloads the file. Policy restrictions can be used to set how much disk space
+a given connection can use as well as to determine when each file
+is deleted. (See the \fBowampd.limits(5)\fR manual page.)
+.RS
+.IP Default:
+Current working directory.
+.RE
+.TP
+.BI \-e " facility"
+Syslog \fIfacility\fR to which messages are logged.
+.RS
+.IP Default:
+LOG_DAEMON
+.RE
+.TP
+.BI \-G " group"
+Specify the gid for the \fBowampd\fR process. \fIgroup\fR can
+be specified using a valid group name or by using \-gid. This option is
+only used if \fBowampd\fR is started as root.
+.TP
+.B \-h
+Print a help message.
+.TP
+.BI \-R " vardir"
+Specify the directory to hold the owampd.pid file.
+.RS
+.IP Default:
+Current directory
+.RE
+.TP
+.BI \-S " nodename:port"
+Specify the address and port on which \fBowampd\fR will listen for requests.
+\fInodename\fR can be specified using a DNS name or using the textual
+representation of the address. It is possible to set the source address
+without setting the \fIport\fR simply by leaving off the ':' and \fIport\fR
+specification. If an IPv6 address is specified, note that the accepted format
+contains \fInodename\fR in square brackets, such as: [fe80::fe9f:62d8]. This
+ensures the port number is distinct from the address specification.
+.RS
+.IP Default:
+\fInodename\fR is wildcarded as any currently available address.
+\fIport\fR is 4822.
+.RE
+.TP
+.BI \-U " user"
+Specify the uid for the \fBowampd\fR process. \fIuser\fR can
+be specified using a valid user name or by using \-uid. This option is
+only used if \fBowampd\fR is started as root.
+.TP
+.B \-v
+Set verbose output. Messages will still only go to syslog unless the \fB\-Z\fR
+option is specified.
+.TP
+.B \-Z
+Run the master \fBowampd\fR process in the foreground. In this mode, error
+messages are printed to stderr as well as being sent to syslog. Also, normal
+terminal controls are available. (i.e., <Cntr\-C> will cause the daemon to
+kill it's child processes and exit.) This is useful for debugging.
+.SH REQUIREMENTS
+The \fBowampd\fR daemon requires a very well synchronized and stable clock.
+\fBowampd\fR requires that \fBNTP\fR be running to synchronize
+the system clock. \fBNTP\fR needs to be setup in a more methodical way
+than on most systems for the results to be meaningful. Please see the
+\%http://e2epi.internet2.edu/owamp/ web site for details concerning
+proper configuration of \fBNTP\fR for \fBOWAMP\fR
+.SH FILES
+owampd.pid
+.br
+owampd.conf
+.br
+owampd.limits
+.br
+owampd.keys
+.SH SEE ALSO
+There are more details on configuring the \fBowampd\fR daemon in the
+owampd.conf(5) manual page. Details on configuring the policy
+is in the owampd.limits(5) and owampd.keys(5) manual pages.
+Information on the client is in the owping(1) manual page.
+For more of an overview of the full functionality and architecture see
+the \%http://e2epi.internet2.edu/owamp/ web site.
+.SH ACKNOWLEDGMENTS
+This material is based in part on work supported by the National Science
+Foundation (NSF) under Grant No. ANI-0314723. Any opinions, findings and
+conclusions or recommendations expressed in this material are those of
+the author(s) and do not necessarily reflect the views of the NSF.
