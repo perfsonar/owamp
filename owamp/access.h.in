@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
 #include <limits.h>
@@ -7,6 +8,9 @@
 #include <ndbm.h>
 #include <sys/stat.h>
 #include <assert.h>
+#include <netdb.h>
+#include <errno.h>
+#include <sys/wait.h>
 
 /* for inet_pton */
 #include <sys/socket.h>
@@ -16,13 +20,56 @@
 /* for ntohl */
 #include <sys/param.h>
 
-/* extern const char *DefaultConfigFile; */ /* DEFAULT_CONFIG_FILE */
+#define MAX_LINE 1024
+
+#ifndef MAXPATHLEN
+#define MAXPATHLEN 1024
+#endif
+
+/*
+** XXX - temporary hack until owamp.h compiles.
+*/
+#ifndef OWAMP_H
+typedef int		OWPBoolean;
+
+#define	OWP_MODE_UNDEFINED		(0)
+#define	OWP_MODE_OPEN			(01)
+#define	OWP_MODE_AUTHENTICATED		(02)
+#define	OWP_MODE_ENCRYPTED		(04)
+
+typedef enum {
+	OWPErrFATAL=-4,
+	OWPErrWARNING=-3,
+	OWPErrINFO=-2,
+	OWPErrDEBUG=-1,
+	OWPErrOK=0
+} OWPErrSeverity;
+typedef void (*OWPCheckAddrPolicy)(
+				   void *app_data,
+				   struct sockaddr *local,
+				   struct sockaddr *remote,
+				   OWPErrSeverity *err_ret
+				   );
+#endif
+
 
 /*
 ** This structure is used to keep track of usage resources.
 */
 
-struct OWAMPLimits {
-	int fake;
-};
+typedef struct owamp_limits {
+	u_int32_t bandwidth;   /* bytes/sec                          */
+	u_int32_t space;       /* bytes                              */
+	u_int8_t num_sessions; /* number of concurrent test sessions */
+} OWAMPLimits;
+
+
+typedef DBM* hash_ptr;
+void owamp_print_ip2class(hash_ptr hash);
+void owamp_print_class2limits(hash_ptr hash);
+hash_ptr hash_init(const char *str);
+int hash_store(hash_ptr hash, datum key, datum val, int flags);
+datum hash_firstkey(hash_ptr hash);
+datum hash_fetch(hash_ptr hash, datum key);
+datum hash_nextkey(hash_ptr hash);
 
