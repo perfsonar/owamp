@@ -733,6 +733,10 @@ _OWPDecodeV3TestRequest(
 			return OWPErrFATAL;
 	}
 
+#ifdef	HAVE_STRUCT_SOCKADDR_SA_LEN
+	sender->sa_len = receiver->sa_len = *socklen;
+#endif
+
 	memcpy(sid,&buf[40],16);
 
 	/*

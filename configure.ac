@@ -120,6 +120,9 @@ AC_CHECK_HEADERS([errno.h netdb.h stdlib.h sys/param.h sys/socket.h sys/time.h])
 I2_C___ATTRIBUTE__
 AC_C_CONST
 AC_HEADER_TIME
+AC_CHECK_MEMBERS([struct sockaddr.sa_len], , ,
+	[#include <sys/types.h>
+	#include <sys/socket.h>])
 
 # Checks for library functions.
 AC_FUNC_MALLOC

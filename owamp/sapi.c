@@ -636,6 +636,8 @@ AddrBySAddrRef(
 				NI_NUMERICHOST | NI_NUMERICSERV)) != 0){
 		OWPError(addr->ctx,OWPErrWARNING,OWPErrUNKNOWN,
 				"getnameinfo(): %s",gai_strerror(gai));
+		OWPError(addr->ctx,OWPErrWARNING,OWPErrUNKNOWN,
+				"getnameinfo(): sa_family = %d, sa_len = %d",addr->saddr->sa_family,addr->saddr->sa_len);
 		strncpy(addr->node,"unknown",sizeof(addr->node));
 		strncpy(addr->port,"unknown",sizeof(addr->port));
 	}
