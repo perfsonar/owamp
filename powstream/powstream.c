@@ -1042,7 +1042,7 @@ NextConnection:
 			char			fname[PATH_MAX];
 			char			endname[PATH_MAX];
 			char			newpath[PATH_MAX];
-			u_int64_t		nrecs;
+			u_int64_t		arecs,nrecs;
 			off_t			hlen;
 			OWPSessionHeaderRec	hdr;
 			OWPNum64		localstop;
@@ -1149,7 +1149,7 @@ AGAIN:
 			}
 			/* Else - time's up! Get to work.	*/
 
-			nrecs = OWPReadDataHeader(ctx,p->fp,&hlen,&hdr);
+			arecs = OWPReadDataHeader(ctx,p->fp,&hlen,&hdr);
 			parse.hdr = &hdr;
 
 			/*
@@ -1172,8 +1172,8 @@ AGAIN:
 			/*
 			 * How many records from "begin" to end of file.
 			 */
-			if(nrecs)
-				nrecs -= (parse.begin-hlen)/hdr.rec_size;
+			if(arecs)
+				nrecs = arecs - (parse.begin-hlen)/hdr.rec_size;
 			/*
 			 * No more data to parse.
 			 */
@@ -1233,8 +1233,8 @@ AGAIN:
 			/* write relevant records to file */
 			if(OWPParseRecords(ctx,p->fp,nrecs,hdr.version,
 				WriteSubSession,(void*)&parse) != OWPErrOK){
-				I2ErrLog(eh,"WriteSubSession: nrecs=%d: %M",
-									nrecs);
+				I2ErrLog(eh,"WriteSubSession: arecs=%d,nrecs=%d: %M",
+								arecs,nrecs);
 				goto error;
 			}
 
