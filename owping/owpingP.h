@@ -53,10 +53,6 @@ typedef	struct {
 #ifndef	NDEBUG
 		I2Boolean	childwait;        /* -w */
 #endif
-		char		*readfrom;        /* -R */
-
-
-
 
 		float		mean_wait;        /* -i  (seconds) */
 		u_int32_t	padding;          /* -s */

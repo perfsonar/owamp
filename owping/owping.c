@@ -40,7 +40,7 @@
  * The owping context
  */
 static	ow_ping_trec	ping_ctx;
-static I2ErrHandle		eh;
+static I2ErrHandle	eh;
 
 #define OWP_TMPFILE "/tmp/owamp.XXXXX"
 
@@ -144,21 +144,6 @@ FailSession(
 
 /* Width of Fetch receiver window. */
 #define OWP_WIN_WIDTH   64
-
-#define OWP_NUM_LOW         10000
-#define OWP_NUM_MID         1000
-#define OWP_NUM_HIGH        1000
-
-#define OWP_CUTOFF_LOW      0.1
-#define OWP_CUTOFF_MID      1.0
-#define OWP_CUTOFF_HIGH     ((double)(ping_ctx.opt.lossThreshold))
-
-/* These are NOT configurable. */
-#define OWP_MESH_LOW        ((double)OWP_CUTOFF_LOW/(double)OWP_NUM_LOW)
-#define OWP_MESH_MID        ((double)(OWP_CUTOFF_MID-OWP_CUTOFF_LOW)         \
-			     /(double)OWP_NUM_MID) 
-#define OWP_MESH_HIGH       ((double)(OWP_CUTOFF_HIGH-OWP_CUTOFF_MID)        \
-                             /(double)OWP_NUM_HIGH)
 
 #define OWP_MAX_N           100  /* N-reordering statistics parameter */
 #define OWP_LOOP(x)         ((x) >= 0? (x): (x) + OWP_MAX_N)
@@ -277,24 +262,38 @@ owp_record_out(fetch_state_ptr state, OWPCookedDataRecPtr rec)
 }
 
 #define OWP_MAX_BUCKET  (OWP_NUM_LOW + OWP_NUM_MID + OWP_NUM_HIGH - 1)
-/*
-** Given a delay, compute index of the corresponding bucket.
-*/
+
+#define OWP_NUM_LOW         50000
+#define OWP_NUM_MID         100000
+#define OWP_NUM_HIGH        49900
+
+#define OWP_CUTOFF_A        (double)(-50.0)
+#define OWP_CUTOFF_B        (double)0.0
+#define OWP_CUTOFF_C        (double)0.1
+#define OWP_CUTOFF_D        (double)50.0
+
+const double mesh_low = (OWP_CUTOFF_B - OWP_CUTOFF_A)/OWP_NUM_LOW;
+const double mesh_mid = (OWP_CUTOFF_C - OWP_CUTOFF_B)/OWP_NUM_MID;
+const double mesh_high = (OWP_CUTOFF_D - OWP_CUTOFF_C)/OWP_NUM_HIGH;
+
 int
 owp_bucket(double delay)
 {
-	if (delay < 0)
+	if (delay < OWP_CUTOFF_A)
 		return 0;
-	if (delay < OWP_CUTOFF_LOW)
-		return (int)(delay/OWP_MESH_LOW);
-	if (delay < OWP_CUTOFF_MID)
-		return OWP_NUM_LOW 
-			+ (int)((delay-OWP_CUTOFF_LOW)/OWP_MESH_MID); 
-	return OWP_MIN(OWP_NUM_LOW + OWP_NUM_MID 
-		       + (int)((delay - OWP_CUTOFF_MID)/OWP_MESH_HIGH),
-		       OWP_MAX_BUCKET);
-}
 
+	if (delay < OWP_CUTOFF_B)
+		return OWP_NUM_LOW + (int)(delay/mesh_low);
+
+	if (delay < OWP_CUTOFF_C)
+		return OWP_NUM_LOW +  (int)(delay/mesh_mid);
+
+	if (delay < OWP_CUTOFF_D)
+		return OWP_NUM_LOW + OWP_NUM_MID 
+			+ (int)((delay - OWP_CUTOFF_C)/mesh_high);
+	
+	return OWP_MAX_BUCKET;
+}
 void
 owp_update_stats(fetch_state_ptr state, OWPCookedDataRecPtr rec) {
 	double delay;  
@@ -343,10 +342,12 @@ owp_get_percentile(fetch_state_ptr state, double alpha)
 		sum += state->buckets[i];
 
 	if (i <= OWP_NUM_LOW)
-		return i*OWP_MESH_LOW;
+		return OWP_CUTOFF_A + i*mesh_low;
 	if (i <= OWP_NUM_LOW + OWP_NUM_MID)
-		return OWP_CUTOFF_LOW + (i - OWP_NUM_LOW)*OWP_MESH_MID;
-	return OWP_CUTOFF_MID + (i - (OWP_NUM_LOW+OWP_NUM_MID))*OWP_MESH_HIGH;
+		return OWP_CUTOFF_B + (i - OWP_NUM_LOW)*mesh_mid;
+	return OWP_CUTOFF_C + (i - (OWP_NUM_LOW+OWP_NUM_MID))*mesh_high;
+
+	return 0.0;
 }
 
 /* True if the first timestamp is earlier than the second. */
@@ -592,7 +593,8 @@ owp_fetch_sid(
 	      OWPSID sid,       
 	      fetch_state_ptr statep,
 	      char *local,           
-	      char *remote           
+	      char *remote,
+	      int do_stats
 	      )
 {
 	int fd;
@@ -641,14 +643,76 @@ owp_fetch_sid(
 		I2ErrLog(eh, "Failed to fetch remote records");
 		return;
 	}
-	if(do_records_all(fd, statep, local, remote) < 0) {
-		I2ErrLog(eh, "FATAL: do_records_all(to session)");
+	if (do_stats) {
+		if(do_records_all(fd, statep, local, remote) < 0) {
+			I2ErrLog(eh, "FATAL: do_records_all(to session)");
+		}
 	}
 	
 	if (close(fd) < 0) {
 		I2ErrLog(eh, "WARNING: close() failed: %M");
 	}
 	return;
+}
+
+/*
+** Initialize authentication and policy data (used by owping and owfetch)
+*/
+void
+owp_set_auth(ow_ping_trec *pctx, 
+	     owp_policy_data **policy, 
+	     char *progname,
+	     OWPContext ctx)
+{
+	OWPErrSeverity err_ret;
+
+	if(pctx->opt.identity){
+		/*
+		 * Eventually need to modify the policy init for the
+		 * client to deal with a pass-phrase instead of/ or in
+		 * addition to the passwd file.
+		 */
+		*policy = OWPPolicyInit(ctx, NULL, NULL, pctx->opt.passwd, 
+				       &err_ret);
+		if (err_ret == OWPErrFATAL){
+			I2ErrLog(eh, "PolicyInit failed. Exiting...");
+			exit(1);
+		};
+	}
+
+
+	/*
+	 * Verify/decode auth options.
+	 */
+	if(pctx->opt.authmode){
+		char	*s = ping_ctx.opt.authmode;
+		pctx->auth_mode = 0;
+		while(*s != '\0'){
+			switch (toupper(*s)){
+				case 'O':
+				pctx->auth_mode |= OWP_MODE_OPEN;
+				break;
+				case 'A':
+				pctx->auth_mode |= OWP_MODE_AUTHENTICATED;
+				break;
+				case 'E':
+				pctx->auth_mode |= OWP_MODE_ENCRYPTED;
+				break;
+				default:
+				I2ErrLogP(eh,EINVAL,"Invalid -authmode %c",*s);
+				usage(progname, NULL);
+				exit(1);
+			}
+			s++;
+		}
+	}else{
+		/*
+		 * Default to all modes.
+		 * If identity not set - library will ignore A/E.
+		 */
+		pctx->auth_mode = OWP_MODE_OPEN|OWP_MODE_AUTHENTICATED|
+							OWP_MODE_ENCRYPTED;
+	}
 }
 
 /*
@@ -665,7 +729,6 @@ main(
 	OWPErrSeverity		err_ret=OWPErrOK;
 	I2LogImmediateAttr	ia;
 	owp_policy_data		*policy;
-	char			passwd[PATH_MAX];
 	int			ch;
 	OWPContext		ctx;
 	OWPTestSpecPoisson	test_spec;
@@ -698,14 +761,23 @@ main(
 	}
 	OWPCfg.eh = eh;
 
+	OWPCfg.tm_out.tv_sec = 60;   /* just for now */
+	/*
+	 * Initialize library with configuration functions.
+	 */
+	if( !(ping_ctx.lib_ctx = OWPContextInitialize(&OWPCfg))){
+		I2ErrLog(eh, "Unable to initialize OWP library.");
+		exit(1);
+	}
+	ctx = ping_ctx.lib_ctx;
+
 	/* Set default options. */
 	ping_ctx.opt.records = ping_ctx.opt.full = ping_ctx.opt.help 
 		= ping_ctx.opt.from = ping_ctx.opt.to = ping_ctx.opt.childwait 
 		= ping_ctx.opt.quiet = False;
 	ping_ctx.opt.save_from_test = ping_ctx.opt.save_to_test 
 		= ping_ctx.opt.identity = ping_ctx.opt.passwd 
-		= ping_ctx.opt.srcaddr = ping_ctx.opt.readfrom 
-		= ping_ctx.opt.authmode = NULL;
+		= ping_ctx.opt.srcaddr = ping_ctx.opt.authmode = NULL;
 	ping_ctx.opt.numPackets = 100;
 	ping_ctx.opt.lossThreshold = 10;
 	ping_ctx.opt.percentile = 50.0;
@@ -713,7 +785,7 @@ main(
 	ping_ctx.opt.padding = 0;
 
 	while ((ch = getopt(argc, argv, 
-			    "A:F:L:QR:S:T:Va:c:fhi:k:s:tu:vw")) != -1)
+			    "A:F:L:QS:T:Va:c:fhi:k:s:tu:vw")) != -1)
              switch (ch) {
              case 'v':
 		     ping_ctx.opt.records = True;
@@ -768,9 +840,6 @@ main(
 	     case 'w':
 		     ping_ctx.opt.childwait = True;
                      break;
-	     case 'R':
-		     ping_ctx.opt.readfrom = strdup(optarg);
-		     break;
 
              case 'i':
 		     ping_ctx.opt.mean_wait = (float)(strtod(optarg, &endptr));
@@ -795,34 +864,13 @@ main(
 		exit(0);
 	}
 
-	if ((ping_ctx.opt.percentile < 0.0) 
-		|| (ping_ctx.opt.percentile > 100.0)) {
-		usage(progname, "alpha must be between 0.0 and 100.0");
-		exit(0);
-	}
+	/*
+	 * Handle 3 possible cases (owping, owfetch, owstats) one by one.
+	 */
+	if (!strcmp(progname, "owping")){
+		if(!ping_ctx.opt.to && !ping_ctx.opt.from)
+			ping_ctx.opt.to = ping_ctx.opt.from = True;
 
-	if (ping_ctx.opt.readfrom) {
-		int fd = open(ping_ctx.opt.readfrom, O_RDONLY);
-		if (fd < 0) {
-			I2ErrLog(eh, "FATAL: open(%s) failed: %M",
-				 ping_ctx.opt.readfrom);
-			exit(1);
-		}
-
-		if (do_records_all(fd, &state, NULL, NULL) < 0){
-			I2ErrLog(eh, "FATAL: do_records_all failed.");
-			exit(1);
-		}
-		exit(0);
-	}
-	
-	/* XXX - this will change for owpfetch case */
-	if((argc < 1) || (argc > 2)){
-		usage(progname, NULL);
-		exit(1);
-	}
-	
-	if (ping_ctx.opt.from || ping_ctx.opt.to) {
 		ping_ctx.remote_test = argv[0];
 		if(argc > 1)
 			ping_ctx.remote_serv = argv[1];
@@ -836,210 +884,222 @@ main(
 		 */
 		if(ping_ctx.opt.padding > MAX_PADDING_SIZE)
 			ping_ctx.opt.padding = MAX_PADDING_SIZE;
-	}
-
-	OWPCfg.tm_out.tv_sec = 60;   /* just for now */
-	/*
-	 * Initialize library with configuration functions.
-	 */
-	if( !(ping_ctx.lib_ctx = OWPContextInitialize(&OWPCfg))){
-		I2ErrLog(eh, "Unable to initialize OWP library.");
-		exit(1);
-	}
-	ctx = ping_ctx.lib_ctx;
-
-	if(ping_ctx.opt.identity){
-		/*
-		 * Eventually need to modify the policy init for the
-		 * client to deal with a pass-phrase instead of/ or in
-		 * addition to the passwd file.
-		 */
-		policy = OWPPolicyInit(ctx, NULL, NULL, passwd, &err_ret);
-		if (err_ret == OWPErrFATAL){
-			I2ErrLog(eh, "PolicyInit failed. Exiting...");
-			exit(1);
-		};
-	}
 
 
-	/*
-	 * Verify/decode auth options.
-	 */
-	if(ping_ctx.opt.authmode){
-		char	*s = ping_ctx.opt.authmode;
-		ping_ctx.auth_mode = 0;
-		while(*s != '\0'){
-			switch (toupper(*s)){
-				case 'O':
-				ping_ctx.auth_mode |= OWP_MODE_OPEN;
-				break;
-				case 'A':
-				ping_ctx.auth_mode |= OWP_MODE_AUTHENTICATED;
-				break;
-				case 'E':
-				ping_ctx.auth_mode |= OWP_MODE_ENCRYPTED;
-				break;
-				default:
-				I2ErrLogP(eh,EINVAL,"Invalid -authmode %c",*s);
-				usage(progname, NULL);
-				exit(1);
-			}
-			s++;
+		if ((ping_ctx.opt.percentile < 0.0) 
+		    || (ping_ctx.opt.percentile > 100.0)) {
+			usage(progname, "alpha must be between 0.0 and 100.0");
+			exit(0);
 		}
-	}else{
+
+		if((argc < 1) || (argc > 2)){
+			usage(progname, NULL);
+			exit(1);
+		}
+
+		owp_set_auth(&ping_ctx, &policy, progname, ctx); 
+
 		/*
-		 * Default to all modes.
-		 * If identity not set - library will ignore A/E.
+		 * TODO: create a "start" option.
+		 *
+		 * For now, start test two seconds from now.
 		 */
-		ping_ctx.auth_mode = OWP_MODE_OPEN|OWP_MODE_AUTHENTICATED|
-							OWP_MODE_ENCRYPTED;
-	}
-
-	if(!ping_ctx.opt.to && !ping_ctx.opt.from)
-		ping_ctx.opt.to = ping_ctx.opt.from = True;
-
-	/*
-	 * TODO: create a "start" option.
-	 *
-	 * For now, start test two seconds from now.
-	 */
-	if(!OWPGetTimeOfDay(&start_time_rec)){
-		I2ErrLogP(eh,errno,"Unable to get current time:%M");
-		exit(1);
-	}
-
-	start_time_rec.sec += 2;
-
-	test_spec.test_type = OWPTestPoisson;
-	test_spec.start_time = start_time_rec;
-	test_spec.npackets = ping_ctx.opt.numPackets;
-
-	/*
-	 * TODO: Figure out typeP...
-	 */
-	test_spec.typeP = 0;          /* so it's in host byte order then */
-	test_spec.packet_size_padding = ping_ctx.opt.padding;
-
-	 /* InvLambda is mean wait time in usec */
-	test_spec.InvLambda = (double)1000000.0 * ping_ctx.opt.mean_wait;
-	conndata.lossThreshold = ping_ctx.opt.lossThreshold;
-
-	conndata.pipefd = -1;
-	conndata.policy = policy; /* or NULL ??? */
-	conndata.node = NULL;
+		if(!OWPGetTimeOfDay(&start_time_rec)){
+			I2ErrLogP(eh,errno,"Unable to get current time:%M");
+			exit(1);
+		}
+		
+		start_time_rec.sec += 2;
+		
+		test_spec.test_type = OWPTestPoisson;
+		test_spec.start_time = start_time_rec;
+		test_spec.npackets = ping_ctx.opt.numPackets;
+		
+		/*
+		 * TODO: Figure out typeP...
+		 */
+		test_spec.typeP = 0;      /* so it's in host byte order then */
+		test_spec.packet_size_padding = ping_ctx.opt.padding;
+		
+		/* InvLambda is mean wait time in usec */
+		test_spec.InvLambda 
+			= (double)1000000.0 * ping_ctx.opt.mean_wait;
+		conndata.lossThreshold = ping_ctx.opt.lossThreshold;
+		
+		conndata.pipefd = -1;
+		conndata.policy = policy; /* or NULL ??? */
+		conndata.node = NULL;
 #ifndef	NDEBUG
-	conndata.childwait = ping_ctx.opt.childwait;
+		conndata.childwait = ping_ctx.opt.childwait;
 #endif
-
-	/*
-	 * Open connection to owampd.
-	 */
-	if( !(ping_ctx.cntrl = OWPControlOpen(ctx,
+		
+		/*
+		 * Open connection to owampd.
+		 */
+		
+		ping_ctx.cntrl = OWPControlOpen(ctx, 
 			OWPAddrByNode(ctx, ping_ctx.opt.srcaddr),
 			OWPAddrByNode(ctx, ping_ctx.remote_serv),
-			ping_ctx.auth_mode, ping_ctx.opt.identity,
-			(void*)&conndata, &err_ret))){
-		I2ErrLog(eh, "Unable to open control connection.");
-		exit(1);
-	}
-	conndata.cntrl = ping_ctx.cntrl;
+			ping_ctx.auth_mode, 
+			ping_ctx.opt.identity,
+			(void*)&conndata, &err_ret);
+		if (!ping_ctx.cntrl){
+			I2ErrLog(eh, "Unable to open control connection.");
+			exit(1);
+		}
+		conndata.cntrl = ping_ctx.cntrl;
+		
 
-	/*
-	 * Prepare paths for datafiles. Unlink if not keeping data.
-	 */
-
-	if(ping_ctx.opt.to) {
-		if (!OWPSessionRequest(ping_ctx.cntrl, NULL, False,
+		/*
+		 * Prepare paths for datafiles. Unlink if not keeping data.
+		 */
+		
+		if(ping_ctx.opt.to) {
+			if (!OWPSessionRequest(ping_ctx.cntrl, NULL, False,
 				       OWPAddrByNode(ctx,ping_ctx.remote_test),
 				       True, (OWPTestSpec*)&test_spec, tosid, 
 				       tofd, &err_ret))
 			FailSession(ping_ctx.cntrl);
-	}
+		}
 
 
 
-	if(ping_ctx.opt.from) {
-		u_int8_t     typeP[4];
+		if(ping_ctx.opt.from) {
+			u_int8_t     typeP[4];
 
-		if (ping_ctx.opt.save_from_test) {
-			fromfd = open(ping_ctx.opt.save_from_test, 
+			if (ping_ctx.opt.save_from_test) {
+				fromfd = open(ping_ctx.opt.save_from_test, 
 			       O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
-			if (fromfd < 0) {
+				if (fromfd < 0) {
 				I2ErrLog(eh, "FATAL: open(%s) failed: %M", 
 					 ping_ctx.opt.save_from_test);
 				exit(1);
-			}
-		} else {
-			char *path = strdup(OWP_TMPFILE);
-			if (!path) {
-				I2ErrLog(eh, "FATAL: malloc() failed: %M");
-				exit(1);
-			}
-			if ((fromfd = mkstemp(path)) < 0) {
+				}
+			} else {
+				char *path = strdup(OWP_TMPFILE);
+				if (!path) {
+				    I2ErrLog(eh, "FATAL: malloc() failed: %M");
+				    exit(1);
+				}
+				if ((fromfd = mkstemp(path)) < 0) {
 				I2ErrLog(eh, "FATAL: open(%s) failed: %M", 
 					 path);
 				exit(1);	
-			}
-			if (unlink(path) < 0) {
+				}
+				if (unlink(path) < 0) {
 				I2ErrLog(eh, "WARNING: unlink(%s) failed: %M", 
 					 path);
+				}
 			}
-		}
 
-		*(u_int32_t *)typeP = htonl(test_spec.typeP);
-		OWPWriteDataHeader(conndata.cntrl, fromfd, typeP);
+			*(u_int32_t *)typeP = htonl(test_spec.typeP);
+			OWPWriteDataHeader(conndata.cntrl, fromfd, typeP);
 
-		if (!OWPSessionRequest(ping_ctx.cntrl,
+			if (!OWPSessionRequest(ping_ctx.cntrl,
 				       OWPAddrByNode(ctx,ping_ctx.remote_test),
 				       True, NULL, False, 
 				       (OWPTestSpec*)&test_spec, fromsid,
 				       fromfd, &err_ret))
+				FailSession(ping_ctx.cntrl);
+		}
+		
+		local = OWPAddrByLocalControl(ping_ctx.cntrl); /* sender */
+
+		if(OWPStartSessions(ping_ctx.cntrl) < OWPErrINFO)
 			FailSession(ping_ctx.cntrl);
-	}
-	
-	local = OWPAddrByLocalControl(ping_ctx.cntrl); /* sender */
 
-	if(OWPStartSessions(ping_ctx.cntrl) < OWPErrINFO)
-		FailSession(ping_ctx.cntrl);
+		/*
+		 * TODO install sig handler for keyboard interupt - to send 
+		 * stop sessions. (Currently SIGINT causes everything to be 
+		 * killed and lost - might be reasonable to keep it that way.)
+		 */
+		if(OWPStopSessionsWait(ping_ctx.cntrl,NULL,&acceptval,&err))
+			exit(1);
 
-	/*
-	 * TODO install sig handler for keyboard interupt - to send stop
-	 * sessions. (Currently SIGINT causes everything to be killed and
-	 * lost - might be reasonable to keep it that way.)
-	 */
-	if(OWPStopSessionsWait(ping_ctx.cntrl,NULL,&acceptval,&err) != 0)
-		exit(1);
-
-	if (acceptval != 0) {
-		I2ErrLog(eh, "Test session(s) Questionable...");
-	}
-
-	if (ping_ctx.opt.to || ping_ctx.opt.from) {
-		char *ptr;
-		OWPAddr2string(local, local_str, sizeof(local_str));
-		remote = strdup(ping_ctx.remote_test);
-		if (!remote) {
-			I2ErrLog(eh, "Failed to copy remote host name: %M");
-			remote = "";
-		} else {
-			if ((ptr = strrchr(remote, ':')))
-				*ptr = '\0';
+		if (acceptval != 0) {
+			I2ErrLog(eh, "Test session(s) Questionable...");
 		}
-	}
 
-	if(ping_ctx.opt.to)
-		owp_fetch_sid(ping_ctx.opt.save_to_test, conndata.cntrl, tosid,
-			  &state, local_str, remote);
-	
+		if (ping_ctx.opt.to || ping_ctx.opt.from) {
+			char *ptr;
+			OWPAddr2string(local, local_str, sizeof(local_str));
+			remote = strdup(ping_ctx.remote_test);
+			if (!remote) {
+			   I2ErrLog(eh, "Failed to copy remote host name: %M");
+			   remote = "";
+			} else {
+				if ((ptr = strrchr(remote, ':')))
+					*ptr = '\0';
+			}
+		}
+		
+		if(ping_ctx.opt.to)
+			owp_fetch_sid(ping_ctx.opt.save_to_test,conndata.cntrl,
+				      tosid, &state, local_str, remote, 1);
 
-	if(ping_ctx.opt.from){
-		if (do_records_all(fromfd, &state, remote, local_str) < 0) {
+		if(ping_ctx.opt.from){
+			if (do_records_all(fromfd,&state,remote,local_str)<0) {
 			I2ErrLog(eh,"FATAL: do_records_all(from session)");
+			}
+			if (close(fromfd) < 0) {
+				I2ErrLog(eh, "WARNING: close() failed: %M");
+			}
 		}
-		if (close(fromfd) < 0) {
-			I2ErrLog(eh, "WARNING: close() failed: %M");
-		}
+		
+		exit(0);
+
 	}
+
+	if (!strcmp(progname, "owstats")) {
+		int fd = open(argv[0], O_RDONLY);
+		if (fd < 0) {
+			I2ErrLog(eh, "FATAL: open(%s) failed: %M", argv[0]);
+			exit(1);
+		}
+		
+		if (do_records_all(fd, &state, NULL, NULL) < 0){
+			I2ErrLog(eh, "FATAL: do_records_all failed.");
+			exit(1);
+		}
+		exit(0);
+	}
+	
+	if (!strcmp(progname, "owfetch")) {
+		int i;
+		if (argc%2 == 0) {
+			usage(progname, "even number of arguments required");
+			exit(1);
+		}
+
+		ping_ctx.remote_serv = argv[0];
+		argv++;
+		argc--;
+
+		owp_set_auth(&ping_ctx, &policy, progname, ctx); 
+		conndata.policy = policy;
+
+		/*
+		 * Open connection to owampd.
+		 */
+		ping_ctx.cntrl = OWPControlOpen(ctx, 
+			OWPAddrByNode(ctx, ping_ctx.opt.srcaddr),
+			OWPAddrByNode(ctx, ping_ctx.remote_serv),
+			ping_ctx.auth_mode, 
+			ping_ctx.opt.identity,
+			(void*)&conndata, &err_ret);
+		if (!ping_ctx.cntrl){
+			I2ErrLog(eh, "Unable to open control connection.");
+			exit(1);
+		}
+		conndata.cntrl = ping_ctx.cntrl;
+
+		for (i = 0; i < argc/2; i++) {
+			OWPSID sid;
+			OWPHexDecode(argv[i], sid, 16);
+			owp_fetch_sid(argv[i+1], conndata.cntrl, sid, &state,
+				      NULL, NULL, 0);
+		}
+	}	
 
 	exit(0);
 }
