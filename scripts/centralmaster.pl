@@ -20,13 +20,16 @@ use constant TMP_SECRET => 'abcdefgh12345678';
 use constant LOW => 0;
 use constant HIGH => 1;
 
+use constant INVALID => 0;
+use constant VALID => 1;
+
 use constant VERBOSE => 1;
 
 ### Configuration section.
 my $server_port = 2345;
 
 # $top_dir contains the hierarchy of receiver directories
-my $top_dir = '/home/karp/projects/owamp/scripts';
+my $top_dir = '/home/karp/projects/owamp/datadep';
 
 # path to the 'owdigest' executable.
 my $digest_path = '/home/karp/projects/owamp/owdigest/owdigest';
@@ -94,7 +97,6 @@ while (1) {
 	my ($start_time, $cur_time, $hashed) = split /\./, $buf;
 	my $plain = "$start_time.$cur_time.$secret";
 	warn "received $plain" if VERBOSE;
-	die "DEBUG set - exiting" if DEBUG;
 	unless (Digest::MD5::md5_hex("$start_time.$cur_time.$secret") 
 		eq $hashed) {
 	    warn "DEBUG: hash mismatch\n";
@@ -152,9 +154,10 @@ while (1) {
 	closedir DIR;
 
 	for my $recv (@receivers) {
-
-	    opendir(OWPDATA, "$top_dir/$recv/$src") 
-		    or die "Could not opendir $top_dir/$recv/$src: $!";
+	    my $dirpath = "$top_dir/$recv/$src";
+	    next unless -d $dirpath;
+	    opendir(OWPDATA, "$dirpath") 
+		    or die "Could not opendir $dirpath: $!";
 	    my @files = grep {-f $_} readdir(DIR);
 	    closedir OWPDATA;
 	    warn "top_dir=$top_dir\nrecv=$recv\nsrc=$src\nfiles: @files \n"
@@ -166,7 +169,7 @@ while (1) {
 		next unless ($name =~ s/\.owp$//);
 		my ($start, $end) = split /_/, $name;
 		warn "start=$start    end=$end\n" if DEBUG;
-		my $fullpath = "$top_dir/$recv/$src/$_";
+		my $fullpath = "$dirpath/$_";
 
 		next unless (exists $live_times{$src}); # status unknown
 		my $final = $#{$live_times{$src}};
@@ -180,7 +183,7 @@ while (1) {
 		if (contains($start, $end, $live_times{$src}[0][HIGH])
 		    || contains($start, $end, $live_times{$src}[$final][LOW])){
 		    warn "file $fullpath invalid: archiving\n" if DEBUG;
-		    archive($fullpath);
+		    archive($fullpath, VALID);
 		    next;
 		}
 
@@ -188,7 +191,7 @@ while (1) {
 		    if (contains($start, $end, $live_times{$src}[$i][LOW])
 			||contains($start, $end, $live_times{$src}[$i][HIGH])){
 			warn "file $fullpath invalid: archiving\n" if DEBUG;
-			archive($fullpath);
+			archive($fullpath, INVALID);
 			next FILE;
 		    }
 		}
@@ -196,7 +199,7 @@ while (1) {
 		warn "validated file $fullpath ..digesting + archiving now..\n"
 			if DEBUG;
 		system("$digest_path $fullpath $fullpath.digest > /dev/null");
-		archive($fullpath);
+		archive($fullpath, VALID);
 	    }
 	}
 	warn "DEBUG: no more dirs - going back into recv loop\n\n" if DEBUG;
@@ -206,7 +209,14 @@ while (1) {
 
 # Archiving function - currently unlink.
 sub archive {
-    my $file = $_[0];
+    my ($file, $type) = @_;
+
+    if ($type == VALID) { # temporary  measure
+	unlink $file or warn "Could not unlink $file: $!";
+	return;
+    }
+
+    # type == INVALID
     unlink $file or warn "Could not unlink $file: $!";
 }
 
