@@ -53,8 +53,8 @@ owampd.sh: owampd.sh.in
 		< $(srcdir)/owampd.sh.in > owampd.sh	
 	chmod +x owampd.sh
 
-confdir = $(sysconfdir)
-conf_DATA = owmesh.conf
+# confdir = $(sysconfdir)
+# conf_DATA = owmesh.conf
 
 clean:
 	if test -f owampd.sh; then rm owampd.sh; fi
