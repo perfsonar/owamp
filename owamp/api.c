@@ -1199,7 +1199,7 @@ OWPReadDataHeader(
 	if(hdr_len)
 		*hdr_len = 0;
 	if(hdr_ret)
-		hdr_ret->header = False;
+		hdr_ret->header = 0;
 
 	if(fstat(fileno(fp),&stat_buf) < 0){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fstat():%M");
@@ -1239,17 +1239,26 @@ OWPReadDataHeader(
 	if(hdr_len)
 		*hdr_len = hlen;
 
-POSITION:
-	if(!hdr_ret || ver==0){
+	if((ver==0) || ((ver==1) && !hdr_ret)){
 		if(fseek(fp,hlen,SEEK_SET)){
 			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fread():%M");
 			return 0;
 		}
+		return (stat_buf.st_size-hlen)/_OWP_TS_REC_SIZE;
 	}
 	else{
 		u_int32_t	msg[_OWP_MAX_MSG/sizeof(u_int32_t)];
 		u_int32_t	size = hlen - sizeof(magic) - sizeof(ver) -
 								sizeof(hlen);
+		/*
+		 * hdr is required after upgrading code to v5 of protocol.
+		 * (Should only see ver==0,1 until then.)
+		 */
+		if(!hdr_ret){
+			OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
+				"OWPReadDataHeader:invalid hdr parameter");
+			return 0;
+		}
 		if(fread(msg,1,size,fp) < size){
 			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fread():%M");
 			return 0;
@@ -1269,17 +1278,17 @@ POSITION:
 				return 0;
 			}
 			hdr_ret->header = True;
+			hdr_ret->rec_size = 20;
 			break;
 
 			default:
 			OWPError(ctx,OWPErrINFO,OWPErrUNKNOWN,
 				"OWPReadDataHeader:Unknown file version(%d)",
 				ver);
-			goto POSITION;
+			return 0;
 			break;
 		}
 	}
-
 
 	return (stat_buf.st_size-hlen)/_OWP_TS_REC_SIZE;
 }
@@ -1288,7 +1297,7 @@ POSITION:
 ** Parse the 20-byte timestamp data record for application to use.
 */
 static void
-OWPParseDataRecord(
+OWPParseV3DataRecord(
 		u_int8_t	*buf, 
 		OWPDataRec	*rec
 		)
@@ -1309,10 +1318,11 @@ OWPParseDataRecord(
 */
 OWPErrSeverity
 OWPParseRecords(
-	FILE		*fp,
-	u_int32_t	num_rec,
-	OWPDoDataRecord	proc_rec,
-	void		*app_data
+	FILE			*fp,
+	u_int32_t		num_rec,
+	OWPSessionHeader	hdr,
+	OWPDoDataRecord		proc_rec,
+	void			*app_data
 	)
 {
 	u_int8_t	rbuf[_OWP_TS_REC_SIZE];
@@ -1320,10 +1330,18 @@ OWPParseRecords(
 	OWPDataRec	rec;
 	int		rc;
 
+	/*
+	 * hdr will eventually let this function determine how to parse
+	 * records - i.e. version info. For now, only V3 records are
+	 * supported. which is assumed if !hdr or hdr->rec_size == 20.
+	 */
+	if(hdr && hdr->rec_size != _OWP_TS_REC_SIZE)
+		OWPErrFATAL;
+
 	for(i=0;i<num_rec;i++){
 		if(fread(rbuf,_OWP_TS_REC_SIZE,1,fp) < 1)
 			return OWPErrFATAL;
-		OWPParseDataRecord(rbuf,&rec);
+		OWPParseV3DataRecord(rbuf,&rec);
 		rc = proc_rec(app_data,&rec);
 		if(!rc) continue;
 		if(rc < 0)

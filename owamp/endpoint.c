@@ -842,13 +842,8 @@ run_receiver(
 	int			zero_len;
 	u_int32_t		esterror,lasterror=0;
 	int			sync;
-	size_t			lenpath;
-	char			newpath[PATH_MAX];
-	char			newlink[PATH_MAX];
 	OWPTimeStamp		owptstamp;
 	int			i;
-
-	newpath[0] = newlink[0] = '\0';
 
 	/*
 	 * Initialize pointers to various positions in the packet buffer,
@@ -886,39 +881,30 @@ run_receiver(
 	last = ep->relative_offsets[ep->test_spec.any.npackets-1];
 	timespecadd(&last, &ep->start);
 
-	tvalclear(&wake.it_value);
-	timespecadd((struct timespec*)&wake.it_value,&last);
-	timespecsub((struct timespec*)&wake.it_value,signal_time);
+	final = last;
+	final.tv_sec += ep->lossThreshold;
 
 	/*
-	 * Delay becomes a threshold value, if we ever get a delay larger
-	 * than this, we need to increase our timer. Make it about one
-	 * second larger than we expect to get.
-	 */
-	ep->delay.tv_sec++;
-
-	timespecadd((struct timespec*)&wake.it_value,&ep->delay);
-	wake.it_value.tv_usec /= 1000;	/* convert nsec to usec	*/
-	/*
-	 * Set the wake timer one second beyond our delay estimate threshold.
+	 * Set the wake timer one second beyond our final time.
 	 * One second padding should be plenty to ensure our process gets
 	 * some processing time between when we estimate the last packet will
-	 * arrive, and when this timer will go off.
+	 * arrive, and when this timer will go off. (This ensures the last
+	 * packet has time to be processed.)
 	 */
+	tvalclear(&wake.it_value);
+	timespecadd((struct timespec*)&wake.it_value,&final);
+	timespecsub((struct timespec*)&wake.it_value,signal_time);
 	wake.it_value.tv_sec++;
+	wake.it_value.tv_usec /= 1000;	/* convert nsec to usec	*/
 	tvalclear(&wake.it_interval);
 
 	/*
-	 * Set timer for just past expected end of test. At that time, we
-	 * can determine how much longer we should wait, if any.
+	 * Set timer for just past expected end of test.
 	 */
 	if(setitimer(ITIMER_REAL,&wake,NULL) != 0){
 		OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,"setitimer():%M");
 		goto error;
 	}
-
-	final = last;
-	final.tv_sec += ep->lossThreshold;
 
 	while(1){
 again:
@@ -940,59 +926,6 @@ again:
 			 */
 			if(timespeccmp(&currtime,&final,>))
 				goto test_over;
-
-			/*
-			 * Set expecttime to a relative offset from the
-			 * start, indicating lossThreshold before currtime.
-			 */
-			expecttime = currtime;
-			timespecsub(&expecttime,&ep->start);
-			expecttime.tv_sec -= ep->lossThreshold;
-
-			/*
-			 * Search backwards for the "latest" missing packet.
-			 * If we ever get further than lossThreshold into
-			 * the past, we can terminate.
-			 * Once we find the "latest" missing packet, set
-			 * an alarm for when we can declare it missing
-			 * and go back to recv loop until that time.
-			 */
-			for(i=ep->test_spec.any.npackets-1;(i>=0);i--){
-
-				if(timespeccmp(&expecttime,
-						&ep->relative_offsets[i],>)){
-					goto test_over;
-				}
-
-				if(ep->received_packets[i]){
-
-					continue;
-				}
-
-				/*
-				 * Compute time when we can declare
-				 * this last unaccounted for packet
-				 * missing.
-				 */
-				expecttime = ep->relative_offsets[i];
-				timespecadd(&expecttime, &ep->start);
-				timespecsub(&expecttime, &currtime);
-				tvalclear(&wake.it_value);
-				timespecadd((struct timespec*)&wake.it_value,
-								&expecttime);
-				/* convert nsec to usec	*/
-				wake.it_value.tv_usec /= 1000;
-				wake.it_value.tv_sec += ep->lossThreshold;
-
-				if(setitimer(ITIMER_REAL,&wake,NULL) != 0){
-					OWPError(ep->ctx,OWPErrFATAL,
-							OWPErrUNKNOWN,
-							"setitimer():%M");
-					goto error;
-				}
-				goto again;
-			}
-			goto test_over;
 		}
 		if(owp_int){
 			goto error;
@@ -1105,37 +1038,6 @@ again:
 						"fwrite():%M");
 			goto error;
 		}
-
-		/*
-		 * Now, check the delay for this packet against our delaythresh
-		 * estimate and increase the estimate if necessary.
-		 */
-		tmptime = currtime;
-		timespecsub(&tmptime,&currtime);
-		if(timespeccmp(&tmptime,&ep->delay,<))
-			goto again;
-
-		/*
-		 * Increase our end-of-test alarm.
-		 */
-		ep->delay = tmptime;
-		ep->delay.tv_sec++;
-
-		tvalclear(&wake.it_value);
-		timespecadd((struct timespec*)&wake.it_value,&last);
-		timespecsub((struct timespec*)&wake.it_value,&currtime);
-		timespecadd((struct timespec*)&wake.it_value,&ep->delay);
-		/* convert nsec to usec	*/
-		wake.it_value.tv_usec /= 1000;
-		wake.it_value.tv_sec++;
-		tvalclear(&wake.it_interval);
-
-		if(setitimer(ITIMER_REAL,&wake,NULL) != 0){
-			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-							"setitimer():%M");
-			goto error;
-		}
-
 	}
 test_over:
 
@@ -1172,59 +1074,6 @@ test_over:
 	fclose(ep->datafile);
 	ep->datafile = NULL;
 
-	/*
-	 * TODO: To comply with throwing out unresolved sessions, this
-	 * should move to the StopSession function below, and if accept
-	 * is non-zero, the file should be unlinked instead of renamed.
-	 * (If the higher level api passed in a fd, then it should pay
-	 * attention to the accept value returned from the StopSessions
-	 * api call, and throw the data out as necessary.)
-	 */
-	if(ep->filepath){
-		/*
-		 * First create new link for SID in "nodes" hierarchy.
-		 */
-		lenpath = strlen(ep->filepath);
-		strcpy(newpath,ep->filepath);
-		newpath[lenpath-strlen(OWP_INCOMPLETE_EXT)] = '\0'; /* remove the 
-						     extension from the end. */
-		if(link(ep->filepath,newpath) != 0){
-			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"link():%M");
-			goto error;
-		}
-
-		if(ep->linkpath){
-			/*
-			 * Now add symlink in "sessions" for new SID file.
-			 */
-			lenpath = strlen(ep->linkpath);
-			strcpy(newlink,ep->linkpath);
-			/* remove the extension from the end. */
-			newlink[lenpath-strlen(OWP_INCOMPLETE_EXT)] = '\0';
-			if(symlink(newpath,newlink) != 0){
-				OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-							"symlink():%M");
-				goto error;
-			}
-
-			if((unlink(ep->linkpath) != 0) && (errno != ENOENT)){
-				OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-							"unlink():%M");
-				goto error;
-			}
-		}
-
-		/*
-		 * Now remove old  incomplete  files - this is done in this
-		 * order to ensure no race conditions.
-		 */
-		if((unlink(ep->filepath) != 0) && (errno != ENOENT)){
-			OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-								"unlink():%M");
-			goto error;
-		}
-	}
 
 	exit(OWP_CNTRL_ACCEPT);
 
@@ -1234,14 +1083,14 @@ error:
 	 */
 	if(ep->datafile)
 		fclose(ep->datafile);
-	if(newlink[0] != '\0')
-		unlink(newlink);
-	if(newpath[0] != '\0')
-		unlink(newpath);
-	if(ep->linkpath)
+	if(ep->linkpath){
 		unlink(ep->linkpath);
-	if(ep->filepath)
+		ep->linkpath = NULL;
+	}
+	if(ep->filepath){
 		unlink(ep->filepath);
+		ep->filepath = NULL;
+	}
 	exit(OWP_CNTRL_FAILURE);
 }
 
@@ -1264,7 +1113,6 @@ _OWPEndpointInitHook(
 	struct sigaction	act;
 	sigset_t		sigs,osigs;
 	int			i;
-	u_int8_t                buf[96]; /* size of Session request */
 	OWPAddr			remoteaddr;
 
 	if(!ep->send){
@@ -1569,6 +1417,72 @@ error:
 	OWPError(ep->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 			"EndpointStart:Can't signal child #%d:%M",ep->child);
 done:
+	/*
+	 * To comply with throwing out unresolved sessions...
+	 * If accept is non-zero, the file should be unlinked instead of
+	 * renamed.
+	 * (If the higher level api passed in a fd, then it should pay
+	 * attention to the accept value returned from the StopSessions
+	 * api call, and throw the data out as necessary.)
+	 */
+	if(ep->filepath){
+		size_t			lenpath;
+		char			newpath[PATH_MAX];
+		char			newlink[PATH_MAX];
+
+		/*
+		 * Only relink to "final" name if process ended properly
+		 * (!ep->appecptval) and Stop was acceptable (!aval).
+		 */
+		if(!aval && !ep->acceptval){
+			/*
+			 * First create new link for SID in "nodes" hierarchy.
+			 */
+			lenpath = strlen(ep->filepath);
+			strcpy(newpath,ep->filepath);
+			/* remove the extension from the end. */
+			newpath[lenpath-strlen(OWP_INCOMPLETE_EXT)] = '\0';
+			if(link(ep->filepath,newpath) != 0){
+				OWPError(ep->ctx,OWPErrWARNING,OWPErrUNKNOWN,
+					"link():%M");
+				err=OWPErrWARNING;
+			}
+			else if(ep->linkpath){
+				/*
+				 * Now add symlink in "sessions" for new SID
+				 * file.
+				 */
+				lenpath = strlen(ep->linkpath);
+				strcpy(newlink,ep->linkpath);
+				/* remove the extension from the end. */
+				newlink[lenpath-strlen(OWP_INCOMPLETE_EXT)] =
+									'\0';
+				if(symlink(newpath,newlink) != 0){
+					OWPError(ep->ctx,OWPErrWARNING,
+						OWPErrUNKNOWN,"symlink():%M");
+					err=OWPErrWARNING;
+				}
+
+			}
+		}
+
+		/*
+		 * Now remove old  incomplete  files - this is done in this
+		 * order to ensure no race conditions.
+		 */
+		if(ep->linkpath){
+			if((unlink(ep->linkpath) != 0) && (errno != ENOENT)){
+				OWPError(ep->ctx,OWPErrWARNING,OWPErrUNKNOWN,
+							"unlink():%M");
+				err=OWPErrWARNING;
+			}
+		}
+		if((unlink(ep->filepath) != 0) && (errno != ENOENT)){
+			OWPError(ep->ctx,OWPErrWARNING,OWPErrUNKNOWN,
+								"unlink():%M");
+			err=OWPErrWARNING;
+		}
+	}
 	EndpointFree(ep);
 	*end_data = NULL;
 

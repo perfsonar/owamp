@@ -716,6 +716,7 @@ OWPTestPacketSize(
  */
 typedef struct OWPSessionHeaderRec{
 	OWPBoolean		header;
+	u_int32_t		rec_size;
 	OWPSID			sid;
 	struct sockaddr_storage	addr_sender;
 	struct sockaddr_storage	addr_receiver;
@@ -796,6 +797,7 @@ extern OWPBoolean
 OWPIsLostRecord(
 	OWPDataRecPtr	rec
 	);
+
 /*
  * This (type of) function is used by Fetch-Client to process
  * data records.
@@ -808,9 +810,10 @@ OWPIsLostRecord(
  *
  * num_rec can be any number less than or equal to the number of valid
  * records in the file reported by OWPReadDataHeader. This function assumes
- * the fp is currently pointing at the beginning of the data records.
+ * the fp is currently pointing at the beginning of a data record.
  * (This can be done simply by calling OWPReadDataHeader or fseek'ing to
- * the offset reported by OWPReadDataHeader.)
+ * the offset reported by OWPReadDataHeader.) Or advancing by some multiple
+ * of hdr.rec_size.
  *
  * If OWPParseRecords completes parsing "num_rec" records with out error,
  * it will return OWPErrOK.
@@ -824,10 +827,11 @@ typedef int (*OWPDoDataRecord)(
 
 OWPErrSeverity
 OWPParseRecords(
-	FILE		*fp,
-	u_int32_t	num_rec, 
-	OWPDoDataRecord	proc_rec,
-	void		*app_data
+	FILE			*fp,
+	u_int32_t		num_rec, 
+	OWPSessionHeader	hdr,
+	OWPDoDataRecord		proc_rec,
+	void			*app_data
 	);
 
 /*
