@@ -20,7 +20,6 @@
 
 require 5.005;
 use strict;
-use warnings;
 use POSIX;
 use Math::BigInt;
 
@@ -28,7 +27,6 @@ package OWP::Utils;
 
 $Utils::REVISION = '$Id$';
 $Utils::VERSION='1.0';
-$Utils::CONFPATH='~';			# default dir for config files.
 
 use constant JAN_1970 => 0x83aa7e80; # offset in seconds
 

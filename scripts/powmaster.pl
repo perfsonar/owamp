@@ -35,6 +35,7 @@ use FindBin;
 use lib ("$FindBin::Bin");
 use OWP;
 
+my @SAVEARGV = @ARGV;
 my %options = (
 	CONFDIR		=> "c:",
 	NODE		=> "n:",
@@ -143,7 +144,8 @@ foreach $mtype (@mtypes){
 	print "Starting Mesh=$mtype\n" if(defined($debug));
 	next if(!($myaddr=$conf->get_val(NODE=>$me,TYPE=>$mtype,ATTR=>'ADDR')));
 
-	@mcmd = ($powcmd,"-S $myaddr");
+	@mcmd = ();
+	push @mcmd, ($powcmd,"-p","-S",$myaddr);
 	push @mcmd, ("-i", $val) if($val = $conf->get_val(MESH=>$mtype,
 							ATTR=>'OWPINTERVAL'));
 	push @mcmd, ("-c", $val) if($val = $conf->get_val(MESH=>$mtype,
@@ -181,19 +183,54 @@ foreach $mtype (@mtypes){
 	}
 }
 
+my $reset = 0;
+my $newsend = 0;
 while(1){
+
 	sleep;
 	while(@dead_children > 0){
-		my($cpid) = shift @dead_children;
-		print "Child:$cpid - $pid2info{$cpid}[0]\n";
+		my $cpid = shift @dead_children;
+		my ($pid,$status) = @$cpid;
+		my $info = $pid2info{$pid};
+
+		warn "Dead Child!:$pid:$$info[0]:status $status\n"
+			if(defined($debug) or !$reset);
+		delete $pid2info{$pid};
+
+		next if($reset);
+
+		# restart everything if send_data died.
+		if($$info[0] =~ /send_data/){
+			kill 'HUP', $$;
+		}
+	}
+
+	if($reset){
+		my @alive = keys %pid2info;
+		next if(@alive > 0);
+		exec $FindBin::Bin."/".$FindBin::Script, @SAVEARGV;
 	}
 }
 
 sub catch_sig{
 	my $signame = shift;
 
-	/CHLD/	and (push @dead_children,@_),return;
-	die "Someone sent $_";
+	if($signame =~ /CHLD/){
+		my($pid);
+		if(($pid = wait) != -1){
+			my @tarr = ($pid,$?);
+			push @dead_children, \@tarr;
+		}
+		return;
+	}
+
+	if($signame =~ /HUP/){
+		kill 'TERM', keys %pid2info;
+		$reset = 1;
+		return;
+	}
+
+	die "Someone sent $signame";
 }
 
 sub sys_readline{
@@ -206,7 +243,7 @@ sub sys_readline{
 		$read = sysread($fh,$char,1);
 		die "sysread: $!" if(!defined($read));
 		next if($read < 1);
-		return $fname if($char eq '\n');
+		return $fname if($char eq "\n");
 		$fname .= $char;
 	}
 }
@@ -251,6 +288,7 @@ sub send_data{
 	vec($rin,$rfd,1) = 1;
 	$ein = $rin;
 
+SEND_FILES:
 	while(1){
 
 		if(defined(@flist) && (@flist > 0)){
@@ -261,8 +299,10 @@ sub send_data{
 		}
 
 		while($nfound = select($rout=$rin,undef,$eout=$ein,$timeout)){
-			die "send_data:Error reading input: $!" if($eout);
-			push @flist, sys_readline(*STDIN);
+#			die "send_data:Error reading input: $!" if($eout);
+			my $newfile = sys_readline(*STDIN);
+			push @flist, $newfile;
+			next SEND_FILES;
 		}
 
 		next if(!defined(@flist) || (@flist < 1));
