@@ -88,7 +88,7 @@ _OWPWriteServerGreeting(
 
 	*((u_int32_t *)&buf[12]) = htonl(avail_modes);
 	memcpy(&buf[16],challenge,16);
-	if(OWPWriten(cntrl->sockfd,buf,32) != 32)
+	if(I2Writen(cntrl->sockfd,buf,32) != 32)
 		return OWPErrFATAL;
 
 	cntrl->state = _OWPStateSetup;
@@ -111,7 +111,7 @@ _OWPReadServerGreeting(
 		return OWPErrFATAL;
 	}
 
-	if(OWPReadn(cntrl->sockfd,buf,32) != 32){
+	if(I2Readn(cntrl->sockfd,buf,32) != 32){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 					"Read failed:(%s)",strerror(errno));
 		return (int)OWPErrFATAL;
@@ -182,7 +182,7 @@ _OWPWriteClientGreeting(
 	memcpy(&buf[20],token,32);
 	memcpy(&buf[52],cntrl->writeIV,16);
 
-	if(OWPWriten(cntrl->sockfd, buf, 68) != 68)
+	if(I2Writen(cntrl->sockfd, buf, 68) != 68)
 		return OWPErrFATAL;
 
 	return OWPErrOK;
@@ -204,7 +204,7 @@ _OWPReadClientGreeting(
 		return OWPErrFATAL;
 	}
 
-	if(OWPReadn(cntrl->sockfd,buf,68) != 68){
+	if(I2Readn(cntrl->sockfd,buf,68) != 68){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 					"Read failed:(%s)",strerror(errno));
 		return OWPErrFATAL;
@@ -278,7 +278,7 @@ _OWPWriteServerOK(
 	memset(&buf[0],0,15);
 	*(u_int8_t *)&buf[15] = code & 0x0ff;
 	memcpy(&buf[16],cntrl->writeIV,16);
-	if(OWPWriten(cntrl->sockfd,buf,32) != 32)
+	if(I2Writen(cntrl->sockfd,buf,32) != 32)
 		return OWPErrFATAL;
 
 	cntrl->state = _OWPStateRequest;
@@ -299,7 +299,7 @@ _OWPReadServerOK(
 		return OWPErrFATAL;
 	}
 
-	if(OWPReadn(cntrl->sockfd,buf,32) != 32){
+	if(I2Readn(cntrl->sockfd,buf,32) != 32){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 					"Read failed:(%s)",strerror(errno));
 		cntrl->state = _OWPStateInvalid;

@@ -1142,6 +1142,7 @@ OWPDefEndpointInitHook(
 	}
 #endif
 
+#ifdef	NOT
 	for(i=getdtablesize()-1;i>=0;i--){
 #ifndef	NDEBUG
 		if(i == fileno(stderr))
@@ -1156,6 +1157,7 @@ OWPDefEndpointInitHook(
 		 */
 		while((close(i) < 0) && (errno == EINTR));
 	}
+#endif
 
 	if(InitNTP() != 0){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,

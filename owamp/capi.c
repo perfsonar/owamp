@@ -914,8 +914,6 @@ OWPStartSessions(
 		}
 
 	return err2;
-error:
-
 }
 
 int

@@ -356,7 +356,7 @@ CheckFD(
 		ssize_t	in,out;
 
 		in = sizeof(cstate->authmode);
-		if((out = OWPReadn(cstate->fd,&cstate->authmode,in)) != in){
+		if((out = I2Readn(cstate->fd,&cstate->authmode,in)) != in){
 			if(out != 0){
 				OWPError(cstate->ctx,OWPErrWARNING,
 					OWPErrUNKNOWN,
@@ -488,7 +488,6 @@ ACCEPT:
 	}
 	/* Child */
 	else{
-		int			i;
 		ssize_t			n;
 		OWPPerConnDataRec	conndata;
 
@@ -499,6 +498,7 @@ ACCEPT:
 		while(childwait);
 #endif
 
+#ifdef	NOT
 		for(i=getdtablesize()-1;i>=0;i--){
 #ifndef	NDEBUG
 			if(i == fileno(stderr))
@@ -513,6 +513,7 @@ ACCEPT:
 			 */
 			while((close(i) < 0) && (errno == EINTR));
 		}
+#endif
 
 		/*
 		 * TODO: Could check if the class from this IP allows
@@ -544,7 +545,7 @@ ACCEPT:
 		 */
 		mode = OWPGetMode(cntrl);
 		n = sizeof(mode);
-		if(OWPWriten(new_pipe[1],&mode,n) < n){
+		if(I2Writen(new_pipe[1],&mode,n) < n){
 			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
 					"Write on pipe failed:(%s)",
 					strerror(errno));
@@ -623,19 +624,18 @@ main(int argc, char *argv[])
 	int			rc;
 	I2datum			data;
 	OWPInitializeConfigRec	cfg  = {
-		{0, 
-		0},
-		NULL,
-		owp_get_aes_key,
-                owp_check_control,
-                owp_check_test,
-		NULL,
-		NULL,
-		NULL,
-		NULL,
-		NULL,
-		I2RAND_DEV,
-		NULL
+	/*	tm_out			*/	{0, 
+						0},
+	/*	eh			*/	NULL,
+	/*	get_aes_key_func	*/	owp_get_aes_key,
+	/*	check_control_func	*/	owp_check_control,
+	/*	check_test_func		*/	owp_check_test,
+	/*	endpoint_init_func	*/	NULL,
+	/*	endpoint_init_hook_func	*/	NULL,
+	/*	endpoint_start_func	*/	NULL,
+	/*	endpoint_stop_func	*/	NULL,
+	/*	rand_type		*/	I2RAND_DEV,
+	/*	rand_data		*/	NULL
 	};
 
 	ia.line_info = (I2NAME | I2MSG);
@@ -651,6 +651,8 @@ main(int argc, char *argv[])
 		fprintf(stderr, "%s : Couldn't init error module\n", progname);
 		exit(1);
 	}
+
+	I2ErrLogP(errhand,0,"Testing!");
 
 	od = I2OpenOptionTbl(errhand);
 
@@ -674,6 +676,13 @@ main(int argc, char *argv[])
 		usage(od,progname,NULL);
 		exit(0);
 	}
+
+	/*
+	 * Initialize the context. (Set the error handler to the app defined
+	 * one.)
+	 */
+	cfg.eh = errhand;
+	ctx = OWPContextInitialize(&cfg);
 
 	/*
 	 * Setup paths.
@@ -700,7 +709,7 @@ main(int argc, char *argv[])
 		exit(1);
 	}
 
-	policy = PolicyInit(errhand, ip2class, class2limits, passwd, &out);
+	policy = PolicyInit(ctx, ip2class, class2limits, passwd, &out);
 	if (out != OWPErrOK){
 		I2ErrLog(errhand, "PolicyInit failed. Exiting...");
 		exit(1);
@@ -759,13 +768,6 @@ main(int argc, char *argv[])
 		I2ErrLogP(errhand,0,"Unable to setup hash tables...");
 		exit(1);
 	}
-
-	/*
-	 * Initialize the context. (Set the error handler to the app defined
-	 * one.)
-	 */
-	cfg.eh = errhand;
-	ctx = OWPContextInitialize(&cfg);
 
 	/*
 	 * If the local interface was specified, use it - otherwise use NULL

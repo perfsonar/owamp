@@ -33,7 +33,7 @@
  */
 
 ssize_t				       /* Read "n" bytes from a descriptor. */
-OWPReadn(int fd, void *vptr, size_t n)
+I2Readn(int fd, void *vptr, size_t n)
 {
 	size_t	nleft;
 	ssize_t	nread;
@@ -55,10 +55,10 @@ OWPReadn(int fd, void *vptr, size_t n)
 	}
 	return(n - nleft);		/* return >= 0 */
 }
-/* end OWPReadn */
+/* end I2Readn */
 
 ssize_t					/* Write "n" bytes to a descriptor. */
-OWPWriten(int fd, const void *vptr, size_t n)
+I2Writen(int fd, const void *vptr, size_t n)
 {
 	size_t		nleft;
 	ssize_t		nwritten;
@@ -79,7 +79,7 @@ OWPWriten(int fd, const void *vptr, size_t n)
 	}
 	return(n);
 }
-/* end OWPWriten */
+/* end I2Writen */
 
 int
 _OWPConnect(
@@ -178,10 +178,10 @@ _OWPSendBlocks(
 	if (cntrl->mode & _OWP_DO_CIPHER)
 		_OWPEncryptBlocks(cntrl, buf, num_blocks, buf);
 
-	n = OWPWriten(cntrl->sockfd, buf, num_blocks*_OWP_RIJNDAEL_BLOCK_SIZE);
+	n = I2Writen(cntrl->sockfd, buf, num_blocks*_OWP_RIJNDAEL_BLOCK_SIZE);
 	if (n < 0){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"OWPWriten failed:(%s)",strerror(errno));
+				"I2Writen failed:(%s)",strerror(errno));
 		return -1;
 	} 
 
@@ -193,10 +193,10 @@ _OWPReceiveBlocks(OWPControl cntrl, u_int8_t *buf, int num_blocks)
 {
 	ssize_t		n;
 
-	n = OWPReadn(cntrl->sockfd,buf,num_blocks*_OWP_RIJNDAEL_BLOCK_SIZE);
+	n = I2Readn(cntrl->sockfd,buf,num_blocks*_OWP_RIJNDAEL_BLOCK_SIZE);
 	if (n < 0){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"OWPReadn failed:(%s)",strerror(errno));
+				"I2Readn failed:(%s)",strerror(errno));
 		return -1;
 	} 
 	if (cntrl->mode & _OWP_DO_CIPHER)

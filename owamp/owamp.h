@@ -337,16 +337,6 @@ typedef void (*OWPRetrieveSessionDataFunc)(
 	OWPErrSeverity	*err_ret
 );
 
-/*
- * This type is used to define the function that is called to retrieve the
- * current timestamp.
- */
-typedef OWPTimeStamp (*OWPGetTimeStampFunc)(
-	void		*app_data,
-	OWPErrSeverity	*err_ret
-);
-
-
 /* 
  * This structure encodes parameters needed to initialize the library.
  */ 
@@ -360,7 +350,6 @@ typedef struct {
 	OWPEndpointInitHookFunc		endpoint_init_hook_func;
 	OWPEndpointStartFunc		endpoint_start_func;
 	OWPEndpointStopFunc		endpoint_stop_func;
-	OWPGetTimeStampFunc		get_timestamp_func;
 	int                             rand_type;
 	void*                           rand_data;
 } OWPInitializeConfigRec, *OWPInitializeConfig;
@@ -426,26 +415,6 @@ extern OWPErrSeverity
 OWPAddrFree(
 	OWPAddr	addr
 );
-
-/*
- * These functions return -1 on error. They read/write n bytes to the
- * file descriptor. (They loop internally calling read/write until the
- * entire buffer is read/wrote.) Readn may return less then n bytes if
- * it encounters EOF.
- */
-extern ssize_t
-OWPReadn(
-	int	fd,
-	void	*buff,
-	size_t	n
-	 );
-
-extern ssize_t
-OWPWriten(
-	int		fd,
-	const void	*buff,
-	size_t		n
-	  );
 
 /*
  * OWPControlOpen allocates an OWPclient structure, opens a connection to
@@ -576,9 +545,14 @@ OWPStopSessions(
  * Client and Server.
  */
 extern int
-OWPGetControlFD(
+OWPControlFD(
 	OWPControl	control_handle
 );
+
+extern int
+OWPErrorFD(
+	OWPContext	ctx
+	);
 
 extern
 OWPAddr

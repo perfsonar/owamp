@@ -107,7 +107,6 @@ static	OWPInitializeConfigRec	OWPCfg = {{
 	/* endpoint_init_hook_func	*/	NULL,
 	/* endpoint_start_func		*/	NULL,
 	/* endpoint_stop_func		*/	NULL,
-	/* get_timestamp_func		*/	NULL,
 	/* rand_type                    */      I2RAND_DEV,
 	/* rand_data                    */      NULL
 };
@@ -402,7 +401,7 @@ main(
 		fprintf(stderr, "%s : Couldn't init error module\n", progname);
 		exit(1);
 	}
-	ping_ctx.eh = eh;
+	OWPCfg.eh = eh;
 
 	od = I2OpenOptionTbl(eh);
 
@@ -430,10 +429,20 @@ main(
 		exit(0);
 	}
 
+	OWPCfg.tm_out.tv_sec = ping_ctx.opt.tmout;
+
+	/*
+	 * Initialize library with configuration functions.
+	 */
+	if( !(ping_ctx.lib_ctx = OWPContextInitialize(&OWPCfg))){
+		I2ErrLog(eh, "Unable to initialize OWP library.");
+		exit(1);
+	}
+	ctx = ping_ctx.lib_ctx;
+
 	/*
 	 * Setup paths.
 	 */
-
 	rc = snprintf(ip2class,sizeof(ip2class),"%s%s%s",ping_ctx.opt.confdir,
 			OWP_PATH_SEPARATOR,ping_ctx.opt.ip2class);
 	if(rc > (int)sizeof(ip2class)){
@@ -456,7 +465,7 @@ main(
 		exit(1);
 	}
 
-	policy = PolicyInit(eh, ip2class, class2limits, passwd, &err_ret);
+	policy = PolicyInit(ctx, ip2class, class2limits, passwd, &err_ret);
 	if (err_ret == OWPErrFATAL){
 		I2ErrLog(eh, "PolicyInit failed. Exiting...");
 		exit(1);
@@ -532,7 +541,6 @@ main(
 	if(!ping_ctx.opt.receiverServ && ping_ctx.opt.receiver)
 		ping_ctx.opt.receiverServ = strdup(ping_ctx.opt.receiver);
 
-	OWPCfg.tm_out.tv_sec = ping_ctx.opt.tmout;
 
 	/*
 	 * Determine "locality" of server addresses.
@@ -596,14 +604,6 @@ main(
 	 */
 	test_spec.InvLambda = (double)1000000.0 / ping_ctx.opt.rate;
 
-	/*
-	 * Initialize library with configuration functions.
-	 */
-	if( !(ping_ctx.lib_ctx = OWPContextInitialize(&OWPCfg))){
-		I2ErrLog(eh, "Unable to initialize OWP library.");
-		exit(1);
-	}
-	ctx = ping_ctx.lib_ctx;
 
 	/*
 	 * TODO: Figure out how the client is going to make policy

@@ -57,8 +57,6 @@ typedef	struct {
 
 	} opt;
 
-	I2ErrHandle		eh;	/* error handle		*/
-
 	I2table			local_addr_table;
 	I2Boolean		sender_local;
 	I2Boolean		receiver_local;

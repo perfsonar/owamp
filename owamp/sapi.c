@@ -901,7 +901,7 @@ OWPSendFullDataFile(OWPControl cntrl, int fd, u_int32_t blksize,off_t filesize)
 	*/
 	num_records = (filesize - 4) / _OWP_TS_REC_SIZE; 
 	*(u_int32_t *)p = htonl(num_records);
-	if (OWPReadn(fd, &p[4], 4) == -1) {
+	if (I2Readn(fd, &p[4], 4) == -1) {
 		OWPError(cntrl->ctx, OWPErrFATAL, errno, 
 			 "OWPSendDataFile: read failure");
 		free(p);
@@ -915,7 +915,7 @@ OWPSendFullDataFile(OWPControl cntrl, int fd, u_int32_t blksize,off_t filesize)
 	bytes_left = (filesize - 4);
 	while (bytes_left >= blksize) {
 
-		if (OWPReadn(fd, q, blksize) == -1) {
+		if (I2Readn(fd, q, blksize) == -1) {
 			OWPError(cntrl->ctx, OWPErrFATAL, errno, 
 				 "OWPSendDataFile: read failure");
 			free(p);
@@ -934,7 +934,7 @@ OWPSendFullDataFile(OWPControl cntrl, int fd, u_int32_t blksize,off_t filesize)
 
 	/* Read any remaining bytes from file. */
 	if (bytes_left) {
-			if (OWPReadn(fd, q, bytes_left) == -1) {
+			if (I2Readn(fd, q, bytes_left) == -1) {
 				OWPError(cntrl->ctx, OWPErrFATAL, errno, 
 					 "OWPSendDataFile: read failure");
 				free(p);
@@ -1042,7 +1042,7 @@ OWPProcessRecordsInRange(OWPControl      cntrl,
 				}
 
 				bytes_to_read = MIN(bytes_left, blksize);
-				if (OWPReadn(fd, q, bytes_to_read) == -1) {
+				if (I2Readn(fd, q, bytes_to_read) == -1) {
 					OWPError(cntrl->ctx,OWPErrFATAL,errno, 
 					"OWPSendRecordsInRange: read failure");
 					return 0;
@@ -1201,7 +1201,7 @@ OWPProcessRetrieveSession(
 
 		/* Prepare first 16 bytes for transmission. */
 		*(u_int32_t *)buf = htonl(numrec);
-		if (OWPReadn(fd, &buf[4], 4) == -1) {
+		if (I2Readn(fd, &buf[4], 4) == -1) {
 			OWPError(cntrl->ctx, OWPErrFATAL, errno, 
 				 "OWPSendDataFile: read failure");
 			return OWPErrFATAL;
