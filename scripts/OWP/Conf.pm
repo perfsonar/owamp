@@ -111,9 +111,11 @@ my %BOOLS = (
 	'VERBOSE',		1.0,
 );
 
-# Opts that in effect create other opts.
+# Opts that in effect create other opts, or their value should be interpreted
+# as an opt.
 # (These cause another iteration through...)
 my %DEPS = (
+	'SECRETNAME',		1,
 	'SECRETNAMES',		1,
 );
 
@@ -172,15 +174,15 @@ sub load_file_section{
 		next if(/^\s*#/); # comments
 		next if(/^\s*$/); # blank lines
 		next if(!$doit);
-		# assignment
-		if((($pname,$pval) = /^(\S+)\s+(.*)/o)){
-			$pname =~ tr/a-z/A-Z/;
-			${$href}{$pname} = $pval;
-			next;
-		}
 		# bool
 		if(($pname) = /^(\S+)\s*$/o){
 			$pval = 1;
+			${$href}{$pname} = $pval;
+			next;
+		}
+		# assignment
+		if((($pname,$pval) = /^(\S+)\s+(.*)/o)){
+			$pname =~ tr/a-z/A-Z/;
 			${$href}{$pname} = $pval;
 			next;
 		}
@@ -211,6 +213,7 @@ sub load_file{
 				($_,$file,\*PFILE,\%gprefs,"OS",$sysname));
 		# global bool
 		if(($pname) = /^(\S+)\s*$/o){
+			$pname =~ tr/a-z/A-Z/;
 			$pval = 1;
 			$gprefs{$pname} = $pval;
 			next;
@@ -228,12 +231,28 @@ sub load_file{
 		$self->{$key} = $gprefs{$key}
 					if(defined($gprefs{$key}));
 	}
+
+	foreach $key (keys %gprefs){
+		print "$key=$gprefs{$key}\n";
+	}
+
 	# load OPTS defined by the dependent opts
 	foreach $key (keys(%DEPS)){
+		my (@arr);
 		next if(!defined($gprefs{$key}));
-		foreach ($gprefs{$key}){
+		@arr = split " ", $gprefs{$key};
+		next if(@arr < 1);
+		foreach (@arr) {
+			tr/a-z/A-Z/;
+			print "$_:\n";
 			$self->{$_} = $gprefs{$_}
 					if(defined($gprefs{$_}));
+		}
+		if(@arr > 1){
+			$self->{$key} = [@arr];
+		}
+		else{
+			$self->{$key} = $arr[0];
 		}
 	}
 

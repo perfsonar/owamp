@@ -36,7 +36,18 @@ my $conf = new OWP::Conf('192.168.1.1',"$FindBin::Bin");
 my($key);
 
 foreach $key (sort keys %$conf){
-	print "$key		$conf->{$key}\n";
+	my($val);
+	if(ref($conf->{$key}) eq "ARRAY"){
+		$val = "";
+		foreach (@{$conf->{$key}}){
+			$val .= $_." ";
+		}
+	}
+	else{
+		$val = $conf->{$key};
+	}
+		
+	print "$key		$val\n";
 }
 
 1;
