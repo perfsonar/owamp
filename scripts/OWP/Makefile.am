@@ -20,4 +20,4 @@
 
 plibdir = $(bindir)/OWP
 
-plib_DATA = Conf.pm Digest.pm RawIO.pm Syslog.pm Utils.pm
+plib_DATA = Archive.pm Conf.pm Digest.pm RawIO.pm Syslog.pm Utils.pm

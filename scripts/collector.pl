@@ -827,8 +827,8 @@ REQ_LOOP:
 		last if($die);
 		die "\$@ = $@" if($@);
 		undef %response;
-		%response = do_req($fh,$md5,%req) if(defined %req);
-		next if(defined %response &&
+		%response = do_req($fh,$md5,%req) if(%req);
+		next if(%response &&
 			write_response($fh,$md5,%response));
 		last;
 	}
@@ -840,6 +840,7 @@ sub update_node{
 	my($node,$upref,@dirs)	= @_;
 	my($skip,$dir);
 	my %state;
+	my $tref;
 	my $fh;
 
 	# $skip is the number of elements to shift off the upref array
@@ -858,8 +859,8 @@ sub update_node{
 			$skip = 0;
 			next;
 		}
-		if(!tie %state, 'DB_File', "$dir/$dbfile",O_CREAT|O_RDWR,0660,
-								$DB_HASH){
+		if(!($tref = tie %state, 'DB_File', "$dir/$dbfile",
+					O_CREAT|O_RDWR,0660,$DB_HASH)){
 			warn "Unable to open db file $dir/$dbfile: $!";
 			$skip = 0;
 			next;
@@ -991,10 +992,16 @@ sub update_node{
 	}
 	# MUST untie before undef'ing the lock!
 	continue{
-		untie %state if(defined %state);
+		if(defined($tref)){
+			undef $tref;
+			untie %state;
+		}
 		undef $fh;
 	}
-	untie %state if(defined %state);
+	if(defined($tref)){
+		undef $tref;
+		untie %state;
+	}
 	undef $fh;
 
 	while($skip--){
