@@ -122,6 +122,7 @@ my %ARRS = (
 my %HASHOPTS = (
 	NODE		=>	"MESHNODES",
 	DIGESTRES	=>	"DIGESTRESLIST",
+	MESH		=>	"MESHTYPES",
 );
 
 sub new {
@@ -339,13 +340,6 @@ sub init {
 		$args{'NODE'} = $nodename if(defined($nodename));
 	}
 
-#
-#	hard coded	(this modules)
-#
-	foreach $key (keys(%DEFS)){
-		$self->{$key} = $DEFS{$key};
-	}
-
 	#
 	# Global conf file
 	#
@@ -383,12 +377,20 @@ sub init {
 		$self->{$key} = $args{$key};
 	}
 
+#
+#	hard coded	(this modules fallbacks)
+#
+	foreach $key (keys(%DEFS)){
+		$self->{$key} = $DEFS{$key} if(!defined($self->{$key}));
+	}
+
+
 	1;
 }
 
-sub get_val {
+sub get_ref {
 	my($self,%args) = @_;
-	my($type,$attr,$hopt,$name,@subhash,$val);
+	my($type,$attr,$hopt,$name,@subhash,$ref);
 
 	ARG:
 	foreach (keys %args){
@@ -401,13 +403,10 @@ sub get_val {
 				if(defined($self->{$name})){
 					push @subhash, $self->{$name};
 				}
-				else{
-					warn "No sub-hash defined for $_=>$args{$_}";
-				}
 				next ARG;
 			}
 		}
-		die "Unknown named parameter $_ passed into get_val";
+		die "Unknown named parameter $_ passed into get_ref";
 	}
 
 	return undef if(!defined($attr));
@@ -416,23 +415,58 @@ sub get_val {
 	$attr =~ tr/a-z/A-Z/;
 
 	foreach (@subhash){
-		$val = ${$_}{$attr} if(defined(${$_}{$attr}));
+		$ref = ${$_}{$attr} if(defined(${$_}{$attr}));
 	}
-	$val = $self->{$attr} if(!defined($val));
+	$ref = $self->{$attr} if(!defined($ref));
 
-	return undef if(!defined($val));
+	return $ref;
+}
 
-	#
-	# This is used to return an actual value from this function
-	# instead of a reference.
-	#
-	for (ref $val){
-		/^$/		and return $val;
-		/HASH/		and return %$val;
-		/ARRAY/		and return @$val;
+#
+# This is a convienence routine that dies with
+# an error message if the value isn't retrievable.
+#
+sub get_val{
+	my($self,%args)	= @_;
+	my($ref);
+
+	for ($ref = $self->get_ref(%args)){
+		/^$/		and return undef;
+		/SCALAR/	and return $$ref;
+		/HASH/		and return %$ref;
+		/ARRAY/		and return @$ref;
+		die "Invalid value in hash!?" if(ref($ref));
+		# return actual value
+		return $ref;
 	}
-	
-	die "Invalid hash value!";
+
+	# not reached
+	return undef;
+}
+
+#
+# This is a convienence routine that dies with
+# an error message if the value isn't retrievable.
+#
+sub must_get_val{
+	my($self,%args)	= @_;
+	my($ref);
+
+	for ($ref = $self->get_ref(%args)){
+		# undef:break out and report error.
+		/^$/		and last;
+		/SCALAR/	and return $$ref;
+		/HASH/		and return %$ref;
+		/ARRAY/		and return @$ref;
+		die "Invalid value in hash!?" if(ref($ref));
+		# return actual value.
+		return $ref;
+	}
+
+	my($emsg) = "";
+	$emsg.="$_=>$args{$_}, " for (keys %args);
+	my($dummy,$fname,$line) = caller;
+	die "Conf::must_get_val($emsg) undefined, called from $fname\:$line\n";
 }
 
 sub dump_hash{
@@ -447,8 +481,8 @@ sub dump_hash{
 		for (ref $href->{$key}){
 			/^$/	and $rtnval.= $pre.$key."=$href->{$key}\n",
 					next KEY;
-			/ARRAY/	and $rtnval.=
-				$pre.$key.join ' ',@{$href->{$key}}."\n",
+			/ARRAY/	and $rtnval.= $pre.$key."=\[".
+					join(',',@{$href->{$key}})."\]\n",
 					next KEY;
 			/HASH/ and $rtnval.=$pre.$key."[\n".
 				$self->dump_hash($href->{$key},"$pre\t").
@@ -468,20 +502,5 @@ sub dump{
 	return $self->dump_hash($self,"");
 }
 
-#
-# This is a convienence routine that calls the get_val, but dies with
-# an error message if the value isn't retrievable.
-#
-sub must_get_val{
-	my($self,%args)	= @_;
-	my($rtn,$fname,$line);
-
-	return $rtn if($rtn = $self->get_val(%args));
-
-	my($emsg) = "";
-	$emsg.="$_=>$args{$_}, " for (keys %args);
-	($rtn,$fname,$line) = caller;
-	die "Conf::must_get_val($emsg) undefined, called from $fname\:$line\n";
-}
 	
 1;

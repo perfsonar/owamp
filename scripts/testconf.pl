@@ -43,7 +43,7 @@ print $conf->dump;
 # test get_val functionality...
 #
 my(@mtypes,$mtype,@nodes,$node,$adj,$val,$naddr,$aaddr);
-@mtypes = $conf->get_val(ATTR=>'MESHTYPES');
+@mtypes = $conf->must_get_val(ATTR=>'MESHTYPES');
 @nodes = $conf->get_val(ATTR=>'MESHNODES');
 
 #
