@@ -58,7 +58,7 @@ owp_raw2datum(const void *bytes, size_t len)
 		return NULL;
 	}		
 
-	bcopy(bytes, dat->dptr, len);
+	memcpy(dat->dptr, bytes, len);
 	dat->dsize = len;
 	return dat;
 }
