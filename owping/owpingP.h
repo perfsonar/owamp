@@ -31,12 +31,6 @@
 #define	MAX_PASSPROMPT	256
 #define	MAX_PASSPHRASE	256
 
-typedef struct ow_slotrec ow_slot_trec, *ow_slot_t;
-struct ow_slotrec{
-	OWPSlot		slot;
-	ow_slot_t	next;
-};
-
 /*
  * Application "context" structure
  */
@@ -46,30 +40,32 @@ typedef	struct {
 	*/
 	struct  {
 		/* Flags */
-		I2Boolean       records;          /* -v */
-		I2Boolean	quiet;            /* -Q */
-		I2Boolean	raw;		/* -R */
+		I2Boolean		records;	/* -v */
+		I2Boolean		quiet;		/* -Q */
+		I2Boolean		raw;		/* -R */
 
-		I2Boolean	to;               /* -t */
-		I2Boolean	from;             /* -f */
-		char            *save_to_test;    /* -T */
-		char            *save_from_test;  /* -F */
+		I2Boolean		to;		/* -t */
+		I2Boolean		from;		/* -f */
+		char			*save_to_test;	/* -T */
+		char			*save_from_test;/* -F */
 
-		char		*authmode;        /* -A */
-		char		*identity;        /* -u */
-		char		*keyfile;	  /* -k */
-		u_int32_t	numPackets;       /* -c */
+		char			*authmode;	/* -A */
+		char			*identity;	/* -u */
+		char			*keyfile;	/* -k */
+		u_int32_t		numPackets;	/* -c */
 
-		double		lossThreshold;    /* -l */
-		float           percentile;       /* -a */
+		double			lossThreshold;	/* -L */
+		float			percentile;	/* -a */
 
-		char		*srcaddr;         /* -S */
+		char			*srcaddr;	/* -S */
+
+		OWPTestPortRange	portspec;	/* -P */
 
 #ifndef	NDEBUG
-		I2Boolean	childwait;        /* -w */
+		I2Boolean		childwait;	/* -w */
 #endif
 
-		u_int32_t	padding;          /* -s */
+		u_int32_t		padding;	/* -s */
 
 	} opt;
 
@@ -81,10 +77,11 @@ typedef	struct {
 	OWPContext		lib_ctx;
 	OWPControl		cntrl;
 
-	float			mean_wait;	/* default slot value */
+	float			mean_wait;		/* default slot value */
 	u_int32_t		nslots;
 	OWPSlot			*slots;
 
+	OWPTestPortRangeRec	portrec;
 } ow_ping_trec, *ow_ping_t;
 
 #endif

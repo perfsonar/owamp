@@ -348,6 +348,7 @@ _OWPEndpointInit(
 	u_int16_t		p;
 	u_int16_t		range;
 	OWPTestPortRange	portrange=NULL;
+	int			saveerr=0;
 
 	*err_ret = OWPErrFATAL;
 
@@ -427,7 +428,7 @@ _OWPEndpointInit(
 		p = port;
 	}
 	else if(!(portrange = (OWPTestPortRange)OWPContextConfigGet(cntrl->ctx,
-			OWPTestPortRange)) || !portrange->low){
+							OWPTestPortRange))){
 		p = port = 0;
 	}else{
 		u_int32_t	r;
@@ -495,10 +496,12 @@ _OWPEndpointInit(
 		}
 	} while(p != port);
 
+	saveerr = errno;
 	OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
 			"Full port range exhausted");
 bind_fail:
-	OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+	if(!saveerr) saveerr = errno;
+	OWPError(cntrl->ctx,OWPErrFATAL,saveerr,
 			"bind([%s]:%s): %M",localaddr->node,p);
 success:
 

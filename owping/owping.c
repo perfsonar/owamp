@@ -169,6 +169,8 @@ typedef struct fetch_state {
 	u_int32_t	*buckets;	/* array of buckets of counts	*/
 	char		*from;		/* Endpoints in printable format*/
 	char		*to;
+	char		*fromserv;
+	char		*toserv;
 	u_int32_t	count_out;	/* number of printed packets	*/
 
 	/*
@@ -247,9 +249,10 @@ owp_record_out(
 	assert(state->fp);
 
 	if(!(state->count_out++ % 21)){
-		fprintf(state->fp,"--- owping test session from %s to %s ---\n",
-			(state->from)? state->from : "***", 
-			(state->to)?  state->to : "***");
+		fprintf(state->fp,
+			"--- owping test session from [%s]:%s to [%s]:%s ---\n",
+			state->from,state->fromserv,
+			state->to,state->toserv);
 		fprintf(state->fp,"SID: %s\n",state->sid_name);
 	}
 
@@ -487,9 +490,9 @@ owp_do_summary(fetch_state *state)
 
 	assert(state); assert(state->fp);
 
-	fprintf(state->fp, "\n--- owping statistics from %s to %s ---\n",
-		       (state->from)? state->from : "***", 
-		       (state->to)?  state->to : "***");
+	fprintf(state->fp,
+		"\n--- owping statistics from [%s]:%s to [%s]:%s ---\n",
+		state->from,state->fromserv,state->to,state->toserv);
 	fprintf(state->fp,"SID: %s\n",state->sid_name);
 	if (state->dup_packets)
 		fprintf(state->fp, 
@@ -593,6 +596,8 @@ do_records_all(
 	fetch_state		state;
 	char			frombuf[NI_MAXHOST+1];
 	char			tobuf[NI_MAXHOST+1];
+	char			fromserv[NI_MAXSERV+1];
+	char			toserv[NI_MAXSERV+1];
 
 	if(!(num_rec = OWPReadDataHeader(ctx,fp,&hdr_len,&hdr))){
 		I2ErrLog(eh, "OWPReadDataHeader:Empty file?");
@@ -620,35 +625,35 @@ do_records_all(
 	/*
 	 * Get pretty names...
 	 */
-	if(from){
-		state.from = from;
-	}
-	else{
-		if(!hdr.header || getnameinfo(
-					(struct sockaddr*)&hdr.addr_sender,
+	if(!hdr.header || getnameinfo((struct sockaddr*)&hdr.addr_sender,
 					hdr.addr_len,
 					frombuf,sizeof(frombuf),
-					NULL,0,0)){
+					fromserv,sizeof(fromserv),
+					NI_NUMERICSERV)){
+		if(from){
+			strncpy(frombuf,from,NI_MAXHOST);
+		}else{
 			strcpy(frombuf,"***");
 		}
-
-		state.from = frombuf;
+		fromserv[0] = '\0';
 	}
+	state.from = frombuf;
+	state.fromserv = fromserv;
 
-	if(to){
-		state.to = to;
-	}
-	else{
-		if(!hdr.header || getnameinfo(
-					(struct sockaddr*)&hdr.addr_receiver,
+	if(!hdr.header || getnameinfo((struct sockaddr*)&hdr.addr_receiver,
 					hdr.addr_len,
 					tobuf,sizeof(tobuf),
-					NULL,0,0)){
+					toserv,sizeof(toserv),
+					NI_NUMERICSERV)){
+		if(from){
+			strncpy(tobuf,to,NI_MAXHOST);
+		}else{
 			strcpy(tobuf,"***");
 		}
-
-		state.to = tobuf;
+		toserv[0] = '\0';
 	}
+	state.to = tobuf;
+	state.toserv = toserv;
 
 	/*
 	 * Initialize fields of state to keep track of.
@@ -1031,6 +1036,62 @@ FAILED:
 	return False;
 }
 
+static OWPBoolean
+parse_ports(
+	char		*pspec
+)
+{
+	char		*tstr,*endptr;
+	long		tint;
+
+	if(!pspec) return False;
+
+	tstr = pspec;
+	endptr = NULL;
+	while(isspace(*tstr)) tstr++;
+	tint = strtol(tstr,&endptr,10);
+	if(!endptr || (tstr == endptr) || (tint < 0) || (tint > (int)0xffff)){
+		goto FAILED;
+	}
+	ping_ctx.portrec.low = (u_int16_t)tint;
+
+	while(isspace(*endptr)) endptr++;
+
+	switch(*endptr){
+		case '\0':
+			ping_ctx.portrec.high = ping_ctx.portrec.low;
+			goto DONE;
+			break;
+		case '-':
+			endptr++;
+			break;
+		default:
+			goto FAILED;
+	}
+
+	tstr = endptr;
+	endptr = NULL;
+	while(isspace(*tstr)) tstr++;
+	tint = strtol(tstr,&endptr,10);
+	if(!endptr || (tstr == endptr) || (tint < 0) || (tint > (int)0xffff)){
+		goto FAILED;
+	}
+	ping_ctx.portrec.high = (u_int16_t)tint;
+
+	if(ping_ctx.portrec.high < ping_ctx.portrec.low){
+		ping_ctx.portrec.high = ping_ctx.portrec.low;
+		ping_ctx.portrec.low = (u_int16_t)tint;
+	}
+
+DONE:
+	ping_ctx.opt.portspec = &ping_ctx.portrec;
+	return True;
+
+FAILED:
+	I2ErrLogP(eh,errno,"Invalid port-range (-P): \"%s\": %M",pspec);
+	return False;
+}
+
 int
 main(
 	int	argc,
@@ -1057,8 +1118,8 @@ main(
 	char                    *endptr = NULL;
 	char                    optstring[128];
 	static char		*conn_opts = "A:S:k:u:";
-	static char		*test_opts = "fF:tT:c:i:p:s:L:";
-	static char		*out_opts = "a:vVQR";
+	static char		*test_opts = "fF:tT:c:i:s:L:P:";
+	static char		*out_opts = "a:vQR";
 	static char		*gen_opts = "h";
 #ifndef	NDEBUG
 	static char		*debug_opts = "w";
@@ -1138,122 +1199,126 @@ main(
 	strcat(optstring,debug_opts);
 #endif
 		
-	while ((ch = getopt(argc, argv, optstring)) != -1)
-             switch (ch) {
-		     /* Connection options. */
-             case 'A':
-		     if (!(ping_ctx.opt.authmode = strdup(optarg))) {
-			     I2ErrLog(eh,"malloc:%M");
-			     exit(1);
-		     }
+	while((ch = getopt(argc, argv, optstring)) != -1){
+		switch (ch) {
+		/* Connection options. */
+		case 'A':
+			if(!(ping_ctx.opt.authmode = strdup(optarg))){
+				I2ErrLog(eh,"malloc:%M");
+				exit(1);
+			}
+			break;
+		case 'S':
+			if(!(ping_ctx.opt.srcaddr = strdup(optarg))){
+				I2ErrLog(eh,"malloc:%M");
+				exit(1);
+			}
                      break;
-             case 'S':
-		     if (!(ping_ctx.opt.srcaddr = strdup(optarg))) {
-			     I2ErrLog(eh,"malloc:%M");
-			     exit(1);
-		     }
+		case 'u':
+			if(!(ping_ctx.opt.identity = strdup(optarg))){
+				I2ErrLog(eh,"malloc:%M");
+				exit(1);
+			}
                      break;
-             case 'u':
-		     if (!(ping_ctx.opt.identity = strdup(optarg))) {
-			     I2ErrLog(eh,"malloc:%M");
-			     exit(1);
-		     }
-                     break;
-	     case 'k':
-		     if (!(ping_ctx.opt.keyfile = strdup(optarg))) {
-			     I2ErrLog(eh,"malloc:%M");
-			     exit(1);
-		     }
-                     break;
-
-		     /* Test options. */
-  	     case 'F':
-		     if (!(ping_ctx.opt.save_from_test = strdup(optarg))) {
-			     I2ErrLog(eh,"malloc:%M");
-			     exit(1);
-		     }     
-		     /* fall through */
-             case 'f':
-		     ping_ctx.opt.from = True;
-                     break;
-	     case 'T':
-		     if (!(ping_ctx.opt.save_to_test = strdup(optarg))) {
-			     I2ErrLog(eh,"malloc:%M");
-			     exit(1);
-		     }
-		     /* fall through */
-             case 't':
-		     ping_ctx.opt.to = True;
-                     break;
-             case 'c':
-		     ping_ctx.opt.numPackets = strtoul(optarg, &endptr, 10);
-		     if (*endptr != '\0') {
-			     usage(progname, 
-				   "Invalid value. Positive integer expected");
-			     exit(1);
-		     }
-                     break;
-             case 'i':
-		     if(!parse_slots(optarg,&ping_ctx.slots,&ping_ctx.nslots)){
-			     usage(progname, "Invalid Schedule.");
-			     exit(1);
-		     }
-                     break;
-             case 's':
-		     ping_ctx.opt.padding = strtoul(optarg, &endptr, 10);
-		     if (*endptr != '\0') {
-			     usage(progname, 
-				   "Invalid value. Positive integer expected");
-			     exit(1);
-		     }
-                     break;
-             case 'L':
-		     ping_ctx.opt.lossThreshold = strtod(optarg,&endptr);
-		     if((*endptr != '\0') ||
-				    	 (ping_ctx.opt.lossThreshold < 0.0)){
-			     usage(progname, 
-			   "Invalid \'-L\' value. Positive float expected");
-			     exit(1);
-		     }
-                     break;
-
-
-		     /* Output options */
-             case 'v':
-		     ping_ctx.opt.records = True;
-                     break;
-             case 'Q':
-		     ping_ctx.opt.quiet = True;
-                     break;
-
+		case 'k':
+			if (!(ping_ctx.opt.keyfile = strdup(optarg))){
+				I2ErrLog(eh,"malloc:%M");
+				exit(1);
+			}
+			break;
+		/* Test options. */
+		case 'F':
+			if (!(ping_ctx.opt.save_from_test = strdup(optarg))){
+				I2ErrLog(eh,"malloc:%M");
+				exit(1);
+			}
+			/* fall through */
+		case 'f':
+			ping_ctx.opt.from = True;
+			break;
+		case 'T':
+			if (!(ping_ctx.opt.save_to_test = strdup(optarg))) {
+				I2ErrLog(eh,"malloc:%M");
+				exit(1);
+			}
+			/* fall through */
+		case 't':
+			ping_ctx.opt.to = True;
+			break;
+		case 'c':
+			ping_ctx.opt.numPackets = strtoul(optarg, &endptr, 10);
+			if (*endptr != '\0') {
+				usage(progname,
+				"Invalid value. Positive integer expected");
+				exit(1);
+			}
+			break;
+		case 'i':
+			if(!parse_slots(optarg,&ping_ctx.slots,
+						&ping_ctx.nslots)){
+				usage(progname, "Invalid Schedule.");
+				exit(1);
+			}
+			break;
+		case 's':
+			ping_ctx.opt.padding = strtoul(optarg, &endptr, 10);
+			if (*endptr != '\0') {
+				usage(progname, 
+				"Invalid value. Positive integer expected");
+				exit(1);
+			}
+			break;
+		case 'L':
+			ping_ctx.opt.lossThreshold = strtod(optarg,&endptr);
+			if((*endptr != '\0') ||
+				(ping_ctx.opt.lossThreshold < 0.0)){
+				usage(progname, 
+			"Invalid \'-L\' value. Positive float expected");
+				exit(1);
+			}
+			break;
+		case 'P':
+			if(!parse_ports(optarg)){
+				usage(progname,
+					"Invalid test port range specified.");
+				exit(1);
+			}
+		/* Output options */
+		case 'v':
+			ping_ctx.opt.records = True;
+			break;
+		case 'Q':
+			ping_ctx.opt.quiet = True;
+			break;
 		case 'R':
-		     ping_ctx.opt.raw = True;
-		     break;
-
-             case 'a':
-		     ping_ctx.opt.percentile =(float)(strtod(optarg, &endptr));
-		     if ((*endptr != '\0')
-			 || (ping_ctx.opt.percentile < 0.0) 
-			 || (ping_ctx.opt.percentile > 100.0)){
-			     usage(progname, 
-	     "Invalid value. Floating number between 0.0 and 100.0 expected");
-			     exit(1);
-		     }
-		     break;
+			ping_ctx.opt.raw = True;
+			break;
+		case 'a':
+			ping_ctx.opt.percentile =
+				(float)(strtod(optarg,&endptr));
+			if ((*endptr != '\0')
+					|| (ping_ctx.opt.percentile < 0.0) 
+					|| (ping_ctx.opt.percentile > 100.0)){
+				usage(progname, 
+	"Invalid value. Floating number between 0.0 and 100.0 expected");
+				exit(1);
+			}
+			break;
 #ifndef	NDEBUG
-	     case 'w':
-		     ping_ctx.opt.childwait = True;
-                     break;
+		case 'w':
+			ping_ctx.opt.childwait = True;
+			break;
 #endif
 
-		     /* Generic options.*/
-             case 'h':
-             case '?':
-             default:
-                     usage(progname, "");
-		     exit(0);
-		     /* UNREACHED */
-             }
+		/* Generic options.*/
+		case 'h':
+		case '?':
+		default:
+			usage(progname, "");
+			exit(0);
+			/* UNREACHED */
+		}
+	}
 	argc -= optind;
 	argv += optind;
 
@@ -1308,6 +1373,16 @@ main(
 			tspec.slots = ping_ctx.slots;
 		}
 
+		/*
+		 * Setup test port range if specified.
+		 */
+		if(ping_ctx.opt.portspec &&
+				!OWPContextConfigSet(ctx,OWPTestPortRange,
+					(void*)ping_ctx.opt.portspec)){
+			I2ErrLog(eh,
+		"OWPContextConfigSet(): Unable to set OWPTestPortRange?!");
+			exit(1);
+		}
 #ifndef	NDEBUG
 		/*
 		 * Setup debugging of child processes.
