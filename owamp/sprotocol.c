@@ -25,7 +25,6 @@
 **
 */
 #include "./owampP.h"
-extern u_int32_t default_offered_mode;
 
 /*
 ** Accept or reject the Control Connection request.

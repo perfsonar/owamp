@@ -153,7 +153,7 @@ OWPAddrByNode(
 	const char	*node
 )
 {
-	OWPAddr	addr;
+	OWPAddr		addr;
 	char		buff[MAXHOSTNAMELEN];
 	const char	*nptr=node;
 	char		*pptr=NULL;
@@ -227,15 +227,19 @@ _OWPCopyAddrRec(
 	*dst = *src;
 
 	if(src->ai_addr){
-		dst->ai_addr = malloc(sizeof(struct sockaddr));
+		dst->ai_addr = malloc(src->ai_addrlen);
 		if(!dst->ai_addr){
 			OWPErrorLine(ctx,OWPLine,OWPErrFATAL,errno,
-				":malloc(sizeof(struct sockaddr))");
+				"malloc(%u):%s",src->ai_addrlen,
+				strerror(errno));
 			free(dst);
 			return NULL;
 		}
-		*dst->ai_addr = *src->ai_addr;
+		memcpy(dst->ai_addr,src->ai_addr,src->ai_addrlen);
+		dst->ai_addrlen = src->ai_addrlen;
 	}
+	else
+		dst->ai_addrlen = 0;
 
 	if(src->ai_canonname){
 		int	len = strlen(src->ai_canonname);
@@ -279,7 +283,7 @@ OWPAddrByAddrInfo(
 	while(ai){
 		*aip = _OWPCopyAddrRec(ctx,ai);
 		if(!*aip){
-			free(addr);
+			OWPAddrFree(addr);
 			return NULL;
 		}
 		aip = &(*aip)->ai_next;
@@ -304,6 +308,80 @@ OWPAddrBySockFD(
 	addr->fd = fd;
 
 	return addr;
+}
+
+OWPAddr
+_OWPAddrCopy(
+	OWPAddr		from
+	)
+{
+	OWPAddr		to;
+	struct addrinfo	**aip;
+	struct addrinfo	*ai;
+	
+	if(!from)
+		return NULL;
+	
+	if( !(to = _OWPAddrAlloc(from->ctx)))
+		return NULL;
+
+	if(from->node_set){
+		strncpy(to->node,from->node,sizeof(to->node));
+		to->node_set = True;
+	}
+
+	if(from->port_set){
+		strncpy(to->port,from->port,sizeof(to->port));
+		to->port_set = True;
+	}
+
+	to->ai_free = 1;
+	aip = &to->ai;
+	ai = from->ai;
+
+	while(ai){
+		*aip = _OWPCopyAddrRec(from->ctx,ai);
+		if(!*aip){
+			OWPAddrFree(to);
+			return NULL;
+		}
+		if(ai->ai_addr == from->saddr){
+			to->saddr = (*aip)->ai_addr;
+			to->saddrlen = (*aip)->ai_addrlen;
+		}
+
+		aip = &(*aip)->ai_next;
+		ai = ai->ai_next;
+	}
+
+	to->fd = from->fd;
+
+	if(to->fd > -1)
+		to->fd_user = True;
+
+	return to;
+}
+
+int
+OWPAddrFD(
+	OWPAddr	addr
+	)
+{
+	if(!addr || (addr->fd < 0))
+		return -1;
+
+	return addr->fd;
+}
+
+socklen_t
+OWPAddrSockLen(
+	OWPAddr	addr
+	)
+{
+	if(!addr || !addr->saddr)
+		return 0;
+
+	return addr->saddrlen;
 }
 
 OWPControl
@@ -436,4 +514,3 @@ _OWPTestSessionFree(
 	 */
 	free(tsession);
 }
-

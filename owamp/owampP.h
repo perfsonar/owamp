@@ -168,6 +168,11 @@ _OWPAddrAlloc(
 	OWPContext	ctx
 	);
 
+extern OWPAddr
+_OWPAddrCopy(
+	OWPAddr		from
+	);
+
 extern OWPControl
 _OWPControlAlloc(
 	OWPContext	ctx,

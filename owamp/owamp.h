@@ -72,6 +72,12 @@
 #define OWP_CONTROL_SERVICE_NAME	"5555"
 
 /*
+ * Default value to use for the listen backlog. We pick something large
+ * and let the OS truncate it if it isn't willing to do that much.
+ */
+#define OWP_LISTEN_BACKLOG	(64)
+
+/*
  * These structures are opaque to the API user.
  * They are used to maintain state internal to the library.
  */
@@ -399,6 +405,23 @@ OWPAddrBySockFD(
 	int		fd	/* fd must be an already connected socket */
 );
 
+/*
+ * return FD for given OWPAddr or -1 if it doesn't refer to a socket yet.
+ */
+extern int
+OWPAddrFD(
+	OWPAddr	addr
+	);
+
+/*
+ * return socket address length (for use in calling accept etc...)
+ * or 0 if it doesn't refer to a socket yet.
+ */
+extern socklen_t
+OWPAddrSockLen(
+	OWPAddr	addr
+	);
+
 extern OWPErrSeverity
 OWPAddrFree(
 	OWPAddr	addr
@@ -454,7 +477,7 @@ OWPControlClose(
  * Request a test session - if err_ret is OWPErrOK - then the function
  * returns a valid SID for the session.
  *
- * Once an EWPAddr record has been passed into this function, it
+ * Once an OWPAddr record has been passed into this function, it
  * is automatically free'd. It should not be referenced again in any way.
  *
  * Client
@@ -532,23 +555,54 @@ OWPSendStopSessions(
 	OWPErrSeverity	*err_ret
 );
 
-/*
-** This function talks Control Protocol on the server side,
-** up until on of the followinf events happends:
-** 1) the Control connection is accepted and valid OWPControl handle returned;
-** 2) the Control connection is rejected, and NULL is returned;
-** 3) an error occurs, NULL is returned, plus extra diagnostics via err_ret.
-*
-* Server.
-*/
+extern
+OWPAddr
+OWPServerSockCreate(
+	OWPContext	ctx,
+	OWPAddr		addr,
+	OWPErrSeverity	*err_ret
+	);
+
+
+/*!
+ * Function:	OWPControlAccept
+ *
+ * Description:	
+ * 		This function is used to initialiize the communication
+ * 		to the peer.
+ *           
+ * In Args:	
+ * 		connfd,connsaddr, and connsaddrlen are all returned
+ * 		from "accept".
+ * 		listenaddr should be null unless the listen socket
+ * 		was created using the OWPServerSockCreate function,
+ * 		then pass in the return'ed OWPAddr from that function.
+ * 		(It will optimize the policy check.)
+ *
+ * Returns:	Valid OWPControl handle on success, NULL if
+ *              the request has been rejected, or error has occurred.
+ *              Return value does not distinguish between illegal
+ *              requests, those rejected on policy reasons, or
+ *              errors encountered by the server during execution.
+ * 
+ * Side Effect:
+ * 	*note: If the listenaddr is passed in - the caller is still
+ * 	responsible for free'ing the listenaddr using OWPAddrFree.
+ * 	(That is how the listen socket should be closed if OWPCreateServerSock
+ * 	is used to create the listening socket.) This is
+ * 	in contrast to virtually every other OWPAddr arguement in this API.
+ */
 extern OWPControl
 OWPControlAccept(
-		 OWPContext     ctx,       /* control context               */
-		 u_int32_t      mode_offered,/* advertised server mode      */
-		 int            connfd,    /* connected socket              */
-		 void           *app_data, /* policy                        */
-		 OWPErrSeverity *err_ret   /* err - return                  */
+	OWPContext	ctx,		/* library context		*/
+	int		connfd,		/* conencted socket		*/
+	struct sockaddr	*connsaddr,	/* connected socket addr	*/
+	socklen_t	connsaddrlen,	/* connected socket addr len	*/
+	OWPAddr		listenaddr,	/* listenaddr or NULL		*/
+	u_int32_t	mode_offered,	/* advertised server mode	*/
+	OWPErrSeverity	*err_ret	/* err - return			*/
 		 );
+
 /* Determine the type of the newly received request. */
 extern u_int8_t
 OWPGetType(OWPControl cntrl);

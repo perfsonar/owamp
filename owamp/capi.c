@@ -108,6 +108,53 @@ _OWPClientBind(
 	return False;
 }
 
+static OWPBoolean
+SetClientAddrInfo(
+	OWPControl	cntrl,
+	OWPAddr		addr,
+	OWPErrSeverity	*err_ret
+	)
+{
+	struct addrinfo	*ai;
+	struct addrinfo	hints;
+	const char	*node=NULL;
+	const char	*port=NULL;
+
+	if(!addr){
+		*err_ret = OWPErrFATAL;
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+							"Invalid address");
+		return False;
+	}
+
+	if(addr->ai)
+		return True;
+
+	/*
+	 * Call getaddrinfo to find useful addresses
+	 */
+
+	if(addr->node_set)
+		node = addr->node;
+	if(addr->port_set)
+		port = addr->port;
+	else
+		port = OWP_CONTROL_SERVICE_NAME;
+
+	memset(&hints,0,sizeof(struct addrinfo));
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = SOCK_STREAM;
+
+	if((getaddrinfo(node,port,&hints,&ai)!=0) || !ai){
+		OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,errno,
+					"getaddrinfo():%s",strerror(errno));
+		return False;
+	}
+
+	addr->ai = ai;
+	return True;
+}
+
 static int
 _OWPClientConnect(
 	OWPControl	cntrl,
@@ -132,36 +179,8 @@ _OWPClientConnect(
 		return 0;
 	}
 
-	/*
-	 * Do we have an "address" for the connection yet?
-	 */
-	if(!server_addr->ai){
-		/*
-		 * Call getaddrinfo to find useful addresses
-		 */
-		struct addrinfo	hints, *airet;
-		const char	*node=NULL;
-		const char	*port=NULL;
-
-		if(server_addr->node_set)
-			node = server_addr->node;
-		if(server_addr->port_set)
-			port = server_addr->port;
-		else
-			port = OWP_CONTROL_SERVICE_NAME;
-
-		memset(&hints,0,sizeof(struct addrinfo));
-		hints.ai_family = AF_UNSPEC;
-		hints.ai_socktype = SOCK_STREAM;
-
-		if((getaddrinfo(node,port,&hints,&airet)!=0) || !airet){
-			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,errno,
-					":getaddrinfo()");
-			goto error;
-		}
-
-		server_addr->ai = airet;
-	}
+	if(!SetClientAddrInfo(cntrl,server_addr,err_ret))
+		goto error;
 
 	/*
 	 * Now that we have addresses - see if it is valid by attempting
@@ -170,8 +189,12 @@ _OWPClientConnect(
 	 * connect.
 	 * (Binding will call the policy function internally.)
 	 */
+#ifdef	AF_INET6
 	for(ai=server_addr->ai;ai;ai=ai->ai_next){
 		OWPErrSeverity	addr_ok=OWPErrOK;
+
+		if(ai->ai_family != AF_INET6) continue;
+
 		fd = socket(ai->ai_family,ai->ai_socktype,ai->ai_protocol);
 		if(fd < 0)
 			continue;
@@ -185,7 +208,7 @@ _OWPClientConnect(
 				if(addr_ok != OWPErrOK){
 					goto error;
 				}
-				goto next;
+				goto nextv6;
 			}
 			/*
 			 * local_addr bound ok - fall through to connect.
@@ -200,7 +223,7 @@ _OWPClientConnect(
 				if(addr_ok != OWPErrOK){
 					goto error;
 				}
-				goto next;
+				goto nextv6;
 			}
 			/*
 			 * Policy ok - fall through to connect.
@@ -208,9 +231,10 @@ _OWPClientConnect(
 		}
 
 		/*
-		 * Call connect - we ignore error values from here for now...
+		 * Call connect - if it succeeds, return else try again.
 		 */
-		if(_OWPConnect(fd,ai->ai_addr,ai->ai_addrlen,&cntrl->ctx->cfg.tm_out) == 0){
+		if(_OWPConnect(fd,ai->ai_addr,ai->ai_addrlen,
+						&cntrl->ctx->cfg.tm_out) == 0){
 			server_addr->fd = fd;
 			server_addr->saddr = ai->ai_addr;
 			server_addr->saddrlen = ai->ai_addrlen;
@@ -221,7 +245,73 @@ _OWPClientConnect(
 			return 0;
 		}
 
-next:
+nextv6:
+		if(close(fd) !=0){
+			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrWARNING,
+						errno,":close(%d)",fd);
+			*err_ret = OWPErrWARNING;
+		}
+	}
+#endif
+	/*
+	 * Now try IPv4 addresses.
+	 */
+	for(ai=server_addr->ai;ai;ai=ai->ai_next){
+		OWPErrSeverity	addr_ok=OWPErrOK;
+
+		if(ai->ai_family != AF_INET) continue;
+
+		fd = socket(ai->ai_family,ai->ai_socktype,ai->ai_protocol);
+		if(fd < 0)
+			continue;
+
+		if(local_addr){
+			/*
+			 * ClientBind will check Addr policy for possible
+			 * combinations before binding.
+			 */
+			if(!_OWPClientBind(cntrl,fd,local_addr,ai,&addr_ok)){
+				if(addr_ok != OWPErrOK){
+					goto error;
+				}
+				goto nextv4;
+			}
+			/*
+			 * local_addr bound ok - fall through to connect.
+			 */
+		}
+		else{
+			/*
+			 * Verify address is ok to talk to in policy.
+			 */
+			if(!_OWPCallCheckAddrPolicy(cntrl->ctx,NULL,
+						server_addr->saddr,&addr_ok)){
+				if(addr_ok != OWPErrOK){
+					goto error;
+				}
+				goto nextv4;
+			}
+			/*
+			 * Policy ok - fall through to connect.
+			 */
+		}
+
+		/*
+		 * Call connect - if it succeeds, return else try again.
+		 */
+		if(_OWPConnect(fd,ai->ai_addr,ai->ai_addrlen,
+						&cntrl->ctx->cfg.tm_out) == 0){
+			server_addr->fd = fd;
+			server_addr->saddr = ai->ai_addr;
+			server_addr->saddrlen = ai->ai_addrlen;
+			cntrl->remote_addr = server_addr;
+			cntrl->local_addr = local_addr;
+			cntrl->sockfd = fd;
+
+			return 0;
+		}
+
+nextv4:
 		if(close(fd) !=0){
 			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrWARNING,
 						errno,":close(%d)",fd);
@@ -285,6 +375,9 @@ OWPControlOpen(
 		goto error;
 	}
 
+	/*
+	 * Address policy check happens in here.
+	 */
 	if(_OWPClientConnect(cntrl,local_addr,server_addr,err_ret) != 0)
 		goto error;
 
@@ -388,14 +481,14 @@ error:
 }
 
 static OWPBoolean
-SetEndAddrInfo(
+SetEndpointAddrInfo(
 	OWPControl	cntrl,
 	OWPAddr		addr,
 	OWPErrSeverity	*err_ret
 )
 {
 	int		so_type;
-	socklen_t	so_typesize = sizeof(int);
+	socklen_t	so_typesize = sizeof(so_type);
 	OWPByte		sbuff[SOCK_MAXADDRLEN];
 	socklen_t	so_size = sizeof(sbuff);
 	struct sockaddr	*saddr=NULL;
@@ -403,93 +496,99 @@ SetEndAddrInfo(
 	struct addrinfo	hints;
 	char		*port=NULL;
 
-	if(!addr->ai){
-		if(addr->fd > -1){
+	if(!addr){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+						"Invalid test address");
+		return False;
+	}
 
-			/*
-			 * Get an saddr to describe the fd...
-			 */
-			if(getsockname(addr->fd,(void*)&sbuff,&so_size) != 0){
-				OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,
-					errno,"getsockname():%s",
-					strerror(errno));
-				goto error;
-			}
+	if(addr->ai)
+		return True;
 
-			if(! (saddr = malloc(so_size))){
-				OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,
-					errno,"malloc():%s",strerror(errno));
-				goto error;
-			}
-			memcpy((void*)saddr,(void*)sbuff,so_size);
-			
-			/*
-			 * Determine "type" of socket.
-			 */
-			so_size = sizeof(so_type);
-			if(getsockopt(addr->fd,SOL_SOCKET,SO_TYPE,
-					(void*)&so_type,&so_typesize) != 0){
-				OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,
-					errno,"getsockopt():%s",
-					strerror(errno));
-				goto error;
-			}
+	if(addr->fd > -1){
 
-			/*
-			 * create an addrinfo to describe this sockaddr
-			 */
-			if(! (ai = malloc(sizeof(struct addrinfo)))){
-				OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,
-					errno,"malloc():%s",strerror(errno));
-				goto error;
-			}
-
-			ai->ai_flags = 0;
-			ai->ai_family = saddr->sa_family;
-			ai->ai_socktype = so_type;
-			/*
-			 * all necessary info encapsalated by family/socktype,
-			 * so default proto to IPPROTO_IP(0).
-			 * (Could probably set this to IPPROTO_UDP/IPPROTO_TCP
-			 * based upon the socktype, but the 0 default fits
-			 * the model for most "socket" calls.)
-			 */
-			ai->ai_protocol = IPPROTO_IP;
-			ai->ai_addrlen = so_size;
-			ai->ai_canonname = NULL;
-			ai->ai_addr = saddr;
-			ai->ai_next = NULL;
-
-			/*
-			 * Set OWPAddr ai
-			 */
-			addr->ai = ai;
-			addr->ai_free = True;
-		}
-		else if(addr->node_set){
-			/*
-			 * Hey - do the normal thing, call getaddrinfo
-			 * to get an addrinfo, how novel!
-			 */
-			memset(&hints,0,sizeof(struct addrinfo));
-			hints.ai_family = AF_UNSPEC;
-			hints.ai_socktype = SOCK_DGRAM;
-
-			if(addr->port_set)
-				port = addr->port;
-			if((getaddrinfo(addr->node,port,&hints,&ai)!=0) || !ai){
-				OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,
-					errno,"getaddrinfo():%s",
-					strerror(errno));
-				goto error;
-			}
-			addr->ai = ai;
-
-		}else{
-			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-							"Invalid test address");
+		/*
+		 * Get an saddr to describe the fd...
+		 */
+		if(getsockname(addr->fd,(void*)&sbuff,&so_size) != 0){
+			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,
+				errno,"getsockname():%s",
+				strerror(errno));
 			goto error;
 		}
+
+		/*
+		 * Determine "type" of socket.
+		 */
+		if(getsockopt(addr->fd,SOL_SOCKET,SO_TYPE,
+				(void*)&so_type,&so_typesize) != 0){
+			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,
+				errno,"getsockopt():%s",
+				strerror(errno));
+			goto error;
+		}
+
+		if(! (saddr = malloc(so_size))){
+			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,
+				errno,"malloc():%s",strerror(errno));
+			goto error;
+		}
+		memcpy((void*)saddr,(void*)sbuff,so_size);
+		
+		/*
+		 * create an addrinfo to describe this sockaddr
+		 */
+		if(! (ai = malloc(sizeof(struct addrinfo)))){
+			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,
+				errno,"malloc():%s",strerror(errno));
+			goto error;
+		}
+
+		ai->ai_flags = 0;
+		ai->ai_family = saddr->sa_family;
+		ai->ai_socktype = so_type;
+		/*
+		 * all necessary info encapsalated by family/socktype,
+		 * so default proto to IPPROTO_IP(0).
+		 * (Could probably set this to IPPROTO_UDP/IPPROTO_TCP
+		 * based upon the socktype, but the 0 default fits
+		 * the model for most "socket" calls.)
+		 */
+		ai->ai_protocol = IPPROTO_IP;
+		ai->ai_addrlen = so_size;
+		ai->ai_canonname = NULL;
+		ai->ai_addr = saddr;
+		ai->ai_next = NULL;
+
+		/*
+		 * Set OWPAddr ai
+		 */
+		addr->ai = ai;
+		addr->ai_free = True;
+	}
+	else if(addr->node_set){
+		/*
+		 * Hey - do the normal thing, call getaddrinfo
+		 * to get an addrinfo, how novel!
+		 */
+		memset(&hints,0,sizeof(struct addrinfo));
+		hints.ai_family = AF_UNSPEC;
+		hints.ai_socktype = SOCK_DGRAM;
+
+		if(addr->port_set)
+			port = addr->port;
+		if((getaddrinfo(addr->node,port,&hints,&ai)!=0) || !ai){
+			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,
+				errno,"getaddrinfo():%s",
+				strerror(errno));
+			goto error;
+		}
+		addr->ai = ai;
+
+	}else{
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+						"Invalid test address");
+		goto error;
 	}
 
 	return True;
@@ -548,8 +647,8 @@ OWPRequestTestSession(
 	 * ai will be SOCK_DGRAM unless an fd was passed in directly, in
 	 * which case we trust the application knows what it is doing...)
 	 */
-	if(!SetEndAddrInfo(cntrl,receiver,err_ret) ||
-					!SetEndAddrInfo(cntrl,sender,err_ret))
+	if(!SetEndpointAddrInfo(cntrl,receiver,err_ret) ||
+				!SetEndpointAddrInfo(cntrl,sender,err_ret))
 		goto error;
 	/*
 	 * Determine proper address specifications for send/recv.

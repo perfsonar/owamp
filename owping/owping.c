@@ -51,14 +51,14 @@ OWPingErrFunc(
 
 	/*
 	 * If not debugging - only print messages of warning or worse.
+	 * (unless of course verbose is specified...
 	 */
 #ifdef	NDEBUG
-	if(severity > OWPErrWARNING)
+	if(!pctx->opt.verbose && (severity > OWPErrWARNING))
 		return 0;
 #endif
 
 	I2ErrLogP(pctx->eh,etype,errmsg);
-	fflush(stderr);
 
 	return 0;
 }

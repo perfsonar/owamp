@@ -1,213 +1,127 @@
 /*! \file owampd.c */
+/*
+ *      $Id$
+ */
+/************************************************************************
+*									*
+*			     Copyright (C)  2002			*
+*				Internet2				*
+*			     All Rights Reserved			*
+*									*
+************************************************************************/
+/*
+ *	File:		owampd.c
+ *
+ *	Author:		Anatoly Karp
+ *			Jeff W. Boote
+ *			Internet2
+ *
+ *	Date:		Mon Jun 03 10:57:07 MDT 2002
+ *
+ *	Description:	
+ */
+#include <stdio.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <unistd.h>
 
 #include <owamp/owamp.h>
 #include <owpcontrib/access.h>
 #include <I2util/util.h>
 
-#define LISTENQ 5
-#define SERV_PORT_STR "5555"
-
-#define DEFAULT_IP_TO_CLASS_FILE 	"ip2class.conf"
-#define DEFAULT_CLASS_TO_LIMITS_FILE 	"class2limits.conf" 
-#define DEFAULT_PASSWD_FILE 		"owamp_secrets.conf"
-
-#define CNTRLNEXT return True
-#define CNTRLSTOP return False
-
-int ip2class_flag = 0;
-int class2limits_flag = 0;
-int passwd_flag = 0;
-u_int32_t default_offered_mode = OWP_MODE_OPEN | OWP_MODE_AUTHENTICATED
-                           | OWP_MODE_ENCRYPTED;
-int sig_received = 0;
-int sig_name;
+#include "owampdP.h"
 
 /* Global variable - the total number of allowed Control connections. */
-#define DEFAULT_NUM_CONN 100
-int free_connections = DEFAULT_NUM_CONN;
+static int free_connections;
+static int sigchld_received = 0;
+static int sig_name;
+static owampd_opts	opts;
+static I2ErrHandle	errhand;
+
+static I2OptDescRec	set_options[] = {
+	/*
+	 * Basic application args.
+	 */
+	{"verbose",0,NULL,"blah, blah, blah..."},
+	{"help",0,NULL,"Print this message and exit"},
+
+	/*
+	 * policy config file options.
+	 */
+	{"confdir",1,OWP_CONFDIR,"Configuration directory"},
+	{"id2class",1,"id2class.conf","id2class config filename"},
+	{"class2limits",1,"class2limits.conf","class2limits config filename"},
+	{"passwd",1,"passwd.conf","passwd config filename"},
+
+	/*
+	 * configuration options - should probably add a conf file eventually.
+	 */
+	{"authmode",1,NULL,
+	"Default supported authmodes:[E]ncrypted,[A]uthenticated,[O]pen"},
+	{"nodename",1,NULL,"Local nodename to bind to: addr:port"},
+	{"maxconnections",1,OWD_MAXCONN,
+		"Max unauthenticated control connections"},
+	{"tmout",1,OWD_TMOUT,
+		"Max time to wait for control connection reads (sec)"},
+	{NULL}
+};
+
+static	I2Option	get_options[] = {
+	{
+	"verbose", I2CvtToBoolean, &opts.verbose,
+	sizeof(opts.verbose)
+	},
+	{
+	"help", I2CvtToBoolean, &opts.help,
+	sizeof(opts.help)
+	},
+	{
+	"confdir", I2CvtToString, &opts.confdir,
+	sizeof(opts.confdir)
+	},
+	{
+	"id2class", I2CvtToString, &opts.id2class,
+	sizeof(opts.id2class)
+	},
+	{
+	"class2limits", I2CvtToString, &opts.class2limits,
+	sizeof(opts.class2limits)
+	},
+	{
+	"passwd", I2CvtToString, &opts.passwd,
+	sizeof(opts.passwd)
+	},
+	{
+	"authmode", I2CvtToString, &opts.authmode,
+	sizeof(opts.authmode)
+	},
+	{
+	"nodename", I2CvtToString, &opts.nodename,
+	sizeof(opts.nodename)
+	},
+	{
+	"maxconnections", I2CvtToInt, &opts.maxconnections,
+	sizeof(opts.maxconnections)
+	},
+	{
+	"tmout", I2CvtToInt, &opts.tmout,
+	sizeof(opts.tmout)
+	},
+	{NULL}
+};
 
 static void
-usage(char *name)
+usage(int od, const char *progname, const char *msg)
 {
-	printf("Usage: %s [-p port] [-a ip_address] [-n num] [-h]\n", name);
+	if(msg) fprintf(stderr, "%s: %s\n", progname, msg);
+
+	fprintf(stderr, "Usage: %s [options]\n", progname);
+	fprintf(stderr, "\nWhere \"options\" are:\n\n");
+	I2PrintOptionHelp(od,stderr);
+
 	return;
 }
-
-/*!
-** This function runs an initial policy check on the remote host.
-** Based only on the remote IP number, it determines if the client
-** is a member of OWP_BANNED_CLASS. Additional diagnostics can be
-** returned via err_ret.
-** 
-** Return values: False if the client is a member of OWP_BANNED_CLASS,
-**                True otherwise.
-*/
-
-OWPBoolean
-owamp_first_check(void *app_data,            /* to be cast into (policy *) */
-		  struct sockaddr *local,
-		  struct sockaddr *remote,
-		  OWPErrSeverity *err_ret
-		  )
-{
-	u_int32_t ip_addr; 
-	I2table ip2class_hash;
-	if (!app_data){
-		*err_ret = OWPErrFATAL;
-		return False;
-	}
-	ip2class_hash = ((policy_data *)app_data)->ip2class;
-	if (!remote){
-		*err_ret = OWPErrFATAL;
-		return False;
-	}
-	switch (remote->sa_family){
-	case AF_INET:
-		if (!remote){
-			*err_ret = OWPErrFATAL;
-			return False;
-		}
-
-	    ip_addr = ntohl((((struct sockaddr_in *)remote)->sin_addr).s_addr);
-	    fprintf(stderr, "DEBUG: IP = %s\n", owamp_denumberize(ip_addr));
-	    fprintf(stderr, "DEBUG: class = %s\n", 
-		    ipaddr2class(ip_addr, ip2class_hash));
-
-	        if (strcmp(ipaddr2class(ip_addr, ip2class_hash), 
-			   OWP_BANNED_CLASS) == 0){ 
-		    *err_ret = OWPErrFATAL; /* prohibit access */
-		    return False;
-	    } else {
-		    *err_ret = OWPErrOK;    /* allow access */
-		    return True;
-	    };
-	    break;
-	    
-	default:
-		return False;
-		break;
-	}
-}
-
-/*
-** Temporary plug.
-*/
-
-char *
-OWPGetClass(void *id)
-{
-	return NULL;
-}
-
-int
-OWPGetMode(char *class)
-{
-	return 0;
-}
-
-/*
-** This function is called by OWPControlAccept. It identifies the usage
-** class of the client and, based on that, whether to grant or reject
-** establishment of the Control connection.
-*/
-OWPBoolean 
-check_control(
-	      void*          app_data,
-	      OWPSessionMode mode_req,
-	      const char*         kid,
-	      struct sockaddr *local,
-	      struct sockaddr *remote,
-	      OWPErrSeverity  *err_ret
-)
-{
-	char *class;
-
-	if (mode_req & (OWP_MODE_AUTHENTICATED|OWP_MODE_ENCRYPTED)){
-		if ((class = OWPGetClass((void *)kid)) == NULL)
-			class = OWP_AUTH_CLASS;
-	} else if ((class = OWPGetClass((void *)remote)) == NULL)
-		class = OWP_DEFAULT_OPEN_CLASS;
-	
-	if ((OWPGetMode(class) & mode_req) == 0)
-		return False;
-	return True;
-}
-
-/*
-**  create TCP socket, bind it and start listening.
-*/
-static int
-tcp_listen(OWPContext ctx, 
-	   const char *host, /* hostname, or address string 
-				(dotted-decimal for IPv4 or hex for IPv6)
-				NULL for the server */
-	   const char *serv, /* service name, or decimal port number string */
-	   socklen_t *addrlenp)
-{
-	int listenfd, n;
-	const int on = 1;
-	struct addrinfo	hints, *res, *ressave;
-
-	bzero(&hints, sizeof(struct addrinfo));
-	hints.ai_flags = AI_PASSIVE;
-	hints.ai_family = AF_UNSPEC;
-	hints.ai_socktype = SOCK_STREAM;
-
-	if ( (n = getaddrinfo(host, serv, &hints, &res)) != 0){
-		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN,
-			 "tcp_listen error for %s, %s: %s",
-			 host, serv, gai_strerror(n));
-		exit(1);
-	}
-
-	ressave = res;
-
-	do {
-		listenfd = socket(res->ai_family, res->ai_socktype, 
-				  res->ai_protocol);
-		if (listenfd < 0){        /* error, try next one */
-			OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, 
-				 "socket() error");
-			continue;		
-		}
-
-		if (setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, 
-				&on, sizeof(on)) < 0 ){
-			OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, 
-				 "setsockopt() error");
-			continue;
-		}
-		if (bind(listenfd, res->ai_addr, res->ai_addrlen) == 0)
-			break;			/* success */
-
-		/* bind error, close and try next one */
-		OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, 
-			"bind() error");		
-		if (close(listenfd) < 0)
-			OWPError(ctx, OWPErrWARNING, OWPErrUNKNOWN, 
-				"close() error");			
-	} while ( (res = res->ai_next) != NULL);
-
-	if (res == NULL){	/* errno from final socket() or bind() */
-		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
-			 "FATAL: socket/bind error for %s, %s", host, serv);
-		exit(1);
-	}
-
-	if (listen(listenfd, LISTENQ) < 0){
-		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN, 
-			 "listen() error");
-		exit(1);
-	}
-
-	if (addrlenp)
-		*addrlenp = res->ai_addrlen;/* return size of proto address */
-
-	freeaddrinfo(ressave);
-
-	return(listenfd);
-}
-/* end tcp_listen */
 
 /*
 ** Handler function for SIG_CHLD. It updates the number
@@ -217,24 +131,16 @@ tcp_listen(OWPContext ctx,
 void
 sig_chld(int signo)
 {
-	sig_received++;
+	sigchld_received++;
 	sig_name = signo;
 	return;
-
-	/*	pid_t pid;
-	int stat;
-
-	while ( (pid = waitpid(-1, &stat, WNOHANG)) > 0)
-		free_connections++;
-	return;
-	*/
 }
 
 /*
 ** This is a basic function to report errors on the server.
 */
 
-int
+static int
 owampd_err_func(
 		void           *app_data,
 		OWPErrSeverity severity,
@@ -242,14 +148,17 @@ owampd_err_func(
 		const char     *errmsg
 )
 {
-	syslog(LOG_ERR, errmsg);
+	if(!opts.verbose && (severity > OWPErrWARNING))
+		return 0;
+
+	I2ErrLogP(errhand,etype,errmsg);
+
 	return 0;
 }
 
 OWPBoolean
 ServerMainControl(OWPControl cntrl, OWPErrSeverity* out)
 {
-	pid_t pidlet;
 	char buf[MAX_MSG];
 	int msg_type;
 
@@ -260,59 +169,28 @@ ServerMainControl(OWPControl cntrl, OWPErrSeverity* out)
 	OWPSID      sid;
 	
 	if ((msg_type = OWPGetType(cntrl)) == 0)
-		/* CNTRLNEXT; */
 		return True;
 				
 	switch (msg_type) {
 	case OWP_CTRL_REQUEST_SESSION:
-		/* DEBUG only */
 		fprintf(stderr, 
 			"DEBUG: client issued a session request\n");
-		CNTRLNEXT;
+		return True;
 
+		/*
 		if (OWPParseTestRequest(cntrl, sender, receiver, 
 					&conf_sender, &conf_receiver, 
 					test_spec, sid) < 0){
-			/* Ignore bad messages */
-			CNTRLNEXT;
+			return True;
 		}
-		
-		if (_OWPCallCheckTestPolicy(cntrl, NULL, False, NULL, NULL, 
-					    NULL, &out) == False){
-			OWPServerAcceptSession(cntrl, OWP_TEST_REJECT);
-			CNTRLNEXT;
-		}
-		
-		pidlet = fork();
-		switch (pidlet) {
-		case -1:
-			/* loud_complain(); */
-			exit(1);
-			break;
-			
-		case 0: /* child */
-			/*
-			  do_descriptors();
-			  OWPDoTest();
-			  clean_up(0);
-			*/
-			exit(0);
-			break;
-			
-		default: /* parent */
-			/* bond_with(pidlet); */
-			/* XXX 
-			   - work this out
-			*/
-			CNTRLNEXT;
-			break;
-		}
+		*/
+		break;
 		
 	case OWP_CTRL_START_SESSION:
 		/* DEBUG only */
 		fprintf(stderr, 
 			"DEBUG: client issued a session start");
-		CNTRLNEXT;
+		return True;
 		
 		OWPServerProcessTestStart(cntrl, buf);
 		break;
@@ -320,7 +198,7 @@ ServerMainControl(OWPControl cntrl, OWPErrSeverity* out)
 		/* DEBUG only */
 		fprintf(stderr, 
 			"DEBUG: client issued a session stop");
-		CNTRLNEXT;
+		return True;
 		
 		OWPServerProcessTestStop(cntrl, buf);
 		break;
@@ -328,7 +206,7 @@ ServerMainControl(OWPControl cntrl, OWPErrSeverity* out)
 		/* DEBUG only */
 		fprintf(stderr, 
 			"DEBUG: client issued a session retrieve");
-		CNTRLNEXT;
+		return True;
 		
 		OWPServerProcessSessionRetrieve(cntrl, buf);
 		break;
@@ -338,21 +216,43 @@ ServerMainControl(OWPControl cntrl, OWPErrSeverity* out)
 	}
 }
 
-/* 
-** This function prints out all registered descriptors
-** in a fd_set. It is used for debugging.
-*/
-void
-print_fdset(int max, fd_set *set)
+/*
+ * This function returns the current auth value of the given pid. If *val
+ * is set, this function returns the previous auth value before setting it.
+ * (False is returned, if the pid was not previously in the list.)
+ */
+static OWPBoolean
+is_auth(
+	pid_t		pid,	/* process to query or set	*/
+	OWPBoolean	*val	/* if !NULL, used to set value	*/
+	)
 {
-	int i;
+	/*
+	 * For now - nothing is authenticated, so always return false.
+	 *
+	 * TODO: setup a hash to hold these values.
+	 */
+	return False;
+}
 
-	fprintf(stderr, "Printing fd set: max = %d\n", max);
-	for (i = 0; i <= FD_SETSIZE; i++){
-		if (FD_ISSET(i, set))
-			fprintf(stderr, "fd %d is set\n", i);
+
+static void
+ReapChildren()
+{
+	int	status;
+	pid_t	child;
+
+	if(!sigchld_received)
+		return;
+
+	while ( (child = waitpid(-1, &status, WNOHANG)) > 0){
+		if(!is_auth(child,NULL)){
+			/* TODO: remove pid from is_auth list */
+			free_connections++;
+		}
 	}
-	fprintf(stderr, "Done printing fd set\n\n");
+
+	sigchld_received = 0;
 }
 
 void
@@ -390,40 +290,149 @@ owampd_check_pipes(int maxfd, fd_set *mask, fd_set* readfds)
 	
 }
 
+/*
+ * This function needs to create a new child process with a pipe to
+ * communicate with it. It needs to update the free_connections count,
+ * add the new pipefd into the readfds, and update maxfd if the new
+ * pipefd is greater than the current max.
+ */
+static int
+NewConnection(
+	OWPContext	ctx,
+	OWPAddr		listenaddr,
+	int		*maxfd,
+	fd_set		*readfds
+	)
+{
+	int		connfd;
+	OWPByte		sbuff[SOCK_MAXADDRLEN];
+	socklen_t	sbufflen;
+	int		new_pipe[2];
+	pid_t		pid;
+	OWPBoolean	again = True;
+	int		mode_available = opts.auth_mode;
+	int		listenfd = OWPAddrFD(listenaddr);
+	OWPControl	cntrl=NULL;
+	OWPErrSeverity	out;
+
+ACCEPT:
+	sbufflen = sizeof(sbuff);
+	connfd = accept(listenfd, (struct sockaddr *)&sbuff, &sbufflen);
+	if (connfd < 0){
+		switch(errno){
+			case EINTR:
+				/*
+				 * Go ahead and reap since it could make
+				 * more free connections.
+				 */
+				ReapChildren();
+				goto ACCEPT;
+				break;
+			case ECONNABORTED:
+				return 0;
+				break;
+			default:
+				OWPErrorLine(ctx,OWPLine,OWPErrFATAL,errno,
+						"accept():%s",strerror(errno));
+				return(-1);
+				break;
+		}
+	}
+
+	if (pipe(new_pipe) < 0){
+		OWPErrorLine(ctx,OWPLine,OWPErrFATAL,errno,
+						"pipe():%s",strerror(errno));
+		return(-1);
+	}
+
+	pid = fork();
+	if (pid < 0){
+		OWPErrorLine(ctx,OWPLine,OWPErrFATAL,errno,
+						"fork():%s",strerror(errno));
+		return(-1);
+	}
+	
+	if (pid > 0){
+		/* Parent */
+
+		/*
+		 * If close is interupted, continue to try and close,
+		 * otherwise, ignore the error.
+		 */
+		while((close(new_pipe[1]) < 0) && (errno == EINTR));
+		while((close(connfd) < 0) && (errno == EINTR));
+
+		/* fd2pid{new_pipe[0]} = pid */
+		free_connections--;
+		FD_SET(new_pipe[0], readfds);
+		if (new_pipe[0] > *maxfd)
+			*maxfd = new_pipe[0];
+	}
+	else{
+		/* Child code */
+		int	i;
+
+		for(i=getdtablesize()-1;i>=0;i--){
+#ifndef	NDEBUG
+			if(i == fileno(stderr))
+				continue;
+#endif
+			if((i == connfd) || (i == new_pipe[1]))
+				continue;
+
+			/*
+			 * Ignore errors unless it was an interupt.
+			 */
+			while((close(i) < 0) && (errno == EINTR));
+		}
+
+		if (free_connections <= 0)
+			mode_available &= OWP_MODE_OPEN;
+
+		cntrl = OWPControlAccept(ctx,connfd,
+					(struct sockaddr *)sbuff,sbufflen,
+					listenaddr,mode_available,&out);
+		if (cntrl == NULL){
+			fprintf(stderr, 
+			  "DEBUG: CntrlAcc == NULL. Child Exiting\n");
+			exit(0);	
+		}
+
+		while (again == True) {
+			again = ServerMainControl(cntrl, &out);
+		}
+	}
+	
+	return(0); 
+}
+
 
 int
 main(int argc, char *argv[])
 {
-	policy_data*           policy;
-	int                    listenfd, connfd;
-	char ip2class[MAXPATHLEN],class2limits[MAXPATHLEN],passwd[MAXPATHLEN];
-	struct sockaddr        cliaddr;
-	socklen_t              addrlen;
-	extern char            *optarg;
-	extern int             optind;
-	char*                  progname;
-	int                    c;
-	char*                  port = NULL;
-	char*                  host = NULL; 
-	pid_t                  pid; 
-	fd_set                 readfds, mask;/* listenfd, and pipes to kids */
-	int                    maxfd;    /* max fd in readfds               */
-	OWPErrSeverity         out;
-	OWPContext             ctx;
-	OWPControl             cntrl; /* XXX - remember to initialize. */
-	I2ErrHandle            eh;
-	I2LogImmediateAttr     ia;
-
-	int junk = 0;
-
-	OWPInitializeConfigRec cfg  = {
+	char			*progname;
+	I2LogImmediateAttr	ia;
+	int			od;
+	OWPErrSeverity		out = OWPErrFATAL;
+	policy_data		*policy;
+	char			id2class[MAXPATHLEN],
+				class2limits[MAXPATHLEN],
+				passwd[MAXPATHLEN];
+	fd_set			readfds, mask;/* listenfd, and pipes to kids */
+	int			maxfd;    /* max fd in readfds               */
+	OWPContext		ctx;
+	OWPControl		cntrl;
+	OWPAddr			listenaddr = NULL;
+	int			listenfd;
+	int			rc;
+	OWPInitializeConfigRec	cfg  = {
 		0, 
 		0,
 		NULL,
 		owampd_err_func, 
 		NULL,
-		/* owamp_first_check, */ NULL,
-		/* check_control, */ NULL,
+		NULL,
+		NULL,
 		NULL,
 		NULL,
 		NULL,
@@ -440,216 +449,175 @@ main(int argc, char *argv[])
 	* standard error
 	*/
 	progname = (progname = strrchr(argv[0], '/')) ? ++progname : *argv;
-	eh = I2ErrOpen(progname, I2ErrLogImmediate, &ia, NULL, NULL);
-	if(! eh) {
+	errhand = I2ErrOpen(progname, I2ErrLogImmediate, &ia, NULL, NULL);
+	if(! errhand) {
 		fprintf(stderr, "%s : Couldn't init error module\n", progname);
 		exit(1);
 	}
 
-	/* Parse command line options. */
-	while ((c = getopt(argc, argv, "f:a:p:n:h")) != -1) {
-		switch (c) {
-		case 'f':
-			strncpy(ip2class, optarg, sizeof(ip2class));
-			break;
-		case 'h':
-			usage(argv[0]);
-			exit(0);
-			break;
-		case 'a':
-			host = strdup(optarg);
-			break;
-		case 'p':
-			port = strdup(optarg);
-			break;
-		case 'n':
-			free_connections = atoi(optarg);
-			break;
-		default:
-			usage(argv[0]);
-			break;
-		}
-	}
-	if (argc != optind){
-		usage(argv[0]);
+	od = I2OpenOptionTbl(errhand);
+
+	if(I2ParseOptionTable(od, &argc, argv, set_options) < 0){
+		I2ErrLog(errhand, "Could not parse command line options");
 		exit(1);
 	}
 
-	sprintf(ip2class, "%s/owamp/owpcontrib/ip2class.conf", OWP_CONFDIR);
-	sprintf(class2limits, "%s/owamp/owpcontrib/class2limits.conf", 
-		OWP_CONFDIR);
-	sprintf(passwd, "%s/owamp/owpcontrib/passwd.conf", OWP_CONFDIR);
+	/*
+	 * load options into opts
+	 */
+	if(I2GetOptions(od, get_options) < 0){
+		I2ErrLog(errhand, "Could not retrieve command line options");
+		exit(1);
+	}
 
-	policy = PolicyInit(eh, ip2class, class2limits, passwd, &out);
+	/*
+	 * Check options.
+	 */
+	if(opts.help){
+		usage(od,progname,NULL);
+		exit(0);
+	}
+
+	free_connections = opts.maxconnections;
+
+	/*
+	 * Setup paths.
+	 */
+	rc = snprintf(id2class,sizeof(id2class),"%s%s%s",opts.confdir,
+						OWD_DIRSEP,opts.id2class);
+	if(rc > sizeof(id2class)){
+		I2ErrLog(errhand, "Invalid path to id2class file.");
+		exit(1);
+	}
+
+	rc = snprintf(class2limits,sizeof(class2limits),"%s%s%s",opts.confdir,
+						OWD_DIRSEP,opts.class2limits);
+	if(rc > sizeof(class2limits)){
+		I2ErrLog(errhand, "Invalid path to class2limits file.");
+		exit(1);
+	}
+
+	rc = snprintf(passwd,sizeof(passwd),"%s%s%s",opts.confdir,
+						OWD_DIRSEP,opts.passwd);
+	if(rc > sizeof(passwd)){
+		I2ErrLog(errhand, "Invalid path to passwd file.");
+		exit(1);
+	}
+
+	policy = PolicyInit(errhand, id2class, class2limits, passwd, &out);
 	if (out == OWPErrFATAL){
-		fprintf(stderr, "PolicyInit failed. Exiting...");
+		I2ErrLog(errhand, "PolicyInit failed. Exiting...");
 		exit(1);
 	};
 
+	/*
+	 * Setup the "default_mode".
+	 */
+	if(opts.authmode){
+		char	*s = opts.authmode;
+		opts.auth_mode = 0;
+		while(*s != '\0'){
+			switch(toupper(*s)){
+				case 'O':
+				opts.auth_mode |= OWP_MODE_OPEN;
+				break;
+				case 'A':
+				opts.auth_mode |= OWP_MODE_AUTHENTICATED;
+				break;
+				case 'E':
+				opts.auth_mode |= OWP_MODE_ENCRYPTED;
+				break;
+				default:
+				I2ErrLogP(errhand,EINVAL,
+						"Invalid -authmode %c",*s);
+				usage(od,progname,NULL);
+				exit(1);
+			}
+			s++;
+		}
+	}
+	else{
+		/*
+		 * Default to all modes.
+		 */
+		opts.auth_mode = OWP_MODE_OPEN|OWP_MODE_AUTHENTICATED|
+							OWP_MODE_ENCRYPTED;
+	}
+
+	/*
+	 * Set the app_data for the context - this pointer will be passed
+	 * on to the gettimestamp/err_func functions.
+	 *
+	 * Once this is initialized, all errors should be reported using the
+	 * OWPError* functions so they all go through the installed error
+	 * handler.
+	 */
 	cfg.app_data = (void *)policy;
 	ctx = OWPContextInitialize(&cfg);
 
-	listenfd = tcp_listen(ctx, NULL, SERV_PORT_STR, &addrlen);
+	/*
+	 * If the local interface was specified, use it - otherwise use NULL
+	 * for wildcard.
+	 */
+	if(opts.nodename)
+		listenaddr = OWPAddrByNode(ctx,opts.nodename);
+	listenaddr = OWPServerSockCreate(ctx,listenaddr,&out);
+	if(!listenaddr){
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+				"Unable to create server socket. Exiting...");
+		exit(1);
+	}
 
 	signal(SIGCHLD, sig_chld);
+
+	listenfd = OWPAddrFD(listenaddr);
 	FD_ZERO(&readfds);
-	FD_SET(listenfd, &readfds);
+	FD_SET(listenfd,&readfds);
 	maxfd = listenfd;
 
 	while (1) {
 		int nfound;
-		fd_set mask = readfds;
-		socklen_t len = addrlen;
+		fd_set mask;
+		socklen_t len = OWPAddrSockLen(listenaddr);
 
-		/* check if any signals have occurred */
-		if (sig_received){
-			switch (sig_name) {
-				int stat;
-			case SIGCHLD:
-				while (waitpid(-1, &stat, WNOHANG) > 0)
-					free_connections++;
-				sig_received = 0;
-				break;
-			default:
-				sig_received = 0;
-				break;
-			}
-		}
-	AGAIN:
-		nfound = select(maxfd + 1, &mask, NULL, NULL, NULL);
+		mask = readfds;
+		nfound = select(maxfd+1,&mask,NULL,NULL,NULL);
 
-		fprintf(stderr, "DEBUG: select returned with nfound = %d\n", 
-			nfound);
-	
-		if (nfound < 0){
-			if (errno == EINTR)
-				goto AGAIN;
-			else {
-				I2ErrLog(eh, "select() failed. Exiting...");
-				exit(1);
+		/*
+		 * This will only print out during debugging because
+		 * NDEBUG should be defined for non-development builds.
+		 * (see the error handler above.)
+		 */
+		OWPError(ctx,OWPErrINFO,errno,"select returned:%d (%s)",
+						nfound,strerror(errno));
+		/*
+		 * Handle select interupts/errors.
+		 */
+		if(nfound < 0){
+			if(errno == EINTR){
+				ReapChildren();
+				continue;
 			}
+			OWPError(ctx,OWPErrFATAL,errno,"select failed:(%s)",
+							strerror(errno));
+			exit(1);
 		}
 
-		if (nfound == 0)  /* should not happen with infinite timeout */
+		/*
+		 * shouldn't happen, but for completeness.
+		 */
+		if(nfound == 0)
 			continue;
 
-		if (FD_ISSET(listenfd, &mask)){ /* new connection */
-			int        mode_available = default_offered_mode;
-			int        new_pipe[2];
-			pid_t      pid;
-			OWPBoolean auth_ok;
-			OWPBoolean again = True;
-
-			FD_CLR(listenfd, &mask);
-
-			if (pipe(new_pipe) < 0){
-				I2ErrLog(eh, "pipe() failed. Exiting...");
+		if(FD_ISSET(listenfd, &mask)){ /* new connection */
+			if(NewConnection(ctx,listenaddr,&maxfd,&readfds) != 0)
 				exit(1);
-			}
-
-			free_connections--;
-
-		ACCEPT:
-			connfd = accept(listenfd, &cliaddr, &len);
-			if (connfd < 0){
-				if (errno == EINTR)
-					goto ACCEPT;
-				else {
-					perror("accept()");
-					exit(1);
-				}
-			}
-
-			pid = fork();
-
-			if (pid < 0){
-				I2ErrLog(eh, "fork() failed. Exiting...");
-				exit(1);	
-			}
-			
-			if (pid > 0){ /* Parent */
-				FD_SET(new_pipe[0], &readfds);
-
-				if (close(new_pipe[1]) < 0){
-					perror("close");
-					exit(1);
-				}
-
-				if (close(connfd) < 0){
-					perror("close");
-					exit(1);
-				}
-
-				if (new_pipe[0] > maxfd)
-					maxfd = new_pipe[0];
-
-				/* fd2pid{new_pipe[0]} = pid */
-
-				owampd_check_pipes(maxfd, &mask, &readfds);
-				continue; 
-			}
-			
-			/* Child code */
-
-#if	NOT
-			/* XXX - Remove. for debugging only */
-			if (freopen("child.err", "w", stderr) < 0){
-				perror("reopen");
-				exit(1);
-			}
-#endif
-
-			if (close(new_pipe[0]) < 0){
-				perror("close");
-				exit(1);
-			}
-			if (close(listenfd) < 0){
-				perror("close");
-				exit(1);
-			}
-
-			if (free_connections <= 0)
-				mode_available &= OWP_MODE_OPEN;
-
-			if (OWPServerCheckAddrPolicy(ctx, &cliaddr, &out) 
-			    == False){
-				fprintf(stderr,"DEBUG: policy check failed\n");
-				close(connfd);     /* access denied */
-				exit(0);
-			}
-
-			cntrl = OWPControlAccept(ctx, connfd, mode_available,
-						 policy, &out);
-
-			if (cntrl == NULL){
-				fprintf(stderr, 
-				  "DEBUG: CntrlAcc == NULL. Child Exiting\n");
-				exit(0);	
-			}
-
-#if	NOT
-			fprintf(stderr, "DEBUG: child exiting...\n");
-			exit(1); /* XXX - debug */
-#endif
-		
-			while (again == True) {
-				again = ServerMainControl(cntrl, &out);
-			}
-			
-			exit(0); 
-			/* End of child code */
-
-		} /* if (FD_ISSET(listenfd))... */
-		
-		/* Fall through */
-		owampd_check_pipes(maxfd, &mask, &readfds);
-		continue;
-		
+		}
+		else
+			owampd_check_pipes(&maxfd,&mask,&readfds);
+		ReapChildren();
 	}
-	
-	I2hash_close(&policy->ip2class);
-	I2hash_close(&policy->class2limits);
-	I2hash_close(&policy->passwd);
 
+	/*NOTREACHED*/
 	exit(0);
 }
