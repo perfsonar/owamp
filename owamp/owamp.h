@@ -162,6 +162,8 @@ typedef struct OWPTimeStampRec{
 	u_int8_t		prec;
 } OWPTimeStamp;
 
+#define OWP_TS_REC_SIZE    20  /* size (in byts) of a timestamp record */
+
 typedef enum {
 	OWPTestUnspecified,	/* invalid value	*/
 	OWPTestPoisson

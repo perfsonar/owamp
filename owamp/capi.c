@@ -1010,7 +1010,6 @@ owp_delay(OWPTimeStamp *send_time, OWPTimeStamp *recv_time)
 	return (t2 > t1)? (double)(t2 - t1)/scale : (double)(t1 - t2)/(-scale);
 }
 
-#define OWP_TS_REC_SIZE    20  /* size (in byts) of a timestamp record */
 /*
 ** After calling OWPFetchSession, the client reads the exact number
 ** of data records advertised (= <num_rec>), and process them,
