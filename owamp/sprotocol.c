@@ -24,118 +24,57 @@
 **			with.)
 **
 */
-#include <owampP.h>
+#include "./owampP.h"
 extern u_int32_t default_offered_mode;
 
-void
-_OWPServerOK(OWPControl ctrl, u_int8_t code);
-
-#ifdef NOT
+/*
+** On success, this function reads a full client request (decrypting if 
+** necessary), saves it into <buf>, and returns its type to the caller 
+** for further processing. On failure it returns -1.
+** Note: it is a responsibility of the caller to provide
+** sufficient memory in <buf>.
+*/ 
 int
-_OWPSendServerGreeting(
-		       OWPControl cntrl,          /* cntrl state structure  */
-		       OWPErrSeverity	*err_ret  /* error - returned       */
-		       )
+OWPServerReadRequest(OWPControl cntrl, char *buf)
 {
-	char buf[MAX_MSG];
-	char challenge[16];
-	int encrypt = 0;
-	u_int32_t mode = cntrl->mode;	  /* modes available */
+	u_int8_t request_type;
+	int more_blocks;
 
-	/* first 16 bytes: unused + advertised mode */
-	memset(buf, 0, sizeof(buf));
-	*(int32_t *)(buf + 12) = htonl(mode); /* first 12 bytes unused */
+	/* Read one block so we can peek at the message type */
+	if (_OWPReceiveBlocks(cntrl, buf, 1) < 0)
+		return -1;	
 
-	/* generate 16 random bytes and save them away. */
-	random_bytes(challenge, 16);
-	memcpy(buf + 16, challenge, 16); /* the last 16 bytes */
-
-	if (_OWPSendBlocks(cntrl, buf, 2) < 0){
-		close(cntrl->sockfd);
-		return -1; 
-	}
+	request_type = *(u_int8_t *)buf;
 	
-	return 0;
-}
-
-/* XXX - Being phased out */
-int
-_OWPReadClientGreeting(
-		       OWPControl cntrl, 
-		       OWPErrSeverity *err_ret
-		       )
-{
-	u_int32_t mode_offered; /* = default_offered_mode; */
-	u_int32_t mode_requested; 
-	OWPByte *key = NULL;
-	char buf[MAX_MSG];
-	char token[32];
-
-	if (_OWPReadn(cntrl->sockfd, buf, 60) != 60){
-		close(cntrl->sockfd);
+	switch (request_type) {
+	case OWP_CTRL_REQUEST_SESSION:
+		more_blocks = OWP_TEST_REQUEST_BLK_LEN - 1;
+		break;
+	case OWP_CTRL_START_SESSION:
+		more_blocks = OWP_TEST_START_BLK_LEN - 1;
+		break;
+	case OWP_CTRL_STOP_SESSION:
+		more_blocks = OWP_TEST_STOP_BLK_LEN - 1;
+		break;
+	case OWP_CTRL_RETRIEVE_SESSION:
+		more_blocks = OWP_TEST_RETRIEVE_BLK_LEN - 1;
+		break;
+	default:
 		return -1;
+		break;
 	}
 
-	mode_requested = ntohl(*(u_int32_t *)buf);
-	
-	/*
-	     XXX - TODO: improve logic of handling mode_requested.
-	*/
+	if (_OWPReceiveBlocks(cntrl, buf, more_blocks) < 0)
+		return -1;	
 
-	if (mode_requested & ~mode_offered){ /* can't provide requested mode */
-		_OWPServerOK(cntrl, CTRL_REJECT);
-		close(cntrl->sockfd);
-		return -1;
-	}
-	
-	if (mode_requested & _OWP_DO_CIPHER){
-		OWPByte binKey[16];
-
-		memcpy(cntrl->kid, buf + 4, 8); /* Save 8 bytes of kid */
-
-		if(!_OWPCallGetAESKey(cntrl->ctx, buf + 4, binKey, err_ret)){
-			if(*err_ret != OWPErrOK){
-				*err_ret = OWPErrFATAL;
-				return -1;
-			}
-
-		} else
-			key = binKey;
-
-		OWPDecryptToken(binKey, buf + 12, token);
-
-		/* Decrypted challenge is in the first 16 bytes */
-		if (memcmp(cntrl->challenge, token, 16) != 0){
-			_OWPServerOK(cntrl, CTRL_REJECT);
-			close(cntrl->sockfd);
-			return -1;
-		}
-
-		random_bytes(cntrl->writeIV, 16);
-
-		/* Save 16 bytes of session key and 16 bytes of client IV*/
-		memcpy(cntrl->session_key, token + 16, 16);
-		memcpy(cntrl->readIV, buf + 44, 16);
-		_OWPMakeKey(cntrl, cntrl->session_key); 
-	}
-
-	/* Apparently everything is ok. Accept the Control session. */
-	cntrl->mode = mode_requested;
-	_OWPServerOK(cntrl, CTRL_ACCEPT);
-	return 0;
-
-	/*
-	      XXX - TODO: make sure all fields off cntrl are set.
-	*/
+	return request_type;
 }
-#endif
-
 
 /*
 ** Accept or reject the Control Connection request.
 ** Code = CTRL_ACCEPT/CTRL_REJECT with the obvious meaning.
 */
-void
+int
 _OWPServerOK(OWPControl cntrl, u_int8_t code)
 {
 	char buf[MAX_MSG];
@@ -329,38 +268,6 @@ OWPServerControlMain(OWPControl cntrl, OWPErrSeverity *err_ret)
 	}
 	
 	return True;
-}
-
-int
-OWPGetControlMessageType(OWPControl cntrl, u_int8_t* msg_type)
-{
-	char msg[MAX_MSG];
-
-	/* Read one block so we can peek at the message type */
-	if (_OWPReceiveBlocks(cntrl, msg, 1) < 0)
-		return -1;
-
-	*msg_type = *(u_int8_t *)msg;
-	return 0;
-}
-
-/*
-** This function reads the first (16-byte) block of the
-** Control request and places the request type into *msg_type.
-** It returns 0 on success, and -1 on failure.
-*/
-
-int
-OWPGetRequestType(OWPControl cntrl, int* msg_type)
-{
-	char buf[MAX_MSG];
-	if (_OWPReadn(cntrl->sockfd, buf, 60) != 60){
-		close(cntrl->sockfd);
-		return -1;
-	}
-
-	*msg_type = ntohl(*(u_int32_t *)buf);
-	return 0;
 }
 
 /*
