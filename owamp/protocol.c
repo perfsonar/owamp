@@ -341,8 +341,12 @@ OWPReadRequestType(
 	}
 
 	/* Read one block so we can peek at the message type */
-	if((n = _OWPReceiveBlocks(cntrl, (u_int8_t*)cntrl->msg, 1)) != 1)
-		return n;	
+	if((n = _OWPReceiveBlocks(cntrl, (u_int8_t*)cntrl->msg, 1)) != 1){
+		OWPError(cntrl->ctx,OWPErrFATAL,errno,
+			"OWPReadRequestType:Unable to read from socket.");
+		cntrl->state = _OWPStateInvalid;
+		return -OWPErrFATAL;
+	}
 
 	msgtype = *(u_int8_t*)cntrl->msg;
 
@@ -779,6 +783,8 @@ _OWPReadTestRequest(
 	 */
 	if(_OWPReceiveBlocks(cntrl,&buf[16],_OWP_TEST_REQUEST_BLK_LEN-1) != 
 			(_OWP_TEST_REQUEST_BLK_LEN-1)){
+		OWPError(cntrl->ctx,OWPErrFATAL,errno,
+			"_OWPReadTestRequest:Unable to read from socket.");
 		cntrl->state = _OWPStateInvalid;
 		return OWPErrFATAL;
 	}
@@ -881,6 +887,8 @@ _OWPReadTestAccept(
 	 * Get the servers response.
 	 */
 	if(_OWPReceiveBlocks(cntrl,buf,2) != 2){
+		OWPError(cntrl->ctx,OWPErrFATAL,errno,
+			"_OWPReadTestAccept:Unable to read from socket.");
 		cntrl->state = _OWPStateInvalid;
 		return OWPErrFATAL;
 	}
@@ -982,6 +990,8 @@ _OWPReadStartSessions(
 	 */
 	if(_OWPReceiveBlocks(cntrl,&buf[16],_OWP_STOP_SESSIONS_BLK_LEN-1) !=
 					(_OWP_STOP_SESSIONS_BLK_LEN-1) ){
+		OWPError(cntrl->ctx,OWPErrFATAL,errno,
+			"_OWPReadStartSessions:Unable to read from socket.");
 		cntrl->state = _OWPStateInvalid;
 		return OWPErrFATAL;
 	}
@@ -1081,6 +1091,8 @@ _OWPReadStopSessions(
 	 */
 	if(_OWPReceiveBlocks(cntrl,&buf[16],_OWP_STOP_SESSIONS_BLK_LEN-1) !=
 				(_OWP_STOP_SESSIONS_BLK_LEN-1)){
+		OWPError(cntrl->ctx,OWPErrFATAL,errno,
+			"_OWPReadStopSessions:Unable to read from socket.");
 		cntrl->state = _OWPStateInvalid;
 		return OWPErrFATAL;
 	}
@@ -1197,6 +1209,8 @@ _OWPReadRetrieveSession(
 	 */
 	if(_OWPReceiveBlocks(cntrl,&buf[16],_OWP_RETRIEVE_SESSION_BLK_LEN-1)
 					!= (_OWP_RETRIEVE_SESSION_BLK_LEN-1)){
+		OWPError(cntrl->ctx,OWPErrFATAL,errno,
+			"_OWPReadRetrieveSession:Unable to read from socket.");
 		cntrl->state = _OWPStateInvalid;
 		return OWPErrFATAL;
 	}
@@ -1299,6 +1313,8 @@ _OWPReadControlAck(
 
 	if(_OWPReceiveBlocks(cntrl,&buf[0],_OWP_CONTROL_ACK_BLK_LEN) != 
 					(_OWP_CONTROL_ACK_BLK_LEN)){
+		OWPError(cntrl->ctx,OWPErrFATAL,errno,
+			"_OWPReadControlAck:Unable to read from socket.");
 		cntrl->state = _OWPStateInvalid;
 		return OWPErrFATAL;
 	}
@@ -1357,6 +1373,8 @@ _OWPReadFetchHeader(
 	};
 
 	if(_OWPReceiveBlocks(cntrl, buf, 1) != 1){
+		OWPError(cntrl->ctx,OWPErrFATAL,errno,
+			"_OWPReadFetchHeader:Unable to read from socket.");
 		cntrl->state = _OWPStateInvalid;
 		return OWPErrFATAL;
 	}
