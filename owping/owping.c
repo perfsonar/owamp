@@ -622,7 +622,7 @@ owp_do_summary(fetch_state_ptr state)
 	double min = ((double)(state->tmin)) * THOUSAND;    /* msec */
 	u_int32_t sent = state->max_seqno + 1;
 	u_int32_t lost = state->dup_packets + sent - state->num_received; 
-	double percent_lost = (double)lost/(double)state->max_seqno;
+	double percent_lost = (100.0*(double)lost)/(double)sent;
 	int j;
 
 	assert(state); assert(state->fp);
