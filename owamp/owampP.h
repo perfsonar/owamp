@@ -97,20 +97,31 @@
 /*
  * The following states are for partially read messages on the server.
  */
-#define _OWPStateReadingTestRequest	(0x08)
-#define _OWPStateReadingStartSessions	(0x0F)
-#define _OWPStateReadingStopSessions	(0x010)
-#define _OWPStateReadingRetrieveSession	(0x020)
+#define _OWPStateTestRequest		(0x08)
+#define _OWPStateStartSessions		(0x0F)
+#define _OWPStateStopSessions		(0x010)
+#define _OWPStateRetrieveSession	(0x020)
+
+/* from the server side - "Reading" indicates a partially read request */
+#define _OWPStateReading	(_OWPStateTestRequest|_OWPStateStartSessions|_OWPStateStopSessions|_OWPStateRetrieveSession)
 
 #define _OWPStateTestAccept	(0x040)
 #define _OWPStateControlAck	(0x080)
+/*
+ * "Pending" indicates waiting for server response to a request.
+ */
+#define	_OWPStatePending	(_OWPStateTestAccept|_OWPStateControlAck|_OWPStateStopSessions)
+
 
 #define	_OWPStateIsInitial(c)	(!(c)->state)
 #define	_OWPStateIsSetup(c)	(!(_OWPStateSetup ^ (c)->state))
-#define	_OWPStateIsRequest(c)	((_OWPStateRequest & (c)->state))
-#define	_OWPStateIsTest(c)	((_OWPStateTest & (c)->state))
 
 #define _OWPStateIs(teststate,c)	((teststate & (c)->state))
+
+#define	_OWPStateIsRequest(c)	_OWPStateIs(_OWPStateRequest,c)
+#define	_OWPStateIsReading(c)	_OWPStateIs(_OWPStateReading,c)
+#define _OWPStateIsPending(c)	_OWPStateIs(_OWPStatePending,c)
+#define	_OWPStateIsTest(c)	_OWPStateIs(_OWPStateTest,c)
 
 /*
  * other useful constants.
@@ -246,20 +257,6 @@ _OWPTestSessionFree(
 /*
  * io.c prototypes
  */
-extern ssize_t
-_OWPReadn(
-	int	fd,
-	void	*buff,
-	size_t	n
-	 );
-
-extern ssize_t
-_OWPWriten(
-	int		fd,
-	const void	*buff,
-	size_t		n
-	  );
-
 extern int
 _OWPConnect(
 	int		fd,

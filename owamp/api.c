@@ -440,6 +440,14 @@ _OWPControlAlloc(
 	return cntrl;
 }
 
+OWPSessionMode
+OWPGetMode(
+	OWPControl	cntrl
+	)
+{
+	return cntrl->mode;
+}
+
 OWPErrSeverity
 OWPControlClose(OWPControl cntrl)
 {

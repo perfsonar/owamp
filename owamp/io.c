@@ -33,7 +33,7 @@
  */
 
 ssize_t				       /* Read "n" bytes from a descriptor. */
-_OWPReadn(int fd, void *vptr, size_t n)
+OWPReadn(int fd, void *vptr, size_t n)
 {
 	size_t	nleft;
 	ssize_t	nread;
@@ -55,10 +55,10 @@ _OWPReadn(int fd, void *vptr, size_t n)
 	}
 	return(n - nleft);		/* return >= 0 */
 }
-/* end _OWPReadn */
+/* end OWPReadn */
 
 ssize_t					/* Write "n" bytes to a descriptor. */
-_OWPWriten(int fd, const void *vptr, size_t n)
+OWPWriten(int fd, const void *vptr, size_t n)
 {
 	size_t		nleft;
 	ssize_t		nwritten;
@@ -79,7 +79,7 @@ _OWPWriten(int fd, const void *vptr, size_t n)
 	}
 	return(n);
 }
-/* end _OWPWriten */
+/* end OWPWriten */
 
 
 #define	tvalclear(a)	(a)->tv_sec = (a)->tv_usec = 0
@@ -198,20 +198,24 @@ _OWPSendBlocks(
 	ssize_t n;
 
 	if (! (cntrl->mode & _OWP_DO_CIPHER)){
-		n = _OWPWriten(cntrl->sockfd, buf, num_blocks*_OWP_RIJNDAEL_BLOCK_SIZE);
+		n = OWPWriten(cntrl->sockfd, buf,
+					num_blocks*_OWP_RIJNDAEL_BLOCK_SIZE);
 		if (n < 0){
-			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,errno,
-				"_OWPWriten failed");
+			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,
+					OWPErrUNKNOWN,"OWPWriten failed:(%s)",
+					strerror(errno));
 			return -1;
 		} 
 		return 0;
 	} else {
 		u_int8_t	msg[_OWP_MAX_MSG];
 		_OWPEncryptBlocks(cntrl, buf, num_blocks, msg);
-		n = _OWPWriten(cntrl->sockfd, msg, num_blocks*_OWP_RIJNDAEL_BLOCK_SIZE);
+		n = OWPWriten(cntrl->sockfd, msg,
+					num_blocks*_OWP_RIJNDAEL_BLOCK_SIZE);
 		if (n < 0){
-			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,errno,
-				     "_OWPWriten failed");
+			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,
+					OWPErrUNKNOWN,"OWPWriten failed:(%s)",
+					strerror(errno));
 			return -1;
 		} 
 		return 0;
@@ -224,19 +228,23 @@ _OWPReceiveBlocks(OWPControl cntrl, u_int8_t *buf, int num_blocks)
 	ssize_t n;
 
 	if (! (cntrl->mode & _OWP_DO_CIPHER)){
-		n = _OWPReadn(cntrl->sockfd, buf, num_blocks*_OWP_RIJNDAEL_BLOCK_SIZE);
+		n = OWPReadn(cntrl->sockfd, buf,
+					num_blocks*_OWP_RIJNDAEL_BLOCK_SIZE);
 		if (n < 0){
-			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,errno,
-				     "_OWPReadn failed");
+			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,
+					OWPErrUNKNOWN,"OWPReadn failed:(%s)",
+					strerror(errno));
 			return -1;
 		} 
 		return 0;
 	} else {
 		u_int8_t	msg[_OWP_MAX_MSG];
-		n = _OWPReadn(cntrl->sockfd, msg, num_blocks*_OWP_RIJNDAEL_BLOCK_SIZE);
+		n = OWPReadn(cntrl->sockfd, msg,
+					num_blocks*_OWP_RIJNDAEL_BLOCK_SIZE);
 		if (n < 0){
-			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,errno,
-				     "_OWPReadn failed");
+			OWPErrorLine(cntrl->ctx,OWPLine,OWPErrFATAL,
+					OWPErrUNKNOWN,"OWPReadn failed:(%s)",
+					strerror(errno));
 			return -1;
 		} 
 		_OWPDecryptBlocks(cntrl, msg, num_blocks, buf);

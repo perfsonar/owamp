@@ -316,11 +316,12 @@ OWPServerSockCreate(
 	 * First try IPv6 addrs only
 	 */
 	fd = OpenSocket(AF_INET6,addr);
-#endif
+
 	/*
 	 * Fall back to IPv4 addrs if necessary.
 	 */
 	if(fd < 0)
+#endif
 		fd = OpenSocket(AF_INET,addr);
 
 	/*
@@ -568,12 +569,6 @@ OWPControlAccept(
 		cntrl->remote_addr->node,
 		cntrl->remote_addr->port);
 	
-	/*
-	 * TODO: Figure out where the state stuff is going to be done - api
-	 * files or protocol.c...
-	 */
-	cntrl->state = _OWPStateRequest;
-
 	return cntrl;
 
 error:

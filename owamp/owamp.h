@@ -386,6 +386,26 @@ OWPAddrFree(
 );
 
 /*
+ * These functions return -1 on error. They read/write n bytes to the
+ * file descriptor. (They loop internally calling read/write until the
+ * entire buffer is read/wrote.) Readn may return less then n bytes if
+ * it encounters EOF.
+ */
+extern ssize_t
+OWPReadn(
+	int	fd,
+	void	*buff,
+	size_t	n
+	 );
+
+extern ssize_t
+OWPWriten(
+	int		fd,
+	const void	*buff,
+	size_t		n
+	  );
+
+/*
  * OWPControlOpen allocates an OWPclient structure, opens a connection to
  * the OWP server and goes through the initialization phase of the
  * connection. This includes AES/CBC negotiation. It returns after receiving
@@ -584,7 +604,14 @@ OWPServerReadRequest(OWPControl cntrl, char *buf);
 ** Fetch context field of OWPControl structure.
 */
 extern OWPContext
-OWPGetContext(OWPControl cntrl);
+OWPGetContext(
+	OWPControl	cntrl
+	);
+
+extern OWPSessionMode
+OWPGetMode(
+	OWPControl	cntrl
+	);
 
 /* 
 ** This function does the first policy check on the server. 

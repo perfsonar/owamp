@@ -482,7 +482,6 @@ OWPControlOpen(
 		goto denied;
 	}
 
-	cntrl->state = _OWPStateRequest;
 	return cntrl;
 
 error:
@@ -718,6 +717,8 @@ OWPRequestTestSession(
 
 	/*
 	 * Check cntrl state is appropriate for this call.
+	 * (this would happen as soon as we tried to call the protocol
+	 * function - but it saves a lot of misplaced work to check now.)
 	 */
 	if(!cntrl || !_OWPStateIsRequest(cntrl)){
 		*err_ret = OWPErrFATAL;

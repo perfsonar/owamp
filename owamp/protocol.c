@@ -76,6 +76,11 @@ _OWPWriteServerGreeting(
 	 */
 	u_int8_t	*buf = (u_int8_t*)cntrl->msg;
 
+	if(!_OWPStateIsInitial(cntrl)){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+			"_OWPWriteServerGreeting:called in wrong state.");
+		return OWPErrFATAL;
+	}
 	/*
 	 * Set unused bits to 0.
 	 */
@@ -83,8 +88,10 @@ _OWPWriteServerGreeting(
 
 	*((u_int32_t *)&buf[12]) = htonl(avail_modes);
 	memcpy(&buf[16],challenge,16);
-	if(_OWPWriten(cntrl->sockfd,buf,32) != 32)
+	if(OWPWriten(cntrl->sockfd,buf,32) != 32)
 		return OWPErrFATAL;
+
+	cntrl->state = _OWPStateSetup;
 
 	return OWPErrOK;
 }
@@ -98,13 +105,22 @@ _OWPReadServerGreeting(
 {
 	u_int8_t	*buf = (u_int8_t*)cntrl->msg;
 
+	if(!_OWPStateIsInitial(cntrl)){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+			"_OWPReadServerGreeting:called in wrong state.");
+		return OWPErrFATAL;
+	}
 
-	if(_OWPReadn(cntrl->sockfd,buf,32) != 32){
+	if(OWPReadn(cntrl->sockfd,buf,32) != 32){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+					"Read failed:(%s)",strerror(errno));
 		return (int)OWPErrFATAL;
 	}
 
 	*mode = ntohl(*((u_int32_t *)&buf[12]));
 	memcpy(challenge,&buf[16],16);
+
+	cntrl->state = _OWPStateSetup;
 
 	return OWPErrOK;
 }
@@ -150,6 +166,12 @@ _OWPWriteClientGreeting(
 {
 	u_int8_t	*buf = (u_int8_t*)cntrl->msg;
 
+	if(!_OWPStateIsSetup(cntrl)){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+			"_OWPWriteClientGreeting:called in wrong state.");
+		return OWPErrFATAL;
+	}
+
 	*(u_int32_t *)&buf[0] = htonl(cntrl->mode);
 
 	if(cntrl->kid)
@@ -160,7 +182,7 @@ _OWPWriteClientGreeting(
 	memcpy(&buf[12],token,32);
 	memcpy(&buf[44],cntrl->writeIV,16);
 
-	if(_OWPWriten(cntrl->sockfd,buf,60) != 60)
+	if(OWPWriten(cntrl->sockfd,buf,60) != 60)
 		return OWPErrFATAL;
 
 	return OWPErrOK;
@@ -176,8 +198,17 @@ _OWPReadClientGreeting(
 {
 	u_int8_t	*buf = (u_int8_t*)cntrl->msg;
 
-	if(_OWPReadn(cntrl->sockfd,buf,60) != 60)
+	if(!_OWPStateIsSetup(cntrl)){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+			"_OWPReadClientGreeting:called in wrong state.");
 		return OWPErrFATAL;
+	}
+
+	if(OWPReadn(cntrl->sockfd,buf,60) != 60){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+					"Read failed:(%s)",strerror(errno));
+		return OWPErrFATAL;
+	}
 
 	*mode = ntohl(*(u_int32_t *)&buf[0]);
 	memcpy(cntrl->kid_buffer,&buf[4],8);
@@ -234,12 +265,21 @@ _OWPWriteServerOK(
 {
 	u_int8_t	*buf = (u_int8_t*)cntrl->msg;
 
+	if(!_OWPStateIsSetup(cntrl)){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+			"_OWPWriteServerOK:called in wrong state.");
+		return OWPErrFATAL;
+	}
+
 	memset(&buf[0],0,15);
 	*(u_int8_t *)&buf[15] = code & 0x0ff;
 	memcpy(&buf[16],cntrl->writeIV,16);
-	if(_OWPSendBlocks(cntrl, buf, 2) == 0)
-		return OWPErrOK;
-	return OWPErrFATAL;
+	if(_OWPSendBlocks(cntrl, buf, 2) != 0)
+		return OWPErrFATAL;
+
+	cntrl->state = _OWPStateRequest;
+
+	return OWPErrOK;
 }
 int
 _OWPReadServerOK(
@@ -249,8 +289,18 @@ _OWPReadServerOK(
 {
 	u_int8_t	*buf = (u_int8_t*)cntrl->msg;
 
-	if(_OWPReadn(cntrl->sockfd,buf,32) != 32)
+	if(!_OWPStateIsSetup(cntrl)){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+			"_OWPReadServerOK:called in wrong state.");
 		return OWPErrFATAL;
+	}
+
+	if(OWPReadn(cntrl->sockfd,buf,32) != 32){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+					"Read failed:(%s)",strerror(errno));
+		cntrl->state = _OWPStateInvalid;
+		return OWPErrFATAL;
+	}
 
 	*acceptval = GetAcceptType(cntrl,buf[15]);
 	if(*acceptval == _OWP_CNTRL_INVALID){
@@ -259,6 +309,8 @@ _OWPReadServerOK(
 	}
 
 	memcpy(cntrl->readIV,&buf[16],16);
+
+	cntrl->state = _OWPStateRequest;
 
 	return OWPErrOK;
 }
@@ -275,7 +327,7 @@ OWPReadRequestType(
 {
 	int	msgtype;
 
-	if(!_OWPStateIsRequest(cntrl)){
+	if(!_OWPStateIsRequest(cntrl) || _OWPStateIsReading(cntrl)){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
 				"OWPReadRequestType:called in wrong state.");
 		return 0;
@@ -288,7 +340,7 @@ OWPReadRequestType(
 	msgtype = *(u_int8_t*)cntrl->msg;
 
 	/*
-	 * Not all requests are allowed during a test.
+	 * Not all types of requests are allowed during a test.
 	 */
 	if(_OWPStateIs(_OWPStateTest,cntrl) && (msgtype < 3)){
 		cntrl->state = _OWPStateInvalid;
@@ -302,16 +354,16 @@ OWPReadRequestType(
 		 * TestRequest
 		 */
 		case	1:
-			cntrl->state |= _OWPStateReadingTestRequest;
+			cntrl->state |= _OWPStateTestRequest;
 			break;
 		case	2:
-			cntrl->state |= _OWPStateReadingStartSessions;
+			cntrl->state |= _OWPStateStartSessions;
 			break;
 		case	3:
-			cntrl->state |= _OWPStateReadingStopSessions;
+			cntrl->state |= _OWPStateStopSessions;
 			break;
 		case	4:
-			cntrl->state |= _OWPStateReadingRetrieveSession;
+			cntrl->state |= _OWPStateRetrieveSession;
 			break;
 		default:
 			cntrl->state = _OWPStateInvalid;
@@ -381,6 +433,12 @@ _OWPWriteTestRequest(
 	u_int8_t		*buf = (u_int8_t*)cntrl->msg;
 	u_int8_t		version;
 	OWPTestSpecPoisson	*ptest;
+
+	if(!_OWPStateIsRequest(cntrl) || _OWPStateIsPending(cntrl)){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+			"_OWPWriteTestRequest:called in wrong state.");
+		return OWPErrFATAL;
+	}
 
 	if(!server_conf_sender && !server_conf_receiver){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
@@ -480,8 +538,12 @@ _OWPWriteTestRequest(
 	/*
 	 * Now - send the request!
 	 */
-	if(_OWPSendBlocks(cntrl,buf,6) != 0)
+	if(_OWPSendBlocks(cntrl,buf,6) != 0){
+		cntrl->state = _OWPStateInvalid;
 		return OWPErrFATAL;
+	}
+
+	cntrl->state |= _OWPStateTestAccept;
 
 	return OWPErrOK;
 }
@@ -502,7 +564,7 @@ _OWPReadTestRequest(
 	u_int8_t		*buf = (u_int8_t*)cntrl->msg;
 	OWPTestSpecPoisson	*ptest;
 
-	if(!_OWPStateIs(_OWPStateReadingTestRequest,cntrl)){
+	if(!_OWPStateIs(_OWPStateTestRequest,cntrl)){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
 				"_OWPReadTestRequest called in wrong state.");
 		return OWPErrFATAL;
@@ -523,12 +585,6 @@ _OWPReadTestRequest(
 		cntrl->state = _OWPStateInvalid;
 		return OWPErrFATAL;
 	}
-
-	/*
-	 * The control connection is now ready to send the response.
-	 */
-	cntrl->state &= ~_OWPStateReadingTestRequest;
-	cntrl->state |= _OWPStateTestAccept;
 
 	*ipvn = buf[1] >> 4;
 	if(*ipvn != (buf[1] & 0x0f)){
@@ -637,6 +693,12 @@ _OWPReadTestRequest(
 
 	ptest->typeP = ntohl(*(u_int32_t*)&buf[76]);
 
+	/*
+	 * The control connection is now ready to send the response.
+	 */
+	cntrl->state &= ~_OWPStateTestRequest;
+	cntrl->state |= _OWPStateTestAccept;
+
 	return OWPErrOK;
 }
 
@@ -672,14 +734,25 @@ _OWPWriteTestAccept(
 {
 	u_int8_t	*buf = (u_int8_t*)cntrl->msg;
 
+	if(!_OWPStateIs(_OWPStateTestAccept,cntrl)){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+				"_OWPWriteTestAccept called in wrong state.");
+		return OWPErrFATAL;
+	}
+
 	buf[0] = acceptval & 0xff;
 	*(u_int16_t *)&buf[2] = port;
 	if(sid)
 		memcpy(&buf[4],sid,16);
 	memset(&buf[20],0,12);
 
-	if(_OWPSendBlocks(cntrl,buf,3) != 0)
+	if(_OWPSendBlocks(cntrl,buf,3) != 0){
+		cntrl->state = _OWPStateInvalid;
 		return OWPErrFATAL;
+	}
+
+	cntrl->state &= ~_OWPStateTestAccept;
+
 	return OWPErrOK;
 }
 
@@ -693,16 +766,25 @@ _OWPReadTestAccept(
 {
 	u_int8_t		*buf = (u_int8_t*)cntrl->msg;
 
+	if(!_OWPStateIs(_OWPStateTestAccept,cntrl)){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+				"_OWPReadTestAccept called in wrong state.");
+		return OWPErrFATAL;
+	}
+
 	/*
 	 * Get the servers response.
 	 */
-	if(_OWPReceiveBlocks(cntrl,buf,2) != 0)
+	if(_OWPReceiveBlocks(cntrl,buf,2) != 0){
+		cntrl->state = _OWPStateInvalid;
 		return OWPErrFATAL;
+	}
 
 	/*
 	 * Check zero padding first.
 	 */
 	if(memcmp(&buf[20],cntrl->zero,12)){
+		cntrl->state = _OWPStateInvalid;
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
 				"Invalid Accept-Session message received");
 		return OWPErrFATAL;
@@ -719,6 +801,8 @@ _OWPReadTestAccept(
 
 	if(sid)
 		memcpy(sid,&buf[4],16);
+
+	cntrl->state &= ~_OWPStateTestAccept;
 
 	return OWPErrOK;
 }
@@ -752,14 +836,24 @@ _OWPWriteStartSessions(
 {
 	u_int8_t	*buf = (u_int8_t*)cntrl->msg;
 
-	buf[0] = 2;
+	if(!_OWPStateIsRequest(cntrl) || _OWPStateIsPending(cntrl)){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+			"_OWPWriteStartSessions:called in wrong state.");
+		return OWPErrFATAL;
+	}
+
+	buf[0] = 2;	/* start-session identifier	*/
 #ifndef	NDEBUG
 	memset(&buf[1],0,15);	/* Unused	*/
 #endif
 	memset(&buf[16],0,16);	/* Zero padding */
 
-	if(_OWPSendBlocks(cntrl,buf,2) != 0)
+	if(_OWPSendBlocks(cntrl,buf,2) != 0){
+		cntrl->state = _OWPStateInvalid;
 		return OWPErrFATAL;
+	}
+
+	cntrl->state |= _OWPStateControlAck;
 	return OWPErrOK;
 }
 
@@ -770,7 +864,7 @@ _OWPReadStartSessions(
 {
 	u_int8_t		*buf = (u_int8_t*)cntrl->msg;
 
-	if(!_OWPStateIs(_OWPStateReadingStartSessions,cntrl)){
+	if(!_OWPStateIs(_OWPStateStartSessions,cntrl)){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
 				"_OWPReadStartSessions called in wrong state.");
 		return OWPErrFATAL;
@@ -802,7 +896,7 @@ _OWPReadStartSessions(
 	/*
 	 * The control connection is now ready to send the response.
 	 */
-	cntrl->state &= ~_OWPStateReadingStartSessions;
+	cntrl->state &= ~_OWPStateStartSessions;
 	cntrl->state |= _OWPStateControlAck;
 
 	return OWPErrOK;
@@ -883,7 +977,7 @@ _OWPReadStopSessions(
 
 	if(memcmp(cntrl->zero,&buf[16],16)){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-				"_OWPReadControlAck:Invalid zero padding");
+				"_OWPReadStopSessions:Invalid zero padding");
 		cntrl->state = _OWPStateInvalid;
 		return OWPErrFATAL;
 	}
@@ -896,7 +990,7 @@ _OWPReadStopSessions(
 	/*
 	 * The control connection is now ready to send the response.
 	 */
-	cntrl->state &= ~_OWPStateControlAck;
+	cntrl->state &= ~_OWPStateStopSessions;
 	cntrl->state |= _OWPStateRequest;
 
 	return OWPErrOK;
@@ -975,7 +1069,7 @@ _OWPReadRetrieveSession(
 {
 	u_int8_t		*buf = (u_int8_t*)cntrl->msg;
 
-	if(!_OWPStateIs(_OWPStateReadingRetrieveSession,cntrl)){
+	if(!_OWPStateIs(_OWPStateRetrieveSession,cntrl)){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
 			"_OWPReadRetrieveSession called in wrong state.");
 		return OWPErrFATAL;
@@ -1011,7 +1105,7 @@ _OWPReadRetrieveSession(
 	/*
 	 * The control connection is now ready to send the response.
 	 */
-	cntrl->state &= ~_OWPStateReadingRetrieveSession;
+	cntrl->state &= ~_OWPStateRetrieveSession;
 	cntrl->state |= _OWPStateControlAck;
 
 	return OWPErrOK;
@@ -1061,6 +1155,8 @@ _OWPWriteControlAck(
 
 	if(_OWPSendBlocks(cntrl,buf,_OWP_CONTROL_ACK_BLK_LEN) != 0)
 		return OWPErrFATAL;
+
+	cntrl->state &= ~_OWPStateControlAck;
 	return OWPErrOK;
 }
 
@@ -1099,11 +1195,7 @@ _OWPReadControlAck(
 		return OWPErrFATAL;
 	}
 
-	/*
-	 * The control connection is now ready to send the response.
-	 */
 	cntrl->state &= ~_OWPStateControlAck;
-	cntrl->state |= _OWPStateRequest;
 
 	return OWPErrOK;
 }
