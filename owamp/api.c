@@ -1147,14 +1147,25 @@ AGAIN:
 }
 
 /*
-** Convert sockaddr to numeric name (does not use other fields of OWPAddr)
+** Convert sockaddr to numeric name
 */
 void
 OWPAddr2string(OWPAddr addr, char *buf, size_t len)
 {
-	if (!addr || !(addr->saddr) 
-	    || getnameinfo(addr->saddr, addr->saddrlen, buf, len, NULL, 0,
-			   NI_NUMERICHOST))
+	assert(len > 0);
+	if(!addr){
+		buf[0] = '\0';
+		return;
+	}
+
+	if(addr->node_set){
+		strncpy(buf,addr->node,MIN(sizeof(addr->node),len));
+		return;
+	}
+
+	if(!(addr->saddr) ||
+		getnameinfo(addr->saddr, addr->saddrlen, buf, len, NULL, 0,
+							   NI_NUMERICHOST))
 		strcpy(buf, "");
 }
 

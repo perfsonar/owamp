@@ -59,6 +59,7 @@ _OWPClientBind(
 		 */
 		struct addrinfo	hints, *airet;
 		const char	*port=NULL;
+		int		gai;
 
 		if(!local_addr->node_set){
 			OWPError(cntrl->ctx,OWPErrFATAL,
@@ -74,10 +75,10 @@ _OWPClientBind(
 		hints.ai_family = AF_UNSPEC;
 		hints.ai_socktype = SOCK_STREAM;
 
-		if((getaddrinfo(local_addr->node,port,&hints,&airet)!=0) ||
-									!airet){
-			OWPError(cntrl->ctx,OWPErrFATAL,errno,
-					":getaddrinfo()");
+		if(((gai = getaddrinfo(local_addr->node,port,&hints,&airet))!=0)
+							|| !airet){
+			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+					"getaddrinfo(): %s",gai_strerror(gai));
 			*err_ret = OWPErrFATAL;
 			return False;
 		}
@@ -116,6 +117,7 @@ SetClientAddrInfo(
 	struct addrinfo	hints;
 	const char	*node=NULL;
 	const char	*port=NULL;
+	int		gai;
 
 	if(!addr){
 		*err_ret = OWPErrFATAL;
@@ -142,9 +144,9 @@ SetClientAddrInfo(
 	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;
 
-	if((getaddrinfo(node,port,&hints,&ai)!=0) || !ai){
-		OWPError(cntrl->ctx,OWPErrFATAL,errno,
-					"getaddrinfo():%s",strerror(errno));
+	if(((gai = getaddrinfo(node,port,&hints,&ai))!=0) || !ai){
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+					"getaddrinfo(): %s",gai_strerror(gai));
 		return False;
 	}
 
@@ -548,8 +550,7 @@ SetEndpointAddrInfo(
 			port = addr->port;
 		if(((rc = getaddrinfo(addr->node,port,&hints,&ai))!=0) || !ai){
 			OWPError(cntrl->ctx,OWPErrFATAL,
-				errno,"getaddrinfo():%s",
-				gai_strerror(rc));
+				errno,"getaddrinfo(): %s", gai_strerror(rc));
 			goto error;
 		}
 		addr->ai = ai;

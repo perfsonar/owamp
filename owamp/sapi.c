@@ -51,7 +51,8 @@ AddrByWildcard(
 
 	if( (ai_err = getaddrinfo(NULL,OWP_CONTROL_SERVICE_NAME,&hints,&ai)!=0)
 								|| !ai){
-		OWPError(ctx,OWPErrFATAL,errno,"getaddrinfo():%M");
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+				"getaddrinfo(): %s",gai_strerror(ai_err));
 		return NULL;
 	}
 
@@ -104,8 +105,8 @@ SetServerAddrInfo(
 
 	if( (ai_err = getaddrinfo(addr->node,port,&hints,&ai)!=0) || !ai){
 		*err_ret = OWPErrFATAL;
-		OWPError(ctx,OWPErrFATAL,errno,"getaddrinfo():%s",
-							strerror(errno));
+		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"getaddrinfo(): %s",
+							gai_strerror(ai_err));
 		return False;
 	}
 	addr->ai = ai;
@@ -129,6 +130,7 @@ AddrSetSAddr(
 	socklen_t	so_typesize = sizeof(so_type);
 	struct sockaddr	*saddr=NULL;
 	struct addrinfo	*ai=NULL;
+	int		gai;
 
 	*err_ret = OWPErrOK;
 
@@ -170,10 +172,12 @@ AddrSetSAddr(
 	addr->saddrlen = fromaddrlen;
 	addr->so_type = so_type;
 
-	if(getnameinfo(addr->saddr,addr->saddrlen,
+	if( (gai = getnameinfo(addr->saddr,addr->saddrlen,
 				addr->node,sizeof(addr->node),
 				addr->port,sizeof(addr->port),
-				NI_NUMERICHOST | NI_NUMERICSERV) != 0){
+				NI_NUMERICHOST | NI_NUMERICSERV)) != 0){
+		OWPError(addr->ctx,OWPErrWARNING,OWPErrUNKNOWN,
+				"getnameinfo(): %s",gai_strerror(gai));
 		strncpy(addr->node,"unknown",sizeof(addr->node));
 		strncpy(addr->port,"unknown",sizeof(addr->port));
 	}
@@ -584,6 +588,7 @@ AddrBySAddrRef(
 {
 	OWPAddr		addr;
 	struct addrinfo	*ai=NULL;
+	int		gai;
 
 	if(!saddr){
 		OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
@@ -625,10 +630,12 @@ AddrBySAddrRef(
 	addr->so_type = SOCK_DGRAM;
 	addr->so_protocol = IPPROTO_IP;
 
-	if(getnameinfo(addr->saddr,addr->saddrlen,
+	if( (gai = getnameinfo(addr->saddr,addr->saddrlen,
 				addr->node,sizeof(addr->node),
 				addr->port,sizeof(addr->port),
-				NI_NUMERICHOST | NI_NUMERICSERV) != 0){
+				NI_NUMERICHOST | NI_NUMERICSERV)) != 0){
+		OWPError(addr->ctx,OWPErrWARNING,OWPErrUNKNOWN,
+				"getnameinfo(): %s",gai_strerror(gai));
 		strncpy(addr->node,"unknown",sizeof(addr->node));
 		strncpy(addr->port,"unknown",sizeof(addr->port));
 	}
