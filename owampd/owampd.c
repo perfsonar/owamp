@@ -405,7 +405,8 @@ NewConnection(
 	OWPContext	ctx,
 	OWPAddr		listenaddr,
 	int		*maxfd,
-	fd_set		*readfds
+	fd_set		*readfds,
+	policy_data     *policy
 	)
 {
 	int		connfd;
@@ -615,9 +616,9 @@ main(int argc, char *argv[])
 		0},
 		NULL,
 		owampd_err_func, 
-		NULL,
-		NULL,
-		NULL,
+		owp_get_aes_key,
+                owp_check_control,
+                owp_check_test,
 		NULL,
 		NULL,
 		NULL,
@@ -828,7 +829,7 @@ main(int argc, char *argv[])
 			continue;
 
 		if(FD_ISSET(listenfd, &ready)){ /* new connection */
-			NewConnection(ctx,listenaddr,&maxfd,&readfds);
+			NewConnection(ctx,listenaddr,&maxfd,&readfds, policy);
 		}
 		else
 			CleanPipes(&ready,&maxfd,&readfds);
