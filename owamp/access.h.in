@@ -85,7 +85,7 @@ typedef struct owp_tree_node {
 
 typedef struct {
 	I2table ip2class;
-	I2table class2limits;
+	I2table class2node;
 	I2table passwd;
 	owp_tree_node_ptr root; /* Root class of the tree hierarchy. */
 } policy_data;

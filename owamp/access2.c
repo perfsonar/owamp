@@ -212,11 +212,11 @@ static int
 class_has_limits(char *class, policy_data *policy)
 {
 	I2datum temp_dat, *val;
-	I2table class2limits = policy->class2limits;
+	I2table class2node = policy->class2node;
 
 	temp_dat.dptr = class;
 	temp_dat.dsize = strlen(class) + 1;
-	val = I2hash_fetch(class2limits, &temp_dat);
+	val = I2hash_fetch(class2node, &temp_dat);
 
 	return (val)? 1 : 0;
 }
@@ -624,10 +624,11 @@ PolicyInit(
 		return ret;
 	}
 
-	ret->class2limits = I2hash_init(ctx, 0, NULL, NULL, NULL);
-	if (ret->class2limits == NULL){
+	ret->class2node = I2hash_init(ctx, 0, NULL, NULL, 
+				      owp_print_class2node_binding);
+	if (ret->class2node == NULL){
 		OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN,
-			 "could not init class2limits hash");
+			 "could not init class2node hash");
 		*err_ret = OWPErrFATAL;
 		return ret;
 	}

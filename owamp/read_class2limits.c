@@ -551,9 +551,8 @@ owp_read_class2limits2(OWPContext ctx,
 {
 	FILE* fp;
 	int type, t;
-	I2table hash = policy->class2limits;
 	unsigned int line_num = 1;
-	I2table class2node_hash;
+	I2table class2node_hash = policy->class2node;
 	owp_tree_node_ptr last, cur_node, root = NULL;
 	int is_first = 1; 
 	fp = fopen(class2limits, "r");
@@ -562,35 +561,17 @@ owp_read_class2limits2(OWPContext ctx,
 			 "FATAL: fopen %s for reading", class2limits);
 		return -1;
 	}
-	class2node_hash = I2hash_init(ctx, 0, NULL, NULL, 
-				      owp_print_class2node_binding);
-	if (!class2node_hash) {
-		OWPError(ctx, OWPErrFATAL, errno, 
-			 "FATAL: could not open class2node hash");
-		return -1;
-	}
-
 	while (1) {
 		cur_node = owp_tree_node_new(); /* XXX: err-check */
 		t = owp_get_description(ctx, fp, cur_node, &root, &line_num,
 					class2node_hash);
 		switch (t) {
 		case OWP_OK:
-			/*
-			  owp_merge_node(parent, cur_node);
-			  XXX - merge cur_node into the tree 
-			*/
-			if (!root) {
-				root = cur_node;
-				continue;
-			}
-			break;
+			continue;
 		case OWP_EOF:
 			goto final;
-			return 0;
 			/* UNREACHED */
 		case OWP_ERR:
-			goto final;
 			return -1;
 			/* UNREACHED */
 		default:
@@ -600,6 +581,7 @@ owp_read_class2limits2(OWPContext ctx,
 
 	}
  final:
+	printf("DEBUG: owp_read_class2limits2: printing classnode hash:\n");
 	I2hash_print(class2node_hash, stdout);
 	return 0;
 }
