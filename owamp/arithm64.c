@@ -111,7 +111,7 @@ static OWPnum64 Q[K] = {
 /* 
 ** Convert an unsigned 32-bit integer into a OWPnum64 struct..
 */
-static OWPnum64
+OWPnum64
 OWPulong2num64(u_int32_t a)
 {
 	return ((u_int64_t)1 << 32) * a;
@@ -124,7 +124,7 @@ OWPulong2num64(u_int32_t a)
 /*
 ** Addition.
 */
-static OWPnum64
+OWPnum64
 OWPnum64_add(OWPnum64 x, OWPnum64 y)
 {
 	return x + y;
@@ -338,7 +338,6 @@ OWPexp_rand64(OWPrand_context64 *next)
 void
 OWPnum_print64(OWPnum64 x)
 {
-	double t;
 #if 0
 	fprintf(stdout, "%llX \n", x);
 #endif

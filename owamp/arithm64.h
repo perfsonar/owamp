@@ -39,6 +39,12 @@ typedef struct OWPrand_context64 {
 /* Conversion operations */
 void OWPnum64totimeval(OWPnum64 from, struct timeval *to);
 OWPnum64  OWPtimeval2num64(struct timeval *from);
+
+/* Arithmetic support. */
+extern OWPnum64 OWPulong2num64(u_int32_t a);
+extern OWPnum64 OWPnum64_add(OWPnum64 x, OWPnum64 y);
+extern OWPnum64 OWPnum64_mul(OWPnum64 x, OWPnum64 y);
+
 #if 0
 void OWPnum64totimespec(OWPnum64 from, struct timespec *to);
 OWPnum64 OWPtimespec2num64(struct timespec *from);
