@@ -858,17 +858,6 @@ main(
 		exit(1);
 	}
 
-	if((argc < 2) || (argc > 3)){
-		usage(od, progname, NULL);
-		exit(1);
-	}
-
-	ping_ctx.remote_test = argv[1];
-	if(argc > 2)
-		ping_ctx.remote_serv = argv[2];
-	else
-		ping_ctx.remote_serv = ping_ctx.remote_test;
-
 	/*
 	* load the options into opt
 	*/
@@ -885,12 +874,6 @@ main(
 		exit(0);
 	}
 
-	if ((ping_ctx.opt.percentile < 0.0) 
-		|| (ping_ctx.opt.percentile > 100.0)) {
-		usage(od, progname, NULL);
-		exit(0);
-	}
-
 	if (ping_ctx.opt.readfrom) {
 		ping_ctx.opt.keepdata = 1;
 		if (do_records_all(ping_ctx.opt.readfrom, NULL, &state) < 0){
@@ -901,7 +884,24 @@ main(
 		}
 		exit(0);
 	}
-	
+
+	if((argc < 2) || (argc > 3)){
+		usage(od, progname, NULL);
+		exit(1);
+	}
+
+	ping_ctx.remote_test = argv[1];
+	if(argc > 2)
+		ping_ctx.remote_serv = argv[2];
+	else
+		ping_ctx.remote_serv = ping_ctx.remote_test;
+
+
+	if ((ping_ctx.opt.percentile < 0.0) 
+		|| (ping_ctx.opt.percentile > 100.0)) {
+		usage(od, progname, NULL);
+		exit(0);
+	}
 
 	OWPCfg.tm_out.tv_sec = ping_ctx.opt.tmout;
 
