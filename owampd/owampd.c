@@ -42,7 +42,6 @@
 #include <owamp/owamp.h>
 
 #include "owampdP.h"
-#include "conf.h"
 #include "policy.h"
 
 /* Global variable - the total number of allowed Control connections. */
@@ -764,7 +763,7 @@ LoadConfig(
 		return;
 	}
 
-	while((rc = OWPDReadConfVar(conf,rc,key,val,MAXPATHLEN,lbuf,lbuf_max))
+	while((rc = I2ReadConfVar(conf,rc,key,val,MAXPATHLEN,lbuf,lbuf_max))
 									> 0){
 
 		/* syslog facility */

@@ -33,7 +33,6 @@
 
 #include <owamp/owamp.h>
 #include "policy.h"
-#include "conf.h"
 
 /*
  * Function:	parsekeys
