@@ -426,6 +426,9 @@ do_single_record(void *calldata, OWPCookedDataRecPtr rec)
 
 	owp_record_out(state, rec); /* Output is done in all cases. */
 
+	if (OWPIsLostRecord(rec))
+		return 0;       /* May do something better later. */
+
 	/* If ordering is important - handle it here. */
 	if (state->order_disrupted)
 		return 0;
@@ -519,7 +522,7 @@ owp_do_summary(fetch_state_ptr state)
 		fprintf(state->fp, "no reordering\n");
         else 
 		if (j < OWP_MAX_N) 
-			fprintf(state->fp, "no %d-reordering\n", j+1);
+			fprintf(state->fp, "no %d-reordering\n", j + 1);
         else 
 		fprintf(state->fp, 
 			"only up to %d-reordering is handled\n", OWP_MAX_N);

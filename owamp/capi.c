@@ -308,7 +308,6 @@ OWPControlOpen(
 	u_int8_t	token[32];
 	u_int8_t	*key=NULL;
 	OWPAcceptType	acceptval;
-	struct timeval	tval;
 
 	*err_ret = OWPErrOK;
 
@@ -320,27 +319,16 @@ OWPControlOpen(
 		goto error;
 	}
 
-	if(gettimeofday(&tval,NULL) != 0){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"gettimeofday():%M");
-		goto error;
-	}
-
 	/*
 	 * Address policy check happens in here.
 	 */
 	if(_OWPClientConnect(cntrl,local_addr,server_addr,err_ret) != 0)
 		goto error;
 
-	if( (rc=_OWPReadServerGreeting(cntrl,&mode_avail,challenge))<OWPErrOK){
+	if( (rc=_OWPReadServerGreeting(cntrl,&mode_avail,challenge)) < OWPErrOK){
 		*err_ret = (OWPErrSeverity)rc;
 		goto error;
 	}
-
-	if(gettimeofday(&cntrl->delay_bound,NULL) != 0){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"gettimeofday():%M");
-		goto error;
-	}
-	tvalsub(&cntrl->delay_bound,&tval);
 
 	/*
 	 * Select mode wanted...
@@ -593,9 +581,9 @@ _OWPClientRequestTestReadResponse(
 	u_int16_t	*port_ret=NULL;
 	u_int8_t	*sid_ret=NULL;
 
-	if((rc = _OWPWriteTestRequest(cntrl,sender->saddr,receiver->saddr,
-					server_conf_sender,server_conf_receiver,
-					sid,test_spec)) < OWPErrOK){
+	if((rc = _OWPWriteTestRequest(cntrl, sender->saddr, receiver->saddr,
+				      server_conf_sender, server_conf_receiver,
+				      sid, test_spec)) < OWPErrOK){
 		*err_ret = (OWPErrSeverity)rc;
 		return -1;
 	}
@@ -1103,14 +1091,6 @@ OWPFetchRecords(OWPControl cntrl, int fd, u_int32_t num_rec)
 	u_int8_t     buf[OWP_APP_BUFSIZ];
 	u_int64_t    nbytes, rem_bytes, i; 
 
-	/* 
-	   First called OWPReadDataHeader().
-	*/
-
-	/* 
-	   Then OWPWriteDataHeader(). ?????
-	*/
-
 	nbytes   = (u_int64_t)num_rec * _OWP_TS_REC_SIZE;
 	for (i = 0; i < nbytes / OWP_APP_BUFSIZ; i++) {
 		if (_OWPReceiveBlocks(cntrl, buf, OWP_NUM_BLOCKS) 
@@ -1133,7 +1113,6 @@ OWPFetchRecords(OWPControl cntrl, int fd, u_int32_t num_rec)
 	}
 
 	/* Now rem_bytes < _OWP_RIJNDAEL_BLOCK_SIZE */
-	
 	if (rem_bytes) {
 		if (_OWPReceiveBlocks(cntrl, buf, 1) != 1)
 			goto read_err;
@@ -1191,7 +1170,7 @@ OWPReadDataHeader(int fd, u_int32_t *typeP)
 }
 
 /*
-** This will eventualy probably be used by server as well.
+** Write header to a data file. 
 */
 OWPErrSeverity
 OWPWriteDataHeader(OWPControl cntrl, int fd, u_int8_t *typeP)
@@ -1206,7 +1185,8 @@ OWPWriteDataHeader(OWPControl cntrl, int fd, u_int8_t *typeP)
 }
 
 /*
-** "Fetching" data from local disk.
+** "Fetching" data from local disk. Get <num_rec> many records
+** from data file, parse each one and call user-provided
 */
 OWPErrSeverity
 OWPFetchLocalRecords(int fd, 
@@ -1277,4 +1257,10 @@ OWPParseDataRecord(u_int8_t *rec,
 	*seq_no = OWPGetSeqno(rec);
 	OWPDecodeTimeStamp(send, (u_int32_t *)&rec[4]);
 	OWPDecodeTimeStamp(recv, (u_int32_t *)&rec[12]);
+}
+
+OWPBoolean
+OWPIsLostRecord(OWPCookedDataRecPtr rec)
+{
+	return (rec->recv.frac_sec || rec->recv.sec)? False : True;
 }

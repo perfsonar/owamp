@@ -219,6 +219,7 @@ typedef union _OWPTestSpec{
 	OWPTestType		test_type;
 	OWPTestSpecAny		any;
 	OWPTestSpecPoisson	poisson;
+	u_int8_t                session_request[80];
 	u_int32_t		padding[10]; /* bigger than any test... */
 } OWPTestSpec;
 
@@ -955,5 +956,8 @@ OWPCvtTimestamp2Timespec(
 	struct timespec	*tval,
 	OWPTimeStamp	*tstamp
 	);
+
+extern OWPBoolean
+OWPIsLostRecord(OWPCookedDataRecPtr rec);
 
 #endif	/* OWAMP_H */
