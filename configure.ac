@@ -46,6 +46,7 @@ AC_ARG_WITH(I2util,
 #
 # find I2util
 #
+I2UTILLDFLAGS=""
 I2UTILLIBS=""
 I2UTILINCS=""
 if test "$with_I2util" != "no"; then
@@ -57,23 +58,25 @@ if test "$with_I2util" != "no"; then
 			*) $I2util_dir="`pwd`/$I2util_dir" ;;
 		esac
 		I2UTILINCS="-I$I2util_dir/include $I2UTILINCS"
-		I2UTILLIBS="-L$I2util_dir/lib $I2UTILLIBS"
+		I2UTILLDFLAGS="-L$I2util_dir/lib $I2UTILLDFLAGS"
 	# now, check for sub-build/sub-configure
-	elif test -d $srcdir/I2util/I2util/; then
+	elif test -d I2util/I2util; then
 		AC_CONFIG_SUBDIRS(I2util)
 		TOP_BUILD_DIRS="I2util $TOP_BUILD_DIRS"
-		I2util_dir="$srcdir/I2util/"
+		I2util_dir='${top_srcdir}/I2util'
 		I2UTILINCS="-I$I2util_dir $I2UTILINCS"
-		I2UTILLIBS="-L$I2util_dir/I2util $I2UTILLIBS"
+		I2UTILLDFLAGS="-L$I2util_dir/I2util $I2UTILLDFLAGS"
 		
 	# now, check for installed I2util
 	elif test -d /usr/local/I2util; then
 		I2UTILINCS="-I/usr/local/I2util/include $I2UTILINCS"
-		I2UTILLIBS="-L$I2util_dir $I2UTILLIBS"
+		I2UTILLDFLAGS="-L$I2util_dir $I2UTILLDFLAGS"
 	fi
 
-	if test -z "$I2UTILLIBS"; then
+	if test -z "$I2UTILLDFLAGS"; then
 		AC_MSG_ERROR([couldn't find I2util library])
+	else
+		I2UTILLIBS="$I2UTILLDFLAGS -lI2util"
 	fi
 fi
 AC_SUBST(I2UTILINCS)
