@@ -53,10 +53,14 @@ my @SAVEARGV = @ARGV;
 my %options = (
 	CONFDIR		=>	"c:",
 	FOREGROUND	=>	"f",
+	KILL		=>	"k",
+	HUP		=>	"h",
 	);
 my %optnames = (
 	c	=> "CONFDIR",
 	f	=> "FOREGROUND",
+	k	=> "KILL",
+	h	=> "HUP",
 	);
 my %defaults = (
 	CONFDIR	=> "$FindBin::Bin",
@@ -74,6 +78,34 @@ push @SAVEARGV, "-f" if(!defined($setopts{'f'}));
 
 # Fetch configuration options.
 my $conf = new OWP::Conf(%defaults);
+
+#
+# data path information
+#
+my $datadir = $conf->must_get_val(ATTR=>'CentralDataDir');
+
+#
+# Send current running process a signal.
+#
+my $kill = $conf->get_val(ATTR=>'KILL');
+my $hup = $conf->get_val(ATTR=>'HUP');
+if($kill || $hup){
+	my $pidfile = new FileHandle "$datadir/collector.pid", O_RDONLY;
+	die "Unable to open($datadir/collector.pid): $!"
+		unless($pidfile);
+	
+	my $pid = <$pidfile>;
+	die "Unable to retrieve PID from $datadir/collector.pid"
+		if !defined($pid);
+	chomp $pid;
+	my $sig = ($kill)?'TERM':'HUP';
+	die "Sent $sig to $pid\n" if(kill($sig,$pid));
+	die "Unable to send $sig to $pid: $!";
+}
+
+# Set uid to lesser permissions immediately if we are running as root.
+setids(	USER	=>	$conf->get_val(ATTR=>'UserName'),
+	GROUP	=>	$conf->get_val(ATTR=>'GroupName'));
 
 local(*MYLOG);
 # setup syslog
@@ -110,10 +142,6 @@ $digestcmd .= $conf->must_get_val(ATTR=>'digestcmd');
 my $sessionsuffix = $conf->must_get_val(ATTR=>'SessionSuffix');
 my $digestsuffix = $conf->must_get_val(ATTR=>'DigestSuffix');
 
-#
-# data path information
-#
-my $datadir = $conf->must_get_val(ATTR=>'CentralDataDir');
 
 #
 # archive setup
@@ -427,7 +455,7 @@ sub clean_files{
 	@pending = split /:/,$state->{$res."PENDING"}
 		if(exists $state->{$res."PENDING"});
 	if(@pending > 0){
-		my($start) = split '_',$pending[0];
+		my($start,$end) = ($pending[0] =~ /(\d+)_(\d+)/);
 		if(!defined $start){
 			warn("Invalid ${res}PENDING value: $pending[0]");
 			return;
@@ -443,12 +471,12 @@ sub clean_files{
 	}
 
 	foreach (sort grep {/$digestsuffix$/} readdir(RESDIR)){
-		my($start) = split '_',$_;
+		my($start,$end) = /(\d+)_(\d+)/;
 
 		next if(!defined $start);	# skip non-matching files
 		last if($start >= $tstamp);
 
-		unlink "$dir/$res/$_" ||
+		unlink "${dir}/${res}/${start}_${end}${digestsuffix}" ||
 			warn("Unable to unlink $dir/$res/$_: $!");
 	}
 	closedir(RESDIR);

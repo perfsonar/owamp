@@ -38,10 +38,53 @@ use OWP::Conf;
 use OWP::Utils;
 
 @ISA = qw(Exporter);
-@EXPORT = qw(daemonize);
+@EXPORT = qw(daemonize setids);
 
 $OWP::REVISION = '$Id$';
 $VERSION = '1.0';
+
+sub setids{
+	my(%args)	= @_;
+	my ($uid,$gid);
+	my ($unam,$gnam);
+
+	$uid = $args{'USER'} if(defined $args{'USER'});
+	$gid = $args{'GROUP'} if(defined $args{'GROUP'});
+
+	# Don't do anything if we are not running as root.
+	return if($> != 0);
+
+	die "Must set User option! (Running as root is folly!)"
+		if(!$uid);
+
+	# set GID first to ensure we still have permissions to.
+	if(defined($gid)){
+		if($gid =~ /\D/){
+			# If there are any non-digits, it is a groupname.
+			$gid = getgrnam($gnam = $gid) or
+				die "Can't getgrnam($gnam): $!";
+		}
+		elsif($gid < 0){
+			$gid = -$gid;
+		}
+		die("Invalid GID: $gid") if(!getgrgid($gid));
+		$) = $( = $gid;
+	}
+
+	# Now set UID
+	if($uid =~ /\D/){
+		# If there are any non-digits, it is a username.
+		$uid = getpwnam($unam = $uid) or
+			die "Can't getpwnam($unam): $!";
+	}
+	elsif($uid < 0){
+		$uid = -$uid;
+	}
+	die("Invalid UID: $uid") if(!getpwuid($uid));
+	$> = $< = $uid;
+
+	return;
+}
 
 sub daemonize{
 	my(%args)	= @_;
@@ -56,10 +99,12 @@ sub daemonize{
 		unless($fh && flock($fh,LOCK_EX|LOCK_NB)){
 			die "Unable to lock pid file $args{'PIDFILE'}: $!";
 		}
-		my $pid = <$fh>;
+		$_ = <$fh>;
+		my ($pid) = /(\d+)/;
 		if(defined $pid){
 			chomp $pid;
-			die "$FindBin::Script:$pid still running..." if(kill(0,$pid));
+			die "$FindBin::Script:$pid still running..."
+				if(kill(0,$pid));
 		}
 	}
 

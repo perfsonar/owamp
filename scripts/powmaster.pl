@@ -50,11 +50,15 @@ my %options = (
 	CONFDIR		=> "c:",
 	NODE		=> "n:",
 	FOREGROUND	=> "f",
+	HUP		=> "h",
+	KILL		=> "k",
 	);
 my %optnames = (
 	c		=> "CONFDIR",
 	n		=> "NODE",
 	f		=> "FOREGROUND",
+	h		=> "HUP",
+	k		=> "KILL",
 	);
 my %defaults = (
 		CONFDIR	=> "$FindBin::Bin",
@@ -74,6 +78,31 @@ $defaults{"NODE"} =~ tr/a-z/A-Z/
 	if defined($defaults{"NODE"});
 
 my $conf = new OWP::Conf(%defaults);
+
+my $me = $conf->must_get_val(ATTR=>'NODE');
+my $datadir = $conf->must_get_val(NODE=>$me,ATTR=>"DataDir");
+#
+# Send current running process a signal.
+#
+my $kill = $conf->get_val(ATTR=>'KILL');
+my $hup = $conf->get_val(ATTR=>'HUP');
+if($kill || $hup){
+	my $pidfile = new FileHandle "$datadir/powmaster.pid", O_RDONLY;
+	die "Unable to open($datadir/powmaster.pid): $!"
+		unless($pidfile);
+	
+	my $pid = <$pidfile>;
+	die "Unable to retrieve PID from $datadir/powmaster.pid"
+		if !defined($pid);
+	chomp $pid;
+	my $sig = ($kill)?'TERM':'HUP';
+	die "Sent $sig to $pid\n" if(kill($sig,$pid));
+	die "Unable to send $sig to $pid: $!";
+}
+
+# Set uid to lesser permissions immediately if we are running as root.
+setids(	USER	=>	$conf->get_val(ATTR=>'UserName'),
+	GROUP	=>	$conf->get_val(ATTR=>'GroupName'));	
 
 my $facility = $conf->must_get_val(ATTR=>'SyslogFacility');
 
@@ -100,7 +129,6 @@ my $suffix = $conf->must_get_val(ATTR=>"SessionSuffix");
 #
 # node/mesh values
 #
-my $me = $conf->must_get_val(ATTR=>'NODE');
 my @mtypes = $conf->must_get_val(ATTR=>'MESHTYPES');
 my @nodes = $conf->must_get_val(ATTR=>'MESHNODES');
 
@@ -139,7 +167,6 @@ my $centupport = $conf->must_get_val(ATTR=>'UPTIMESENDTOPORT');
 #
 # local data/path information
 #
-my $datadir = $conf->must_get_val(NODE=>$me,ATTR=>"DataDir");
 my $powcmd = $conf->must_get_val(NODE=>$me,ATTR=>"OWPBinDir");
 $powcmd .= "/";
 $powcmd .= $conf->must_get_val(ATTR=>"powcmd");
@@ -185,6 +212,7 @@ die "No valid nodes in mesh?" if(!defined(@addrlist));
 mkpath([map {join '/',$datadir,$_} @dirlist],0,0775);
 
 chdir $datadir || die "Unable to chdir to $datadir";
+die "$powcmd not executable" if(! -x $powcmd);
 
 my($UptimeSocket) = IO::Socket::INET->new(
 				LocalPort	=>	$myuptimeport,
@@ -708,8 +736,9 @@ SEND_FILES:
 		}
 
 		next if(!defined(@flist) || (@flist < 1));
-		
-		if(send_file($flist[0],$MD5)){
+
+		my ($nextfile) = ($flist[0] =~ /^(.*)$/);
+		if(send_file($nextfile)){
 			shift @flist;
 		}
 		else{
@@ -910,8 +939,8 @@ sub powstream{
 
 	open \*CHWFD, ">&WRITEPIPE" || die "Can't dup pipe";
 	open \*CHRFD, "<$devnull" || die "Can't open $devnull";
-	my $powpid = open3("<&CHRFD",">&CHWFD",">&STDERR",@cmd) ||
-		die "Can't exec $cmd";
+	my $powpid = open3("<&CHRFD",">&CHWFD",">&STDERR",@cmd);
+
 	return $powpid;
 }
 
