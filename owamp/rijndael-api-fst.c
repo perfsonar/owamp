@@ -51,7 +51,6 @@
 int 
 makeKey(keyInstance *key, BYTE direction, char *keyMaterial) {
 	int i;
-	char *keyMat;
 	u8 cipherKey[MAXKB];
 	
 	if (key == NULL) {
@@ -126,7 +125,7 @@ int cipherInit(BYTE *binIV, char *hexIV) {
 */
 int blockEncrypt(BYTE *binIV, keyInstance *key,
 		BYTE *input, int inputLen, BYTE *outBuffer) {
-	int i, k, t, numBlocks;
+	int i, numBlocks;
 	u8 block[16], *iv;
 
 	if (binIV == NULL || key == NULL)
@@ -164,7 +163,7 @@ int blockEncrypt(BYTE *binIV, keyInstance *key,
 */
 int blockDecrypt(BYTE *binIV, keyInstance *key,
 		BYTE *input, int inputLen, BYTE *outBuffer) {
-	int i, k, t, numBlocks;
+	int i, numBlocks;
 	u8 block[16], *iv;
 
 	if (binIV == NULL || key == NULL) 
@@ -189,4 +188,10 @@ int blockDecrypt(BYTE *binIV, keyInstance *key,
 	}
 	
 	return 128*numBlocks;
+}
+
+void
+bytes2Key(keyInstance *key, BYTE *sid)
+{
+	key->Nr = rijndaelKeySetupEnc(key->rk, sid, 128);
 }

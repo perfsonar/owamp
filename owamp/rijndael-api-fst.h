@@ -80,6 +80,7 @@ typedef struct {
 /*  Function prototypes  */
 
 int makeKey(keyInstance *key, BYTE direction, char *keyMaterial);
+void bytes2Key(keyInstance *key, BYTE *keyMaterial);
 
 int cipherInit(BYTE *binIV, char *hexIV);
 
@@ -88,7 +89,4 @@ int blockEncrypt(BYTE *binIV, keyInstance *key,
 
 int blockDecrypt(BYTE *binIV, keyInstance *key,
         BYTE *input, int inputLen, BYTE *outBuffer);
-/*
-int countermodeEncrypt(keyInstance *key, unsigned long *i, BYTE *outBuffer);
-*/
 #endif /* __RIJNDAEL_API_FST_H */
