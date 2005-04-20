@@ -61,6 +61,7 @@
 
 #include <limits.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/socket.h>
 #include <sys/param.h>
@@ -262,17 +263,15 @@ typedef enum {
  * Valid values for "accept" - this will be added to for the purpose of
  * enumerating the reasons for rejecting a session, or early termination
  * of a test session.
- *
- * TODO:Get the additional "accept" values added to the spec.
  */
 typedef enum{
-	OWP_CNTRL_INVALID=-1,
-	OWP_CNTRL_ACCEPT=0,
-	OWP_CNTRL_REJECT=1,
-	OWP_CNTRL_FAILURE=2,
-	OWP_CNTRL_UNSUPPORTED=3,
-        OWP_CNTRL_UNAVAILABLE_PERM=4,
-        OWP_CNTRL_UNAVAILABLE_TEMP=5
+	OWP_CNTRL_INVALID=-1,           /* No value yet                     */
+	OWP_CNTRL_ACCEPT=0,             /* ok                               */
+	OWP_CNTRL_REJECT=1,             /* reject for any reason            */
+	OWP_CNTRL_FAILURE=2,            /* internal failure                 */
+	OWP_CNTRL_UNSUPPORTED=3,        /* request functionality unsupported */
+        OWP_CNTRL_UNAVAILABLE_PERM=4,   /* Permanent resource limitation    */
+        OWP_CNTRL_UNAVAILABLE_TEMP=5    /* Temporary resource limitation    */
 } OWPAcceptType;
 
 typedef u_int32_t	OWPBoolean;
@@ -986,7 +985,8 @@ OWPControlAccept(
 
 typedef enum OWPRequestType{
 	OWPReqInvalid=-1,
-	OWPReqSockClose=0,
+	OWPReqSockClose=10,
+	OWPReqSockIntr=11,
 	OWPReqTest=1,
 	OWPReqStartSessions=2,
 	OWPReqStopSessions=3,
@@ -1078,7 +1078,7 @@ OWPTestPacketBandwidth(
 		OWPTestSpec	*tspec
 		);
 
-extern u_int64_t
+extern u_int32_t
 OWPFetchSession(
 	OWPControl		cntrl,
 	FILE			*fp,
@@ -1102,17 +1102,100 @@ typedef struct OWPSessionHeaderRec{
 	OWPBoolean		header;		/* RO: TestSession header? */
 	u_int32_t		version;	/* RO: File version */
 	u_int32_t		rec_size;	/* RO: data record size */
-	OWPBoolean		finished;	/* RW: is session finished?
+	u_int32_t		finished;	/* RW: is session finished?
 						 * 0:no,1:yes,2:unknown */
+
+        u_int32_t               next_seqno;     /* RW: next seq for sender */
+        u_int32_t               num_skiprecs;   /* RW: nskips */
+        u_int32_t               num_datarecs;   /* RW: nrecs */
+
+        off_t                   oset_skiprecs;  /* RO: file offset to skips */
+        off_t                   oset_datarecs;  /* RO: file offset to data */
+        struct stat             sbuf;           /* RO: sbuf of file */
+
 	u_int8_t		ipvn;		/* RO: ipvn of addrs */
 	socklen_t		addr_len;	/* RO: saddr_len of saddrs */
-	struct sockaddr_storage	addr_sender;
-	struct sockaddr_storage	addr_receiver;
-	OWPBoolean		conf_sender;
-	OWPBoolean		conf_receiver;
-	OWPSID			sid;
-	OWPTestSpec		test_spec;
-} OWPSessionHeaderRec, *OWPSessionHeader;
+	struct sockaddr_storage	addr_sender;    /* RW */
+	struct sockaddr_storage	addr_receiver;  /* RW */
+	OWPBoolean		conf_sender;    /* RW */
+	OWPBoolean		conf_receiver;  /* RW */
+	OWPSID			sid;            /* RW */
+	OWPTestSpec		test_spec;      /* RW */
+} OWPSessionHeaderRec, *OWPSessionHeader;       /* RW */
+
+/*
+ * Write data header to the file.
+ * Returns:
+ */
+extern OWPBoolean
+OWPWriteDataHeader(
+		OWPContext		ctx,
+		FILE			*fp,
+		OWPSessionHeader	hdr
+		);
+
+/*
+ *  OWPWriteDataHeaderNumSkipRecs
+ * Sets num_skips filed and the oset_skips field. oset_datarecs and
+ * num_datarecs MUST be set in the file before this call. (Either by
+ * calling OWPWriteDataHeader with num_datarecs or by calling
+ * OWPWriteDataHeaderNumDataRecs.)
+ *
+ * This funciton should only be called if skip records are being placed
+ * in the file after datarecs, and then only after the number of datarecs
+ * has been fixed.
+ */
+extern OWPBoolean
+OWPWriteDataHeaderNumSkipRecs(
+        OWPContext  ctx,
+        FILE        *fp,
+        u_int32_t   num_skiprecs
+        );
+
+/*
+ *  OWPWriteDataHeaderNumDataRecs
+ * Sets the num_datarecs field in the file. If oset_skiprecs is nil, this
+ * function sets that to just beyond the data records.
+ */
+extern OWPBoolean
+OWPWriteDataHeaderNumDataRecs(
+        OWPContext  ctx,
+        FILE        *fp,
+        u_int32_t   num_datarecs
+        );
+
+/*
+ * Returns:
+ * number of records in the file. 0 on error. (errno will be set.)
+ * fp is moved to beginning of data records.
+ */
+extern u_int32_t
+OWPReadDataHeader(
+		OWPContext		ctx,
+		FILE			*fp,
+		OWPSessionHeader	hdr_ret
+		);
+
+/*
+ * OWPReadDataHeaderSlots
+ *  This function is used to read the "slots" out of the file. It is only
+ *  valid for data files of version 2 or above so it is important to check
+ *  the file version using OWPReadDataHeader before calling this function.
+ *  OWPReadDataHeader only reads the fixed portion of the TestReq out
+ *  of the file. OWPReadDataHeader can be used to determine how many slots
+ *  are in the file, and the caller of this function is required to pass
+ *  in the memory for "slots".
+ *
+ * Returns:
+ * OWPBoolean - T if successful, F if not.
+ */
+extern OWPBoolean
+OWPReadDataHeaderSlots(
+        OWPContext  ctx,
+        FILE        *fp,
+        u_int32_t   nslots,
+        OWPSlot     *slots
+        );
 
 /*
 ** Applications use this type to manipulate individual timestamp data records.
@@ -1125,38 +1208,17 @@ typedef struct OWPDataRec {
 } OWPDataRec;
 
 /*
- * Write data header to the file.
- * Returns:
- * 0	Success
- */
-int
-OWPWriteDataHeader(
-		OWPContext		ctx,
-		FILE			*fp,
-		OWPSessionHeader	hdr
-		);
-/*
  * Write data record to a file.
  * Returns:
  * 0	Success
  */
-int
+extern int
 OWPWriteDataRecord(
 		OWPContext		ctx,
 		FILE			*fp,
 		OWPDataRec		*rec
 		);
-/*
- * Returns:
- * number of records in the file. 0 on error. (errno will be set.)
- */
-u_int32_t
-OWPReadDataHeader(
-		OWPContext		ctx,
-		FILE			*fp,
-		off_t			*hdr_len,
-		OWPSessionHeader	hdr_ret
-		);
+
 /*
  * This (type of) function is used by Fetch-Client to process
  * data records.
@@ -1184,7 +1246,7 @@ typedef int (*OWPDoDataRecord)(
 	void		*udata
        );
 
-OWPErrSeverity
+extern OWPErrSeverity
 OWPParseRecords(
 	OWPContext		ctx,
 	FILE			*fp,

@@ -50,7 +50,7 @@
  * 	   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
  *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *	00|                                                               |
- *	04|                      Unused (12 octets)                       |
+ *	04|                         MBZ (12 octets)                       |
  *	08|                                                               |
  *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *	12|                            Modes                              |
@@ -266,7 +266,7 @@ GetAcceptType(
  * 	   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
  *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *	00|                                                               |
- *	04|                      Unused (15 octets)                       |
+ *	04|                         MBZ (15 octets)                       |
  *	08|                                                               |
  *	  +                                               +-+-+-+-+-+-+-+-+
  *	12|                                               |   Accept      |
@@ -451,7 +451,7 @@ OWPReadRequestType(
 	if(n != 1){
 		cntrl->state = _OWPStateInvalid;
 		if((n < 0) && *intr && (errno == EINTR)){
-			return OWPReqInvalid;
+			return OWPReqSockIntr;
 		}
 		return OWPReqSockClose;
 	}
@@ -967,7 +967,6 @@ _OWPWriteTestRequest(
 	OWPTestSpec	*test_spec
 )
 {
-	u_int8_t	zero[16];
 	u_int8_t	*buf = (u_int8_t*)cntrl->msg;
 	u_int32_t	buf_len = sizeof(cntrl->msg);
 	u_int32_t	i;
@@ -1019,8 +1018,7 @@ _OWPWriteTestRequest(
 	/*
 	 * Send 1 block of Integrity Zero Padding.
 	 */
-	memset(zero,0,16);
-	if(_OWPSendBlocks(cntrl,zero,1) != 1){
+	if(_OWPSendBlocks(cntrl,cntrl->zero,1) != 1){
 		cntrl->state = _OWPStateInvalid;
 		return OWPErrFATAL;
 	}
@@ -1475,7 +1473,7 @@ error:
  * 	   0                   1                   2                   3
  * 	   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
  *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
- *	00|    Accept     |  Unused       |            Port               |
+ *	00|    Accept     |     MBZ       |            Port               |
  *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *	04|                                                               |
  *	08|                        SID (16 octets)                        |
@@ -1585,7 +1583,7 @@ _OWPReadTestAccept(
  *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *	00|      2        |                                               |
  *	  +-+-+-+-+-+-+-+-+                                               +
- *	04|                      Unused (15 octets)                       |
+ *	04|                         MBZ (15 octets)                       |
  *	08|                                                               |
  *	12|                                                               |
  *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -1620,7 +1618,7 @@ _OWPWriteStartSessions(
 		return OWPErrFATAL;
 	}
 
-	cntrl->state |= _OWPStateControlAck;
+	cntrl->state |= _OWPStateStartAck;
 	cntrl->state |= _OWPStateTest;
 	return OWPErrOK;
 }
@@ -1676,7 +1674,7 @@ _OWPReadStartSessions(
 	 * The control connection is now ready to send the response.
 	 */
 	cntrl->state &= ~_OWPStateStartSessions;
-	cntrl->state |= _OWPStateControlAck;
+	cntrl->state |= _OWPStateStartAck;
 	cntrl->state |= _OWPStateTest;
 
 	return OWPErrOK;
@@ -1684,16 +1682,16 @@ _OWPReadStartSessions(
 
 /*
  *
- * 	StopSessions message format:
+ * 	StartAck message format:
  *
  * 	size: 32 octets
  *
  * 	   0                   1                   2                   3
  * 	   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
  *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
- *	00|      3        |    Accept     |                               |
- *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+                               +
- *	04|                       Unused (14 octets)                      |
+ *	00|     Accept    |                                               |
+ *	  +-+-+-+-+-+-+-+-+                                               +
+ *	04|                         MBZ (15 octets)                       |
  *	08|                                                               |
  *	12|                                                               |
  *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -1705,91 +1703,983 @@ _OWPReadStartSessions(
  *
  */
 OWPErrSeverity
-_OWPWriteStopSessions(
+_OWPWriteStartAck(
 	OWPControl	cntrl,
 	int		*retn_on_intr,
 	OWPAcceptType	acceptval
 	)
 {
+	int		n;
 	u_int8_t	*buf = (u_int8_t*)cntrl->msg;
 
-	if(!(_OWPStateIs(_OWPStateRequest,cntrl) &&
-				_OWPStateIs(_OWPStateTest,cntrl))){
+	if(!_OWPStateIs(_OWPStateStartAck,cntrl)){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-				"_OWPWriteStopSessions called in wrong state.");
+				"_OWPWriteStartAck called in wrong state.");
 		return OWPErrFATAL;
 	}
 
-	buf[0] = 3;
-	buf[1] = acceptval & 0xff;
+	buf[0] = acceptval & 0xff;
 #ifndef	NDEBUG
-	memset(&buf[2],0,14);	/* Unused	*/
+	memset(&buf[1],0,15);	/* Unused	*/
 #endif
 	memset(&buf[16],0,16);	/* Zero padding */
 
-	if(_OWPSendBlocksIntr(cntrl,buf,2,retn_on_intr) != 2){
+	n = _OWPSendBlocksIntr(cntrl,buf,_OWP_START_ACK_BLK_LEN,retn_on_intr);
+
+	if((n < 0) && *retn_on_intr && (errno == EINTR)){
 		return OWPErrFATAL;
+	}
+
+	if(n != _OWP_START_ACK_BLK_LEN){
+		cntrl->state = _OWPStateInvalid;
+		return OWPErrFATAL;
+	}
+
+	/*
+	 * StartAck has been sent, leave that state.
+	 */
+	cntrl->state &= ~_OWPStateStartAck;
+
+	/*
+	 * Test was denied - go back to Request state.
+	 */
+	if(acceptval != OWP_CNTRL_ACCEPT){
+		cntrl->state &= ~_OWPStateTest;
 	}
 
 	return OWPErrOK;
 }
 
 OWPErrSeverity
-_OWPReadStopSessions(
+_OWPReadStartAck(
 	OWPControl	cntrl,
-	int		*retn_on_intr,
 	OWPAcceptType	*acceptval
 )
 {
-	int		n;
-	u_int8_t	*buf = (u_int8_t*)cntrl->msg;
-	OWPAcceptType	aval;
+	u_int8_t		*buf = (u_int8_t*)cntrl->msg;
 
-	if(!(_OWPStateIs(_OWPStateRequest,cntrl) &&
-					_OWPStateIs(_OWPStateTest,cntrl))){
+	*acceptval = OWP_CNTRL_INVALID;
+
+	if(!_OWPStateIs(_OWPStateStartAck,cntrl)){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-				"_OWPReadStopSessions called in wrong state.");
+				"_OWPReadStartAck called in wrong state.");
 		return OWPErrFATAL;
 	}
 
-	/*
-	 * Already read the first block - read the rest for this message
-	 * type.
-	 */
-	if((n = _OWPReceiveBlocksIntr(cntrl,&buf[16],
-				_OWP_STOP_SESSIONS_BLK_LEN-1,retn_on_intr)) !=
-						(_OWP_STOP_SESSIONS_BLK_LEN-1)){
-		if((n < 0) && *retn_on_intr && (errno == EINTR)){
-			return OWPErrFATAL;
-		}
+	if(_OWPReceiveBlocks(cntrl,&buf[0],_OWP_START_ACK_BLK_LEN) != 
+					(_OWP_START_ACK_BLK_LEN)){
 		OWPError(cntrl->ctx,OWPErrFATAL,errno,
-			"_OWPReadStopSessions:Unable to read from socket.");
+			"_OWPReadStartAck:Unable to read from socket.");
 		cntrl->state = _OWPStateInvalid;
 		return OWPErrFATAL;
 	}
 
 	if(memcmp(cntrl->zero,&buf[16],16)){
 		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-				"_OWPReadStopSessions:Invalid zero padding");
+				"_OWPReadStartAck:Invalid zero padding");
 		cntrl->state = _OWPStateInvalid;
 		return OWPErrFATAL;
 	}
-	aval = GetAcceptType(cntrl,buf[1]);
-	if(acceptval)
-		*acceptval = aval;
-
-	if(aval == OWP_CNTRL_INVALID){
+	*acceptval = GetAcceptType(cntrl,buf[0]);
+	if(*acceptval == OWP_CNTRL_INVALID){
 		cntrl->state = _OWPStateInvalid;
 		return OWPErrFATAL;
 	}
 
 	/*
-	 * The control connection is now ready to send the response.
+	 * received StartAck - leave that state.
 	 */
-	cntrl->state &= ~_OWPStateStopSessions;
-	cntrl->state |= _OWPStateRequest;
+	cntrl->state &= ~_OWPStateStartAck;
+
+	/* If StartSessions was rejected get back into StateRequest */
+	if (*acceptval != OWP_CNTRL_ACCEPT){
+		cntrl->state &= ~_OWPStateTest;
+		cntrl->state |= _OWPStateRequest;
+	}
 
 	return OWPErrOK;
+}
+
+/*
+ * Full StopSessions message format:
+ *
+ * size: variable
+ *
+ *  header portion: size 16 octets
+ *
+ * 	   0                   1                   2                   3
+ * 	   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	00|      3        |    Accept     |               MBZ             |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	04|                      Number of Sessions                       |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	08|                         MBZ (8 octets)                        |
+ *	12|                                                               |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *
+ ** [ N Session Description Records]
+ **  Session Description Record: size variable
+ **  (Number of Sessions above indicates how many of these)
+ **
+ **    header of this sub-record: size 24 octets
+ **
+ ** 	   0                   1                   2                   3
+ ** 	   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ **	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ **	00|                                                               |
+ **	04|                        SID (16 octets)                        |
+ **	08|                                                               |
+ **	12|                                                               |
+ **	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ **	16|                           Next Seqno                          |
+ **	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ **	24|                     Number of Skip Ranges                     |
+ **	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ **
+ *** [ N Skip Ranges]
+ ***
+ ***    Skip Ranges: size 8 octets each
+ ***    Number of Skip Ranges above indicates how many of these in this
+ ***    session description record.
+ ***
+ *** 	SkipRecord format:
+ ***
+ *** 	size: 8 octets
+ ***
+ *** 	   0                   1                   2                   3
+ *** 	   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ ***	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ ***	00|                      First Seqno Skipped                      |
+ ***	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ ***	04|                       Last Seqno Skipped                      |
+ ***	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ ***
+ *** [END Skip Ranges]
+ ***
+ ***    Then the Session Description Record is padded out to complete the
+ ***    current block.
+ ***
+ *** [END SessionDescription Records]
+ *
+ * After all SessionDescription Records a final block of IZP completes
+ * the StopSession message:
+ *
+ * 	   0                   1                   2                   3
+ * 	   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	00|                                                               |
+ *	04|                        IZP (16 octets)                        |
+ *	08|                                                               |
+ *	12|                                                               |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ */
+/*
+ * Function:    
+ *                  _OWPWriteStopSessions
+ *
+ * Description:    
+ *  Sends the StopSessions message as described above. Also
+ *  stops local sessions.
+ *
+ * In Args:    
+ *
+ * Out Args:    
+ *
+ * Scope:    
+ * Returns:    
+ * Side Effect:    
+ *  All local sessions are stopped.
+ */
+OWPErrSeverity
+_OWPWriteStopSessions(
+        OWPControl      cntrl,
+        int             *retn_on_intr,
+        OWPAcceptType   acceptval,
+        u_int32_t       num_sessions
+        )
+{
+    OWPTestSession  sptr;
+    u_int8_t        *buf = (u_int8_t*)cntrl->msg;
+
+    if(!(_OWPStateIs(_OWPStateRequest,cntrl) &&
+                _OWPStateIs(_OWPStateTest,cntrl))){
+        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+                "_OWPWriteStopSessions called in wrong state.");
+        return OWPErrFATAL;
+    }
+
+    /*
+     * WriteStopSessions header
+     */
+    memset(&buf[0],0,16);
+
+    buf[0] = 3;
+    buf[1] = *acceptval & 0xff;
+    *(u_int32_t*)&buf[4] = htonl(num_sessions);
+
+    if(_OWPSendBlocksIntr(cntrl,buf,1,retn_on_intr) != 1){
+        return _OWPFailControlSession(cntrl,OWPErrFATAL);
+    }
+
+    /*
+     * Loop through each session, write out a session description
+     * record for each "send" session.
+     */
+    for(sptr=cntrl->tests; sptr; sptr = sptr->next){
+        off_t       sd_size;
+
+        /*
+         * Receive sessions don't need more work here.
+         */
+        if(!sptr->endpoint->send) continue;
+
+        if(_OWPSendBlocksIntr(cntrl,sptr->sid,1,retn_on_intr) != 1){
+            return _OWPFailControlSession(cntrl,OWPErrFATAL);
+        }
+
+        sd_size = sptr->endpoint->skiprecsize;
+
+        /*
+         * First send out complete blocks
+         */
+        while(sd_size >= 16){
+            if(I2Readni(sptr->endpoint->skiprecfd,buf,16,retn_on_intr) != 16){
+                return _OWPFailControlSession(cntrl,OWPErrFATAL);
+            }
+            if(_OWPSendBlocksIntr(cntrl,buf,1,retn_on_intr) != 1){
+                return _OWPFailControlSession(cntrl,OWPErrFATAL);
+            }
+            sd_size -= 16;
+        }
+
+        /*
+         * If last skip record does not end on a block boundry, then
+         * there can be 8 octets of skip records left to send.
+         */
+        if(sd_size == 8){
+            if(I2Readni(sptr->endpoint->skiprecfd,buf,8,retn_on_intr) != 8){
+                return _OWPFailControlSession(cntrl,OWPErrFATAL);
+            }
+            memset(&buf[8],0,8);
+            if(_OWPSendBlocksIntr(cntrl,buf,1,retn_on_intr) != 1){
+                return _OWPFailControlSession(cntrl,OWPErrFATAL);
+            }
+            sd_size -= 8;
+        }
+
+        /*
+         * If all data has not been sent, there is an error.
+         */
+        if(sd_size != 0){
+            return _OWPFailControlSession(cntrl,OWPErrFATAL);
+        }
+    }
+
+    /*
+     * Complete WriteStopSessions by sending IZP.
+     */
+    if(_OWPSendBlocksIntr(cntrl,cntrl->zero,1,retn_on_intr) != 1){
+        return _OWPFailControlSession(cntrl,OWPErrFATAL);
+    }
+}
+
+/*
+ * 	SkipRecord format:
+ *
+ * 	size: 8 octets
+ *
+ * 	   0                   1                   2                   3
+ * 	   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	00|                      First Seqno Skipped                      |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	04|                       Last Seqno Skipped                      |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *
+ */
+
+/*
+ * Function:	_OWPEncodeSkipRecord
+ *
+ * Description:	
+ * 	This function is used to encode a single 8 octet/2 integer skip
+ * 	record used to indicate a range of test packets that were never
+ * 	sent due to scheduling issues on the sender host.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
+void
+_OWPEncodeSkipRecord(
+        u_int8_t    buf[_OWP_SKIPREC_SIZE],
+        OWPSkip     skip
+        )
+{
+    u_int32_t	nlbuf;
+
+    /* begin seq */
+    nlbuf = htonl(skip->begin);
+    memcpy(&buf[0],&nlbuf,4);
+
+    /* end seq */
+    nlbuf = htonl(skip->end);
+    memcpy(&buf[4],&nlbuf,4);
+
+    return;
+}
+
+
+/*
+ * Function:	OWPDecodeSkipRecord
+ *
+ * Description:	
+ * 	This function is used to decode the "skip record" and
+ * 	place the values in the given OWPSkipRec.
+ *
+ * In Args:	
+ *
+ * Out Args:	
+ *
+ * Scope:	
+ * Returns:	
+ * Side Effect:	
+ */
+void
+_OWPDecodeSkipRecord(
+        OWPSkip     skip,
+        u_int8_t    buf[_OWP_SKIPREC_SIZE]
+        )
+{
+    /*
+     * memcpy buf in case it is not 32bit aligned.
+     */
+    memcpy(&skip->begin,&buf[0],4);
+    skip->begin = ntohl(skip->begin);
+
+    memcpy(&skip->end,&buf[4],4);
+    skip->end = ntohl(skip->end);
+
+    return;
+}
+
+/*
+ * Function:    _OWPReadStopSessions
+ *
+ * Description:    
+ *              This function updates the "recv" side sessions with
+ *              the data from the senders in the Stop Sessions message.
+ *              This includes updating the recv file record. Therefore,
+ *              there are possible race-conditions. It is imperative that
+ *              things be done in the correct order to avoid this.
+ *
+ *              Correct order:
+ *                  No skip records can be added into the file until
+ *                  after the number of data records in the file has
+ *                  become fixed. This way ProcessFetchSessions can
+ *                  use the file size to determine the number of records
+ *                  if the file is not "complete". Also, the "finished"
+ *                  field of the file should not be modified to "complete"
+ *                  until all other field have been updated. Therefore,
+ *                  for the basic receiver, the order should be:
+ *                      1. write header - no num_records or num_skips
+ *                      2. write data records
+ *                      3. write num_datarecs
+ *                      4. write skips
+ *                      5. write num_skips
+ *                      6. write next_seqno/finished
+ *
+ * In Args:    
+ *
+ * Out Args:    
+ *
+ * Scope:    
+ * Returns:    
+ * Side Effect:    
+ */
+OWPErrSeverity
+_OWPReadStopSessions(
+	OWPControl	cntrl,
+	int		*intr,
+	OWPAcceptType	*acceptval,
+        OWPTimeStamp    stoptime
+)
+{
+    int             n;
+    u_int8_t        *buf = (u_int8_t*)cntrl->msg;
+    OWPAcceptType   aval;
+    u_int32_t       i,j,num_sessions;
+    OWPTestSession  *sptr,tptr;
+    OWPTestSession  receivers = NULL;
+    off_t           toff;
+
+    if(!(_OWPStateIs(_OWPStateRequest,cntrl) &&
+                _OWPStateIs(_OWPStateTest,cntrl))){
+        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+                "_OWPReadStopSessions called in wrong state.");
+        return OWPErrFATAL;
+    }
+
+    /*
+     * Decode first block of StopSessions message.
+     */
+    if(memcmp(cntrl->zero,&buf[2],2) || memcmp(cntrl->zero,&buf[8],4)){
+        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+                "_OWPReadStopSessions:Invalid zero padding");
+        goto err;
+    }
+
+    aval = GetAcceptType(cntrl,buf[1]);
+    if(acceptval)
+        *acceptval = aval;
+
+    if(aval == OWP_CNTRL_INVALID){
+        goto err;
+    }
+
+    num_session = ntohl(*(u_int32_t*)&buf[4]);
+
+    /*
+     * Parse test session list and pull recv sessions into the receivers
+     * list - the StopSessions message must account for all of them.
+     */
+    sptr = &tsession->cntrl->tests;
+    while(*sptr){
+        tptr = *sptr;
+        if(!tptr->endpoint){
+            OWPError(cntrl->ctx,OWPErrFATAL,EINVAL,
+                    "_OWPReadStopSessions: no endpoint state!");
+            goto err;
+        }
+
+        /*
+         * Leave send sessions in the "tests" list.
+         */
+        if(tptr->endpoint->send){
+            sptr = &(*sptr)->next;
+            continue;
+        }
+
+        /*
+         * Pull this node out of the "tests" list and add it to the
+         * receivers list.
+         */
+        *sptr = tptr->next;
+        tptr->next = receivers;
+        receivers = tptr;
+    }
+
+    /*
+     * Now read and decode the variable length portion of the
+     * StopSessions message.
+     */
+    for(i=0;i<num_sessions;i++){
+        FILE                        *rfp,*wfp;
+        char                        sid_name[sizeof(OWPSID)*2+1];
+        _OWPSessionHeaderInitialRec fhdr;
+        struct flock                flk;
+        OWPNum64                    lowR,midR,highR,threshR;
+        u_int32_t                   lowI,midI,highI,num_recs;
+        u_int8_t                    rbuf[_OWP_DATAREC_SIZE];
+        OWPDataRec                  rec;
+
+        /*
+         * Read sid from session description record
+         */
+        n = _OWPReceiveBlocksIntr(cntrl,buf,1,intr);
+        if(n != 1){
+            OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+                    "_OWPReadStopSessions: Unable to read session record (%d)",
+                    i);
+            goto err;
+        }
+
+        /*
+         * Match TestSession record with session description record
+         */
+        sptr = &receivers;
+        tptr = NULL;
+        while(*sptr){
+            /*
+             * If this is not it, try the next one.
+             */
+            if(memcmp(buf,(*sptr)->sid,sizeof(OWPSID))){
+                sptr = &(*sptr)->next;
+                continue;
+            }
+
+            /*
+             * Found: remove this record from the receivers list
+             * and put it back in the "tests" list and break out
+             * of this loop.
+             */
+            tptr = *sptr;
+            *sptr = tptr->next;
+            tptr->next = cntrl->tests;
+            cntrl->tests = tptr;
+            break;
+        }
+
+        /*
+         * If sid not found, this is an invalid StopSessions message.
+         */
+        if(!tptr){
+            OWPError(cntrl->ctx,OWPErrFATAL,EINVAL,
+                    "_OWPReadStopSessions: sid from StopSessions not valid.");
+            goto err;
+        }
+
+
+        I2HexEncode(sid_name,tptr->sid,sizeof(OWPSID));
+
+        rfp = tptr->endpoint->datafile;
+        wfp = rfp;
+
+        /*
+         * Lock the data file for writing. This is needed so FetchSessions
+         * coming in from other control connections will get consistent
+         * information.
+         */
+        memset(&flk,0,sizeof(flk));
+        flk.l_start = 0;
+        flk.l_len = 0;
+        flk.whence = SEEK_SET;
+        flk.l_type = F_WRLCK;
+
+        if( fcntl(fileno(rfp), f_SETLKW, &flk) < 0){
+            OWPError(cntrl->ctx,OWPErrFATAL,errno,
+                    "_OWPReadStopSessions: Unable to lock file sid(%s): %M",
+                    sid_name);
+            goto err;
+        }
+
+        /*
+         * Read needed file header info.
+         */
+        if(!_OWPReadDataHeaderInitial(cntrl->ctx,rfp,&fhdr)){
+            goto err;
+        }
+
+        /*
+         * Compute number of data records currently in file using filesizes.
+         * (Verify that disk space is a multiple of datarec size too...)
+         */
+        toff = fhdr.sbuf.st_size - fhdr.oset_datarecs;
+        if(toff % _OWP_DATAREC_SIZE){
+            OWPError(cntrl->ctx,OWPErrFATAL,EFTYPE,
+                    "_OWPReadStopSessions: Invalid records for sid(%s)",
+                    sid_name);
+            goto err;
+        }
+        fhdr.num_datarecs = num_recs = toff / _OWP_DATAREC_SIZE;
+
+        /*
+         * If there is no data, this is a very simple file...
+         */
+        if(!fhdr.num_datarecs) goto done_data;
+
+        /*
+         * Seek to beginning of data records.
+         */
+        if(fseeko(rfp,fhdr.oset_datarecs,SEEK_SET) != 0){
+            OWPError(cntrl->ctx,OWPErrFATAL,errno,"fseeko(): %M");
+            goto err;
+        }
+
+        /*
+         * Delete data records sent later than stoptime-timeout as per
+         * section 3.8 owdp-draft-14
+         *
+         * To do this is somewhat non-trivial. The records in the file
+         * are sorted by recv time. There is a relationship between
+         * recv time and send time because of the "timeout" parameter
+         * of a test. A packet is only accepted and saved if the recv
+         * time is within "timeout" of the recv time. Therefore, this
+         * algorithm starts by finding the first packet record in the
+         * file with a recv time greater than (stoptime - (2 * timeout)).
+         * Then sequentially goes forward through the file deleting
+         * all packet records with (sendtime > (stoptime - timeout)).
+         *
+         * lowI will be the index to the packet record with the
+         * largest recv time less than the threshold (stoptime - (2 * timeout))
+         * upon completion of the binary search. (If one exists.)
+         *
+         */
+
+        /*
+         * First use an interpolated binary search to find the "threshold"
+         * point in the file.
+         */
+
+        /* Initializing variables for search. */
+        threshR = OWPNum64Sub(stoptime.owptime,
+                OWPNum64Mult(tptr->test_spec.loss_timeout,OWPULongToNum64(2)));
+        highI = fhdr.num_datarecs;
+        highR = stoptime.owptime;
+        lowI = 0;
+
+        /*
+         * Read the first packet record to get the recv(0) for lowR.
+         */
+        if(fread(rbuf,_OWP_DATAREC_SIZE,1,rfp) != 1){
+            OWPError(cntrl->ctx,OWPErrFATAL,errno,
+                    "fread(): Reading session file for sid(%s): %M",sid_name);
+            goto err;
+        }
+        if(!_OWPDecodeDataRecord(fhdr.version,&rec,rbuf)){
+            errno = EFTYPE;
+            OWPError(cntrl->ctx,OWPErrFATAL,errno,
+                    "_OWPReadStopSessions: Invalid data record for sid(%s)",
+                    sid_name);
+            goto err;
+        }
+
+        lowR = rec.recv.owptime;
+
+        /*
+         * If lowR is not less than threshR than we are done.
+         */
+        if(!(OWPNum64Cmp(lowR,threshR) < 0)){
+            goto thresh_pos;
+        }
+
+        /*
+         * This loop is the meat of the interpolated binary search
+         */
+        while((highI - lowI) > 1){
+            OWPNum64    portion;
+            OWPNum64    range;
+
+            range = OWPNum64Sub(highR-lowR);
+
+            /*
+             * If there are multiple records with the same recv time,
+             * interpolation will fail - in this case fall back to strict
+             * binary.
+             */
+            if(!range){
+                midI = (highI - lowI) / 2;
+            }
+            else{
+                /*
+                 * Interpolate
+                 */
+                portion = OWPNum64Sub(threshR,lowR);
+                midI = lowI + ((OWPNum64ToDouble(portion) * (highI - lowI)) /
+                        OWPNum64ToDouble(range));
+            }
+
+            /*
+             * determine offset from midI
+             */
+            toff = fhdr.oset_datarecs + midI * _OWP_DATAREC_SIZE;
+
+            /*
+             * Seek to midI data record.
+             */
+            if(fseeko(rfp,toff,SEEK_SET) != 0){
+                OWPError(cntrl->ctx,OWPErrFATAL,errno,"fseeko(): %M");
+                goto err;
+            }
+
+            /*
+             * Read the packet record from midI.
+             */
+            if(fread(rbuf,_OWP_DATAREC_SIZE,1,rfp) != 1){
+                OWPError(cntrl->ctx,OWPErrFATAL,errno,
+                        "fread(): Reading session file for sid(%s): %M",
+                        sid_name);
+                goto err;
+            }
+            if(!_OWPDecodeDataRecord(fhdr.version,&rec,rbuf)){
+                errno = EFTYPE;
+                OWPError(cntrl->ctx,OWPErrFATAL,errno,
+                        "_OWPReadStopSessions: Invalid data record for sid(%s)",
+                        sid_name);
+                goto err;
+            }
+
+            /*
+             * If midR is less than thresh, update lowI. Otherwise,
+             * update highI.
+             */
+            if(OWPNum64Cmp(rec.recv.owptime,threshR) < 0){
+                lowI = midI;
+                lowR = rec.recv.owptime;
+            }
+            else{
+                highI = midI;
+                highR = rec.recv.owptime;
+            }
+        }
+thresh_pos:
+
+        /*
+         * Now, step through all records lowI and after to examine the
+         * sent time. The sent time must be less than (stop - timeout)
+         * for the record to be kept.
+         */
+        toff = fhdr.oset_datarecs + (lowI * _OWP_DATAREC_SIZE);
+        threshR = OWPNum64Sub(stoptime.owptime,tptr->test_spec.loss_timeout);
+
+        /*
+         * Seek to lowI data record to start parsing.
+         */
+        if(fseeko(rfp,toff,SEEK_SET) != 0){
+            OWPError(cntrl->ctx,OWPErrFATAL,errno,"fseeko(): %M");
+            goto err;
+        }
+
+        for(j=lowI;j<fhdr.num_datarecs;j++){
+
+            /*
+             * Read the packet record from midI.
+             */
+            if(fread(rbuf,_OWP_DATAREC_SIZE,1,rfp) != 1){
+                OWPError(cntrl->ctx,OWPErrFATAL,errno,
+                        "fread(): Reading session file sid(%s): %M",
+                        sid_name);
+                goto loop_err;
+            }
+            if(!_OWPDecodeDataRecord(fhdr.version,&rec,rbuf)){
+                errno = EFTYPE;
+                OWPError(cntrl->ctx,OWPErrFATAL,errno,
+                        "_OWPReadStopSessions: Invalid data record sid(%s)",
+                        sid_name);
+                goto loop_err;
+            }
+
+            /*
+             * If the packet was not sent after threshR, then keep it
+             * by writing it back into the file if necessary.
+             */
+            if(!(OWPNum64Cmp(rec.send.owptime,threshR) > 0)){
+                if(wfp != rfp){
+                    if(fwrite(rbuf,_OWP_DATAREC_SIZE,1,wfp) != 1){
+                        OWPError(cntrl->ctx,OWPErrFATAL,errno,
+                                "fwrite(): Writing session file sid(%s): %M",
+                                sid_name);
+                        goto loop_err;
+                    }
+                }
+            }
+            /*
+             * If the packet record should not be kept.
+             */
+            else{
+                num_recs--;
+                /*
+                 * If wfp==rfp, then create another fp for wfp and point
+                 * it at the current record so it will be written over.
+                 */
+                if(wfp == rfp){
+                    int newfd;
+
+                    if( (newfd = dup(fileno(rfp))) < 0){
+                        OWPError(cntrl->ctx,OWPErrFATAL,errno,"dup(%d): %M",
+                                fileno(wfp));
+                        goto err;
+                    }
+
+                    if( !(wfp = fdopen(newfd,"wb"))){
+                        OWPError(cntrl->ctx,OWPErrFATAL,errno,"fdopen(%d): %M",
+                                newfd);
+                        close(newfd);
+                        goto err;
+                    }
+
+                    /*
+                     * Seek new wfp to beginning of record that is not
+                     * valid. It will be written over.
+                     */
+                    toff = fhdr.oset_datarecs + (j * _OWP_DATAREC_SIZE);
+                    if(fseeko(wfp,toff,SEEK_SET) != 0){
+                        OWPError(cntrl->ctx,OWPErrFATAL,errno,"fseeko(): %M");
+                        goto loop_err;
+                    }
+                }
+            }
+            continue;
+loop_err:
+            if(wfp != rfp){
+                fclose(wfp);
+            }
+            goto err;
+        }
+
+        /*
+         * No longer need two fp's.
+         */
+        if(wfp != rfp){
+            fclose(wfp);
+        }
+
+done_data:
+        /*
+         * Write NumDataRecords into file.
+         * (This MUST be done before adding any skip records to the file
+         * or there is a race condition where partial session results could
+         * interpret skip records as data records!)
+         */
+        if( !OWPWriteDataHeaderNumDataRecs(cntrl->ctx,rfp,num_recs)){
+            goto err;
+        }
+
+        /*
+         * Read next_seqno, num_skips from SessionDescription record
+         */
+        n = _OWPReceiveBlocksIntr(cntrl,buf,1,intr);
+        if(n != 1){
+            OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+                    "_OWPReadStopSessions: Unable to read session record (%d)",
+                    i);
+            goto err;
+        }
+        next_seqno = ntohl(*(u_int32_t*)&buf[0]);
+        num_skips = ntohl(*(u_int32_t*)&buf[4]);
+
+        if(!num_skips) goto done_skips;
+
+        /*
+         * Advance fp beyond datarecords, write skip records and write
+         * NumSkipRecords
+         */
+        toff = fhdr.oset_datarecs + (num_recs * _OWP_DATAREC_SIZE);
+        if(fseeko(rfp,toff,SEEK_SET) != 0){
+            OWPError(cntrl->ctx,OWPErrFATAL,errno,"fseeko(): %M");
+            goto err;
+        }
+
+        OWPSkipRec  prev_skip, curr_skip;
+
+        prev_skip.begin = prev_skip.end = 0;
+        for(j=0; j < num_skips; j++){
+            u_int8_t    bufi;
+
+            /*
+             * Index into buffer for this skip record. (Either 0 or 8)
+             */
+            bufi = ((j+1) % 2) * 8;
+
+            /*
+             * Only need to read another record when bufi == 0
+             */
+            if(!bufi){
+                /*
+                 * Read next block
+                 */
+                n = _OWPReceiveBlocksIntr(cntrl,buf,1,intr);
+                if(n != 1){
+                    OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+                            "_OWPReadStopSessions: Unable to read skip record sid(%s)",
+                            sid_name);
+                    goto err;
+                }
+            }
+
+            /*
+             * Validate skip record. (begin <= end) and this skip_range
+             * is greater-than the previous.
+             */
+            _OWPDecodeSkipRecord(&curr_skip,&buf[bufi]);
+            if(curr_skip.end < curr_skip.begin){
+                OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+                        "_OWPReadStopSessions: Invalid skip record sid(%s): end < begin",
+                        sid_name);
+            }
+            if(prev_skip.end && (curr_skip.begin < prev_skip.end)){
+                OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+                        "_OWPReadStopSessions: Invalid skip record sid(%s): skips out of order",
+                        sid_name);
+            }
+
+            /*
+             * Write this skip record into the file.
+             *
+             * Using 8 for test so this will fail immediately if skip record
+             * size changes. This whole routine will need to be modified...
+             */
+            if(fwrite(&buf[bufi],1,_OWP_SKIPREC_SIZE,rfp) != 8){
+                OWPError(cntrl->ctx,OWPErrFATAL,errno,
+                        "fwrite(): Writing session file sid(%s): %M",
+                        sid_name);
+                goto err;
+            }
+        }
+
+done_skips:
+        /*
+         * If num_skips is even, then there should be 8 bytes of zero
+         * padding to complete the block. Verify.
+         */
+        if( !(num_skips % 2)){
+            if(memcmp(cntrl->zero,&buf[8],8)){
+                OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+                        "_OWPReadStopSessions: Session sid(%s): Invalid zero padding",
+                        sid_name);
+                goto err;
+            }
+        }
+
+        /*
+         * Write num_skips and "finished" into file.
+         */
+        if( !OWPWriteDataHeaderNumSkipRecs(cntrl->ctx,rfp,num_skips)){
+            goto err;
+        }
+
+        if( !_OWPWriteDataHeaderFinished(cntrl->ctx,rfp,finished,next_seqno)){
+            goto err;
+        }
+
+        flk.l_type = F_UNLCK;
+        if( fcntl(fileno(rfp), f_SETLKW, &flk) < 0){
+            OWPError(cntrl->ctx,OWPErrFATAL,errno,
+                    "_OWPReadStopSessions: Unable to unlock file sid(%s): %M",
+                    sid_name);
+            goto err;
+        }
+    }
+
+
+    /*
+     * IZP completes the StopSessions message.
+     */
+    n = _OWPReceiveBlocksIntr(cntrl,buf,1,intr);
+    if(n != 1){
+        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+                "_OWPReadStopSessions: Unable to read final IZP block");
+        goto err;
+    }
+    if(memcmp(cntrl->zero,&buf[0],16)){
+        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+                "_OWPReadStopSessions: Invalid final IZP block");
+        goto err;
+    }
+
+    /*
+     * The control connection is now ready to send the response.
+     */
+    cntrl->state &= ~_OWPStateStopSessions;
+    cntrl->state |= _OWPStateRequest;
+
+    return OWPErrOK;
+
+err:
+    /*
+     * take everything in receivers list and put it back in tests list
+     * so error cleanup at higher levels will work.
+     */
+
+    OWPError(ctrnl->ctx,OWPErrFATAL,OWPErrUNKOWN,
+            "_OWPReadStopSessions: Failed");
+    return _OWPFailFailControlSession(cntrl,OWPErrFATAL);
+
 }
 
 /*
@@ -1802,7 +2692,7 @@ _OWPReadStopSessions(
  *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *	00|      4        |                                               |
  *	  +-+-+-+-+-+-+-+-+                                               +
- *	04|                      Unused (7 octets)                        |
+ *	04|                        MBZ (7 octets)                         |
  *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *	08|                         Begin Seq                             |
  *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -1848,7 +2738,7 @@ _OWPWriteFetchSession(
 	if(_OWPSendBlocks(cntrl,buf,3) != 3)
 		return OWPErrFATAL;
 
-	cntrl->state |= (_OWPStateControlAck | _OWPStateFetchSession);
+	cntrl->state |= (_OWPStateFetchAck | _OWPStateFetchSession);
 	cntrl->state &= ~(_OWPStateRequest);
 	return OWPErrOK;
 }
@@ -1909,261 +2799,164 @@ _OWPReadFetchSession(
 	/*
 	 * The control connection is now ready to send the response.
 	 * (We are no-longer in FetchSession/Request state, we are
-	 * in ControlAck/Fetching state.)
+	 * in FetchAck/Fetching state.)
 	 */
 	cntrl->state &= (~_OWPStateFetchSession & ~_OWPStateRequest);
-	cntrl->state |= _OWPStateControlAck|_OWPStateFetching;
+	cntrl->state |= _OWPStateFetchAck|_OWPStateFetching;
 
 	return OWPErrOK;
 }
 
 /*
  *
- * 	ControlAck message format:
+ * 	FetchAck message format:
  *
  * 	size: 32 octets
  *
  * 	   0                   1                   2                   3
  * 	   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
  *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
- *	00|     Accept    |                                               |
- *	  +-+-+-+-+-+-+-+-+                                               +
- *	04|                      Unused (15 octets)                       |
- *	08|                                                               |
- *	12|                                                               |
+ *	00|     Accept    |   Finished    |         MBZ (2 octets)        |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	04|                          Next Seqno                           |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	08|                     Number of Skip Ranges                     |
+ *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *	12|                       Number of Records                       |
  *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *	16|                                                               |
- *	20|                    Zero Padding (16 octets)                   |
+ *	20|                        IZP (16 octets)                        |
  *	24|                                                               |
  *	28|                                                               |
  *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *
  */
 OWPErrSeverity
-_OWPWriteControlAck(
-	OWPControl	cntrl,
-	int		*retn_on_intr,
-	OWPAcceptType	acceptval
-	)
+_OWPWriteFetchAck(
+        OWPControl	cntrl,
+        int		*retn_on_intr,
+        OWPAcceptType	acceptval,
+        u_int8_t        finished,
+        u_int32_t       next_seqno,
+        u_int32_t       num_skiprecs,
+        u_int32_t       num_datarecs
+        )
 {
-	int		n;
-	u_int8_t	*buf = (u_int8_t*)cntrl->msg;
+    int		n;
+    u_int8_t	*buf = (u_int8_t*)cntrl->msg;
 
-	if(!_OWPStateIs(_OWPStateControlAck,cntrl)){
-		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-				"_OWPWriteControlAck called in wrong state.");
-		return OWPErrFATAL;
-	}
+    if(!_OWPStateIs(_OWPStateFetchAck,cntrl)){
+        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+                "_OWPWriteFetchAck called in wrong state.");
+        return OWPErrFATAL;
+    }
 
-	buf[0] = acceptval & 0xff;
+    buf[0] = acceptval & 0xff;
+    buf[1] = finished & 0xff;
+
 #ifndef	NDEBUG
-	memset(&buf[1],0,15);	/* Unused	*/
+    memset(&buf[1],0,2);	/* Unused	*/
 #endif
-	memset(&buf[16],0,16);	/* Zero padding */
 
-	n = _OWPSendBlocksIntr(cntrl,buf,_OWP_CONTROL_ACK_BLK_LEN,retn_on_intr);
+    *(u_int32_t*)&buf[4] = htonl(next_seqno);
+    *(u_int32_t*)&buf[8] = htonl(num_skiprecs);
+    *(u_int32_t*)&buf[12] = htonl(num_datarecs);
 
-	if((n < 0) && *retn_on_intr && (errno == EINTR)){
-		return OWPErrFATAL;
-	}
+    memset(&buf[16],0,16);	/* IZP */
 
-	if(n != _OWP_CONTROL_ACK_BLK_LEN){
-		cntrl->state = _OWPStateInvalid;
-		return OWPErrFATAL;
-	}
+    n = _OWPSendBlocksIntr(cntrl,buf,_OWP_FETCH_ACK_BLK_LEN,retn_on_intr);
 
-	/*
-	 * ControlAck has been sent, leave that state.
-	 */
-	cntrl->state &= ~_OWPStateControlAck;
+    /*
+     * Return control to a higher level on interrupt.
+     */
+    if((n < 0) && *retn_on_intr && (errno == EINTR)){
+        return OWPErrFATAL;
+    }
 
-	/*
-	 * Test was denied - go back to Request state.
-	 */
-	if(_OWPStateIs(_OWPStateTest,cntrl) && (acceptval != OWP_CNTRL_ACCEPT)){
-		cntrl->state &= ~_OWPStateTest;
-	}
+    if(n != _OWP_FETCH_ACK_BLK_LEN){
+        cntrl->state = _OWPStateInvalid;
+        return OWPErrFATAL;
+    }
 
-	/*
-	 * Fetch was denied - this short-cuts fetch response to "only"
-	 * a control ack. So, leave Fetching state and go back to plain
-	 * Request state.
-	 */
-	if(_OWPStateIsFetching(cntrl) && (acceptval != OWP_CNTRL_ACCEPT)){
-		cntrl->state &= ~_OWPStateFetching;
-		cntrl->state |= _OWPStateRequest;
-	}
+    /*
+     * FetchAck has been sent, leave that state.
+     */
+    cntrl->state &= ~_OWPStateFetchAck;
 
-	return OWPErrOK;
+    /*
+     * Fetch was denied - this short-cuts fetch response to "only"
+     * the actual FetchAck message - no data will follow.
+     * So, leave Fetching state and go back to plain Request state.
+     */
+    if(acceptval != OWP_CNTRL_ACCEPT){
+        cntrl->state &= ~_OWPStateFetching;
+        cntrl->state |= _OWPStateRequest;
+    }
+
+    return OWPErrOK;
 }
 
 OWPErrSeverity
-_OWPReadControlAck(
-	OWPControl	cntrl,
-	OWPAcceptType	*acceptval
-)
+_OWPReadFetchAck(
+        OWPControl      cntrl,
+        OWPAcceptType   *acceptval,
+        u_int8_t        *finished,
+        u_int32_t       *next_seqno,
+        u_int32_t       *num_skiprecs,
+        u_int32_t       *num_datarecs
+        )
 {
-	u_int8_t		*buf = (u_int8_t*)cntrl->msg;
+    u_int8_t    *buf = (u_int8_t*)cntrl->msg;
 
-	*acceptval = OWP_CNTRL_INVALID;
+    *acceptval = OWP_CNTRL_INVALID;
 
-	if(!_OWPStateIs(_OWPStateControlAck,cntrl)){
-		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-				"_OWPReadControlAck called in wrong state.");
-		return OWPErrFATAL;
-	}
+    if(!_OWPStateIs(_OWPStateFetchAck,cntrl)){
+        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+                "_OWPReadFetchAck called in wrong state.");
+        return OWPErrFATAL;
+    }
 
-	if(_OWPReceiveBlocks(cntrl,&buf[0],_OWP_CONTROL_ACK_BLK_LEN) != 
-					(_OWP_CONTROL_ACK_BLK_LEN)){
-		OWPError(cntrl->ctx,OWPErrFATAL,errno,
-			"_OWPReadControlAck:Unable to read from socket.");
-		cntrl->state = _OWPStateInvalid;
-		return OWPErrFATAL;
-	}
+    if(_OWPReceiveBlocks(cntrl,buf,_OWP_FETCH_ACK_BLK_LEN) != 
+            (_OWP_FETCH_ACK_BLK_LEN)){
+        OWPError(cntrl->ctx,OWPErrFATAL,errno,
+                "_OWPReadFetchAck:Unable to read from socket.");
+        cntrl->state = _OWPStateInvalid;
+        return OWPErrFATAL;
+    }
 
-	if(memcmp(cntrl->zero,&buf[16],16)){
-		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-				"_OWPReadControlAck:Invalid zero padding");
-		cntrl->state = _OWPStateInvalid;
-		return OWPErrFATAL;
-	}
-	*acceptval = GetAcceptType(cntrl,buf[0]);
-	if(*acceptval == OWP_CNTRL_INVALID){
-		cntrl->state = _OWPStateInvalid;
-		return OWPErrFATAL;
-	}
+    if(memcmp(cntrl->zero,&buf[16],16)){
+        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+                "_OWPReadFetchAck:Invalid zero padding");
+        cntrl->state = _OWPStateInvalid;
+        return OWPErrFATAL;
+    }
 
-	/*
-	 * received ControlAck - leave that state.
-	 */
-	cntrl->state &= ~_OWPStateControlAck;
+    *acceptval = GetAcceptType(cntrl,buf[0]);
+    if(*acceptval == OWP_CNTRL_INVALID){
+        cntrl->state = _OWPStateInvalid;
+        return OWPErrFATAL;
+    }
 
-	if (_OWPStateIsFetchSession(cntrl)){
-		cntrl->state &= ~(_OWPStateFetchSession);
-		/* If FetchRequest was rejected get back into StateRequest */
-		if(*acceptval != OWP_CNTRL_ACCEPT){
-			cntrl->state |= _OWPStateRequest;
-		}else{
-		/* Otherwise prepare to read the TestRequest */
-			cntrl->state |= _OWPStateTestRequest;
-		}
-	}
-		/* If StartSessions was rejected get back into StateRequest */
-	else if (_OWPStateIsTest(cntrl) && (*acceptval != OWP_CNTRL_ACCEPT)){
-		cntrl->state &= ~_OWPStateTest;
-		cntrl->state |= _OWPStateRequest;
-	}
+    *finished = buf[1];
+    *next_seqno = ntohl(*(u_int32_t*)&buf[4]);
+    *num_skiprecs = ntohl(*(u_int32_t*)&buf[8]);
+    *num_datarecs = ntohl(*(u_int32_t*)&buf[12]);
 
+    /*
+     * received FetchAck - leave that state.
+     */
+    cntrl->state &= ~_OWPStateFetchAck;
+    cntrl->state &= ~(_OWPStateFetchSession);
 
-	return OWPErrOK;
-}
+    /* If FetchRequest was rejected get back into StateRequest */
+    if(*acceptval != OWP_CNTRL_ACCEPT){
+        cntrl->state |= _OWPStateRequest;
+    }else{
+        /* Otherwise prepare to read the TestRequest */
+        cntrl->state |= _OWPStateTestRequest;
+    }
 
-OWPErrSeverity
-_OWPWriteFetchRecordsHeader(
-	OWPControl	cntrl,
-	int		*retn_on_intr,
-	u_int64_t	num_rec
-	)
-{
-	int		n;
-	u_int8_t	*buf = (u_int8_t*)cntrl->msg;
-	u_int32_t	nrec;
-
-	if(!_OWPStateIsFetching(cntrl)){
-		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-			 "_OWPWriteFetchRecordsHeader: called in wrong state.");
-		return OWPErrFATAL;
-	};
-
-	/*
-	 * Initialize memory.
-	 */
-	memset(&buf[0],0,16);
-
-	/*
-	 * The num_rec field is *likely* to change to an u_int64_t field in
-	 * the future - so use that in the code. The "buf" field still
-	 * has an u_int32_t for now.
-	 */
-	nrec = num_rec; /* could loose precision... sigh. */
-	if(num_rec != (u_int64_t)nrec){
-		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-	"_OWPWriteFetchRecordsHeader: Protocol doesn't allow %llu records!",
-								num_rec);
-		cntrl->state = _OWPStateInvalid;
-		return OWPErrFATAL;
-	}
-
-	*(u_int32_t*)&buf[0] = htonl(nrec);
-
-	n = _OWPSendBlocksIntr(cntrl,buf,1,retn_on_intr);
-
-	if((n < 0) && *retn_on_intr && (errno == EINTR)){
-		return OWPErrFATAL;
-	}
-
-	if(n != 1){
-		cntrl->state = _OWPStateInvalid;
-		return OWPErrFATAL;
-	}
-
-	return OWPErrOK;
-}
-
-/*
- * Function:	_OWPReadFetchRecordsHeader
- *
- * Description:	
- *	During Fetch Session - TestRequest has already come back, the next
- *	thing to do is to read the records - this block contains the number
- *	of records that are coming.
- *
- * In Args:	
- *
- * Out Args:	
- *
- * Scope:	
- * Returns:	
- * Side Effect:	
- */
-OWPErrSeverity
-_OWPReadFetchRecordsHeader(
-	OWPControl	cntrl,
-	u_int64_t	*num_rec
-	)
-{
-	u_int8_t *buf = (u_int8_t*)cntrl->msg;
-
-	if(!_OWPStateIsFetching(cntrl)){
-		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-			 "_OWPReadFetchRecordsHeader: called in wrong state.");
-		return OWPErrFATAL;
-	};
-
-	if(_OWPReceiveBlocks(cntrl, buf, 1) != 1){
-		OWPError(cntrl->ctx,OWPErrFATAL,errno,
-		"_OWPReadFetchRecordsHeader: Unable to read from socket.");
-		cntrl->state = _OWPStateInvalid;
-		return OWPErrFATAL;
-	}
-
-	/* Check for 8 bytes of zero padding. */
-	if(memcmp(cntrl->zero,&buf[8],8)){
-		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-			"_OWPReadFetchRecordsHeader:Invalid zero padding");
-		cntrl->state = _OWPStateInvalid;
-		return OWPErrFATAL;
-	}
-
-	/*
-	 * This field is *likely* to change to an u_int64_t field in
-	 * the future - so use that in the code. The "buf" field still
-	 * has an u_int32_t for now.
-	 */
-	if(num_rec)
-		*num_rec = (u_int64_t)ntohl(*(u_int32_t *)buf);
-
-	return OWPErrOK;
+    return OWPErrOK;
 }
 
 /*
@@ -2197,10 +2990,10 @@ _OWPReadFetchRecordsHeader(
  *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *	00|                          Seq Number                           |
  *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
- *	04|                         Send Timestamp                        |
- *	08|                                                               |
+ *	04|      Send Error Estimate      |    Receive Error Estimate     |
  *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
- *	12|      Send Error Estimate      |    Receive Error Estimate     |
+ *	08|                         Send Timestamp                        |
+ *	12|                                                               |
  *	  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *	16|                       Receive Timestamp                       |
  *	20|                                                               |
@@ -2241,15 +3034,15 @@ _OWPEncodeDataRecord(
 	memcpy(&buf[0],&nlbuf,4);
 
         /* send stamp */
-	_OWPEncodeTimeStamp(&buf[4],&rec->send);
+	_OWPEncodeTimeStamp(&buf[8],&rec->send);
 
         /* send err */
-	if(!_OWPEncodeTimeStampErrEstimate(&buf[12],&rec->send)){
+	if(!_OWPEncodeTimeStampErrEstimate(&buf[4],&rec->send)){
 		return False;
 	}
 
         /* recv err */
-	if(!_OWPEncodeTimeStampErrEstimate(&buf[14],&rec->recv)){
+	if(!_OWPEncodeTimeStampErrEstimate(&buf[6],&rec->recv)){
 		return False;
 	}
 
@@ -2265,7 +3058,7 @@ _OWPEncodeDataRecord(
  * Function:	OWPDecodeDataRecord
  *
  * Description:	
- * 	This function is used to decode the 24 octet "packet record" and
+ * 	This function is used to decode the "packet record" and
  * 	place the values in the given OWPDataRec. It returns false if the
  * 	timestamp err estimates are invalid values.
  *
@@ -2307,15 +3100,15 @@ _OWPDecodeDataRecord(
                 rec->ttl = 255;
                 break;
             case 3:
-                _OWPDecodeTimeStamp(&rec->send,&buf[4]);
-                if(!_OWPDecodeTimeStampErrEstimate(&rec->send,&buf[12])){
-                    return False;
-                }
-                if(!_OWPDecodeTimeStampErrEstimate(&rec->recv,&buf[14])){
+                _OWPDecodeTimeStamp(&rec->send,&buf[8]);
+                if(!_OWPDecodeTimeStampErrEstimate(&rec->send,&buf[4])){
                     return False;
                 }
 
                 _OWPDecodeTimeStamp(&rec->recv,&buf[16]);
+                if(!_OWPDecodeTimeStampErrEstimate(&rec->recv,&buf[6])){
+                    return False;
+                }
 
                 rec->ttl = buf[24];
                 break;

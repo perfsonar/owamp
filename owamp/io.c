@@ -11,14 +11,14 @@
 /*
 **	File:		io.c
 **
-**	Author:		Anatoly Karp
+**	Author:		Jeff W. Boote
+**                      Anatoly Karp
 **
 **	Date:		Wed Apr  24 10:42:12  2002
 **
 **	Description:	This file contains the private functions to
 **			to facilitate IO that the library needs to do.
 */
-#include <fcntl.h>
 #include <owampP.h>
 
 int

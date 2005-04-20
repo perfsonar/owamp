@@ -103,7 +103,9 @@ _OWPClientBind(
 		if(((gai = getaddrinfo(local_addr->node,port,&hints,&airet))!=0)
 							|| !airet){
 			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"getaddrinfo(): %s",gai_strerror(gai));
+					"getaddrinfo([%s]:%s): %s",
+                                        local_addr->node,port,
+                                        gai_strerror(gai));
 			*err_ret = OWPErrFATAL;
 			return False;
 		}
@@ -1402,7 +1404,7 @@ OWPStartSessions(
 	/*
 	 * Read the server response.
 	 */
-	if(((rc = _OWPReadControlAck(cntrl,&acceptval)) < OWPErrOK) ||
+	if(((rc = _OWPReadStartAck(cntrl,&acceptval)) < OWPErrOK) ||
 					(acceptval != OWP_CNTRL_ACCEPT)){
 		return _OWPFailControlSession(cntrl,OWPErrFATAL);
 	}
@@ -1464,6 +1466,9 @@ OWPDelay(
  *	The number of records returned will not necessarily be end-begin due
  *	to possible loss and/or duplication.
  *
+ *      There is a full description of the owp file format in the comments
+ *      in api.c.
+ *
  * In Args:	
  *
  * Out Args:	
@@ -1477,165 +1482,234 @@ OWPDelay(
  *	still valid.
  * Side Effect:	
  */
-u_int64_t
+u_int32_t
 OWPFetchSession(
-	OWPControl		cntrl,
-	FILE			*fp,
-	u_int32_t		begin,
-	u_int32_t		end,
-	OWPSID			sid,
-	OWPErrSeverity		*err_ret
+	OWPControl	cntrl,
+	FILE		*fp,
+	u_int32_t	begin,
+	u_int32_t	end,
+	OWPSID		sid,
+	OWPErrSeverity  *err_ret
 	)
 {
-	OWPAcceptType		acceptval;
-	OWPTestSession		tsession = NULL;
-	OWPSessionHeaderRec	hdr;
-	u_int64_t		num_rec,n;
-	u_int8_t		buf[_OWP_FETCH_BUFFSIZE];
-	int			i;
-	OWPBoolean		dowrite = True;
-
-	*err_ret = OWPErrOK;
-
-	if(!fp){
-		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-						"OWPFetchSession: Invalid fp");
-		*err_ret = OWPErrFATAL;
-		return 0;
-	}
-
-	/*
-	 * Make the request of the server.
-	 */
-	if((*err_ret = _OWPWriteFetchSession(cntrl,begin,end,sid)) <
-								OWPErrWARNING)
-		goto failure;
-
-	/*
-	 * Read the response
-	 */
-	if((*err_ret = _OWPReadControlAck(cntrl, &acceptval)) < OWPErrWARNING)
-		goto failure;
-	
-	/*
-	 * If the server didn't accept, we are done.
-	 */
-	if(acceptval != OWP_CNTRL_ACCEPT)
-		return 0;
-
-	if((*err_ret = _OWPReadTestRequest(cntrl,NULL,&tsession,NULL)) !=
-								OWPErrOK){
-		goto failure;
-	}
-
-	/*
-	 * Write the file header now. First encode the tsession into
-	 * a SessionHeader.
-	 */
-
-	assert(sizeof(hdr.addr_sender) >= tsession->sender->saddrlen);
-	memcpy(&hdr.addr_sender,tsession->sender->saddr,
-						tsession->sender->saddrlen);
-	memcpy(&hdr.addr_receiver,tsession->receiver->saddr,
-						tsession->receiver->saddrlen);
-
-	hdr.conf_sender = tsession->conf_sender;
-	hdr.conf_receiver = tsession->conf_receiver;
-
-	memcpy(hdr.sid,tsession->sid,sizeof(hdr.sid));
-		/* hdr.test_spec will now point at same slots memory. */
-	hdr.test_spec = tsession->test_spec;
-
-	if(OWPWriteDataHeader(cntrl->ctx,fp,&hdr) != 0){
-		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"OWPFetchSession: OWPWriteDataHeader(): %M");
-		*err_ret = OWPErrWARNING;
-		(void)_OWPTestSessionFree(tsession,OWP_CNTRL_INVALID);
-		dowrite = True;
-	}
-
-	/*
-	 * Read the RecordsHeader from the server. Just the number of
-	 * data records that will follow.
-	 */
-	if((*err_ret = _OWPReadFetchRecordsHeader(cntrl,&num_rec)) <
-								OWPErrWARNING)
-		goto failure;
+    OWPAcceptType	acceptval;
+    u_int8_t            finished;
+    u_int32_t           n;
+    OWPTestSession	tsession = NULL;
+    OWPSessionHeaderRec	hdr;
+    off_t               toff;
+    u_int8_t		buf[_OWP_FETCH_BUFFSIZE];
+    OWPBoolean		dowrite = True;
 
 
-	for(n=num_rec;
-			n >= _OWP_FETCH_TESTREC_BLOCKS;
-				n -= _OWP_FETCH_TESTREC_BLOCKS){
-		if(_OWPReceiveBlocks(cntrl,buf,_OWP_FETCH_AES_BLOCKS) !=
-							_OWP_FETCH_AES_BLOCKS){
-			*err_ret = OWPErrFATAL;
-			goto failure;
-		}
-		if(dowrite && (fwrite(buf,_OWP_TESTREC_SIZE,
-					_OWP_FETCH_TESTREC_BLOCKS,fp) !=
-						_OWP_FETCH_TESTREC_BLOCKS)){
-			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"OWPFetchSession: fwrite(): %M");
-			dowrite = False;
-		}
-	}
+    *err_ret = OWPErrOK;
 
-	if(n){
-		/*
-		 * Read enough AES blocks to get remaining records.
-		 */
-		int	blks = n*_OWP_TESTREC_SIZE/_OWP_RIJNDAEL_BLOCK_SIZE + 1;
+    if(!fp){
+        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+                "OWPFetchSession: Invalid fp");
+        *err_ret = OWPErrFATAL;
+        return 0;
+    }
 
-		if(_OWPReceiveBlocks(cntrl,buf,blks) != blks){
-			*err_ret = OWPErrFATAL;
-			goto failure;
-		}
-		if(dowrite && (fwrite(buf,_OWP_TESTREC_SIZE,n,fp) != n)){
-			OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-					"OWPFetchSession: fwrite(): %M");
-			dowrite = False;
-		}
-		/* check zero padding */
-		for(i=(n*_OWP_TESTREC_SIZE);
-				i < (blks*_OWP_RIJNDAEL_BLOCK_SIZE);i++){
-			if(buf[i] != 0){
-				OWPError(cntrl->ctx,OWPErrINFO,OWPErrUNKNOWN,
-				"OWPFetchSession: record padding non-zero");
-			}
-		}
-	}
+    /*
+     * Initialize file header record.
+     */
+    memset(&hdr,0,sizeof(hdr));
 
-	fflush(fp);
+    /*
+     * Make the request of the server.
+     */
+    if((*err_ret = _OWPWriteFetchSession(cntrl,begin,end,sid)) < OWPErrWARNING){
+        goto failure;
+    }
 
-	/*
-	 * Read final MBZ AES block to finalize transaction.
-	 */
-	if(_OWPReceiveBlocks(cntrl,buf,1) != 1){
-		*err_ret = OWPErrFATAL;
-		goto failure;
-	}
+    /*
+     * Read the response
+     */
+    if((*err_ret = _OWPReadFetchAck(cntrl,&acceptval,&finished,&hdr.next_seqno,
+                    &hdr.num_skiprecs,&hdr.num_datarecs)) < OWPErrWARNING){
+        goto failure;
+    }
+    /* store 8 bit finished in 32 bit hdr.finished field. */
+    hdr.finished = finished;
 
-	if(memcmp(cntrl->zero,buf,_OWP_RIJNDAEL_BLOCK_SIZE)){
-		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"OWPFetchSession:Final MBZ block corrupt");
-		*err_ret = OWPErrFATAL;
-		goto failure;
-	}
+    /*
+     * If the server didn't accept, the fetch response is complete.
+     */
+    if(acceptval != OWP_CNTRL_ACCEPT){
+        return 0;
+    }
 
-	/*
-	 * reset state to request.
-	 */
-	cntrl->state &= ~_OWPStateFetching;
-	cntrl->state |= _OWPStateRequest;
+    /*
+     * Representation of original TestReq is first.
+     */
+    if((*err_ret = _OWPReadTestRequest(cntrl,NULL,&tsession,NULL)) != OWPErrOK){
+        goto failure;
+    }
 
-	if(!dowrite){
-		*err_ret = OWPErrWARNING;
-		num_rec = 0;
-	}
+    /*
+     * Write the file header now. First encode the tsession into
+     * a SessionHeader.
+     */
+    assert(sizeof(hdr.addr_sender) >= tsession->sender->saddrlen);
+    memcpy(&hdr.addr_sender,tsession->sender->saddr,tsession->sender->saddrlen);
+    memcpy(&hdr.addr_receiver,tsession->receiver->saddr,
+            tsession->receiver->saddrlen);
 
-	return num_rec;
+    hdr.conf_sender = tsession->conf_sender;
+    hdr.conf_receiver = tsession->conf_receiver;
+
+    memcpy(hdr.sid,tsession->sid,sizeof(hdr.sid));
+    /* hdr.test_spec will now point at same slots memory. */
+    hdr.test_spec = tsession->test_spec;
+
+    /*
+     * Now, actually write the header
+     */
+    if( !OWPWriteDataHeader(cntrl->ctx,fp,&hdr)){
+        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                "OWPFetchSession: OWPWriteDataHeader(): %M");
+        *err_ret = OWPErrWARNING;
+        (void)_OWPTestSessionFree(tsession,OWP_CNTRL_INVALID);
+        dowrite = False;
+    }
+
+    /*
+     * Skip records:
+     *
+     * How many octets of skip records?
+     */
+    toff = fhdr.num_skiprecs * _OWP_SKIPREC_SIZE;
+
+    /*
+     * Read even AES blocks of skips first
+     */
+    while(toff > _OWP_RIJNDAEL_BLOCK_SIZE){
+        if(_OWPReceiveBlocks(cntrl,buf,1) != 1){
+            *err_ret = OWPErrFATAL;
+            goto failure;
+        }
+        if(dowrite && ( fwrite(buf,_OWP_RIJNDAEL_BLOCK_SIZE,fp) !=
+                    _OWP_RIJNDAEL_BLOCK_SIZE)){
+            OWPError(cntrl->ctx,OWPErrFATAL,errno,
+                    "OWPFetchSession: fwrite(): %M");
+            dowrite = False;
+        }
+        toff -= _OWP_RIJNDAEL_BLOCK_SIZE;
+    }
+    /*
+     * Finish incomplete block
+     */
+    if(toff){
+        if(_OWPReceiveBlocks(cntrl,buf,1) != 1){
+            *err_ret = OWPErrFATAL;
+            goto failure;
+        }
+        if(dowrite && ( fwrite(buf,toff,fp) != toff)){
+            OWPError(cntrl->ctx,OWPErrFATAL,errno,
+                    "OWPFetchSession: fwrite(): %M");
+            dowrite = False;
+        }
+    }
+
+    /*
+     * Read one block of IZP
+     */
+    if(_OWPReceiveBlocks(cntrl,buf,1) != 1){
+        *err_ret = OWPErrFATAL;
+        goto failure;
+    }
+    if(memcmp(cntrl->zero,buf,_OWP_RIJNDAEL_BLOCK_SIZE)){
+        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                "OWPFetchSession: IZP block corrupt");
+        *err_ret = OWPErrFATAL;
+        goto failure;
+    }
+
+    /*
+     * Data records are next
+     *
+     */
+
+    /*
+     * File pointer should now be positioned for data.
+     * (verify)
+     */
+    if( (toff = ftello(fp)) < 0){
+        OWPError(cntrl->ctx,OWPErrFATAL,errno,
+                "OWPFetchSession: ftello(): %M");
+        dowrite = False;
+    }
+    else if(toff != hdr.oset_skiprecs){
+        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                "OWPFetchSession: Invalid datarec offset!");
+        dowrite = False;
+    }
+
+    for(n=hdr.num_datarecs;
+            n >= _OWP_FETCH_DATAREC_BLOCKS;
+            n -= _OWP_FETCH_DATAREC_BLOCKS){
+        if(_OWPReceiveBlocks(cntrl,buf,_OWP_FETCH_AES_BLOCKS) !=
+                _OWP_FETCH_AES_BLOCKS){
+            *err_ret = OWPErrFATAL;
+            goto failure;
+        }
+        if(dowrite && (fwrite(buf,_OWP_DATAREC_SIZE,
+                        _OWP_FETCH_DATAREC_BLOCKS,fp) !=
+                    _OWP_FETCH_DATAREC_BLOCKS)){
+            OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                    "OWPFetchSession: fwrite(): %M");
+            dowrite = False;
+        }
+    }
+
+    if(n){
+        /*
+         * Read enough AES blocks to get remaining records.
+         */
+        int	blks = n*_OWP_DATAREC_SIZE/_OWP_RIJNDAEL_BLOCK_SIZE + 1;
+
+        if(_OWPReceiveBlocks(cntrl,buf,blks) != blks){
+            *err_ret = OWPErrFATAL;
+            goto failure;
+        }
+        if(dowrite && (fwrite(buf,_OWP_DATAREC_SIZE,n,fp) != n)){
+            OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                    "OWPFetchSession: fwrite(): %M");
+            dowrite = False;
+        }
+    }
+
+    fflush(fp);
+
+    /*
+     * Read final block of IZP
+     */
+    if(_OWPReceiveBlocks(cntrl,buf,1) != 1){
+        *err_ret = OWPErrFATAL;
+        goto failure;
+    }
+    if(memcmp(cntrl->zero,buf,_OWP_RIJNDAEL_BLOCK_SIZE)){
+        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                "OWPFetchSession: IZP block corrupt");
+        *err_ret = OWPErrFATAL;
+        goto failure;
+    }
+
+    /*
+     * reset state to request.
+     */
+    cntrl->state &= ~_OWPStateFetching;
+    cntrl->state |= _OWPStateRequest;
+
+    if(!dowrite){
+        *err_ret = OWPErrWARNING;
+        hdr.num_datarecs = 0;
+    }
+
+    return hdr.num_datarecs;
 
 failure:
-	(void)_OWPFailControlSession(cntrl,*err_ret);
-	return 0;
+    (void)_OWPFailControlSession(cntrl,*err_ret);
+    return 0;
 }

@@ -64,10 +64,43 @@ EndpointAlloc(
 
     ep->cntrl = cntrl;
     ep->sockfd = -1;
+    ep->skiprecfd = -1;
     ep->acceptval = OWP_CNTRL_INVALID;
     ep->wopts = WNOHANG;
 
     return ep;
+}
+
+static void
+LostFree(
+        OWPLostPacket   lost
+        )
+{
+    OWPLostPacket   lt;
+
+    while(lost){
+        lt = lost->next;
+        free(lost);
+        lost = lt;
+    }
+
+    return;
+}
+
+static void
+SkipFree(
+        OWPSkip skip
+        )
+{
+    OWPSkip st;
+
+    while(skip){
+        st = skip->next;
+        free(skip);
+        skip=st;
+    }
+
+    return;
 }
 
 /*
@@ -112,6 +145,11 @@ EndpointClear(
         ep->payload = NULL;
     }
 
+    LostFree(ep->lost_allocated);
+    ep->lost_allocated = NULL;
+    SkipFree(ep->skip_allocated);
+    ep->skip_allocated = NULL;
+
     return;
 }
 
@@ -140,6 +178,10 @@ EndpointFree(
 
     EndpointClear(ep);
 
+    if(ep->skiprecfd > -1){
+        close(ep->skiprecfd);
+        ep->skiprecfd = -1;
+    }
     if(ep->userfile){
         _OWPCallCloseFile(ep->cntrl,ep->tsession->closure,ep->userfile,
                 aval);
@@ -178,13 +220,13 @@ reopen_datafile(
     FILE	*fp;
 
     if( (newfd = dup(fileno(infp))) < 0){
-        OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"dup(%d): %M",
+        OWPError(ctx,OWPErrFATAL,errno,"dup(%d): %M",
                 fileno(infp));
         return NULL;
     }
 
     if( !(fp = fdopen(newfd,"wb"))){
-        OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN, "fdopen(%d): %M",newfd);
+        OWPError(ctx,OWPErrFATAL,errno, "fdopen(%d): %M",newfd);
         return NULL;
     }
 
@@ -270,6 +312,7 @@ _OWPEndpointInit(
     u_int16_t		    range;
     OWPPortRange            portrange=NULL;
     int			    saveerr=0;
+    int			    rc=0;
 
     *err_ret = OWPErrFATAL;
     *aval = OWP_CNTRL_UNAVAILABLE_TEMP;
@@ -295,8 +338,8 @@ _OWPEndpointInit(
 
     ep->len_payload = OWPTestPayloadSize(ep->cntrl->mode,
             ep->tsession->test_spec.packet_size_padding);
-    if(ep->len_payload < _OWP_TESTREC_SIZE){
-        ep->len_payload = _OWP_TESTREC_SIZE;
+    if(ep->len_payload < _OWP_DATAREC_SIZE){
+        ep->len_payload = _OWP_DATAREC_SIZE;
     }
     ep->payload = malloc(ep->len_payload);
 
@@ -456,7 +499,6 @@ success:
      */
     if(!ep->send){
         size_t		size;
-        struct stat	statbuf;
         OWPLostPacket	alist;
 
         /*
@@ -490,17 +532,21 @@ success:
             goto error;
         }
 
-        for(i=0;i<ep->numalist;i++){
+        /*
+         * [0] is used to track the list of allocated arrays so they
+         * can be freed.
+         */
+        ep->lost_allocated = alist;
+        for(i=1;i<ep->numalist;i++){
             alist[i].next = ep->freelist;
             ep->freelist = &alist[i];
         }
-
 
         if(!(ep->lost_packet_buffer = I2HashInit(cntrl->ctx->eh,
                         ep->numalist*PACKBUFFALLOCFACTOR,
                         CmpLostPacket,HashLostPacket))){
             OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                    "_OWPEndpointInit: Unable to initialize lost packet buffer");
+                "_OWPEndpointInit: Unable to initialize lost packet buffer");
             goto error;
         }
 
@@ -536,39 +582,41 @@ success:
         /*
          * Determine "optimal" file buffer size. To allow "Fetch"
          * clients to access ongoing tests - we define "optimal" as
-         * approximately 1 second of buffering. (Or 1 record - whichever
-         * takes longer.)
+         * approximately 1 second of buffering.
          */
-
-        /* stat to find out st_blksize */
-        if(fstat(fileno(ep->datafile),&statbuf) != 0){
-            OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                    "fstat(): %M");
-            goto error;
-        }
 
         /*
          * Determine data rate. i.e. size/second.
          */
         size = OWPTestPacketRate(cntrl->ctx,&ep->tsession->test_spec) *
-            _OWP_TESTREC_SIZE;
+            _OWP_DATAREC_SIZE;
 
-        /*
-         * Don't make buffer larger than "default"
-         */
-        size = MIN(size,(size_t)statbuf.st_blksize);
+        if(size < _OWP_DATAREC_SIZE){
+            /* If rate is less than one packet/second then unbuffered */
+            setvbuf(ep->datafile,NULL,_IONBF,0);
+        }
+        else{
+            struct stat	statbuf;
 
-        /*
-         * buffer needs to be at least as large as one record.
-         */
-        if(size < _OWP_TESTREC_SIZE){
-            size = _OWP_TESTREC_SIZE;
+            /* stat to find out st_blksize */
+            if(fstat(fileno(ep->datafile),&statbuf) != 0){
+                OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                        "fstat(): %M");
+                goto error;
+            }
+
+            /*
+             * Don't make buffer larger than "default"
+             */
+            size = MIN(size,(size_t)statbuf.st_blksize);
+
+
+            if( !(ep->fbuff = malloc(size))){
+                OWPError(cntrl->ctx,OWPErrFATAL,errno,"malloc(): %M");
+                goto error;
+            }
+            setvbuf(ep->datafile,ep->fbuff,_IOFBF,size);
         }
-        if( !(ep->fbuff = malloc(size))){
-            OWPError(cntrl->ctx,OWPErrFATAL,errno,"malloc(): %M");
-            goto error;
-        }
-        setvbuf(ep->datafile,ep->fbuff,_IOFBF,size);
 
         /*
          * receiver - need to set the recv buffer size large
@@ -635,9 +683,116 @@ success:
         }
     }
     else{
+        OWPSkip askip;
+        int     tries=0;
+        char    *skiprec_file;
+
         /*
-         * We are sender - need to set sockopt's to ensure we don't
-         * fragment our test packets in the socket api.
+         * Create a file for sharing skip records. (shared memory makes
+         * sense for this file, but it is not a requirements.)
+         *
+         * The child process will fill this with Skip information that
+         * the parent will read after the child exits. The child will
+         * size the memory at the completion of the session and the
+         * parent can use stat to determine how much to read.
+         * This could be done with a file just as easily... Just
+         * using shared mem becuase it *should* work and *should* allow
+         * better performance on systems with reasonable shared memory
+         * implementations.
+         * Note that this could not be done with a socket/pipe because it
+         * is unknown how much data will be coming through, and the parent
+         * api gives control of the "event loop" back to the application.
+         * Therefore, there is no easy way of adding a "select" for the
+         * new fd. It is possible the child will be sending more data
+         * than a pipe implementation would buffer, therefore the child
+         * process would need to stay around until the pipe is completely
+         * read. Using a file/shm implementation allows the data to be around
+         * after the child exits no matter the size.
+         */
+#define OWP_SHM_TMPDIR    "/tmp"
+#define OWP_SHM_PREFIX    "OWP_TEST_SKIP_RECORDS"
+#define OWP_SHM_TRIES   5
+
+        if(!(skiprec_file = tempnam(OWP_SHM_TMPDIR,OWP_SHM_PREFIX))){
+            OWPError(cntrl->ctx,OWPErrFATAL,errno,"tempnam(): %M");
+            goto error;
+        }
+
+SHM_AGAIN:
+        if((ep->skiprecfd = shm_open(OWP_SHM_NAME,O_RDWR|O_CREAT|O_EXEL,
+                        S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH)) < 0){
+            switch(errno){
+                case EINTR:
+                    goto SHM_AGAIN;
+                    break;
+                case EEXIST:
+                    /* It is conceivable that the tempnam above is not
+                     * unique - so we try a couple of times.
+                     * (This should be rare unless tempnam() is very
+                     * broken on this OS.)
+                     */
+                    if(tries++ < OWP_SHM_TRIES)
+                        goto SHM_AGAIN;
+                    /*fallthrough*/
+                default:
+                    OWPError(cntrl->ctx,OWPErrFATAL,errno,"shm_open(): %M");
+                    free(skiprec_file);
+                    goto error;
+                    break;
+            }
+        }
+
+        /*
+         * Unlink shm segment and free filename memory.
+         */
+        rc = shm_unlink(skiprec_file);
+        saveerr = errno;
+
+        /* need to free the fname memory even if unlinking failed. */
+        free(skiprec_file);
+
+        /* if unlinking failed, then bail. */
+        if(rc != 0){
+            OWPError(cntrl->ctx,OWPErrFATAL,saveerr,"shm_unlink(): %M");
+            goto error;
+        }
+
+        /*
+         * pre-allocate nodes for skipped packet buffer.
+         *
+         * Will initially allocate MIN(100,(.10*npackets)).
+         * The worst case is .5*npackets (if every other
+         * packet needed to be skipped) but in most cases
+         * this list of holes will be much smaller. This
+         * list will dynamically grow if needed. This is
+         * being pre-allocated to at least minimize the number
+         * of dynamic allocations tht need to happen during
+         * a test.
+         */
+#define PACKBUFFALLOCFACTOR	2
+
+        ep->free_skiplist=NULL;
+        ep->num_allocskip = .10 * ep->tsession->test_spec.npackets;
+        ep->num_allocskip = MIN(ep->num_allocskip,100);
+
+        if(!(askip = calloc(sizeof(OWPSkipRec),ep->num_allocskip))){
+            OWPError(cntrl->ctx,OWPErrFATAL,errno,"calloc(): %M");
+            goto error;
+        }
+
+        /*
+         * [0] is used to track the list of allocated arrays so they
+         * can be freed.
+         */
+        ep->skip_allocated = askip;
+        for(i=1;i<ep->num_allocskip;i++){
+            askip[i].next = ep->free_skiplist;
+            ep->free_skiplist = &askip[i];
+        }
+
+        /*
+         * Sender needs to set sockopt's to ensure test
+         * packets don't fragment in the socket api.
          */
 
         opt_size = sizeof(sopt);
@@ -830,6 +985,65 @@ sig_catch(
     return;
 }
 
+static void
+skip(
+        OWPEndpoint ep,
+        u_int32_t   seq
+        )
+{
+    OWPSkip node;
+
+    /*
+     * If this is the next seq in a current hole, increase the
+     * hole size and return.
+     */
+    if(ep->tail_skip && (ep->tail_skip->end + 1 == seq)){
+        ep->tail_skip->end = seq;
+        return;
+    }
+
+    if(!ep->free_skiplist){
+        u_int32_t   i;
+
+        if(!(node = calloc(sizeof(OWPSkipRec),ep->num_allocskip))){
+            OWPError(ep->cntrl->ctx,OWPErrFATAL,errno,
+                    "calloc(): %M");
+            exit(OWP_CNTRL_UNAVAILABLE_TEMP);
+        }
+
+        /* [0] is used to hold the malloc memory blocks list from
+         * skip_allocated, and is not part of the "free" nodes
+         * list.
+         */
+        node[0].next = ep->skip_allocated;
+        ep->skip_allocated = node;
+        /*
+         * Now take the rest of the newly allocated nodes and make them
+         * part of the "free" list.
+         */
+        for(i=1;i<ep->num_allocskip;i++){
+            node[i].next = ep->free_skiplist;
+            ep->free_skiplist = &node[i];
+        }
+    }
+
+    node = ep->free_skiplist;
+    ep->free_skiplist = ep->free_skiplist->next;
+
+    node->begin = node->end = seq;
+    node->next = NULL;
+
+    if(!ep->tail_skip){
+        ep->tail_skip = ep->head_skip = node;
+    }
+    else{
+        ep->tail_skip->next = node;
+        ep->tail_skip = node;
+    }
+
+    return;
+}
+
 /*
  * Function:	run_sender
  *
@@ -850,24 +1064,25 @@ run_sender(
         OWPEndpoint	ep
         )
 {
-    u_int32_t	i;
-    struct timespec	currtime;
-    struct timespec	nexttime;
-    struct timespec	timeout;
-    struct timespec	latetime;
-    struct timespec	sleeptime;
-    u_int32_t	        esterror;
-    u_int32_t	        lasterror=0;
-    int		        sync;
-    ssize_t		sent;
-    u_int32_t	        *seq;
-    u_int8_t	        clr_buffer[32];
-    u_int8_t	        zeroiv[16];
-    u_int8_t	        *payload;
-    u_int8_t	        *tstamp;
-    u_int8_t	        *tstamperr;
-    OWPTimeStamp	owptstamp;
-    OWPNum64	        nextoffset;
+    u_int32_t	    i;
+    struct timespec currtime;
+    struct timespec nexttime;
+    struct timespec timeout;
+    struct timespec latetime;
+    struct timespec sleeptime;
+    u_int32_t	    esterror;
+    u_int32_t	    lasterror=0;
+    int		    sync;
+    ssize_t	    sent;
+    u_int32_t	    *seq;
+    u_int8_t	    clr_buffer[32];
+    u_int8_t	    zeroiv[16];
+    u_int8_t	    *payload;
+    u_int8_t	    *tstamp;
+    u_int8_t	    *tstamperr;
+    OWPTimeStamp    owptstamp;
+    OWPNum64	    nextoffset;
+    OWPSkip         sr;
 
     /*
      * Initialize pointers to various positions in the packet buffer,
@@ -967,15 +1182,8 @@ run_sender(
         }
 
 AGAIN:
-        if(owp_int){
-            exit(OWP_CNTRL_FAILURE);
-        }
-        if(owp_usr2){
-            /*
-             * TODO: v6 - send (i-1) to control process
-             * for inclusion in StopSessions message...
-             */
-            exit(OWP_CNTRL_ACCEPT);
+        if(owp_int || owp_usr2){
+            goto finish_sender;
         }
 
         if(!_OWPGetTimespec(ep->cntrl->ctx,&currtime,&esterror,&sync)){
@@ -996,9 +1204,7 @@ AGAIN:
             latetime = timeout;
             timespecadd(&latetime,&nexttime);
             if(timespeccmp(&currtime,&latetime,>)){
-                /*
-                 * TODO: reduce num_sent?
-                 */
+                skip(ep,i);
                 goto SKIP_SEND;
             }
 
@@ -1135,6 +1341,55 @@ SKIP_SEND:
         }
     }
 
+finish_sender:
+    if(owp_int){
+        exit(OWP_CNTRL_FAILURE);
+    }
+
+    /*
+     * send (i = nextseq, skip records) to control process
+     * for inclusion in StopSessions message...
+     * Use network byte order so the data from the fd can just
+     * be copied into the StopSessions message. (Besides, this
+     * allows the control portion of the server to be on a different
+     * architecture than the sender if this is ever extended to an
+     * rpc model.)
+     *
+     */
+
+    /* save "Next Seqno"    */
+    i = htonl(i);
+    if(I2Writeni(ep->skiprecfd,&i,4,&owp_int) != 4){
+        exit(OWP_CNTRL_FAILURE);
+    }
+
+    /*
+     * count the skip recs  - this means twice through the loop, but
+     * that is most likely faster than the system call to do the
+     * lseek that would be required to write the num_skips after
+     * parsing the loop.
+     */
+    /* reuse i */
+    for(i=0,sr = ep->head_skip; sr; sr = sr->next,i++);
+    /* save "Num Skip Records"    */
+    i = htonl(i);
+    if(I2Writeni(ep->skiprecfd,&i,4,&owp_int) != 4){
+        exit(OWP_CNTRL_FAILURE);
+    }
+
+    /*
+     * Now save the skip records.
+     */
+    for(sr = ep->head_skip; sr; sr = sr->next){
+        u_int8_t   skipmsg[_OWP_SKIPREC_SIZE];
+
+        _OWPEncodeSkipRecord((u_int8_t *)skipmsg,sr);
+        if(I2Writeni(ep->skiprecfd,skipmsg,_OWP_SKIPREC_SIZE,&owp_int) !=
+                _OWP_SKIPREC_SIZE){
+            exit(OWP_CNTRL_FAILURE);
+        }
+    }
+
     exit(OWP_CNTRL_ACCEPT);
 }
 
@@ -1159,14 +1414,16 @@ alloc_node(
         u_int64_t	i;
 
         OWPError(ep->cntrl->ctx,OWPErrINFO,OWPErrUNKNOWN,
-                "get_node: Allocating additional nodes for lost-packet-buffer!");
+                "alloc_node: Allocating nodes for lost-packet-buffer!");
         if(!(node = calloc(sizeof(OWPLostPacketRec),ep->numalist))){
             OWPError(ep->cntrl->ctx,OWPErrFATAL,errno,
                     "calloc(): %M");
             return NULL;
         }
 
-        for(i=0;i<ep->numalist;i++){
+        node[0].next = ep->lost_allocated;
+        ep->lost_allocated = node;
+        for(i=1;i<ep->numalist;i++){
             node[i].next = ep->freelist;
             ep->freelist = &node[i];
         }
@@ -1374,35 +1631,35 @@ run_receiver(
         OWPEndpoint	ep
         )
 {
-    double			fudge;
-    struct timespec		currtime;
-    struct timespec		fudgespec;
-    struct timespec		lostspec;
-    struct timespec		expectspec;
-    struct itimerval	wake;
-    u_int32_t		*seq;
-    u_int8_t		*tstamp;
-    u_int8_t		*tstamperr;
-    u_int8_t		*z1,*z2;
-    u_int8_t		zero[12];
-    u_int8_t		iv[16];
-    u_int8_t		recvbuf[10];
-    u_int32_t		esterror,lasterror=0;
-    int			sync;
-    OWPTimeStamp		expecttime;
-    OWPSessionHeaderRec	hdr;
-    u_int8_t		lostrec[_OWP_TESTREC_SIZE];
-    OWPLostPacket		node;
-    int			owp_intr;
-    u_int32_t		npackets;
-    u_int32_t		finished = _OWP_SESSION_FIN_NORMAL;
-    OWPDataRec		datarec;
+    double              fudge;
+    struct timespec     currtime;
+    struct timespec     fudgespec;
+    struct timespec     lostspec;
+    struct timespec     expectspec;
+    struct itimerval    wake;
+    u_int32_t           *seq;
+    u_int32_t           maxseq=0;
+    u_int8_t            *tstamp;
+    u_int8_t            *tstamperr;
+    u_int8_t            *z1,*z2;
+    u_int8_t            zero[12];
+    u_int8_t            iv[16];
+    u_int8_t            recvbuf[10];
+    u_int32_t           esterror,lasterror=0;
+    int                 sync;
+    OWPTimeStamp        expecttime;
+    OWPSessionHeaderRec hdr;
+    u_int8_t            lostrec[_OWP_DATAREC_SIZE];
+    OWPLostPacket       node;
+    int                 owp_intr;
+    u_int32_t           finished = _OWP_SESSION_FIN_INCOMPLETE;
+    OWPDataRec          datarec;
 
     /*
-     * Prepare the file header - had to wait until now so we could
+     * Prepare the file header - had to wait until now to
      * get the real starttime.
      */
-    hdr.header = True;
+    memset(&hdr,0,sizeof(hdr));
     hdr.finished = _OWP_SESSION_FIN_ERROR;
     memcpy(&hdr.sid,ep->tsession->sid,sizeof(hdr.sid));
     memcpy(&hdr.addr_sender,ep->tsession->sender->saddr,
@@ -1441,19 +1698,19 @@ run_receiver(
         default:
             /*
              * things would have failed way earlier
-             * but put default in to stop annoying
+             * but putting default in to stop annoying
              * compiler warnings...
              */
             exit(OWP_CNTRL_FAILURE);
     }
 
     /*
-     * Initialize the buffer we use to report "lost" packets.
+     * Initialize the buffer used to report "lost" packets.
      */
-    memset(lostrec,0,_OWP_TESTREC_SIZE);
+    memset(lostrec,0,_OWP_DATAREC_SIZE);
 
     /*
-     * Get the "average" packet interval. I will use this
+     * Get the "average" packet interval. I use this
      * to set the wake up timer to MIN(2*packet_interval,1) past the
      * time it can be declared lost. (lets call this fudgespec)
      * With luck, this will allow the next received packet to be the
@@ -1587,37 +1844,18 @@ again:
         lasterror = esterror;
         datarec.recv.sync = sync;
 
-
         /*
-         * TODO: v6 If owp_usr2 - get the last seq number from other
-         * side. (Hmmm - how should I do this ipc? thinking...)
-         *
-         * if(owp_usr2){
-         * 	fetch last_seq.
-         * 	if(last_seq & 0xFFFFFFFF){
-         * 		finished = _OWP_SESSION_FIN_INCOMPLETE;
-         * 		npackets = ep->end->seq+1;
-         * 	}
-         * 	else{
-         * 		if(last_seq < ep->begin){
-         * 			CLEAN_PACKET_RECS = TRUE;
-         * 		}
-         * 		npackets = last_seq+1;
-         * 	}
-         * }
-         * else{
-         *	npackets = ep->tsession->test_spec.npackets;
-         * }
+         * Set expectspec to the time the oldest (begin) packet
+         * in the missing packet queue should be declared lost.
          */
-        npackets = ep->tsession->test_spec.npackets;
+        timespecclear(&expectspec);
+        timespecadd(&expectspec,&ep->begin->absolute);
+        timespecadd(&expectspec,&lostspec);
 
         /*
          * Flush the missing packet buffer. Output missing packet
          * records along the way.
          */
-        timespecclear(&expectspec);
-        timespecadd(&expectspec,&ep->begin->absolute);
-        timespecadd(&expectspec,&lostspec);
         while(timespeccmp(&expectspec,&currtime,<)){
 
             /*
@@ -1629,7 +1867,8 @@ again:
              * already have missing packet records in our
              * queue.)
              */
-            if(!ep->begin->hit && (ep->begin->seq < npackets)){
+            if(!ep->begin->hit &&
+                    (ep->begin->seq < ep->tsession->test_spec.npackets)){
                 /*
                  * set fields in datarec for missing packet
                  * record.
@@ -1658,13 +1897,16 @@ again:
                             "OWPWriteDataRecord()");
                     goto error;
                 }
+                if(datarec.seq_no > maxseq){
+                    maxseq = datarec.seq_no;
+                }
             }
             /*
              * This is not likely... But it is a sure indication
              * of problems.
              */
             else if((ep->begin->hit) &&
-                    (ep->begin->seq >= npackets)){
+                    (ep->begin->seq >= ep->tsession->test_spec.npackets)){
                 OWPError(ep->cntrl->ctx,OWPErrFATAL,
                         OWPErrINVALID,
                         "Invalid packet seq received");
@@ -1680,7 +1922,7 @@ again:
             if(ep->begin->next){
                 ep->begin = ep->begin->next;
             }
-            else if((ep->begin->seq+1) < npackets){
+            else if((ep->begin->seq+1) < ep->tsession->test_spec.npackets){
                 ep->begin = get_node(ep,ep->begin->seq+1);
             }
             else{
@@ -1798,7 +2040,7 @@ again:
 
 
         /*
-         * Now we can start the validity tests from Section 6.1 of
+         * Now we can start the validity tests from Section 4.2 of
          * the spec...
          * MUST discard if:
          */
@@ -1834,17 +2076,16 @@ again:
                     "OWPWriteDataRecord()");
             goto error;
         }
+        if(datarec.seq_no > maxseq){
+            maxseq = datarec.seq_no;
+        }
     }
 test_over:
 
     /*
-     * Set the "finished" bit in the file.
-     */
-    /*
-     * TODO: V6
-     * if(CLEAN_PACKET_RECS){
-     * 	parse file and truncate file after last_seq
-     * }
+     * Set the "finished" bit in the file to "incomplete". The parent
+     * process will change this to "normal" after evaluating the
+     * data from the stop sessiosn message.
      */
     if(_OWPWriteDataHeaderFinished(ep->cntrl->ctx,ep->datafile,finished)){
         goto error;
@@ -1867,15 +2108,15 @@ error:
 
 /*
  * Note: We explicitly do NOT connect the send udp socket. This is because
- * each individual packet needs to be treated independant of the others. send
- * causes the socket to close if certain ICMP messages come back. We
- * specifically do NOT want this behavior.
+ * each individual packet needs to be treated independant of the others.
+ * Connecting the socket to simplify send causes the socket to close if
+ * certain ICMP messages come back. We specifically do NOT want this behavior.
  */
 OWPBoolean
 _OWPEndpointInitHook(
         OWPControl	cntrl,
         OWPTestSession	tsession,
-	OWPAcceptType	*aval,
+        OWPAcceptType	*aval,
         OWPErrSeverity	*err_ret
         )
 {
@@ -2125,7 +2366,7 @@ _OWPEndpointStart(
     return False;
 }
 
-OWPBoolean
+void
 _OWPEndpointStatus(
         OWPEndpoint	ep,
         OWPAcceptType	*aval,		/* out */
@@ -2166,27 +2407,20 @@ AGAIN:
     }
 
     *aval = ep->acceptval;
-    return True;
+    return;
 }
 
 
-OWPBoolean
+void
 _OWPEndpointStop(
         OWPEndpoint	ep,
-        OWPAcceptType	aval,
+        OWPAcceptType	*aval,
         OWPErrSeverity	*err_ret
         )
 {
-    int		sig;
-    int		teststatus;
-    OWPBoolean	retval;
-
-    /*
-     * TODO: v6 This function should "retrieve" the last seq_no/or
-     * num_packets sent. From the child and it should take as an arg
-     * the last_seq from the other side if it is available to send
-     * to the endpoint if needed.
-     */
+    int		    sig;
+    OWPAcceptType   teststatus=OWP_CNTRL_ACCEPT;
+    OWPBoolean	    retval;
 
     if((ep->acceptval >= 0) || (ep->child == 0)){
         *err_ret = OWPErrOK;
@@ -2195,10 +2429,12 @@ _OWPEndpointStop(
 
     *err_ret = OWPErrFATAL;
 
-    if(aval)
-        sig = SIGINT;
-    else
+    if(*aval == OWP_CNTRL_ACCEPT){
         sig = SIGUSR2;
+    }
+    else{
+        sig = SIGINT;
+    }
 
     /*
      * If child already exited, kill will come back with ESRCH
@@ -2212,7 +2448,7 @@ _OWPEndpointStop(
      * (Should we add a timer to break out? No - not that paranoid yet.)
      */
     ep->wopts &= ~WNOHANG;
-    retval = _OWPEndpointStatus(ep,&teststatus,err_ret);
+    _OWPEndpointStatus(ep,&teststatus,err_ret);
     if(teststatus >= 0)
         goto done;
 
@@ -2220,11 +2456,28 @@ error:
     OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
             "EndpointStop:Can't signal child #%d: %M",ep->child);
 done:
-    if(aval < ep->acceptval){
-        aval = ep->acceptval;
+    /*
+     * If accept state was good upon calling this function, but there
+     * was an error stopping this session - report the problem up.
+     */
+    if((*aval == OWP_CNTRL_ACCEPT) && (ep->acceptval != OWP_CNTRL_ACCEPT)){
+        *aval = ep->acceptval;
     }
-    ep->tsession->endpoint = NULL;
-    EndpointFree(ep,aval);
 
-    return retval;
+    return;
+}
+
+extern void
+_OWPEndpointFree(
+        OWPEndpoint     ep,
+        OWPAcceptType   *aval,
+        OWPErrSeverity  *err_ret
+        )
+{
+    _OWPEndpointStop(ep,aval,err_ret);
+
+    ep->tsession->endpoint = NULL;
+    EndpointFree(ep,*aval);
+
+    return;
 }

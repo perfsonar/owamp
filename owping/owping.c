@@ -346,7 +346,7 @@ owp_update_stats(
         state->errest = errest;
     }
 
-    if (!rec->send.sync || !rec->send.sync)
+    if (!rec->send.sync || !rec->recv.sync)
         state->sync = 0;
 
     bucket = owp_bucket(delay);
@@ -508,7 +508,7 @@ owp_do_summary(fetch_state *state)
 
     if (state->sync)
         fprintf(state->fp, 
-                "one-way delay min/median = %.3f/%.3f ms  (precision %.5g s)\n", 
+                "one-way delay min/median = %.3f/%.3f ms  (precision %.5g s)\n",
                 min, owp_get_percentile(state, 0.5)*THOUSAND,
                 state->errest);
     else

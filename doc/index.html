@@ -42,7 +42,7 @@ OWAMP Version 1.6f <font color="#FF0000">(beta)</font></h1></center>
 $Date$</h5></center>
 <b>OWAMP</b> is a command line client application and a policy daemon used
 to determine one way latencies between hosts. It is an implementation of
-the <b><i>OWAMP</i></b> protocol (<a href="http://www.internet2.edu/~shalunov/ippm/draft-ietf-ippm-owdp-08.txt">http://www.internet2.edu/~shalunov/ippm/draft-ietf-ippm-owdp-08.txt</a>)
+the <b><i>OWAMP</i></b> protocol (<a href="http://www.internet2.edu/~shalunov/ippm/draft-ietf-ippm-owdp-14.txt">http://www.internet2.edu/~shalunov/ippm/draft-ietf-ippm-owdp-14.txt</a>)
 that is currently going through the standardization process within <a href="http://www.ietf.org/">IETF</a>.
 (When referring to the protocol within this document, "<i>OWAMP</i>" will
 be in italicized. In all other instances, "OWAMP" will be referring to
@@ -155,7 +155,7 @@ Resource protection as defined by the policy controls implemented in <b>owampd</
 OWAMP requires a synchronized clock for measurements to be meaningful.
 But, more importantly, the clock needs to be stable. If the system clock
 is stepped during an OWAMP session, the results can be misleading. OWAMP
-requires that NTP be running to synchronize the system clock. NTP must
+requires that NTP (ntpd) be running to synchronize the system clock. NTP must
 be setup correctly on the system for NTP to calculate a reasonable estimate
 of the time error and for it to stabilize the clock. NTP<b> <font color="#FF0000">MUST</font></b><font color="#000000">
 be configured with no fewer than 4 clocks for this purpose. (See <a href="details.html#NTP">details.html</a>

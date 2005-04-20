@@ -895,7 +895,7 @@ OWPProcessStartSessions(
 	for(tsession = cntrl->tests;tsession;tsession = tsession->next){
 		if(tsession->endpoint){
 			if(!_OWPEndpointStart(tsession->endpoint,&err)){
-				(void)_OWPWriteControlAck(cntrl,intr,
+				(void)_OWPWriteStartAck(cntrl,intr,
 							  OWP_CNTRL_FAILURE);
 				return _OWPFailControlSession(cntrl,err);
 			}
@@ -903,7 +903,7 @@ OWPProcessStartSessions(
 		}
 	}
 
-	if( (rc = _OWPWriteControlAck(cntrl,intr,OWP_CNTRL_ACCEPT)) < OWPErrOK)
+	if( (rc = _OWPWriteStartAck(cntrl,intr,OWP_CNTRL_ACCEPT)) < OWPErrOK)
 		return _OWPFailControlSession(cntrl,rc);
 
 
@@ -933,15 +933,6 @@ DoDataRecords(
 	u_int8_t		*buf = (u_int8_t*)cntrl->msg;
 
 	/*
-	 * If this record is not in range - return 0 to continue on.
-	 */
-	if((rec->seq_no < dstate->begin) || (rec->seq_no > dstate->end)){
-		return 0;
-	}
-
-	dstate->count++;
-
-	/*
 	 * Save largest index seen that is not lost.
 	 * (This allows this data to be parsed again to count only those
 	 * records before this index for the purposes of fetching a
@@ -952,11 +943,20 @@ DoDataRecords(
 		dstate->maxiseen = rec->seq_no;
 	}
 
+	/*
+	 * If this record is not in range - return 0 to continue on.
+	 */
+	if((rec->seq_no < dstate->begin) || (rec->seq_no > dstate->end)){
+		return 0;
+	}
+
+	dstate->count++;
+
 	if(dstate->send){
 		/*
 		 * Encode this record into cntrl->msg buffer.
 		 */
-		if(!_OWPEncodeDataRecord(&buf[dstate->inbuf*_OWP_TESTREC_SIZE],
+		if(!_OWPEncodeDataRecord(&buf[dstate->inbuf*_OWP_DATAREC_SIZE],
 									rec)){
 			return -1;
 		}
@@ -965,7 +965,7 @@ DoDataRecords(
 		/*
 		 * If the buffer is full enough to send, do so.
 		 */
-		if(dstate->inbuf == _OWP_FETCH_TESTREC_BLOCKS){
+		if(dstate->inbuf == _OWP_FETCH_DATAREC_BLOCKS){
 			if(_OWPSendBlocksIntr(cntrl,buf,_OWP_FETCH_AES_BLOCKS,
 					dstate->intr) != _OWP_FETCH_AES_BLOCKS){
 				dstate->err = OWPErrFATAL;
@@ -974,7 +974,7 @@ DoDataRecords(
 			}
 			dstate->inbuf = 0;
 		}
-		else if(dstate->inbuf > _OWP_FETCH_TESTREC_BLOCKS){
+		else if(dstate->inbuf > _OWP_FETCH_DATAREC_BLOCKS){
 			dstate->err = OWPErrFATAL;
 			_OWPFailControlSession(cntrl,OWPErrFATAL);
 			return -1;
@@ -986,269 +986,398 @@ DoDataRecords(
 
 OWPErrSeverity
 OWPProcessFetchSession(
-	OWPControl	cntrl,
-	int		*retn_on_intr
-	)
+        OWPControl  cntrl,
+	int         *retn_on_intr
+        )
 {
-	u_int8_t		*buf = (u_int8_t*)cntrl->msg;
-	OWPErrSeverity  	err;
-	OWPAcceptType		acceptval = OWP_CNTRL_REJECT;
-	u_int32_t		begin;
-	u_int32_t		end;
-	OWPSID			sid;
+    u_int8_t                    *buf = (u_int8_t*)cntrl->msg;
+    OWPErrSeverity              err;
+    OWPAcceptType               acceptval = OWP_CNTRL_REJECT;
+    u_int32_t                   begin;
+    u_int32_t                   end;
+    OWPSID                      sid;
 
-	FILE			*fp;
-	char			fname[PATH_MAX];
+    FILE                        *fp;
+    char                        fname[PATH_MAX];
 
-	u_int32_t		ver;
-	u_int32_t		fin;
-	off_t			hdr_off,tr_off,tr_size;
-	struct stat		stat_buf;
+    _OWPSessionHeaderInitialRec fhdr;
+    struct flock                flk;
+    int                         lock_tries=0;
 
-	u_int64_t		filerecs;
-	u_int64_t		sendrecs;
-	struct DoDataState	dodata;
+    u_int32_t                   sendrecs;
+    u_int32_t                   next_seqno = 0;
+    u_int32_t                   num_skiprecs = 0;
+    u_int32_t                   i;
 
-	int			ival=0;
-	int			*intr = &ival;
+    struct DoDataState          dodata;
 
-	if(retn_on_intr){
-		intr = retn_on_intr;
-	}
+    int                         ival=0;
+    int                         *intr = &ival;
 
-	/*
-	 * Read the complete FetchSession request.
-	 */
-	if((err = _OWPReadFetchSession(cntrl,intr,&begin,&end,sid)) < OWPErrOK){
-		return _OWPFailControlSession(cntrl, err);
-	}
+    if(retn_on_intr){
+        intr = retn_on_intr;
+    }
 
-	/*
-	 * Try and open the file containing sid information.
-	 */
-	if( !(fp = _OWPCallOpenFile(cntrl,NULL,sid,fname))){
-		goto reject;
-	}
+    /*
+     * Read the complete FetchSession request.
+     */
+    if((err = _OWPReadFetchSession(cntrl,intr,&begin,&end,sid)) < OWPErrOK){
+        return _OWPFailControlSession(cntrl, err);
+    }
 
-	/*
-	 * Read the file header - fp will end up at beginning of
-	 * TestRequest record.
-	 */
-	if(_OWPReadDataHeaderInitial(cntrl->ctx,fp,&ver,&fin,&hdr_off,
-								&stat_buf)){
-		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-				"_OWPReadDataHeaderInitial(\"%s\"): %M",fname);
-		goto failed;
-	}
+    /*
+     * Try and open the file containing sid information.
+     */
+    if( !(fp = _OWPCallOpenFile(cntrl,NULL,sid,fname))){
+        goto reject;
+    }
 
-	/*
-	 * Only version 3 files are supported for "fetch session"
-	 * response messages.
-	 */
-	if(ver != 3){
-		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-		"OWPProcessFetchSession(\"%s\"): Invalid file version: %d",
-			fname,ver);
-		goto failed;
-	}
+    /*
+     * Read the file header - fp will end up at beginning of
+     * TestRequest record.
+     */
+read_file:
+    if(!_OWPReadDataHeaderInitial(cntrl->ctx,fp,&fhdr)){
+        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                "_OWPReadDataHeaderInitial(\"%s\"): %M",fname);
+        goto failed;
+    }
 
-	if(fin == _OWP_SESSION_FIN_ERROR){
-		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-			"OWPProcessFetchSession(\"%s\"): Invalid file!",
-			fname);
-		goto failed;
-	}
+    /*
+     * Only version 3 files are supported for "fetch session"
+     * response messages.
+     */
+    if(fhdr.version != 3){
+        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+                "OWPProcessFetchSession(\"%s\"): Invalid file version: %d",
+                fname,ver);
+        goto failed;
+    }
 
-	/*
-	 * If a "complete" session was requested, and the test did not
-	 * terminate normally - we MUST deny here.
-	 */
-	if((begin == 0) && (end == 0xFFFFFFFF) &&
-					(fin != _OWP_SESSION_FIN_NORMAL)){
-		goto reject;
-	}
+    if(fhdr.finished == _OWP_SESSION_FIN_ERROR){
+        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+                "OWPProcessFetchSession(\"%s\"): Invalid file!",
+                fname);
+        goto failed;
+    }
 
-	/*
-	 * Determine size of TestReq - then check that the TestReq is
-	 * non-zero and a multiple of AES blocksize.
-	 */
-	if( (tr_off = ftello(fp)) < 0){
-		OWPError(cntrl->ctx,OWPErrFATAL,errno,"ftello(): %M");
-		goto failed;
-	}
-	tr_size = hdr_off - tr_off;
-	if((tr_off >= hdr_off) || (tr_size % _OWP_RIJNDAEL_BLOCK_SIZE)){
-		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-		"OWPProcessFetchSession(\"%s\"): Invalid record offsets");
-		goto failed;
-	}
+    /*
+     * If a "complete" session was requested, and the test did not
+     * terminate normally - we MUST deny here.
+     */
+    if((begin == 0) && (end == 0xFFFFFFFF) &&
+            (fhdr.finished != _OWP_SESSION_FIN_NORMAL)){
+        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINFO,
+                "OWPProcessFetchSession(\"%s\"): Request for complete session, but session not yet terminated!",
+                fname);
+        goto reject;
+    }
 
-	/*
-	 * Determine number of records in the file.
-	 */
-	filerecs = (stat_buf.st_size-hdr_off)/_OWP_TESTREC_SIZE;
+    /*
+     * If the session is not complete, then the file needs be locked before
+     * trusting headers. If num_datarecs is still 0 when it is locked, then use
+     * the filesize to determine the number of records. Read the file
+     * as is - closing the fd will automatically unlock it.
+     *
+     * If num_datarecs is set, the data up to that point can be trusted.
+     */
+    if(fhdr.finished != _OWP_SESSION_FIN_NORMAL){
+        memset(&flk,0,sizeof(flk));
+        flk.l_start = 0;
+        flk.l_len = 0;
+        flk.l_whence = SEEK_SET;
+        flk.l_type = F_RDLCK;
 
-	/*
-	 * setup the state record for parsing the records.
-	 */
-	dodata.cntrl = cntrl;
-	dodata.intr = intr;
-	dodata.err = OWPErrOK;
-	dodata.send = False;
-	dodata.begin = begin;
-	dodata.end = end;
-	dodata.inbuf = 0;
-	dodata.count = 0;
-	dodata.maxiseen = 0;
+        if( fcntl(fileno(fp), F_SETLK, &flk) < 0){
+            /*
+             * If there is currently a lock, go back and reread the
+             * header - hopefully the session is being finalized.
+             * (Counter here to give up after 5 tries - escalating
+             * wait times.)
+             */
+            if(errno == EACCES){
+                if(lock_tries > 4){
+                    OWPError(cntrl->ctx,OWPErrFATAL,errno,
+                            "Repeat lock failures: fcntl(\"%s\"): %M",fname);
+                    goto failed;
+                }
+                sleep(1<<lock_tries);
+                lock_tries++;
+                goto read_file;
+            }
 
-	/*
-	 * Now - count the number of records that will be sent.
-	 * short-cut the count if full session is requested.
-	 */
-	if((fin == _OWP_SESSION_FIN_NORMAL) &&
-					(begin == 0) && (end == 0xFFFFFFFF)){
-		sendrecs = filerecs;
-	}
-	else{
-		/* forward pointer to data records for counting */
-		if(fseeko(fp,hdr_off,SEEK_SET)){
-			OWPError(cntrl->ctx,OWPErrFATAL,errno,"fseeko(): %M");
-			goto failed;
-		}
-		/*
-		 * Now, count the records in range.
-		 */
-		if(OWPParseRecords(cntrl->ctx,fp,filerecs,ver,
-					DoDataRecords,&dodata) != OWPErrOK){
-			goto failed;
-		}
-		sendrecs = dodata.count;
-		dodata.count = 0;
+            /*
+             * any other error is fatal.
+             */
+            OWPError(cntrl->ctx,OWPErrFATAL,errno,
+                    "Unable to lock session file: fcntl(\"%s\"): %M",fname);
+            goto failed;
+        }
 
-		/* set pointer back to beginning of TestReq */
-		if(fseeko(fp,tr_off,SEEK_SET)){
-			OWPError(cntrl->ctx,OWPErrFATAL,errno,"fseeko(): %M");
-			goto failed;
-		}
+        /*
+         * Lock obtained, reread the file header.
+         */
+        if(!_OWPReadDataHeaderInitial(cntrl->ctx,fp,&fhdr)){
+            OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                    "_OWPReadDataHeaderInitial(\"%s\"): %M",fname);
+            goto failed;
+        }
 
-		/*
-		 * If the session did not complete normally, redo the
-		 * count ignoring all "missing" packets after the
-		 * last seen one.
-		 */
-		if((fin != 1) && (dodata.maxiseen != end)){
-			dodata.end = dodata.maxiseen;
-			dodata.maxiseen = 0;
+        /*
+         * If the file doesn't have the number of recs set, then records
+         * continue to the end of the file.
+         */
+        if(!fhdr.num_datarecs){
+            fhdr.num_datarecs = (fhdr.sbuf.st_size - fhdr.oset_datarecs) / 
+                _OWP_DATAREC_SIZE;
+        }
+    }
 
-			if(OWPParseRecords(cntrl->ctx,fp,filerecs,ver,
-					DoDataRecords,&dodata) != OWPErrOK){
-				goto failed;
-			}
-			sendrecs = dodata.count;
-			dodata.count = 0;
+    /*
+     * setup the state record for parsing the records.
+     */
+    dodata.cntrl = cntrl;
+    dodata.intr = intr;
+    dodata.err = OWPErrOK;
+    dodata.send = False;
+    dodata.begin = begin;
+    dodata.end = end;
+    dodata.inbuf = 0;
+    dodata.count = 0;
+    dodata.maxiseen = 0;
 
-			/* set pointer back to beginning of TestReq */
-			if(fseeko(fp,tr_off,SEEK_SET)){
-				OWPError(cntrl->ctx,OWPErrFATAL,errno,
-							"fseeko(): %M");
-				goto failed;
-			}
-		}
-	}
+    /*
+     * Now - count the number of records that will be sent.
+     * short-cut the count if full session is requested.
+     */
+    if((fhdr.finished == _OWP_SESSION_FIN_NORMAL) &&
+            (begin == 0) && (end == 0xFFFFFFFF)){
+        sendrecs = fhdr.num_datarecs;
+    }
+    else{
+        /* forward pointer to data records for counting */
+        if(fseeko(fp,fhdr.oset_datarecs,SEEK_SET)){
+            OWPError(cntrl->ctx,OWPErrFATAL,errno,"fseeko(): %M");
+            goto failed;
+        }
+        /*
+         * Now, count the records in range.
+         */
+        if(OWPParseRecords(cntrl->ctx,fp,fhdr.num_datarecs,fhdr.version,
+                    DoDataRecords,&dodata) != OWPErrOK){
+            goto failed;
+        }
+        sendrecs = dodata.count;
+        dodata.count = 0;
 
-	/*
-	 * Now accept the FetchRequest.
-	 */
-	acceptval = OWP_CNTRL_ACCEPT;
-	if((err = _OWPWriteControlAck(cntrl,intr,acceptval)) < OWPErrOK){
-		_OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
-		return _OWPFailControlSession(cntrl,err);
-	}
+        /*
+         * If the session did not complete normally, redo the
+         * count ignoring all "missing" packets after the
+         * last seen one.
+         */
+        if((fhdr.finished != _OWP_SESSION_FIN_NORMAL) &&
+                (dodata.maxiseen < end)){
+            dodata.end = dodata.maxiseen;
 
-	/*
-	 * Read the TestReq from the file and write it to the socket.
-	 * (after this loop - fp is positioned at hdr_off.
-	 */
-	while(tr_size > 0){
-		if(fread(buf,1,_OWP_RIJNDAEL_BLOCK_SIZE,fp) !=
-			 			_OWP_RIJNDAEL_BLOCK_SIZE){
-			_OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
-			return _OWPFailControlSession(cntrl,OWPErrFATAL);
-		}
-		if(_OWPSendBlocksIntr(cntrl,buf,1,intr) != 1){
-			_OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
-			return _OWPFailControlSession(cntrl,OWPErrFATAL);
-		}
-		tr_size -= _OWP_RIJNDAEL_BLOCK_SIZE;
-	}
+            /* set pointer to beginning of data recs */
+            if(fseeko(fp,fhdr.oset_datarecs,SEEK_SET)){
+                OWPError(cntrl->ctx,OWPErrFATAL,errno,
+                        "fseeko(): %M");
+                goto failed;
+            }
 
-	/*
-	 * Send the number of records.
-	 */
-	if((err = _OWPWriteFetchRecordsHeader(cntrl,intr,sendrecs)) < OWPErrOK){
-		_OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
-		return _OWPFailControlSession(cntrl,err);
-	}
+            if(OWPParseRecords(cntrl->ctx,fp,fhdr.num_datarecs,fhdr.version,
+                        DoDataRecords,&dodata) != OWPErrOK){
+                goto failed;
+            }
+            sendrecs = dodata.count;
+            dodata.count = 0;
+        }
 
-	/*
-	 * Now, send the data!
-	 */
-	dodata.send = True;
-	if( (OWPParseRecords(cntrl->ctx,fp,filerecs,ver,
-			DoDataRecords,&dodata) != OWPErrOK) ||
-						(dodata.count != sendrecs)){
-		_OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
-		return _OWPFailControlSession(cntrl,err);
-	}
+    }
 
-	/*
-	 * We are done reading from the file - close it.
-	 */
-	_OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_ACCEPT);
+    if(fhdr.finished){
+        next_seqno = fhdr.next_seqno;
+        num_skiprecs = fhdr.num_skiprecs;
+    }
 
-	if(dodata.inbuf){
-		/*
-		 * Set "blks" to number of AES blocks that need to be sent to
-		 * hold all "leftover" records.
-		 */
-		int blks = dodata.inbuf * _OWP_TESTREC_SIZE /
-				_OWP_RIJNDAEL_BLOCK_SIZE + 1;
+    /*
+     * Now accept the FetchRequest.
+     */
+    acceptval = OWP_CNTRL_ACCEPT;
+    if((err = _OWPWriteFetchAck(cntrl,intr,acceptval,fhdr.finished,next_seqno,
+                    num_skiprecs,sendrecs)) < OWPErrOK){
+        _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
+        return _OWPFailControlSession(cntrl,err);
+    }
 
-		/* zero out any partial data blocks */
-		memset(&buf[dodata.inbuf*_OWP_TESTREC_SIZE],0,
-				(blks*_OWP_RIJNDAEL_BLOCK_SIZE)-
-				(dodata.inbuf*_OWP_TESTREC_SIZE));
-		/*
-		 * Write enough AES blocks to get remaining records.
-		 */
-		if( (_OWPSendBlocksIntr(cntrl,buf,blks,intr) != blks))
-			return _OWPFailControlSession(cntrl,err);
-	}
+    /* set file pointer to beginning of TestReq */
+    if(fseeko(fp,_OWP_TESTREC_OFFSET,SEEK_SET)){
+        OWPError(cntrl->ctx,OWPErrFATAL,errno,"fseeko(): %M");
+        goto failed;
+    }
 
-	/* now send final Zero Integrity Block */
-	if(_OWPSendBlocksIntr(cntrl,cntrl->zero,1,intr) != 1){
-		return _OWPFailControlSession(cntrl,err);
-	}
+    /*
+     * Determine how large TestReq is including "slots"
+     */
+    if(fhdr.oset_skiprecs){
+        tr_size = fhdr.oset_skiprecs;
+    }
+    else{
+        tr_size = fhdr.oset_datarecs;
+    }
 
-	/*
-	 * reset state to request.
-	 */
-	cntrl->state &= ~_OWPStateFetching;
-	cntrl->state |= _OWPStateRequest;
+    if(fhdr.oset_datarecs){
+        tr_size = MIN(tr_size,fhdr.oset_datarecs);
+    }
 
-	return OWPErrOK;
+    tr_size -= _OWP_TESTREC_OFFSET;
+
+    if(tr_size % _OWP_RIJNDAEL_BLOCK_SIZE){
+        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                "OWPProcessFetchSession: Invalid TestReq in file \"%s\"",
+                fname);
+    }
+
+    /*
+     * Read the TestReq from the file and write it to the socket.
+     * (after this loop - fp is positioned at hdr_off.
+     */
+    while(tr_size > 0){
+        if(fread(buf,1,_OWP_RIJNDAEL_BLOCK_SIZE,fp) !=
+                _OWP_RIJNDAEL_BLOCK_SIZE){
+            _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
+            return _OWPFailControlSession(cntrl,OWPErrFATAL);
+        }
+        if(_OWPSendBlocksIntr(cntrl,buf,1,intr) != 1){
+            _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
+            return _OWPFailControlSession(cntrl,OWPErrFATAL);
+        }
+        tr_size -= _OWP_RIJNDAEL_BLOCK_SIZE;
+    }
+
+    if(fhdr.finished && fhdr.num_skiprecs){
+
+        /* set file pointer to beginning of skips */
+        if(fseeko(fp,fhdr.oset_skiprecs,SEEK_SET)){
+            OWPError(cntrl->ctx,OWPErrFATAL,errno,"fseeko(): %M");
+            goto failed;
+        }
+
+        /*
+         * size for all skip records
+         */
+        tr_size = fhdr.num_skiprecs * _OWP_SKIPREC_SIZE;
+
+        /*
+         * First deal with complete blocks of skips
+         */
+        while(tr_size > _OWP_RIJNDAEL_BLOCK_SIZE){
+            if(fread(buf,1,_OWP_RIJNDAEL_BLOCK_SIZE,fp) !=
+                    _OWP_RIJNDAEL_BLOCK_SIZE){
+                _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
+                return _OWPFailControlSession(cntrl,OWPErrFATAL);
+            }
+            if(_OWPSendBlocksIntr(cntrl,buf,1,intr) != 1){
+                _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
+                return _OWPFailControlSession(cntrl,OWPErrFATAL);
+            }
+            tr_size -= _OWP_RIJNDAEL_BLOCK_SIZE;
+        }
+
+        /*
+         * Now deal with "partial" skips
+         */
+        if(tr_size > 0){
+            /* zero block so extra space will be 0 padded */
+            memset(buf,0,_OWP_RIJNDAEL_BLOCK_SIZE);
+
+            if(fread(buf,1,tr_size,fp) != tr_size){
+                _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
+                return _OWPFailControlSession(cntrl,OWPErrFATAL);
+            }
+            if(_OWPSendBlocksIntr(cntrl,buf,1,intr) != 1){
+                _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
+                return _OWPFailControlSession(cntrl,OWPErrFATAL);
+            }
+        }
+
+    }
+
+    /*
+     * Shortcut for no data.
+     */
+    if(!sendrecs) goto final;
+
+    /* set file pointer to beginning of data */
+    if(fseeko(fp,fhdr.oset_datarecs,SEEK_SET)){
+        OWPError(cntrl->ctx,OWPErrFATAL,errno,"fseeko(): %M");
+        goto failed;
+    }
+
+    /*
+     * Now, send the data!
+     */
+    dodata.send = True;
+    if( (OWPParseRecords(cntrl->ctx,fp,fhdr.num_datarecs,ver,
+                    DoDataRecords,&dodata) != OWPErrOK) ||
+            (dodata.count != sendrecs)){
+        _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
+        return _OWPFailControlSession(cntrl,err);
+    }
+
+    if(dodata.inbuf){
+        /*
+         * Set "blks" to number of AES blocks that need to be sent to
+         * hold all "leftover" records.
+         */
+        int blks = dodata.inbuf * _OWP_DATAREC_SIZE /
+            _OWP_RIJNDAEL_BLOCK_SIZE + 1;
+
+        /* zero out any partial data blocks */
+        memset(&buf[dodata.inbuf*_OWP_DATAREC_SIZE],0,
+                (blks*_OWP_RIJNDAEL_BLOCK_SIZE)-
+                (dodata.inbuf*_OWP_DATAREC_SIZE));
+
+        /*
+         * Write enough AES blocks to get remaining records.
+         */
+        if( (_OWPSendBlocksIntr(cntrl,buf,blks,intr) != blks)){
+            _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
+            return _OWPFailControlSession(cntrl,err);
+        }
+    }
+
+final:
+    /*
+     * We are done reading from the file - close it.
+     */
+    _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_ACCEPT);
+
+    /* now send final Zero Integrity Block */
+    if(_OWPSendBlocksIntr(cntrl,cntrl->zero,1,intr) != 1){
+        return _OWPFailControlSession(cntrl,err);
+    }
+
+    /*
+     * reset state to request.
+     */
+    cntrl->state &= ~_OWPStateFetching;
+    cntrl->state |= _OWPStateRequest;
+
+    return OWPErrOK;
 
 failed:
-	acceptval = OWP_CNTRL_FAILURE;
+    acceptval = OWP_CNTRL_FAILURE;
 reject:
-	if(fp){
-		_OWPCallCloseFile(cntrl,NULL,fp,acceptval);
-	}
+    if(fp){
+        _OWPCallCloseFile(cntrl,NULL,fp,acceptval);
+    }
 
-	if( (err = _OWPWriteControlAck(cntrl,intr,acceptval)) < OWPErrOK){
-		return _OWPFailControlSession(cntrl,err);
-	}
+    if( (err = _OWPWriteFetchAck(cntrl,intr,acceptval)) < OWPErrOK){
+        return _OWPFailControlSession(cntrl,err);
+    }
 
-	return OWPErrINFO;
+    return OWPErrINFO;
 
 }

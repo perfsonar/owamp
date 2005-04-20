@@ -1228,6 +1228,8 @@ main(int argc, char *argv[])
 		I2ErrLog(errhand, "open(%s): %M", pid_file);
 		exit(1);
 	}
+
+        memset(&flk,0,sizeof(flk));
 	flk.l_start = 0;
 	flk.l_len = 0;
 	flk.l_type = F_WRLCK;

@@ -1054,16 +1054,13 @@ main(
 
 	/*
 	 * Add time for file buffering. 
-	 * Add 2 seconds to the max of (1,mu). file io is optimized to
-	 * try and only buffer 1 second of data - but if mu is > one
-	 * second, then we have to wait mu, because each record will
-	 * be flushed individually in this case.
-	 * (2 seconds is because the recv process waits 1 after the end
-	 * of the test before it does it's clean-up, and we want to wait
-	 * until it is done with it's clean-up. It should definitely not
-	 * take longer than 1 second to clean-up.)
+         * File io is optimized to buffer only 1 second of data.
+	 * (Add 2 seconds to that because the recv process waits 1 second
+         * after the end of the test before it does it's clean-up, and we
+         * want to wait until it is done with it's clean-up.
+         * So, a total of 3 seconds delay for io.
 	 */
-	iotime = MAX(appctx.opt.meanWait,1) + 2;
+	iotime = 3;
 
 	/*
 	 * Setup signal handlers.

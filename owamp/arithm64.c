@@ -12,6 +12,7 @@
  *	File:		arithm64.c
  *
  *	Author:		Anatoly Karp
+ *	                Jeff W. Boote
  *			Internet2
  *
  *	Date:		Sun Jun 20 12:29:20 MDT 2002
