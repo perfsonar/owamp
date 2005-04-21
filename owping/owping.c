@@ -594,14 +594,13 @@ do_records_all(
     int            i, num_buckets;
     u_int32_t        num_rec;
     OWPSessionHeaderRec    hdr;
-    off_t            hdr_len;
     fetch_state        state;
     char            frombuf[NI_MAXHOST+1];
     char            tobuf[NI_MAXHOST+1];
     char            fromserv[NI_MAXSERV+1];
     char            toserv[NI_MAXSERV+1];
 
-    if(!(num_rec = OWPReadDataHeader(ctx,fp,&hdr_len,&hdr))){
+    if(!(num_rec = OWPReadDataHeader(ctx,fp,&hdr))){
         I2ErrLog(eh, "OWPReadDataHeader:Empty file?");
         return -1;
     }

@@ -1164,7 +1164,7 @@ NextConnection:
 			char			endname[PATH_MAX];
 			char			newpath[PATH_MAX];
 			u_int32_t		arecs,nrecs;
-			off_t			hlen,fileend;
+			off_t			fileend;
 			OWPSessionHeaderRec	hdr;
 			OWPNum64		localstop;
 
@@ -1273,7 +1273,7 @@ AGAIN:
 
 			/* Fetch hdr for sub session */
 
-			arecs = OWPReadDataHeader(ctx,p->fp,&hlen,&hdr);
+			arecs = OWPReadDataHeader(ctx,p->fp,&hdr);
 			parse.hdr = &hdr;
 
 			/* Fetch time error estimate for missing packets */
@@ -1292,8 +1292,8 @@ AGAIN:
 			/*
 			 * Position of first record we need to look at.
 			 */
-			if(parse.begin < hlen)
-				parse.begin = hlen;
+			if(parse.begin < hdr.oset_datarecs)
+				parse.begin = hdr.oset_datarecs;
 			if(fseeko(p->fp,0,SEEK_END) != 0){
 				I2ErrLog(eh,"fseeko(): %M");
 				exit(1);
@@ -1312,7 +1312,7 @@ AGAIN:
 			 * How many records from "begin" to end of file.
 			 */
 			if(arecs){
-				nrecs = arecs - (parse.begin-hlen)/hdr.rec_size;
+				nrecs = arecs - (parse.begin-hdr.oset_datarecs)/hdr.rec_size;
 			}
 			else{
 				nrecs = 0;
@@ -1378,9 +1378,9 @@ AGAIN:
 			if(OWPParseRecords(ctx,p->fp,nrecs,hdr.version,
 				WriteSubSession,(void*)&parse) != OWPErrOK){
 				I2ErrLog(eh,
-				"WriteSubSession: sub=%d,arecs=%lu,nrecs=%lu,begin=%lld,first=%lu,last=%lu,hlen=%llu,fileend=%lld: %M",
+				"WriteSubSession: sub=%d,arecs=%lu,nrecs=%lu,begin=%lld,first=%lu,last=%lu,hdr.oset_datarecs=%llu,fileend=%lld: %M",
 					sub,arecs,nrecs,parse.begin,
-					parse.first,parse.last,hlen,fileend);
+					parse.first,parse.last,hdr.oset_datarecs,fileend);
 				goto error;
 			}
 			/*
