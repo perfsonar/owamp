@@ -565,6 +565,7 @@ _OWPTestSessionFree(
 )
 {
 	OWPTestSession	*sptr;
+        OWPAcceptType   alocal = aval;
 	OWPErrSeverity	err=OWPErrOK;
 
 	if(!tsession){
@@ -582,7 +583,7 @@ _OWPTestSessionFree(
 	}
 
 	if(tsession->endpoint){
-		_OWPEndpointFree(tsession->endpoint,aval,&err);
+		_OWPEndpointFree(tsession->endpoint,&alocal,&err);
 	}
 
 	if(tsession->closure){
@@ -896,7 +897,7 @@ _OWPStopSendSessions(
         OWPControl      cntrl,
         int             *retn_on_intr,
         OWPAcceptType   *acceptval_ret,  /* in/out */
-        u_int32_t       num_sessions
+        u_int32_t       *num_sessions
         )
 {
     OWPErrSeverity  err,err2=OWPErrOK;
@@ -904,7 +905,6 @@ _OWPStopSendSessions(
     OWPAcceptType   *acceptval = &aval;
     OWPTestSession  sptr;
     u_int32_t       num_senders=0;
-    u_int8_t        *buf = (u_int8_t*)cntrl->msg;
 
     if(acceptval_ret){
         acceptval = acceptval_ret;
@@ -1026,15 +1026,13 @@ _OWPStopSendSessions(
 static OWPErrSeverity
 _OWPStopRecvSessions(
         OWPControl      cntrl,
-        int             *retn_on_intr,
-        OWPAcceptType   acceptval_ret
+        OWPAcceptType   *acceptval_ret
         )
 {
     OWPErrSeverity  err,err2=OWPErrOK;
     OWPAcceptType   aval=OWP_CNTRL_ACCEPT;
     OWPAcceptType   *acceptval = &aval;
     OWPTestSession  sptr;
-    u_int8_t        *buf = (u_int8_t*)cntrl->msg;
 
     if(acceptval_ret){
         acceptval = acceptval_ret;
@@ -1157,7 +1155,7 @@ OWPStopSessions(
          * StopSessions message (even though it has not been completely
          * read yet).
          */
-	err = _OWPStopRecvSessions(cntrl,intr,acceptval);
+	err = _OWPStopRecvSessions(cntrl,acceptval);
 	err2 = MIN(err,err2);
 	if(err2 < OWPErrWARNING){
             goto done;
@@ -1371,7 +1369,7 @@ AGAIN:
      * StopSessions message (even though it has not been completely
      * read yet).
      */
-    err2 = _OWPStopRecvSessions(cntrl,intr,acceptval);
+    err2 = _OWPStopRecvSessions(cntrl,acceptval);
     *err_ret = MIN(*err_ret,err2);
     if(*err_ret < OWPErrWARNING){
         goto done;
@@ -1521,6 +1519,56 @@ bail:
 	buf[0] = '\0';
 	return;
 }
+
+/*
+ * Might throw these into I2Util sometime...
+ */
+#ifndef htonll
+static u_int64_t
+htonll(
+        u_int64_t   h64
+        )
+{
+    u_int64_t   n64;
+    u_int8_t    *t8;
+
+    /* Use t8 to byte address the n64 */
+    t8 = (u_int8_t*)&n64;
+
+    /* set low-order bytes */
+    *(u_int32_t*)&t8[4] = htonl(h64 & 0xFFFFFFFFUL);
+
+    /* set high-order bytes */
+    h64 >>=32;
+    *(u_int32_t*)&t8[0] = htonl(h64 & 0xFFFFFFFFUL);
+
+    return n64;
+}
+#endif
+
+#ifndef ntohll
+static u_int64_t
+ntohll(
+        u_int64_t   n64
+        )
+{
+    u_int64_t   h64;
+    u_int8_t    *t8;
+
+    /* Use t8 to byte address the n64 */
+    t8 = (u_int8_t*)&n64;
+
+    /* High order bytes */
+    h64 = ntohl(*(u_int32_t*)&t8[0]);
+    h64 <<= 32;
+
+    /* Low order bytes */
+    h64 |= ntohl(*(u_int32_t*)&t8[4]);
+
+    return h64;
+}
+#endif
+
 
 /*
  *  Functions for writing and reading headers. The format varies
@@ -2016,6 +2064,7 @@ _OWPWriteDataHeaderFinished(
     _OWPSessionHeaderInitialRec phrec;
     u_int32_t                   n32;
     u_int64_t                   n64;
+    int                         err;
 
     if(!_OWPReadDataHeaderInitial(ctx,fp,&phrec)){
         return False;
@@ -2027,7 +2076,7 @@ _OWPWriteDataHeaderFinished(
     if(phrec.version < 3){
         OWPError(ctx,OWPErrFATAL,EINVAL,
                 "_OWPWriteDataHeaderNumSkipRecs: Invalid file version (%ul)",
-                ver);
+                phrec.version);
         errno = EINVAL;
         return False;
     }
@@ -2069,7 +2118,6 @@ _OWPWriteDataHeaderFinished(
      */
     n32 = htonl(num_skiprecs);
     if(fwrite(&n32, 1, sizeof(n32), fp) != sizeof(n32)){
-
         err = errno;
         OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fwrite(): %M");
         errno = err;
@@ -2139,7 +2187,7 @@ _OWPWriteDataHeaderFinished(
 {
     _OWPSessionHeaderInitialRec phrec;
     u_int32_t                   n32;
-    u_int64_t                   n64;
+    int                         err;
 
     if(!_OWPReadDataHeaderInitial(ctx,fp,&phrec)){
         return False;
@@ -2151,7 +2199,7 @@ _OWPWriteDataHeaderFinished(
     if(phrec.version < 3){
         OWPError(ctx,OWPErrFATAL,EINVAL,
                 "_OWPWriteDataHeaderNumDataRecs: Invalid file version (%ul)",
-                ver);
+                phrec.version);
         errno = EINVAL;
         return False;
     }
@@ -2236,7 +2284,6 @@ OWPWriteDataHeader(
     u_int64_t   oset;
     u_int64_t   skip_oset = 0;
     u_int64_t   data_oset;
-    u_int8_t    *ptr;
     off_t       oset_off;
     /* use u_int32_t for proper alignment */
     u_int32_t   msg[_OWP_TEST_REQUEST_PREAMBLE_SIZE/sizeof(u_int32_t)];
@@ -2245,7 +2292,7 @@ OWPWriteDataHeader(
     u_int32_t   net32;
     u_int64_t   net64;
 
-    if(!hdr || !hdr->test_spec){
+    if(!hdr){
         OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
                 "OWPWriteDataHeader: No hdr data specified");
         return False;
@@ -2436,8 +2483,6 @@ OWPTestDiskspace(
 	OWPTestSpec	*tspec
 	)
 {
-	u_int32_t	ver;
-	u_int32_t	finished;
 	u_int64_t	hdr_len;
 
         /*
@@ -2601,14 +2646,16 @@ OWPReadDataHeader(
     /*
      * Make sure num_datarecs is not larger than the file allows.
      */
-    if(phrec.num_datarecs > ((phrec.sbuf.st_size-hdr_len)/hdr_ret->rec_size)){
+    if(phrec.num_datarecs > ((phrec.sbuf.st_size - phrec.hdr_len)/
+                                                    hdr_ret->rec_size)){
         OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
                 "OWPReadDataHeader: num_datarecs field too large.");
         return 0;
     }
 
     if(phrec.version < 3){
-        hdr_ret->num_datarecs = (phrec.sbuf.st_size-hdr_len)/hdr_ret->rec_size;
+        hdr_ret->num_datarecs = (phrec.sbuf.st_size - phrec.hdr_len)/
+                                                    hdr_ret->rec_size;
         return hdr_ret->num_datarecs;
     }
 
@@ -2674,10 +2721,10 @@ OWPReadDataHeaderSlots(
     /*
      * this function is currently only supported for version 2 files.
      */
-    if(ver < 2){
+    if(phrec.version < 2){
         OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
                 "OWPReadDataHeaderSlots: Invalid file version (%d)",
-                ver);
+                phrec.version);
         errno = ENOSYS;
         return False;
     }

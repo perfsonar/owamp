@@ -47,16 +47,16 @@
 /*
  * Offset's and lengths for various file versions.
  */
-#define _OWP_TESTREC_OFFSET     (size_t)40
-#define	_OWP_DATARECV2_SIZE	(size_t)24
-#define	_OWP_DATARECV3_SIZE	(size_t)25
+#define _OWP_TESTREC_OFFSET     (40)
+#define	_OWP_DATARECV2_SIZE	(24)
+#define	_OWP_DATARECV3_SIZE	(25)
 #define	_OWP_DATAREC_SIZE	_OWP_DATARECV3_SIZE
-#define _OWP_SKIPREC_SIZE       (size_t)8
+#define _OWP_SKIPREC_SIZE       (8)
 
 /*
  * Size of a single AES block
  */
-#define _OWP_RIJNDAEL_BLOCK_SIZE	(size_t)16
+#define _OWP_RIJNDAEL_BLOCK_SIZE	16
 
 /*
  * The FETCH buffer is the smallest multiple of both the _OWP_DATAREC_SIZE
@@ -70,9 +70,9 @@
 #define _OWP_FETCHV3_BUFFSIZE		400
 #define _OWP_FETCHV3_AES_BLOCKS		25
 #define _OWP_FETCHV3_DATAREC_BLOCKS	16
-#define _OWP_FETCH_BUFFSIZE		_OWP_FETCHV3_BUFFSIZE
-#define _OWP_FETCH_AES_BLOCKS		_OWP_FETCHV3_AES_BLOCKS
-#define _OWP_FETCH_DATAREC_BLOCKS	_OWP_FETCHV3_DATAREC_BLOCKS
+#define _OWP_FETCH_BUFFSIZE		(_OWP_FETCHV3_BUFFSIZE)
+#define _OWP_FETCH_AES_BLOCKS		(_OWP_FETCHV3_AES_BLOCKS)
+#define _OWP_FETCH_DATAREC_BLOCKS	(_OWP_FETCHV3_DATAREC_BLOCKS)
 
 #if (_OWP_FETCH_BUFFSIZE != (_OWP_RIJNDAEL_BLOCK_SIZE * _OWP_FETCH_AES_BLOCKS))
 #error "Fetch Buffer is mis-sized for AES block size!"
@@ -147,35 +147,6 @@
  */
 #define _OWP_ERR_MAXSTRING	(1024)
 #define _OWP_MAGIC_FILETYPE	"OwA"
-
-/*
- * Byte-ordering macros for 64 bit values
- */
-#ifndef htonll
-#define htonll(h64)                                                     \
-    {                                                                   \
-        u_int64_t   n64_;                                               \
-        u_int8_t    *t8_;                                               \
-        u_int64_t   t64_ = h64;                                         \
-        t8_ = (u_int8_t*)&n64_;                                         \
-        *(u_int32_t*)&t8_[4] = htonl(t64 & 0xFFFFFFFFUL);               \
-        t64_ >>= 32;                                                    \
-        *(u_int32_t*)&t8_[0] = htonl(t64 & 0xFFFFFFFFUL);               \
-        n64_;                                                           \
-    }
-#endif
-
-#ifndef ntohll
-#define ntohll(n64)                                                     \
-    {                                                                   \
-        u_int64_t   h64_;                                               \
-        u_int8_t    *t8_;                                               \
-        t8_ = (u_int8_t*)&n64;                                          \
-        h64_ = ntohl(*(u_int32_t*)&t8_[0]);                             \
-        h64_ <<= 32;                                                    \
-        h64_ |= ntohl(*(u_int32_t*)&t8_[4]);                            \
-    }
-#endif
 
 /*
  * Data structures
@@ -450,11 +421,12 @@ _OWPReadDataHeaderInitial(
         _OWPSessionHeaderInitial    phdr
         );
 
-extern int
+extern OWPBoolean
 _OWPWriteDataHeaderFinished(
         OWPContext	ctx,
         FILE		*fp,
-        u_int32_t	finished
+        u_int32_t	finished,
+        u_int32_t       next_seqno
         );
 
 /*
@@ -713,7 +685,8 @@ extern OWPErrSeverity
 _OWPReadStopSessions(
         OWPControl	cntrl,
         int		*retn_on_intr,
-        OWPAcceptType	*acceptval
+        OWPAcceptType	*acceptval,
+        OWPTimeStamp    stoptime
         );
 
 extern OWPErrSeverity
@@ -733,7 +706,7 @@ _OWPReadFetchSession(
         OWPSID		sid
         );
 
-extern _OWPErrSeverity
+extern OWPErrSeverity
 _OWPWriteFetchAck(
         OWPControl      cntrl,
         int             *retn_on_intr,
@@ -744,7 +717,7 @@ _OWPWriteFetchAck(
         u_int32_t       num_datarecs
         );
 
-extern _OWPErrSeverity
+extern OWPErrSeverity
 _OWPReadFetchAck(
         OWPControl      cntrl,
         OWPAcceptType   *acceptval,

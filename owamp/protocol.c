@@ -1915,7 +1915,7 @@ _OWPWriteStopSessions(
     memset(&buf[0],0,16);
 
     buf[0] = 3;
-    buf[1] = *acceptval & 0xff;
+    buf[1] = acceptval & 0xff;
     *(u_int32_t*)&buf[4] = htonl(num_sessions);
 
     if(_OWPSendBlocksIntr(cntrl,buf,1,retn_on_intr) != 1){
@@ -1982,6 +1982,8 @@ _OWPWriteStopSessions(
     if(_OWPSendBlocksIntr(cntrl,cntrl->zero,1,retn_on_intr) != 1){
         return _OWPFailControlSession(cntrl,OWPErrFATAL);
     }
+
+    return OWPErrOK;
 }
 
 /*
@@ -2142,13 +2144,13 @@ _OWPReadStopSessions(
         goto err;
     }
 
-    num_session = ntohl(*(u_int32_t*)&buf[4]);
+    num_sessions = ntohl(*(u_int32_t*)&buf[4]);
 
     /*
      * Parse test session list and pull recv sessions into the receivers
      * list - the StopSessions message must account for all of them.
      */
-    sptr = &tsession->cntrl->tests;
+    sptr = &cntrl->tests;
     while(*sptr){
         tptr = *sptr;
         if(!tptr->endpoint){
@@ -2183,10 +2185,13 @@ _OWPReadStopSessions(
         char                        sid_name[sizeof(OWPSID)*2+1];
         _OWPSessionHeaderInitialRec fhdr;
         struct flock                flk;
-        OWPNum64                    lowR,midR,highR,threshR;
+        OWPNum64                    lowR,highR,threshR;
         u_int32_t                   lowI,midI,highI,num_recs;
         u_int8_t                    rbuf[_OWP_DATAREC_SIZE];
         OWPDataRec                  rec;
+        OWPSkipRec                  prev_skip, curr_skip;
+        u_int32_t                   next_seqno;
+        u_int32_t                   num_skips;
 
         /*
          * Read sid from session description record
@@ -2248,10 +2253,10 @@ _OWPReadStopSessions(
         memset(&flk,0,sizeof(flk));
         flk.l_start = 0;
         flk.l_len = 0;
-        flk.whence = SEEK_SET;
+        flk.l_whence = SEEK_SET;
         flk.l_type = F_WRLCK;
 
-        if( fcntl(fileno(rfp), f_SETLKW, &flk) < 0){
+        if( fcntl(fileno(rfp), F_SETLKW, &flk) < 0){
             OWPError(cntrl->ctx,OWPErrFATAL,errno,
                     "_OWPReadStopSessions: Unable to lock file sid(%s): %M",
                     sid_name);
@@ -2355,7 +2360,7 @@ _OWPReadStopSessions(
             OWPNum64    portion;
             OWPNum64    range;
 
-            range = OWPNum64Sub(highR-lowR);
+            range = OWPNum64Sub(highR,lowR);
 
             /*
              * If there are multiple records with the same recv time,
@@ -2555,7 +2560,6 @@ done_data:
             goto err;
         }
 
-        OWPSkipRec  prev_skip, curr_skip;
 
         prev_skip.begin = prev_skip.end = 0;
         for(j=0; j < num_skips; j++){
@@ -2633,12 +2637,13 @@ done_skips:
             goto err;
         }
 
-        if( !_OWPWriteDataHeaderFinished(cntrl->ctx,rfp,finished,next_seqno)){
+        if( !_OWPWriteDataHeaderFinished(cntrl->ctx,rfp,_OWP_SESSION_FIN_NORMAL,
+                    next_seqno)){
             goto err;
         }
 
         flk.l_type = F_UNLCK;
-        if( fcntl(fileno(rfp), f_SETLKW, &flk) < 0){
+        if( fcntl(fileno(rfp), F_SETLKW, &flk) < 0){
             OWPError(cntrl->ctx,OWPErrFATAL,errno,
                     "_OWPReadStopSessions: Unable to unlock file sid(%s): %M",
                     sid_name);
@@ -2676,10 +2681,9 @@ err:
      * so error cleanup at higher levels will work.
      */
 
-    OWPError(ctrnl->ctx,OWPErrFATAL,OWPErrUNKOWN,
+    OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
             "_OWPReadStopSessions: Failed");
-    return _OWPFailFailControlSession(cntrl,OWPErrFATAL);
-
+    return _OWPFailControlSession(cntrl,OWPErrFATAL);
 }
 
 /*

@@ -1007,7 +1007,7 @@ OWPProcessFetchSession(
     u_int32_t                   sendrecs;
     u_int32_t                   next_seqno = 0;
     u_int32_t                   num_skiprecs = 0;
-    u_int32_t                   i;
+    off_t                       tr_size;
 
     struct DoDataState          dodata;
 
@@ -1050,7 +1050,7 @@ read_file:
     if(fhdr.version != 3){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
                 "OWPProcessFetchSession(\"%s\"): Invalid file version: %d",
-                fname,ver);
+                fname,fhdr.version);
         goto failed;
     }
 
@@ -1319,7 +1319,7 @@ read_file:
      * Now, send the data!
      */
     dodata.send = True;
-    if( (OWPParseRecords(cntrl->ctx,fp,fhdr.num_datarecs,ver,
+    if( (OWPParseRecords(cntrl->ctx,fp,fhdr.num_datarecs,fhdr.version,
                     DoDataRecords,&dodata) != OWPErrOK) ||
             (dodata.count != sendrecs)){
         _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
@@ -1374,7 +1374,7 @@ reject:
         _OWPCallCloseFile(cntrl,NULL,fp,acceptval);
     }
 
-    if( (err = _OWPWriteFetchAck(cntrl,intr,acceptval)) < OWPErrOK){
+    if( (err = _OWPWriteFetchAck(cntrl,intr,acceptval,0,0,0,0)) < OWPErrOK){
         return _OWPFailControlSession(cntrl,err);
     }
 

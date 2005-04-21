@@ -1579,7 +1579,7 @@ OWPFetchSession(
      *
      * How many octets of skip records?
      */
-    toff = fhdr.num_skiprecs * _OWP_SKIPREC_SIZE;
+    toff = hdr.num_skiprecs * _OWP_SKIPREC_SIZE;
 
     /*
      * Read even AES blocks of skips first
@@ -1589,7 +1589,7 @@ OWPFetchSession(
             *err_ret = OWPErrFATAL;
             goto failure;
         }
-        if(dowrite && ( fwrite(buf,_OWP_RIJNDAEL_BLOCK_SIZE,fp) !=
+        if(dowrite && ( fwrite(buf,1,_OWP_RIJNDAEL_BLOCK_SIZE,fp) !=
                     _OWP_RIJNDAEL_BLOCK_SIZE)){
             OWPError(cntrl->ctx,OWPErrFATAL,errno,
                     "OWPFetchSession: fwrite(): %M");
@@ -1605,7 +1605,7 @@ OWPFetchSession(
             *err_ret = OWPErrFATAL;
             goto failure;
         }
-        if(dowrite && ( fwrite(buf,toff,fp) != toff)){
+        if(dowrite && ( fwrite(buf,1,toff,fp) != toff)){
             OWPError(cntrl->ctx,OWPErrFATAL,errno,
                     "OWPFetchSession: fwrite(): %M");
             dowrite = False;
