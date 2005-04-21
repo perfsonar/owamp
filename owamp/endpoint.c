@@ -20,8 +20,11 @@
  *		This file contains the "default" implementation for
  *		the send and recv endpoints of an OWAMP test session.
  */
+#include "owampP.h"
+
 #include <stdio.h>
 #include <sys/types.h>
+#include <sys/mman.h>
 #include <sys/uio.h>
 #include <unistd.h>
 #include <signal.h>
@@ -31,7 +34,6 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 
-#include "owampP.h"
 
 /*
  * Function:	EndpointAlloc
@@ -685,7 +687,7 @@ success:
     else{
         OWPSkip askip;
         int     tries=0;
-        char    *skiprec_file;
+        char    *skiprec_file = NULL;
 
         /*
          * Create a file for sharing skip records. (shared memory makes
@@ -709,21 +711,29 @@ success:
          * read. Using a file/shm implementation allows the data to be around
          * after the child exits no matter the size.
          */
-#define OWP_SHM_TMPDIR    "/tmp"
+#ifdef USE_SHMIPC
+#define SHM_OPEN(a,b,c) shm_open(a,b,c)
+#define SHM_UNLINK(a) shm_unlink(a)
+#else
+#define SHM_OPEN(a,b,c) open(a,b,c)
+#define SHM_UNLINK(a) unlink(a)
+#endif
 #define OWP_SHM_PREFIX    "OWP_TEST_SKIP_RECORDS"
 #define OWP_SHM_TRIES   5
 
-        if(!(skiprec_file = tempnam(OWP_SHM_TMPDIR,OWP_SHM_PREFIX))){
+NAME_AGAIN:
+        if(skiprec_file) free(skiprec_file);
+        if(!(skiprec_file = tempnam(NULL,OWP_SHM_PREFIX))){
             OWPError(cntrl->ctx,OWPErrFATAL,errno,"tempnam(): %M");
             goto error;
         }
 
-SHM_AGAIN:
-        if((ep->skiprecfd = shm_open(OWP_SHM_NAME,O_RDWR|O_CREAT|O_EXEL,
+OPEN_AGAIN:
+        if((ep->skiprecfd = SHM_OPEN(skiprec_file,O_RDWR|O_CREAT|O_EXCL,
                         S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH)) < 0){
             switch(errno){
                 case EINTR:
-                    goto SHM_AGAIN;
+                    goto OPEN_AGAIN;
                     break;
                 case EEXIST:
                     /* It is conceivable that the tempnam above is not
@@ -732,10 +742,10 @@ SHM_AGAIN:
                      * broken on this OS.)
                      */
                     if(tries++ < OWP_SHM_TRIES)
-                        goto SHM_AGAIN;
+                        goto NAME_AGAIN;
                     /*fallthrough*/
                 default:
-                    OWPError(cntrl->ctx,OWPErrFATAL,errno,"shm_open(): %M");
+                    OWPError(cntrl->ctx,OWPErrFATAL,errno,"SHM_OPEN(): %M");
                     free(skiprec_file);
                     goto error;
                     break;
@@ -745,7 +755,7 @@ SHM_AGAIN:
         /*
          * Unlink shm segment and free filename memory.
          */
-        rc = shm_unlink(skiprec_file);
+        rc = SHM_UNLINK(skiprec_file);
         saveerr = errno;
 
         /* need to free the fname memory even if unlinking failed. */
@@ -753,7 +763,7 @@ SHM_AGAIN:
 
         /* if unlinking failed, then bail. */
         if(rc != 0){
-            OWPError(cntrl->ctx,OWPErrFATAL,saveerr,"shm_unlink(): %M");
+            OWPError(cntrl->ctx,OWPErrFATAL,saveerr,"SHM_UNLINK(): %M");
             goto error;
         }
 
@@ -2087,7 +2097,7 @@ test_over:
      * process will change this to "normal" after evaluating the
      * data from the stop sessiosn message.
      */
-    if(_OWPWriteDataHeaderFinished(ep->cntrl->ctx,ep->datafile,finished)){
+    if(_OWPWriteDataHeaderFinished(ep->cntrl->ctx,ep->datafile,finished,0)){
         goto error;
     }
     fclose(ep->datafile);
@@ -2420,7 +2430,6 @@ _OWPEndpointStop(
 {
     int		    sig;
     OWPAcceptType   teststatus=OWP_CNTRL_ACCEPT;
-    OWPBoolean	    retval;
 
     if((ep->acceptval >= 0) || (ep->child == 0)){
         *err_ret = OWPErrOK;
