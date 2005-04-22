@@ -1312,7 +1312,7 @@ AGAIN:
 			 * How many records from "begin" to end of file.
 			 */
 			if(arecs){
-				recs = arecs -(parse.begin - hdr.oset_datarecs)
+				nrecs = arecs -(parse.begin - hdr.oset_datarecs)
                                                     / hdr.rec_size;
 			}
 			else{
