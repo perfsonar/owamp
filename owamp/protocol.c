@@ -2377,6 +2377,7 @@ _OWPReadStopSessions(
                 portion = OWPNum64Sub(threshR,lowR);
                 midI = lowI + ((OWPNum64ToDouble(portion) * (highI - lowI)) /
                         OWPNum64ToDouble(range));
+                if(midI == lowI) midI++;
             }
 
             /*

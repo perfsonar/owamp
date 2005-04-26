@@ -1212,7 +1212,7 @@ typedef struct OWPDataRec {
  * Returns:
  * 0	Success
  */
-extern int
+extern OWPBoolean
 OWPWriteDataRecord(
 		OWPContext		ctx,
 		FILE			*fp,

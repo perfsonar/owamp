@@ -133,10 +133,6 @@ EndpointClear(
         close(ep->sockfd);
         ep->sockfd = -1;
     }
-    if(ep->datafile){
-        fclose(ep->datafile);
-        ep->datafile = NULL;
-    }
     if(ep->fbuff){
         free(ep->fbuff);
         ep->fbuff = NULL;
@@ -184,6 +180,10 @@ EndpointFree(
         close(ep->skiprecfd);
         ep->skiprecfd = -1;
     }
+    if(ep->datafile){
+        fclose(ep->datafile);
+        ep->datafile = NULL;
+    }
     if(ep->userfile){
         _OWPCallCloseFile(ep->cntrl,ep->tsession->closure,ep->userfile,
                 aval);
@@ -227,7 +227,7 @@ reopen_datafile(
         return NULL;
     }
 
-    if( !(fp = fdopen(newfd,"wb"))){
+    if( !(fp = fdopen(newfd,"w+b"))){
         OWPError(ctx,OWPErrFATAL,errno, "fdopen(%d): %M",newfd);
         return NULL;
     }
@@ -711,7 +711,7 @@ success:
          * read. Using a file/shm implementation allows the data to be around
          * after the child exits no matter the size.
          */
-#ifdef USE_SHMIPC
+#if USE_SHMIPC
 #define SHM_OPEN(a,b,c) shm_open(a,b,c)
 #define SHM_UNLINK(a) shm_unlink(a)
 #else
@@ -752,6 +752,7 @@ OPEN_AGAIN:
             }
         }
 
+#if NOTYET
         /*
          * Unlink shm segment and free filename memory.
          */
@@ -766,6 +767,7 @@ OPEN_AGAIN:
             OWPError(cntrl->ctx,OWPErrFATAL,saveerr,"SHM_UNLINK(): %M");
             goto error;
         }
+#endif
 
         /*
          * pre-allocate nodes for skipped packet buffer.
@@ -1126,6 +1128,8 @@ run_sender(
              * but put default in to stop annoying
              * compiler warnings...
              */
+            OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                "run_sender: Bogus \"mode\" bits!");
             exit(OWP_CNTRL_FAILURE);
     }
 
@@ -1353,6 +1357,8 @@ SKIP_SEND:
 
 finish_sender:
     if(owp_int){
+        OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                "run_sender: Exiting from signal");
         exit(OWP_CNTRL_FAILURE);
     }
 
@@ -1370,6 +1376,8 @@ finish_sender:
     /* save "Next Seqno"    */
     i = htonl(i);
     if(I2Writeni(ep->skiprecfd,&i,4,&owp_int) != 4){
+        OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                "run_sender: I2Writeni(): %M");
         exit(OWP_CNTRL_FAILURE);
     }
 
@@ -1384,6 +1392,8 @@ finish_sender:
     /* save "Num Skip Records"    */
     i = htonl(i);
     if(I2Writeni(ep->skiprecfd,&i,4,&owp_int) != 4){
+        OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                "run_sender: I2Writeni(): %M");
         exit(OWP_CNTRL_FAILURE);
     }
 
@@ -1396,10 +1406,14 @@ finish_sender:
         _OWPEncodeSkipRecord((u_int8_t *)skipmsg,sr);
         if(I2Writeni(ep->skiprecfd,skipmsg,_OWP_SKIPREC_SIZE,&owp_int) !=
                 _OWP_SKIPREC_SIZE){
+            OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                "run_sender: I2Writeni(): %M");
             exit(OWP_CNTRL_FAILURE);
         }
     }
 
+    OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                "run_sender: Normal exit");
     exit(OWP_CNTRL_ACCEPT);
 }
 
@@ -1683,7 +1697,7 @@ run_receiver(
     /*
      * Write the file header.
      */
-    if(OWPWriteDataHeader(ep->cntrl->ctx,ep->datafile,&hdr) != 0){
+    if( !OWPWriteDataHeader(ep->cntrl->ctx,ep->datafile,&hdr)){
         exit(OWP_CNTRL_FAILURE);
     }
 
@@ -1900,8 +1914,8 @@ again:
 
                 datarec.ttl = 255;
 
-                if(OWPWriteDataRecord(ep->cntrl->ctx,
-                            ep->datafile,&datarec) != 0){
+                if( !OWPWriteDataRecord(ep->cntrl->ctx,
+                            ep->datafile,&datarec)){
                     OWPError(ep->cntrl->ctx,OWPErrFATAL,
                             OWPErrUNKNOWN,
                             "OWPWriteDataRecord()");
@@ -2080,8 +2094,8 @@ again:
          */
         node->hit = True;
 
-        if(OWPWriteDataRecord(ep->cntrl->ctx,ep->datafile,
-                    &datarec) != 0){
+        if( !OWPWriteDataRecord(ep->cntrl->ctx,ep->datafile,
+                    &datarec)){
             OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
                     "OWPWriteDataRecord()");
             goto error;
@@ -2097,7 +2111,7 @@ test_over:
      * process will change this to "normal" after evaluating the
      * data from the stop sessiosn message.
      */
-    if(_OWPWriteDataHeaderFinished(ep->cntrl->ctx,ep->datafile,finished,0)){
+    if( !_OWPWriteDataHeaderFinished(ep->cntrl->ctx,ep->datafile,finished,0)){
         goto error;
     }
     fclose(ep->datafile);

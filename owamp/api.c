@@ -2082,17 +2082,6 @@ _OWPWriteDataHeaderFinished(
     }
 
     /*
-     * This function can not be called until the number of datarecs are
-     * set.
-     */
-    if(!phrec.num_datarecs){
-        OWPError(ctx,OWPErrFATAL,EINVAL,
-                "_OWPWriteDataHeaderNumSkipRecs: Num datarecs unset");
-        errno = EINVAL;
-        return False;
-    }
-
-    /*
      * This function should not be called on a file that already has
      * initialized num_skiprecs and oset_skiprecs.
      */
@@ -2140,7 +2129,7 @@ _OWPWriteDataHeaderFinished(
     phrec.oset_skiprecs = phrec.oset_datarecs +
         (_OWP_DATAREC_SIZE * phrec.num_datarecs);
     n64 = (u_int64_t)phrec.oset_skiprecs;
-    if(phrec.oset_skiprecs |= (off_t)n64){
+    if(phrec.oset_skiprecs != (off_t)n64){
         OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
                 "_OWPWriteDataHeaderNumSkipRecs: Unable to represet file offset (%ull)",
                 phrec.oset_skiprecs);
@@ -2507,7 +2496,7 @@ OWPTestDiskspace(
  * Returns:	
  * Side Effect:	
  */
-int
+OWPBoolean
 OWPWriteDataRecord(
 	OWPContext	ctx,
 	FILE		*fp,
@@ -2519,7 +2508,7 @@ OWPWriteDataRecord(
 	if(!_OWPEncodeDataRecord(buf,rec)){
 		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
 			"OWPWriteDataRecord: Unable to encode data record");
-		return -1;
+		return False;
 	}
 
 	/*
@@ -2528,10 +2517,10 @@ OWPWriteDataRecord(
 	if(fwrite(buf,1,_OWP_DATAREC_SIZE,fp) != _OWP_DATAREC_SIZE){
 		OWPError(ctx,OWPErrFATAL,errno,
 			"OWPWriteDataRecord: fwrite(): %M");
-		return -1;
+		return False;
 	}
 
-	return 0;
+	return True;
 }
 
 

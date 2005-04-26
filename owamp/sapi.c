@@ -1037,7 +1037,7 @@ OWPProcessFetchSession(
      * TestRequest record.
      */
 read_file:
-    if(!_OWPReadDataHeaderInitial(cntrl->ctx,fp,&fhdr)){
+    if( !_OWPReadDataHeaderInitial(cntrl->ctx,fp,&fhdr)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
                 "_OWPReadDataHeaderInitial(\"%s\"): %M",fname);
         goto failed;
@@ -1117,7 +1117,7 @@ read_file:
         /*
          * Lock obtained, reread the file header.
          */
-        if(!_OWPReadDataHeaderInitial(cntrl->ctx,fp,&fhdr)){
+        if( !_OWPReadDataHeaderInitial(cntrl->ctx,fp,&fhdr)){
             OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
                     "_OWPReadDataHeaderInitial(\"%s\"): %M",fname);
             goto failed;

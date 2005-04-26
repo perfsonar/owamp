@@ -2491,7 +2491,7 @@ OWPDOpenFile(
 		/*
 		 * Now open the file.
 		 */
-		if(!(finfo->fp = fopen(finfo->filepath,"wb"))){
+		if(!(finfo->fp = fopen(finfo->filepath,"w+b"))){
 			OWPError(ctx,OWPErrFATAL,errno,"fopen(%s,\"wb\"): %M",
 					finfo->filepath);
 			goto error;

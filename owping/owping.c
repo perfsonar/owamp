@@ -1558,7 +1558,9 @@ main(
         }
 
         if (acceptval != 0) {
-            I2ErrLog(eh, "Test session(s) Questionable...");
+            I2ErrLog(eh, "Test session(s) Failed...");
+
+            exit(0);
         }
 
         /*
