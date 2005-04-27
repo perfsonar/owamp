@@ -227,7 +227,7 @@ reopen_datafile(
         return NULL;
     }
 
-    if( !(fp = fdopen(newfd,"w+b"))){
+    if( !(fp = fdopen(newfd,"r+b"))){
         OWPError(ctx,OWPErrFATAL,errno, "fdopen(%d): %M",newfd);
         return NULL;
     }
@@ -752,7 +752,6 @@ OPEN_AGAIN:
             }
         }
 
-#if NOTYET
         /*
          * Unlink shm segment and free filename memory.
          */
@@ -767,7 +766,6 @@ OPEN_AGAIN:
             OWPError(cntrl->ctx,OWPErrFATAL,saveerr,"SHM_UNLINK(): %M");
             goto error;
         }
-#endif
 
         /*
          * pre-allocate nodes for skipped packet buffer.
@@ -1095,6 +1093,7 @@ run_sender(
     OWPTimeStamp    owptstamp;
     OWPNum64	    nextoffset;
     OWPSkip         sr;
+    u_int32_t	    num_skiprecs;
 
     /*
      * Initialize pointers to various positions in the packet buffer,
@@ -1363,6 +1362,25 @@ finish_sender:
     }
 
     /*
+     * Save session information into IPC file so parent can
+     * see results.
+     */
+    for(num_skiprecs=0,sr = ep->head_skip; sr; sr = sr->next,num_skiprecs++);
+
+#if USE_SHMIPC
+    /*
+     * If SHMIPC, then the size for the file needs to be
+     * specified before writing.
+     */
+    if( (ftruncate(ep->skiprecfd,
+                    (off_t)(8 + (_OWP_SKIPREC_SIZE * num_skiprecs))) != 0)){
+        OWPError(ep->cntrl->ctx,OWPErrFATAL,errno,
+                "Sizing shared-mem: ftruncate(): %M");
+        exit(OWP_CNTRL_FAILURE);
+    }
+#endif
+
+    /*
      * send (i = nextseq, skip records) to control process
      * for inclusion in StopSessions message...
      * Use network byte order so the data from the fd can just
@@ -1381,17 +1399,9 @@ finish_sender:
         exit(OWP_CNTRL_FAILURE);
     }
 
-    /*
-     * count the skip recs  - this means twice through the loop, but
-     * that is most likely faster than the system call to do the
-     * lseek that would be required to write the num_skips after
-     * parsing the loop.
-     */
-    /* reuse i */
-    for(i=0,sr = ep->head_skip; sr; sr = sr->next,i++);
     /* save "Num Skip Records"    */
-    i = htonl(i);
-    if(I2Writeni(ep->skiprecfd,&i,4,&owp_int) != 4){
+    num_skiprecs = htonl(num_skiprecs);
+    if(I2Writeni(ep->skiprecfd,&num_skiprecs,4,&owp_int) != 4){
         OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
                 "run_sender: I2Writeni(): %M");
         exit(OWP_CNTRL_FAILURE);

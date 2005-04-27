@@ -1174,8 +1174,8 @@ OWPStopSessions(
 
 done:
         if(err2 < OWPErrWARNING){
-            if(*acceptval_ret == OWP_CNTRL_ACCEPT){
-                *acceptval_ret = OWP_CNTRL_FAILURE;
+            if(*acceptval == OWP_CNTRL_ACCEPT){
+                *acceptval = OWP_CNTRL_FAILURE;
             }
             (void)_OWPFailControlSession(cntrl,err2);
         }
@@ -1750,7 +1750,7 @@ ntohll(
  *      for version >= 2 files. For version <=1 files fp will be
  *      at the begining of data records.
  */
-static char owp_magic[] = _OWP_MAGIC_FILETYPE;
+static u_int8_t owp_magic[] = _OWP_MAGIC_FILETYPE;
 OWPBoolean
 _OWPReadDataHeaderInitial(
         OWPContext                  ctx,
@@ -1758,7 +1758,7 @@ _OWPReadDataHeaderInitial(
         _OWPSessionHeaderInitial    phdr
         )
 {
-    char	read_magic[sizeof(owp_magic)];
+    u_int8_t	read_magic[sizeof(owp_magic)];
     int	        err;
     u_int64_t   oset;
 
@@ -1807,7 +1807,7 @@ _OWPReadDataHeaderInitial(
      * Read and check "magic".
      * 4 bytes
      */
-    if(fread(read_magic, 1, 4, fp) != 4){
+    if(fread(&read_magic[0], 1, 4, fp) != 4){
         err = errno;
         OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fread(): %M");
         errno = err;

@@ -765,7 +765,7 @@ owp_fetch_sid(
      */
     if(savefile){
         path = savefile;
-        if( !(fp = fopen(path,"wb+"))){
+        if( !(fp = fopen(path,"w+b"))){
             I2ErrLog(eh,"owp_fetch_sid:fopen(%s):%M",path);
             return NULL;
         }
@@ -1525,7 +1525,7 @@ main(
 
             if (ping_ctx.opt.save_from_test) {
                 fromfp = fopen(ping_ctx.opt.save_from_test,
-                        "wb+");
+                        "w+b");
                 if(!fromfp){
                     I2ErrLog(eh,"fopen(%s):%M", 
                             ping_ctx.opt.save_from_test);
