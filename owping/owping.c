@@ -730,7 +730,7 @@ tfile(
         return NULL;
     }
 
-    if( !(fp = fdopen(fd,"w+"))){
+    if( !(fp = fdopen(fd,"w+b"))){
         I2ErrLog(eh,"fdopen(%s:(%d)): %M",fname,fd);
         return NULL;
     }

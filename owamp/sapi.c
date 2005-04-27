@@ -1304,6 +1304,13 @@ read_file:
 
     }
 
+    /* now send Zero Integrity Block (between skips & data */
+    if(_OWPSendBlocksIntr(cntrl,cntrl->zero,1,intr) != 1){
+        _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
+        return _OWPFailControlSession(cntrl,err);
+    }
+
+
     /*
      * Shortcut for no data.
      */

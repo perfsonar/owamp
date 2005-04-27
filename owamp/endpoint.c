@@ -1412,8 +1412,6 @@ finish_sender:
         }
     }
 
-    OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                "run_sender: Normal exit");
     exit(OWP_CNTRL_ACCEPT);
 }
 

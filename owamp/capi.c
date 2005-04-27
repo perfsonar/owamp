@@ -1627,24 +1627,8 @@ OWPFetchSession(
     }
 
     /*
-     * Data records are next
-     *
+     * Data records are next (fp is already positioned correctly).
      */
-
-    /*
-     * File pointer should now be positioned for data.
-     * (verify)
-     */
-    if( (toff = ftello(fp)) < 0){
-        OWPError(cntrl->ctx,OWPErrFATAL,errno,
-                "OWPFetchSession: ftello(): %M");
-        dowrite = False;
-    }
-    else if(toff != hdr.oset_skiprecs){
-        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                "OWPFetchSession: Invalid datarec offset!");
-        dowrite = False;
-    }
 
     for(n=hdr.num_datarecs;
             n >= _OWP_FETCH_DATAREC_BLOCKS;
