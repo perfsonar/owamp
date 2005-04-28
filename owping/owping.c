@@ -61,25 +61,26 @@ print_conn_args()
     static void
 print_test_args()
 {
-    fprintf(stderr,"              [Test Args]\n\n"
-            "   -f | -F file   perform one-way test from testhost [and save results to file]\n",
-            "   -t | -T file   perform one-way test to testhost [and save results to file]\n",
-            "   -c count       number of test packets\n",
-            "   -i wait        mean average time between packets (seconds)\n",
-            "   -L timeout     maximum time to wait for a packet before declaring it lost\n",
-            "   -s padding     size of the padding added to each packet (bytes)\n");
+    fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n",
+            "              [Test Args]",
+            "   -f | -F file   perform one-way test from testhost [and save results to file]",
+            "   -t | -T file   perform one-way test to testhost [and save results to file]",
+            "   -c count       number of test packets",
+            "   -i wait        mean average time between packets (seconds)",
+            "   -L timeout     maximum time to wait for a packet before declaring it lost",
+            "   -s padding     size of the padding added to each packet (bytes)");
 }
 
     static void
 print_output_args()
 {
-    fprintf(stderr,
-            "              [Output Args]\n\n"
-            "   -h             print this message and exit\n"
-            "   -Q             run the test and exit without reporting statistics\n"
-            "   -R             print RAW data: \"SEQNO STIME SS SERR RTIME RS RERR TTL\\n\"\n"
-            "   -v             print out individual delays\n"
-            "   -a alpha       report an additional percentile level for the delays\n"
+    fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n%s\n",
+            "              [Output Args]",
+            "   -h             print this message and exit",
+            "   -Q             run the test and exit without reporting statistics",
+            "   -R             print RAW data: \"SEQNO STIME SS SERR RTIME RS RERR TTL\\n\"",
+            "   -v             print out individual delays",
+            "   -a alpha       report an additional percentile level for the delays"
            );
 }
 

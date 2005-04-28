@@ -41,6 +41,10 @@
 #define	MAXHOSTNAMELEN	64
 #endif
 
+#ifndef EFTYPE
+#define EFTYPE  ENOSYS
+#endif
+
 #include <I2util/util.h>
 #include <owamp/owamp.h>
 

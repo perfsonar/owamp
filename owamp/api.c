@@ -32,10 +32,6 @@
 
 #include "./owampP.h"
 
-#ifndef EFTYPE
-#define	EFTYPE	ENOSYS
-#endif
-
 OWPAddr
 _OWPAddrAlloc(
 	OWPContext	ctx
@@ -992,7 +988,7 @@ _OWPStopSendSessions(
          * Each skip record is 8 bytes, plus 8 bytes for next_seqno and
          * num_skip_records means: filesize == ((nskip+1)*8)
          */
-        if(((nskip+1)*8) != sbuf.st_size){
+        if((off_t)((nskip+1)*8) != sbuf.st_size){
             OWPError(cntrl->ctx,OWPErrWARNING,EINVAL,
                     "_OWPStopSendSessions: Invalid skiprecfd data");
             *acceptval = OWP_CNTRL_FAILURE;

@@ -133,10 +133,6 @@ EndpointClear(
         close(ep->sockfd);
         ep->sockfd = -1;
     }
-    if(ep->fbuff){
-        free(ep->fbuff);
-        ep->fbuff = NULL;
-    }
 
     if(ep->payload){
         free(ep->payload);
@@ -184,6 +180,11 @@ EndpointFree(
         fclose(ep->datafile);
         ep->datafile = NULL;
     }
+    if(ep->fbuff){
+        free(ep->fbuff);
+        ep->fbuff = NULL;
+    }
+
     if(ep->userfile){
         _OWPCallCloseFile(ep->cntrl,ep->tsession->closure,ep->userfile,
                 aval);

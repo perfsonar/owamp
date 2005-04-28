@@ -1292,7 +1292,7 @@ read_file:
             /* zero block so extra space will be 0 padded */
             memset(buf,0,_OWP_RIJNDAEL_BLOCK_SIZE);
 
-            if(fread(buf,1,tr_size,fp) != tr_size){
+            if(fread(buf,1,tr_size,fp) != (size_t)tr_size){
                 _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
                 return _OWPFailControlSession(cntrl,OWPErrFATAL);
             }

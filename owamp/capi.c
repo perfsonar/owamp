@@ -1605,7 +1605,7 @@ OWPFetchSession(
             *err_ret = OWPErrFATAL;
             goto failure;
         }
-        if(dowrite && ( fwrite(buf,1,toff,fp) != toff)){
+        if(dowrite && ( fwrite(buf,1,toff,fp) != (size_t)toff)){
             OWPError(cntrl->ctx,OWPErrFATAL,errno,
                     "OWPFetchSession: fwrite(): %M");
             dowrite = False;
