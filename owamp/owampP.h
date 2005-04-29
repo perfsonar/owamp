@@ -49,6 +49,12 @@
 #include <owamp/owamp.h>
 
 /*
+ * Default temporary directory name
+ */
+#define _OWP_DEFAULT_TMPDIR "/tmp"
+#define _OWP_SKIPFILE_FMT   "owpskips.XXXXXX"
+
+/*
  * Offset's and lengths for various file versions.
  */
 #define _OWP_TESTREC_OFFSET     (40)

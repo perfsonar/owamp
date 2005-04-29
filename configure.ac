@@ -38,15 +38,6 @@ TOP_BUILD_DIRS=""
 #
 # add configure options.
 #
-AC_ARG_WITH(shmipc,
-        AC_HELP_STRING([--with-shmipc],
-            [Use shm files for IPC. Defaults to yes, if shm available]),
-        with_shmipc=$withval, with_shmipc=yes)
-if test "X${with_shmipc}X" = "XX"; then
-    AC_MSG_ERROR([No with_shmipc defined!])
-    with_shmipc="yes"
-fi
-
 AC_ARG_WITH(efence,
 		AC_HELP_STRING([--with-efence=<path/libefence.a>],
 				[yes means use -L/usr/local/lib -lefence]),
@@ -144,11 +135,6 @@ OWP_PREFIX_CFLAGS="-DOWP_PREFIX=$OWP_PREFIX"
 AC_DEFINE(AUTOCONF_SYSCONFDIR,/etc,"name of sysconfdir under prefix")
 AC_SUBST(OWP_PREFIX_CFLAGS)
 
-# Checks for libraries.
-if test "$with_shmipc" = "yes"; then
-    AC_SEARCH_LIBS(shm_open, rt)
-fi
-
 # Checks for header files.
 AC_HEADER_STDC
 AC_CHECK_HEADERS([errno.h netdb.h stdlib.h sys/param.h sys/socket.h sys/time.h sys/types.h sys/mman.h])
@@ -163,21 +149,11 @@ AC_CHECK_MEMBERS([struct sockaddr.sa_len], , ,
 
 # Checks for library functions.
 AC_FUNC_MALLOC
-AC_CHECK_FUNCS([memset socket getaddrinfo mergesort shm_open shm_unlink])
+AC_CHECK_FUNCS([memset socket getaddrinfo mergesort])
 
 # Checks for variable/function declarations.
 AC_CHECK_DECLS([optreset])
 AC_CHECK_DECLS([fseeko])
-
-# Refect if shm is available and if the builder wants to use it.
-if test "$with_shmipc" = "yes" &&
-    test "$ac_cv_func_shm_open" = "yes"; then
-    use_shmipc="1"
-else
-    use_shmipc="0"
-fi
-AC_DEFINE_UNQUOTED(USE_SHMIPC,$use_shmipc,"Use shared memory files for IPC")
-
 
 # AC_CONFIG_FILES([Makefile owamp/Makefile])
 

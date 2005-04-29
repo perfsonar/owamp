@@ -285,6 +285,59 @@ HashLostPacket(
     return *kn & 0xFFFFFFFFUL;
 }
 
+static int
+anon_file(
+        OWPContext  ctx
+         )
+{
+    char    *tmpdir = NULL;
+    char    *fpath = NULL;
+    int     pathlen;
+    int     fd = -1;
+
+    if( !(tmpdir = getenv("TMPDIR"))){
+        tmpdir = _OWP_DEFAULT_TMPDIR;
+    }
+
+    pathlen = strlen(tmpdir) + strlen(OWP_PATH_SEPARATOR) +
+        strlen(_OWP_SKIPFILE_FMT) + 1;
+
+    if(pathlen > PATH_MAX){
+        OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"TMPDIR too long");
+        goto error;
+    }
+
+    if( !(fpath = calloc(sizeof(char),(size_t)pathlen))){
+        OWPError(ctx,OWPErrFATAL,errno,"calloc(%d): %M",pathlen);
+        goto error;
+    }
+
+    if(snprintf(fpath,pathlen,"%s%s%s",tmpdir,OWP_PATH_SEPARATOR,
+                _OWP_SKIPFILE_FMT) != (pathlen-1)){
+        OWPError(ctx,OWPErrFATAL,errno,"snprintf(): Wrong len");
+        goto error;
+    }
+
+    if( (fd = mkstemp(fpath)) < 0){
+        OWPError(ctx,OWPErrFATAL,errno,"mkstemp(): %M");
+        goto error;
+    }
+
+    if(unlink(fpath) != 0){
+        OWPError(ctx,OWPErrFATAL,errno,"unlink(): %M");
+        goto error;
+    }
+
+    free(fpath);
+    return fd;
+
+error:
+    if(fpath) free(fpath);
+    if(fd > -1) close(fd);
+    return NULL;
+}
+
+
 /*
  * The endpoint init function is responsible for opening a socket, and
  * allocating a local port number.
@@ -315,7 +368,6 @@ _OWPEndpointInit(
     u_int16_t		    range;
     OWPPortRange            portrange=NULL;
     int			    saveerr=0;
-    int			    rc=0;
 
     *err_ret = OWPErrFATAL;
     *aval = OWP_CNTRL_UNAVAILABLE_TEMP;
@@ -687,21 +739,15 @@ success:
     }
     else{
         OWPSkip askip;
-        int     tries=0;
-        char    *skiprec_file = NULL;
 
         /*
-         * Create a file for sharing skip records. (shared memory makes
-         * sense for this file, but it is not a requirements.)
+         * Create a file for sharing skip records. Shared memory could
+         * work for this, but porting is very painful and performance is
+         * not so important for this step. (yet)
          *
          * The child process will fill this with Skip information that
-         * the parent will read after the child exits. The child will
-         * size the memory at the completion of the session and the
-         * parent can use stat to determine how much to read.
-         * This could be done with a file just as easily... Just
-         * using shared mem becuase it *should* work and *should* allow
-         * better performance on systems with reasonable shared memory
-         * implementations.
+         * the parent will read after the child exits.
+         *
          * Note that this could not be done with a socket/pipe because it
          * is unknown how much data will be coming through, and the parent
          * api gives control of the "event loop" back to the application.
@@ -712,59 +758,10 @@ success:
          * read. Using a file/shm implementation allows the data to be around
          * after the child exits no matter the size.
          */
-#if USE_SHMIPC
-#define SHM_OPEN(a,b,c) shm_open(a,b,c)
-#define SHM_UNLINK(a) shm_unlink(a)
-#else
-#define SHM_OPEN(a,b,c) open(a,b,c)
-#define SHM_UNLINK(a) unlink(a)
-#endif
-#define OWP_SHM_PREFIX    "OWP_TEST_SKIP_RECORDS"
-#define OWP_SHM_TRIES   5
 
-NAME_AGAIN:
-        if(skiprec_file) free(skiprec_file);
-        if(!(skiprec_file = tempnam(NULL,OWP_SHM_PREFIX))){
-            OWPError(cntrl->ctx,OWPErrFATAL,errno,"tempnam(): %M");
-            goto error;
-        }
-
-OPEN_AGAIN:
-        if((ep->skiprecfd = SHM_OPEN(skiprec_file,O_RDWR|O_CREAT|O_EXCL,
-                        S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH)) < 0){
-            switch(errno){
-                case EINTR:
-                    goto OPEN_AGAIN;
-                    break;
-                case EEXIST:
-                    /* It is conceivable that the tempnam above is not
-                     * unique - so we try a couple of times.
-                     * (This should be rare unless tempnam() is very
-                     * broken on this OS.)
-                     */
-                    if(tries++ < OWP_SHM_TRIES)
-                        goto NAME_AGAIN;
-                    /*fallthrough*/
-                default:
-                    OWPError(cntrl->ctx,OWPErrFATAL,errno,"SHM_OPEN(): %M");
-                    free(skiprec_file);
-                    goto error;
-                    break;
-            }
-        }
-
-        /*
-         * Unlink shm segment and free filename memory.
-         */
-        rc = SHM_UNLINK(skiprec_file);
-        saveerr = errno;
-
-        /* need to free the fname memory even if unlinking failed. */
-        free(skiprec_file);
-
-        /* if unlinking failed, then bail. */
-        if(rc != 0){
-            OWPError(cntrl->ctx,OWPErrFATAL,saveerr,"SHM_UNLINK(): %M");
+        if( !(ep->skiprecfd = anon_file(cntrl->ctx))){
+            OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                    "Unable to create skips file");
             goto error;
         }
 
