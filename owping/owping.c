@@ -61,14 +61,16 @@ print_conn_args()
     static void
 print_test_args()
 {
-    fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n",
+    fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n",
             "              [Test Args]",
             "   -f | -F file   perform one-way test from testhost [and save results to file]",
             "   -t | -T file   perform one-way test to testhost [and save results to file]",
             "   -c count       number of test packets",
             "   -i wait        mean average time between packets (seconds)",
-            "   -L timeout     maximum time to wait for a packet before declaring it lost",
-            "   -s padding     size of the padding added to each packet (bytes)");
+            "   -L timeout     maximum time to wait for a packet before declaring it lost (seconds)",
+            "   -s padding     size of the padding added to each packet (bytes)",
+            "   -z delayStart  time to wait before executing test (seconds)",
+            );
 }
 
     static void
@@ -1120,6 +1122,7 @@ main(
     OWPTestSpec         tspec;
     OWPSlot             slot;
     OWPNum64            rtt_bound;
+    OWPNum64            delayStart;
     OWPSID              tosid, fromsid;
     OWPAcceptType       acceptval;
     OWPErrSeverity      err;
@@ -1132,7 +1135,7 @@ main(
     char                *endptr = NULL;
     char                optstring[128];
     static char         *conn_opts = "A:k:S:u:";
-    static char         *test_opts = "c:D:fF:H:i:L:P:s:tT:";
+    static char         *test_opts = "c:D:fF:H:i:L:P:s:tT:z:";
     static char         *out_opts = "a:QRv";
     static char         *gen_opts = "h";
 #ifndef    NDEBUG
@@ -1188,6 +1191,7 @@ main(
         = ping_ctx.opt.srcaddr = ping_ctx.opt.authmode = NULL;
     ping_ctx.opt.numPackets = 100;
     ping_ctx.opt.lossThreshold = 0.0;
+    ping_ctx.opt.delayStart = 0.0;
     ping_ctx.opt.percentile = 50.0;
     ping_ctx.opt.padding = 0;
     ping_ctx.mean_wait = (float)0.1;
@@ -1218,6 +1222,7 @@ main(
             u_int32_t   tlng;
 
             /* Connection options. */
+
             case 'A':
                 if(!(ping_ctx.opt.authmode = strdup(optarg))){
                     I2ErrLog(eh,"malloc:%M");
@@ -1242,7 +1247,9 @@ main(
                     exit(1);
                 }
                 break;
+
                 /* Test options. */
+
             case 'c':
                 ping_ctx.opt.numPackets = strtoul(optarg, &endptr, 10);
                 if (*endptr != '\0') {
@@ -1339,7 +1346,18 @@ main(
                     exit(1);
                 }
                 break;
+            case 'z':
+                ping_ctx.opt.delayStart = strtod(optarg,&endptr);
+                if((*endptr != '\0') ||
+                        (ping_ctx.opt.delayStart < 0.0)){
+                    usage(progname, 
+                            "Invalid \'-z\' value. Positive float expected");
+                    exit(1);
+                }
+                break;
+
                 /* Output options */
+
             case 'v':
                 ping_ctx.opt.records = True;
                 break;
@@ -1484,7 +1502,7 @@ main(
         }
 
         /*
-         * TODO: create a "start" option?
+         * Compute a "min" start time.
          *
          * For now estimate a start time that allows both sides to
          * setup the session before that time:
@@ -1502,6 +1520,20 @@ main(
                     OWPNum64Mult(rtt_bound,
                         OWPULongToNum64(3)),
                     OWPULongToNum64(1)));
+
+        /*
+         * If the specified start time is greater than the "min"
+         * start time, then use it.
+         */
+        if(ping_ctx.opt.delayStart > 0.0){
+            delayStart = OWPDoubleToNum64(ping_ctx.opt.delayStart);
+        }else{
+            delayStart = OWPULongToNum64(0);
+        }
+        if(OWPNum64Cmp(delayStart,tspec.start_time) > 0){
+            tspec.start_time = delayStart;
+        }
+
 
         tspec.loss_timeout =
             OWPDoubleToNum64(ping_ctx.opt.lossThreshold);

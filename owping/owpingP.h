@@ -57,6 +57,7 @@ typedef    struct {
         u_int32_t       numPackets;         /* -c */
 
         double          lossThreshold;      /* -L */
+        double          delayStart;         /* -z */
         float           percentile;         /* -a */
 
         char            *srcaddr;           /* -S */
