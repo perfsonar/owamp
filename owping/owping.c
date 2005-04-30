@@ -69,7 +69,7 @@ print_test_args()
             "   -i wait        mean average time between packets (seconds)",
             "   -L timeout     maximum time to wait for a packet before declaring it lost (seconds)",
             "   -s padding     size of the padding added to each packet (bytes)",
-            "   -z delayStart  time to wait before executing test (seconds)",
+            "   -z delayStart  time to wait before executing test (seconds)"
             );
 }
 
