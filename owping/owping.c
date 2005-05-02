@@ -535,7 +535,7 @@ owp_do_summary(
      * Report ttl's.
      */
     for(j=0;j<255;j++){
-        if(!ttl_count[j])
+        if(!state->ttl_count[j])
             continue;
         nttl++;
         if(j<minttl)
@@ -1667,7 +1667,8 @@ main(
 
             endtime -= OWPNum64ToDouble(curr_time.owptime);
 
-            fprintf(stdout,"Approximately %1f seconds until results available",
+            fprintf(stdout,
+                    "Approximately %.1f seconds until results available\n",
                     endtime);
         }
 
