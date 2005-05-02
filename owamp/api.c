@@ -724,6 +724,10 @@ OWPTestPacketRate(
 		duration = OWPNum64Add(duration,tspec->slots[i].any.mean_delay);
 	}
 
+        if(duration <= 0){
+            return 0;
+        }
+
 	return (double)tspec->nslots / OWPNum64ToDouble(duration);
 }
 

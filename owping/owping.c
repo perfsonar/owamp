@@ -190,6 +190,8 @@ typedef struct fetch_state {
     u_int32_t   r;        /* Ring pointer for next write.    */
     u_int32_t   l;        /* Number of seq numbers read.    */
 
+    u_int32_t   ttl_count[256];
+
 } fetch_state;
 
 #define OWP_CMP(a,b) ((a) < (b))? -1 : (((a) == (b))? 0 : 1)
@@ -422,6 +424,11 @@ do_single_record(
     if(state->order_disrupted)
         return 0;
 
+    /*
+     * Count ttl values here
+     */
+    state->ttl_count[rec->ttl]++;
+
     /* Update N-reordering state. */
     for(j = 0; j < MIN(state->l, OWP_MAX_N); j++) { 
         if(rec->seq_no 
@@ -483,14 +490,19 @@ do_single_record(
 /*
  ** Print out summary results, ping-like style. sent + dup == lost +recv.
  */
-    int
-owp_do_summary(fetch_state *state)
+int
+owp_do_summary(
+        fetch_state *state
+        )
 {
-    double min = ((double)(state->tmin)) * THOUSAND;    /* msec */
-    u_int32_t sent = state->max_seqno + 1;
-    u_int32_t lost = state->dup_packets + sent - state->num_received; 
-    double percent_lost = (100.0*(double)lost)/(double)sent;
-    int j;
+    u_int8_t    minttl=255;
+    u_int8_t    maxttl=0;
+    u_int8_t    nttl=0;
+    double      min = ((double)(state->tmin)) * THOUSAND;    /* msec */
+    u_int32_t   sent = state->max_seqno + 1;
+    u_int32_t   lost = state->dup_packets + sent - state->num_received; 
+    double      percent_lost = (100.0*(double)lost)/(double)sent;
+    int         j;
 
     assert(state); assert(state->fp);
 
@@ -518,6 +530,32 @@ owp_do_summary(fetch_state *state)
         fprintf(state->fp, 
                 "one-way delay min/median = %.3f/%.3f ms  (unsync)\n", 
                 min, owp_get_percentile(state, 0.5)*THOUSAND);
+
+    /*
+     * Report ttl's.
+     */
+    for(j=0;j<255;j++){
+        if(!ttl_count[j])
+            continue;
+        nttl++;
+        if(j<minttl)
+            minttl = j;
+        if(j>maxttl)
+            maxttl = j;
+    }
+
+    if(nttl < 1){
+        fprintf(state->fp,"TTL not reported\n");
+    }
+    else if(nttl == 1){
+        fprintf(state->fp,"TTL is %d (consistently)\n",minttl);
+    }
+    else{
+        fprintf(state->fp,"TTL takes %d values; min=%d, max=%d\n",
+                nttl,minttl,maxttl);
+    }
+
+
 
     for (j = 0; j < OWP_MAX_N && state->m[j]; j++)
         fprintf(state->fp,
@@ -1118,7 +1156,7 @@ main(
     OWPErrSeverity      err_ret = OWPErrOK;
     I2LogImmediateAttr  ia;
     OWPContext          ctx;
-    OWPTimeStamp        start_time;
+    OWPTimeStamp        curr_time;
     OWPTestSpec         tspec;
     OWPSlot             slot;
     OWPNum64            rtt_bound;
@@ -1396,6 +1434,10 @@ main(
     argc -= optind;
     argv += optind;
 
+    if(ping_ctx.opt.raw){
+        ping_ctx.opt.quiet = True;
+    }
+
     /*
      * Handle 3 possible cases (owping, owfetch, owstats) one by one.
      */
@@ -1422,13 +1464,6 @@ main(
          */
         if(ping_ctx.opt.padding > MAX_PADDING_SIZE)
             ping_ctx.opt.padding = MAX_PADDING_SIZE;
-
-
-        if ((ping_ctx.opt.percentile < 0.0) 
-                || (ping_ctx.opt.percentile > 100.0)) {
-            usage(progname, "alpha must be between 0.0 and 100.0");
-            exit(0);
-        }
 
         owp_set_auth(ctx, progname, &ping_ctx); 
 
@@ -1506,20 +1541,23 @@ main(
          *
          * For now estimate a start time that allows both sides to
          * setup the session before that time:
-         *     ~3 rtt + 1sec from now
-         *         2 session requests, 1 startsessions command,
-         *        then one second extra to allow for setup
-         *        delay.
+         *     num_rtt * rtt_est + 1sec from now
+         *
+         *  There will be a rtt delay for the start sessions message
+         *  and for each test request. For the default case, this
+         *  will be 3 rtt's.
          */
-        if(!OWPGetTimeOfDay(ctx,&start_time)){
+        if(!OWPGetTimeOfDay(ctx,&curr_time)){
             I2ErrLogP(eh,errno,"Unable to get current time:%M");
             exit(1);
         }
-        tspec.start_time = OWPNum64Add(start_time.owptime,
-                OWPNum64Add(
-                    OWPNum64Mult(rtt_bound,
-                        OWPULongToNum64(3)),
-                    OWPULongToNum64(1)));
+        /* using ch to hold num_rtt */
+        ch = 1;    /* startsessions command */
+        if(ping_ctx.opt.to) ch++;
+        if(ping_ctx.opt.from) ch++;
+        tspec.start_time = OWPNum64Add(OWPNum64Mult(rtt_bound,
+                                        OWPULongToNum64(ch)),
+                                    OWPULongToNum64(1));
 
         /*
          * If the specified start time is greater than the "min"
@@ -1533,6 +1571,11 @@ main(
         if(OWPNum64Cmp(delayStart,tspec.start_time) > 0){
             tspec.start_time = delayStart;
         }
+
+        /*
+         * Turn "relative" start time into an absolute time.
+         */
+        tspec.start_time = OWPNum64Add(tspec.start_time,curr_time.owptime);
 
 
         tspec.loss_timeout =
@@ -1580,6 +1623,55 @@ main(
             FailSession(ping_ctx.cntrl);
 
         /*
+         * Give an estimate for when session data will be available.
+         */
+        if(!ping_ctx.opt.quiet){
+            double  duration;
+            double  rate;
+            double  endtime;
+
+            /*
+             * First estimate duration of actual test session.
+             */
+            rate = OWPTestPacketRate(ctx,&tspec); 
+
+            if(rate <= 0){
+                duration = 0.0;
+            }
+            else{
+                duration = (double)tspec.npackets / rate; 
+            }
+
+            /*
+             * Now wait lossThreshold for duplicate packet detection.
+             */
+            duration += ping_ctx.opt.lossThreshold;
+
+            /*
+             * Now wait for StopSessions messages to be exchanged.
+             */
+            duration += OWPNum64ToDouble(rtt_bound);
+
+            /*
+             * Compute "endtime" based on starttime and duration
+             */
+            endtime = OWPNum64ToDouble(tspec.start_time) + duration;
+
+            /*
+             * Compute a relative time from "endtime" and curr_time.
+             */
+            if(!OWPGetTimeOfDay(ctx,&curr_time)){
+                I2ErrLogP(eh,errno,"Unable to get current time:%M");
+                exit(1);
+            }
+
+            endtime -= OWPNum64ToDouble(curr_time.owptime);
+
+            fprintf(stdout,"Approximately %1f seconds until results available",
+                    endtime);
+        }
+
+        /*
          * TODO install sig handler for keyboard interupt - to send 
          * stop sessions. (Currently SIGINT causes everything to be 
          * killed and lost - might be reasonable to keep it that
@@ -1601,7 +1693,7 @@ main(
          * if we need them.
          */
         local = remote = NULL;
-        if(!ping_ctx.opt.quiet && !ping_ctx.opt.raw){
+        if(!ping_ctx.opt.quiet){
             OWPAddr    laddr;
             size_t    lsize;
 

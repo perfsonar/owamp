@@ -193,6 +193,18 @@ performed.
 .IP Default:
 True, unless the \fI\-f\fR or \fI\-F\fR have been specified explicitly.
 .RE
+.TP
+\fB\-z\fR \fIdelayStart\fR
+.br
+Time to wait before starting a test. \fBowping\fR attempts to calculate a
+reasonable minimum delay to ensure that the start of the test happens
+after completion of the setup protocol. If \fIdelayStart\fR is specified
+as a value less than this reasonable minimum delay, the reasonable minimum
+will be used instead.
+.RS
+.IP Default:
+2-3 times the round-trip estimate plus 1 (seconds)
+.RE
 .SS Connection/Authentication Options:
 .TP
 \fB\-A\fR \fIauthmode\fB
