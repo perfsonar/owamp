@@ -1730,7 +1730,7 @@ main(
         }
 
         if(ping_ctx.opt.to && (ping_ctx.opt.save_to_test ||
-                    !ping_ctx.opt.quiet)){
+                    !ping_ctx.opt.quiet || ping_ctx.opt.raw)){
             FILE    *tofp;
 
             tofp = owp_fetch_sid(ping_ctx.opt.save_to_test,
@@ -1746,7 +1746,7 @@ main(
             }
         }
 
-        if(fromfp && !ping_ctx.opt.quiet){
+        if(fromfp && (!ping_ctx.opt.quiet || ping_ctx.opt.raw)){
             if(do_records_all(ctx,stdout,fromfp,remote,local)
                     < 0){
                 I2ErrLog(eh,
