@@ -163,7 +163,7 @@ limit root with disk=0,\
 limit box with parent=root,bandwidth=1m
 limit sand with parent=box,\
 		disk=10M,\
-		bandwidth=1m,\
+		bandwidth=100k,\
 		delete_on_fetch=on
 
 assign default sand
