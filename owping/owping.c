@@ -587,14 +587,15 @@ done:
 /*
  * RAW ascii format is:
  * "SEQ STIME SS SERR RTIME RS RERR\n"
- * name        desc            type
- * SEQ        sequence number        unsigned long
- * STIME    sendtime        owptimestamp (%020llu)
- * RTIME    recvtime        owptimestamp (%020llu)
- * SS        send synchronized    boolean unsigned
- * RS        recv synchronized    boolean unsigned
- * SERR        send err estimate    float (%g)
- * RERR        recv err estimate    float (%g)
+ * name     desc                type
+ * SEQ      sequence number     unsigned long
+ * STIME    sendtime            owptimestamp (%020llu)
+ * SS       send synchronized   boolean unsigned
+ * SERR     send err estimate   float (%g)
+ * RTIME    recvtime            owptimestamp (%020llu)
+ * RS       recv synchronized   boolean unsigned
+ * RERR     recv err estimate   float (%g)
+ * TTL      ttl                 unsigned short
  */
 #define RAWFMT "%lu %020llu %u %g %020llu %u %g %u\n"
 static int

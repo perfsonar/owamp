@@ -291,7 +291,7 @@ Unset.
 Print individual packet records one per line in the raw format:
 .RS
 .PP
-\fISEQNO SENDTIME SSYNC SERR RECVTIME RSYNC RERR\fR
+\fISEQNO SENDTIME SSYNC SERR RECVTIME RSYNC RERR TTL\fR
 .br
 .TS
 li l .
@@ -302,6 +302,7 @@ SERR	Estimate of SENDTIME error.
 RECVTIME	Receive timestamp.
 RSYNC	Receiving system synchronized (0 or 1).
 RERR	Estimate of RECVTIME error.
+TTL	TTL IP field.
 .TE
 .PP
 The timestamps are ASCII representation of 64 bit integers with the
@@ -309,7 +310,11 @@ high-order 32 bits representing the number of seconds since Jan 1, 1900
 and the low-order 32 bits representing fractional seconds.
 The sequence
 number is simply an integer. The error estimates are printed as floating-point
-numbers using scientific notation.
+numbers using scientific notation. TTL is the IP field from the packet.
+The TTL in sending packets should be initialized to 255, so the number of
+hops the packet traversed can be computed. If the receiving host is not
+able to determine the TTL field, this will be reported as 255. (Some
+socket API's do not expose the TTL field.)
 .PP
 The \fI\-R\fR option implies \fI\-Q\fR.
 .IP Default:
