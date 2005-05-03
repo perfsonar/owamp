@@ -54,9 +54,8 @@ test will not be complete until \fItimeout\fR after the last packet is
 scheduled to be sent.
 .PP
 With no options specified, \fBowping\fR will perform concurrent bidirectional
-tests of 100 packets each at a rate of approximately 1 packet every 0.1
-seconds to and from the \fIpeerhost\fR. This works out to about 10 seconds
-of sending. Then, the receivers on each host
+tests of 10 packets each at a rate of approximately 1 packet every
+second to and from the \fIpeerhost\fR. Then, the receivers on each host
 will wait a reasonable period after that to count possible duplicate packets.
 (See the \fI\-L\fR option.) Upon completion of the sessions, summary statistics
 are printed to STDOUT.
@@ -76,7 +75,7 @@ Unset.
 Number of test packets to send in the test session.
 .RS
 .IP Default:
-100
+10
 .RE
 .TP
 \fB\-D\fR \fIDSCP\fR
@@ -135,7 +134,7 @@ point the sending process loops back to the beginning of the complete
 the sending process has sent \fIcount\fR packets as specified by the
 \fB\-c\fR option.
 .IP Default:
-0.1e (seconds)
+1.0e (seconds)
 .RE
 .TP
 \fB\-L\fR \fItimeout\fR
@@ -345,7 +344,7 @@ the identity \fIsomeuser\fR. \fBowping\fR will prompt for a \fIpassphrase\fR.
 .LP
 \fBowping -f somehost.com\fR
 .IP
-Run a single ~10-second test session at a rate of one packet every 0.1
+Run a single ~10-second test session at a rate of one packet every 1
 seconds with the packets being sent from somehost.com and received
 at the local host.
 .LP
@@ -358,15 +357,15 @@ that datafile using the same Output options that are available in
 .LP
 \fBowping -F from.owp -T to.owp somehost.com\fR
 .IP
-Run two concurrent ~10-second test sessions at a rate of a packet every 0.1
+Run two concurrent ~10-second test sessions at a rate of a packet every 1
 seconds. One session sending packets from the local host to somehost.com,
 the other session receiving packets from somehost.com.) Print summary
 statistics of the results and save the resulting data saved in from.owp and
 to.owp.
 .LP
-\fBowping -i 1e -c 10 somehost.com\fR
-Run two concurrent ~10-second test sessions at an average rate of a packet
-every 1 seconds. One session sending packets from the local host to
+\fBowping -i 0.1e -c 100 somehost.com\fR
+Run two concurrent ~10-second test sessions at an average rate of 10 packets
+every second. One session sending packets from the local host to
 somehost.com, the other session receiving packets from somehost.com.)
 Print summary statistics of the results only.
 .LP

@@ -1228,12 +1228,12 @@ main(
     ping_ctx.opt.save_from_test = ping_ctx.opt.save_to_test 
         = ping_ctx.opt.identity = ping_ctx.opt.keyfile 
         = ping_ctx.opt.srcaddr = ping_ctx.opt.authmode = NULL;
-    ping_ctx.opt.numPackets = 100;
+    ping_ctx.opt.numPackets = 10;
     ping_ctx.opt.lossThreshold = 0.0;
     ping_ctx.opt.delayStart = 0.0;
     ping_ctx.opt.percentile = 50.0;
     ping_ctx.opt.padding = 0;
-    ping_ctx.mean_wait = (float)0.1;
+    ping_ctx.mean_wait = (float)1;
 
     /* Create options strings for this program. */
     if (!strcmp(progname, "owping")) {
