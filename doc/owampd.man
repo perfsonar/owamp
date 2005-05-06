@@ -21,6 +21,11 @@
 ."
 ."	Description:	
 ."
+.de TQ
+.br
+.ns
+.TP \\$1
+..
 .TH owampd 8 "$Date$"
 .SH NAME
 owampd \- One-way latency server.
@@ -159,6 +164,57 @@ the system clock. \fBNTP\fR needs to be setup in a more methodical way
 than on most systems for the results to be meaningful. Please see the
 \fBOWAMP\fR web site \%(http://e2epi.internet2.edu/owamp/) for details
 concerning proper configuration of \fBNTP\fR for \fBOWAMP\fR.
+.SH ERRORS
+\fBowampd\fR uses \fBsyslog\fR to output error messages including access
+information. The \fIfacility\fR configuration option is used to determine
+what \fBsyslog\fR facility is used. The levels used are as follows:
+.IP \fBLOG_ERR\fR
+Used for messages indicating fatal errors. The requested action will not
+be performed.
+.IP \fBLOG_WARNING\fR
+Used for messages indicating an unexpected or dangerous condition.
+.IP \fBLOG_INFO\fR
+Used for access messages.
+.IP \fBLOG_DEBUG\fR
+Used to indicate reasons for actions. For example, if an access is denied
+due to policy choices that will be noted with this log level.
+.PP
+These levels were chosen to give the system-administrator the ability to
+separate access log information from error log information in a straight
+forward manner.
+.SH SIGNALS
+.
+The \fBowampd\fR process makes use of a number of signals to perform
+IPC between the various processes involved:
+.TP
+\fBSIGALRM\fR
+Used throughout to set timers where appropriate.
+.TP
+\fBSIGCHLD\fR
+Used to keep track of the state of child processes.
+.TP
+.B SIGINT
+.TQ
+.B SIGTERM
+.TQ
+.B SIGHUP
+Used to terminate any \fBowampd\fR process. These signals are caught by the
+parent daemon and it manages the complete shutdown of all the \fBowampd\fR
+processes.
+.TP
+\fBSIGPIPE\fR
+Disabled throughout \fBowampd\fR.
+.TP
+\fBSIGUSR1\fR
+Used to tell a spawned off receiver/sender process that all control
+setup interaction is complete and the test can continue at the
+determined time. (This is an indication that the StartSessions message
+was received for those familiar with the \fBOWAMP\fR protocol.)
+.TP
+\fBSIGUSR2\fR
+Used to tell a spawned off receiver/sender process to terminate a session
+early. (This is an indication that a StopSessions message was received
+for those familiar with the \fBOWAMP\fR protocol.)
 .SH FILES
 owampd.pid
 .br

@@ -518,7 +518,7 @@ OWPControlAccept(
 	 * server greeting.
 	 */
 	if(!mode_offered){
-		OWPError(cntrl->ctx,OWPErrINFO,OWPErrPOLICY,
+		OWPError(cntrl->ctx,OWPErrWARNING,OWPErrPOLICY,
 	"Control request to (%s:%s) denied from (%s:%s): mode == 0",
 			 cntrl->local_addr->node,cntrl->local_addr->port,
 			 cntrl->remote_addr->node,cntrl->remote_addr->port);
@@ -547,7 +547,7 @@ OWPControlAccept(
 	}
 
 	if(!(cntrl->mode | mode_offered)){ /* can't provide requested mode */
-		OWPError(cntrl->ctx,OWPErrINFO,OWPErrPOLICY,
+		OWPError(cntrl->ctx,OWPErrWARNING,OWPErrPOLICY,
 	"Control request to (%s:%s) denied from (%s:%s):mode not offered (%u)",
 			 cntrl->local_addr->node,cntrl->local_addr->port,
 			 cntrl->remote_addr->node,
@@ -589,12 +589,14 @@ OWPControlAccept(
 		/* Decrypted challenge is in the first 16 bytes */
 		if((memcmp(challenge,token,16) != 0) || !getkey_success){
 			if(!getkey_success){
-				OWPError(cntrl->ctx,OWPErrINFO,OWPErrPOLICY,
-					"Unknown userid (%s)",
-					cntrl->userid_buffer);
+				OWPError(cntrl->ctx,OWPErrWARNING,OWPErrPOLICY,
+					"Unknown userid (%s) from (%s:%s)",
+					cntrl->userid_buffer,
+                                        cntrl->remote_addr->node,
+                                        cntrl->remote_addr->port);
 			}
 			else{
-				OWPError(cntrl->ctx,OWPErrINFO,OWPErrPOLICY,
+				OWPError(cntrl->ctx,OWPErrWARNING,OWPErrPOLICY,
  "Control request to (%s:%s) denied from (%s:%s):Invalid challenge encryption",
 					cntrl->local_addr->node,
 					cntrl->local_addr->port,
@@ -620,7 +622,7 @@ OWPControlAccept(
 	if(!_OWPCallCheckControlPolicy(cntrl,cntrl->mode,cntrl->userid, 
 		  cntrl->local_addr->saddr,cntrl->remote_addr->saddr,err_ret)){
 		if(*err_ret > OWPErrWARNING){
-			OWPError(ctx,OWPErrINFO,OWPErrPOLICY,
+			OWPError(ctx,OWPErrWARNING,OWPErrPOLICY,
        "ControlSession request to (%s:%s) denied from userid(%s):(%s:%s)",
 				cntrl->local_addr->node,cntrl->local_addr->port,
 				(cntrl->userid)?cntrl->userid:(char*)"nil",
@@ -647,7 +649,7 @@ OWPControlAccept(
 		*err_ret = (OWPErrSeverity)rc;
 		goto error;
 	}
-	OWPError(ctx,OWPErrINFO,OWPErrPOLICY,
+	OWPError(ctx,OWPErrWARNING,OWPErrPOLICY,
 		"ControlSession([%s]:%s) accepted from userid(%s):([%s]:%s)",
 		cntrl->local_addr->node,cntrl->local_addr->port,
 		(cntrl->userid)?cntrl->userid:(char*)"nil",
@@ -764,10 +766,10 @@ OWPProcessTestRequest(
 				&err_ret)){
 			if(err_ret < OWPErrOK)
 				goto error;
-			OWPError(cntrl->ctx,OWPErrINFO,OWPErrPOLICY,
+			OWPError(cntrl->ctx,OWPErrWARNING,OWPErrPOLICY,
 							"Test not allowed");
 			acceptval = OWP_CNTRL_REJECT;
-			err_ret = OWPErrINFO;
+			err_ret = OWPErrWARNING;
 			goto error;
 		}
 
@@ -790,12 +792,12 @@ OWPProcessTestRequest(
 					 tsession->receiver->saddr,
 					 tsession->receiver->saddrlen,
 					 I2SADDR_ADDR) <= 0)){
-			OWPError(cntrl->ctx,OWPErrINFO,OWPErrPOLICY,
+			OWPError(cntrl->ctx,OWPErrWARNING,OWPErrPOLICY,
 		"Test Denied: OpenMode recieve_addr(%s) != control_client(%s)",
 					tsession->receiver->node,
 					cntrl->remote_addr->node);
 			acceptval = OWP_CNTRL_REJECT;
-			err_ret = OWPErrINFO;
+			err_ret = OWPErrWARNING;
 			goto error;
 		}
 
@@ -807,10 +809,10 @@ OWPProcessTestRequest(
 					&tsession->closure,&err_ret)){
 			if(err_ret < OWPErrOK)
 				goto error;
-			OWPError(cntrl->ctx, OWPErrINFO, OWPErrPOLICY,
+			OWPError(cntrl->ctx, OWPErrWARNING, OWPErrPOLICY,
 				 "Test not allowed");
 			acceptval = OWP_CNTRL_REJECT;
-			err_ret = OWPErrINFO;
+			err_ret = OWPErrWARNING;
 			goto error;
 		}
 		if(!_OWPEndpointInit(cntrl,tsession,tsession->sender,NULL,
@@ -1067,7 +1069,7 @@ read_file:
      */
     if((begin == 0) && (end == 0xFFFFFFFF) &&
             (fhdr.finished != _OWP_SESSION_FIN_NORMAL)){
-        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINFO,
+        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrWARNING,
                 "OWPProcessFetchSession(\"%s\"): Request for complete session, but session not yet terminated!",
                 fname);
         goto reject;
@@ -1385,6 +1387,6 @@ reject:
         return _OWPFailControlSession(cntrl,err);
     }
 
-    return OWPErrINFO;
+    return OWPErrWARNING;
 
 }

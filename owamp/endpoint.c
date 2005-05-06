@@ -1292,7 +1292,7 @@ AGAIN:
                 }
 
                 /* but do note it as INFO for debugging */
-                OWPError(ep->cntrl->ctx,OWPErrINFO,
+                OWPError(ep->cntrl->ctx,OWPErrDEBUG,
                         OWPErrUNKNOWN,
                         "Unable to send([%s]:%s:(#%d): %M",
                         ep->remoteaddr->node,
@@ -1443,7 +1443,7 @@ alloc_node(
     if(!ep->freelist){
         u_int64_t	i;
 
-        OWPError(ep->cntrl->ctx,OWPErrINFO,OWPErrUNKNOWN,
+        OWPError(ep->cntrl->ctx,OWPErrWARNING,OWPErrUNKNOWN,
                 "alloc_node: Allocating nodes for lost-packet-buffer!");
         if(!(node = calloc(sizeof(OWPLostPacketRec),ep->numalist))){
             OWPError(ep->cntrl->ctx,OWPErrFATAL,errno,

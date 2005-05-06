@@ -506,7 +506,7 @@ OWPControlOpen(
 		goto error;
 	}
 	else{
-		OWPError(ctx,OWPErrINFO,OWPErrPOLICY,
+		OWPError(ctx,OWPErrWARNING,OWPErrPOLICY,
 				"OWPControlOpen:No Common Modes");
 		goto denied;
 	}
@@ -577,7 +577,7 @@ OWPControlOpen(
          * TODO: enumerate reason for rejection
          */
 	if(acceptval != OWP_CNTRL_ACCEPT){
-		OWPError(cntrl->ctx,OWPErrINFO,OWPErrPOLICY,
+		OWPError(cntrl->ctx,OWPErrWARNING,OWPErrPOLICY,
 							"Server denied access");
 		goto denied;
 	}
@@ -874,7 +874,7 @@ _OWPClientRequestTestReadResponse(
         /*
          * TODO: enumerate failure reasons
          */
-	OWPError(cntrl->ctx,OWPErrINFO,OWPErrPOLICY,"Server denied test");
+	OWPError(cntrl->ctx,OWPErrWARNING,OWPErrPOLICY,"Server denied test");
 
 	*err_ret = OWPErrOK;
 	return 1;

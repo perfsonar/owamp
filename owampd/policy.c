@@ -1670,7 +1670,7 @@ OWPDResourceUsage(
 		return;
 	}
 
-	OWPError(node->policy->ctx,OWPErrINFO,OWPErrPOLICY,
+	OWPError(node->policy->ctx,OWPErrDEBUG,OWPErrPOLICY,
 		"ResInit %s:%s = %llu",node->nodename,
 				GetLimName(lim.limit),lim.value);
 	IntegerResourceUsage(node,lim);
@@ -1830,7 +1830,7 @@ OWPDResourceDemand(
 	 * These messages are printed to INFO so they can be selected
 	 * as non-interesting.
 	 */
-	OWPError(node->policy->ctx,OWPErrINFO,OWPErrPOLICY,
+	OWPError(node->policy->ctx,OWPErrDEBUG,OWPErrPOLICY,
 		"ResReq %s: %s:%s:%s = %llu (result = %llu, limit = %llu)",
 		(ret)?"ALLOWED":"DENIED",
 		node->nodename,
@@ -1840,7 +1840,7 @@ OWPDResourceDemand(
 		GetUsed(node,lim.limit),
 		GetLimit(node,lim.limit));
 	for(node = node->parent;!ret && node;node = node->parent){
-		OWPError(node->policy->ctx,OWPErrINFO,OWPErrPOLICY,
+		OWPError(node->policy->ctx,OWPErrDEBUG,OWPErrPOLICY,
 		"ResReq %s: %s:%s:%s = %llu (result = %llu, limit = %llu)",
 		(ret)?"ALLOWED":"DENIED",
 		node->nodename,
@@ -2208,7 +2208,7 @@ OWPDCheckControlPolicy(
 	 */
 	if(((mode & OWP_MODE_DOCIPHER) && userid) &&
 			!(node = GetNodeFromUserID(policy,userid))){
-		OWPError(policy->ctx,OWPErrINFO,OWPErrUNKNOWN,
+		OWPError(policy->ctx,OWPErrDEBUG,OWPErrUNKNOWN,
 				"OWPDCheckControlPolicy: No policy match for userid(%s) - using netmask match",userid);
 	}
 
