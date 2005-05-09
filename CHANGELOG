@@ -1,3 +1,557 @@
+2005-05-09  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* owping/owping.c:
+	Corrected logic for "raw" option. (There is some confusing interplay
+	between the "quiet" and the "raw" option. I need to correct this someday...)
+
+	jeff
+
+2005-05-06  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* doc/owampd.man, owamp/capi.c, owamp/endpoint.c, owamp/sapi.c, owampd/policy.c:
+	owampd.man:
+	    Documented error message philosophy.
+	    Documented SIGNAL usage.
+
+	owamp/capi.c:
+	owamp/endpoint.c:
+	owamp/sapi.c:
+	owampd/policy.c:
+	    Changed error levels for some messages. INFO is now used exclusively
+	    for "access" log issues.
+
+	jeff
+
+2005-05-03  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* conf/owampd.limits, doc/owping.man, owping/owping.c:
+	Changed the default test back to 10hz. (Stas convinced me it is better.)
+
+	jeff
+
+	* doc/owping.man, owping/owping.c:
+	Changed default test to 1 packet per second, and 10 packets.
+
+	jeff
+
+	* owping/owping.c: changed how the "quiet" option works slightly.
+
+	jeff
+
+	* doc/owping.man, owping/owping.c: owping.man:
+	    Adding TTL output information to -R
+
+	owping.c:
+	    Correct "comments" regarding the -R "printraw" function.
+
+	jeff
+
+2005-05-02  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* owping/owping.c: syntax...
+
+	jeff
+
+	* doc/owping.man, owamp/api.c, owping/owping.c: api.c:
+	    Deal with division by 0 in OWPTestPacketRate.
+
+	owping.c:
+	    Add summary statistics for ttl.
+	    Add output of "end of test" estimate.
+
+	owping.man:
+	    Document the -z option (delay start).
+
+	jeff
+
+2005-04-30  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* owping/owping.c: Oops - syntax.
+
+	jeff
+
+	* owping/owping.c, owping/owpingP.h:
+	Adding a -z option to owping. (delayStart) This option is used to run
+	a test the specified number of seconds in the future.
+
+	jeff
+
+2005-04-29  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* configure.ac, owamp/endpoint.c, owamp/owampP.h:
+	Removed all shm stuff. The portability issues were not worth the marginal
+	performance enhancement.
+
+	jeff
+
+2005-04-28  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* owamp/api.c, owamp/capi.c, owamp/endpoint.c, owamp/owampP.h, owamp/sapi.c, owping/owping.c:
+	Initial port to Linux, and
+
+	I FINALLY FOUND THE WEIRD MEMORY BUG!
+	When I introduced the IPC mechanism, I had to change where the datafile was
+	closed so the parent could access it after the child exits. However, I
+	forgot that I had specified the file buffer directly, and this was
+	still being freed. Unfortunately, efence was only marginally useful in finding
+	this because memory accesses inside the file io functions are somehow
+	trapped differently. But, 4 hours later.... I finally figured it out.
+
+	jeff
+
+2005-04-27  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* owamp/api.c, owamp/endpoint.c, owping/owping.c:
+	Added shm file sizing.
+
+	jeff
+
+	* owamp/capi.c, owamp/endpoint.c, owamp/sapi.c, owping/owping.c:
+	Corrected FetchSession interaction. Needed to send block of IZP between
+	skips and data records even if there are no skips. I had accidentily put the
+	write of that block in the if(num_skiprecs) block.
+
+	Simplified the Data file reading code slightly.
+
+	Corrected FetchSession interaction. Needed to send block of IZP between
+	skips and data records even if there are no skips. I had accidentily put the
+	write of that block in the if(num_skiprecs) block.
+
+	Simplified the Data file reading code slightly.
+
+	Still to be done for this version (aiming for this week):
+
+	        Fix shared memory IPC - just need to add an fdtruncate call
+	        to assign the file size. (Currently using normal files for
+	        IPC - this is a compile time selection.)
+
+	        Add ttl summary info to owping/owstats output.
+
+	        Test ttl data on an OS that supports it...
+
+	        Add sub-session summaries to powstream so AMI database host
+	        interaction can be optimized.
+
+	        Porting to additional OS's.
+
+	jeff
+
+2005-04-26  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* owamp/api.c, owamp/endpoint.c, owamp/owamp.h, owamp/protocol.c, owamp/sapi.c, owampd/policy.c, owping/owping.c:
+	Bug fixes for new code:
+
+	Needed to modify where the datafile is closed. (It used to be closed
+	in the parent immediately, now the parent has to go through the data
+	when the stop sessions message comes in to delete records after
+	(stoptime - timeout).
+
+	Also needed to modify all fdopens to open w+ instead of w so the
+	records can be queried as well as written.
+
+	Needed to modify the interpolated binary search to round instead of truncate
+	when determining the candidate.
+
+	Missed a few spots where the return type of the DataHeader write functions
+	changed return values. (They now return boolean - they used to return int's.)
+
+	Receive sessions are working from owping now. There is still a problem with
+	the Fetch protocol at the moment that I have not tracked down yet.
+
+	jeff
+
+2005-04-22  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* powstream/powstream.c: Ugh. - typo.
+
+	jeff
+
+	* powstream/powstream.c: Just formatting changes.
+
+	jeff
+
+2005-04-21  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* owping/owping.c, powstream/powstream.c:
+	Modified api call for reading an owp file header.
+
+	jeff
+
+	* configure.ac, owamp/endpoint.c:
+	Adding autoconf rules for disabling the use of shared-mem for IPC.
+
+	jeff
+
+	* owamp/api.c, owamp/capi.c, owamp/owampP.h, owamp/protocol.c, owamp/sapi.c:
+	Fixing syntax errors (typos).
+
+	jeff
+
+2005-04-20  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* owamp/api.c, owamp/arithm64.c, owamp/capi.c, owamp/endpoint.c, owamp/io.c, owamp/owamp.h, owamp/owampP.h, owamp/protocol.c, owamp/sapi.c, owampd/owampd.c, owping/owping.c, powstream/powstream.c, I2util/aespasswd/aespasswd.c, doc/details.html, doc/index.html, doc/owamp_arch.png:
+	I2util/
+	aespasswd.c:
+	    Fixed C macro for creating a string out of a constant.
+
+	doc/*:
+	    *   Added some NTP details based on user comments. (These are old, I
+	    still need to incorporate comments from the Atl workshop.
+	    *   Made arch diagram a little nicer.
+
+	owamp/*:
+	    Changes to deal with IPC for reporting back skip ranges to control
+	    process from the "sender" process. Also, changes for the file format
+	    to deal with skip records and of course changes to deal with the
+	    modifications to the StopSessions and FetchSession protocols.
+
+	owampd/*:
+	    Forgot to initialize a variable.
+
+	owping:
+	    formatting changes
+
+	powstream:
+	    change iotime to 3.
+
+	jeff
+
+2005-03-15  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* I2util/I2util/io.c, I2util/I2util/random.c, I2util/I2util/random.h, I2util/I2util/table.c:
+	better comments.
+
+	jeff
+
+2004-12-02  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* doc/index.html: Added a link to J-OWAMP.
+
+2004-10-05  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* owamp/capi.c, owamp/endpoint.c, owamp/owamp.h, owamp/protocol.c, owamp/sapi.c:
+	Adding some new failure (accept) values into code.
+
+	jeff
+
+2004-09-28  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* owamp/endpoint.c: remove unused vars.
+
+	jeff
+
+2004-09-27  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* owamp/endpoint.c: typo's.
+
+	jeff
+
+	* configure.ac: Upgrade to version 2.0a.
+
+	jeff
+
+	* owamp/owamp.h, owamp/protocol.c:
+	owamp.h: Modify "standard" owamp port to 4824
+
+	protocol.c: change format of "fetch session" response records. (re-order
+	    fields to make alignment marginally better.)
+
+	jeff
+
+	* owamp/endpoint.c:
+	Modified sender not to send packets that should have been sent more than
+	"timeout" in the past. (change in spec)
+
+	jeff
+
+2004-09-23  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* powstream/powstream.c:
+	correct summary data for case of duplicate packets.
+
+	jeff
+
+	* owping/owping.c, owping/owpingP.h: owping.c
+	owpingP.h:
+	    Adding -D and -H options for setting typeP in owmap protocol with
+	    DSCP or PHB values.
+
+	jeff
+
+	* owamp/capi.c, owamp/endpoint.c, owamp/owampP.h, owamp/protocol.c, owamp/sapi.c:
+	capi.c:
+	sapi.c:
+	owampP.h:
+	    Modify calls to endpoint start hooks to expect a possible return
+	    of "EUNSUPPORTED" error codes so PHB option could be passed to server.
+	    (owampd still can't do anything with this option and will fail to start
+	    the test, but another owamp-test server may have the capability and this
+	    simply allows the option to be set for requests.)
+	endpoint.c:
+	    Decode and use the typeP word. If it is a DSCP value, set TOS sockopt
+	    to do it. If it is a PHB return unsupported.
+	protocol.c:
+	    Remove validate of typeP from here and move it into endpoint so the
+	    option can be passed within the protocol.
+
+	jeff
+
+	* doc/owping.man: Document the typeP options.
+
+	jeff
+
+2004-09-22  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* owping/owping.c, owping/owpingP.h: reformat to 4-char tab stops.
+
+	jeff
+
+	* owping/owping.c: change format for 'usage' message slightly.
+
+	jeff
+
+2004-09-10  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* I2util/I2util/ErrLog.c, I2util/I2util/ErrLogSyslog.c, I2util/I2util/conf.c, I2util/I2util/conf.h, I2util/I2util/errlog.h:
+	Merging SERVLESS_CLIENT changes into HEAD.
+
+	errlog.h:
+	ErrLog.c:
+		Ignore messages with level "none".
+
+	ErrLogSyslog.c:
+		Add "none" priority
+
+	conf.h:
+	conf.c:
+		Added str2num function to deal with suffix multiples. i.e. 100k 'k'.
+		Added str2byte function to deal with suffix multiples. i.e. 100k 'k'.
+		(these are different in that 'num' function uses k == 1000, and
+		byte function uses k == 1024.
+	jeff
+
+2004-09-09  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* I2util/I2util/ErrLogSyslog.c, I2util/I2util/errlog.h:
+	SYSLOG_NAMES is painful...
+
+	jeff
+
+	* I2util/I2util/ErrLogSyslog.c, I2util/I2util/errlog.h:
+	Adding includes for syslog.h in slightly different places.
+
+	jeff
+
+	* I2util/I2util/ErrLog.c, I2util/I2util/ErrLogSyslog.c, I2util/I2util/errlog.h:
+	Splitting error log messages from access log messages using the syslog
+	"priority". There are two new bwctld.conf parameters to control this.
+
+	(This also now makes it possible to shut-up the spawned off daemon from
+	bwctl...)
+
+	jeff (still need to test.)
+
+2004-08-23  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* owampd/policy.c: Added more info to debug messages.
+
+	Moved str2num functions into I2util library.
+
+	jeff
+
+2004-08-20  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* I2util/I2util/conf.c:
+	syntax errors - stand-alone client now compiles. (now onto real testing...)
+
+	jeff
+
+	* I2util/I2util/conf.c, I2util/I2util/conf.h:
+	Completed the code to implement a client side spawned server. Not yet
+	tested.
+
+	jeff
+
+2004-07-26  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* owamp/capi.c, owamp/endpoint.c, owamp/sapi.c, owamp/time.c:
+	Hacks to port to apple. (Notice this is only in the OWAMP_1_6f_apple
+	branch of cvs. - the hack to make ntp_adjtime work requires a hacked kernel,
+	and the getaddrinfo hack is ugly... I'm not bringing this into the mainline
+	for now.)
+
+	jeff
+
+	* conf/owampd.limits: Changing default config to allow 1 mb/s sessions.
+
+	jeff
+
+2004-07-08  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* doc/index.html: Added a recommended hardware section.
+
+	jeff
+
+2004-06-29  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* owamp/endpoint.c, owampd/policy.c:
+	Initialize 'rc' so fine optimized code still works... Ugh.
+
+	re-order some conf file parsing for permissions reasons. Then take root
+	permissions back to open keys/limits files.
+
+	jeff
+
+2004-06-28  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* owamp/endpoint.c, owamp/owampP.h:
+	Modified socket options to be AF specific. (ttl becomes hoplimit in IPv6)
+
+	jeff
+
+	* owamp/endpoint.c:
+	Modified code to only try and do ttl if the right sockopt is available.
+	(It is not on older FreeBSD systems like we are using on Abilene... Ugh.)
+
+	jeff
+
+	* owamp/api.c: Decode version 3 file headers too...
+
+	jeff
+
+	* configure.ac: Updated version number to 1.7a
+
+	This will be the first version to support ttl.
+
+	jeff
+
+	* owamp/sapi.c:
+	found another place where the change in test record size to support ttl
+	caused a needed buffer size change.
+
+	jeff
+
+	* owamp/api.c, owamp/owampP.h:
+	Corrected ProcessFetchSession to handle the new version 3 files.
+
+	Modified the message buffer to be large enough to hold the new
+	fetch records buffer size.
+
+	jeff
+
+	* owping/owping.c:
+	Modified the "raw" output to include the TTL value of the packet.
+
+	jeff
+
+	* owamp/endpoint.c:
+	Fixed recvttl function. Was using the wrong constants to decode the
+	ancillary data.
+
+	jeff
+
+	* conf/owampd.conf: removed "boote" path stuff...
+
+	* powstream/powstream.c, owping/owping.c, owampd/owampd.c, owamp/Makefile.am, owamp/api.c, owamp/context.c, owamp/owampP.h, owamp/protocol.c, owamp/sapi.c, owamp/schedule.c, owamp/unixtime.c:
+	Fixed many "minor" compiler warnings. (mostly unused vars and the like)
+
+	jeff
+
+	* I2util/I2util/ErrLogSyslog.c, I2util/I2util/errlogsyslog.h:
+	Corrected reset function to return I2Boolean.
+
+	jeff
+
+2004-06-19  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* owamp/api.c, owamp/endpoint.c, owamp/time.c, I2util/I2util/ErrLogSyslog.c, I2util/I2util/hex.c, I2util/I2util/hex.h, I2util/I2util/table.c:
+	Some compile errors fixed... will fix the rest next week.
+
+	jeff
+
+	* owamp/endpoint.c, owamp/owamp.h, owamp/owampP.h, owamp/protocol.c, owamp/sapi.c, owamp/time.c, owamp/unixtime.c, powstream/powstream.c, powstream/powstreamP.h, owamp/api.c:
+	Unified "time" api code so all time functions go through the functions
+	in time.c.
+
+	Created version 3 of the owd file format to support ttl data in the records.
+
+	Modified the code to set the ttl and retrieve the ttl.
+
+	Created single functions for encoding and decoding data records to make it
+	more simple to change the file i/o functions.
+
+	Simplified the "receiver" code by using file i/o functions.
+
+	Modified the way "lost packet" records are encoded in the protocol data
+	stream and in files.
+
+	removed functions from unixtime.c
+
+	(all this still needs to be compiled and tested...)
+
+	jeff
+
+2004-06-09  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* configure.ac, doc/index.html: Preparing to tag version OWAMP_1_6f.
+
+	jeff
+
+	* CHANGELOG:
+	Adding a changelog file for owamp. (Just used rcs2log - but it is better
+	than nothing, and was dead easy to do.)
+
+	jeff
+
+	* owampd/owampd.c, owping/owping.c:
+	owampd.c: re-ordered descriptor cleanup code.
+
+	owping.c: syntax error.
+
+	jeff
+
+	* owampd/owampd.c:
+	Thought of a more simple way to close "most" of the open fd's in the
+	child. This will be important when I add the partial sessions (lots more
+	fd's will be in use.)
+
+	jeff
+
+	* conf/owampd.conf:
+	change the comment to reflect the new limits on portrange.
+
+	jeff
+
+	* doc/owampd.conf.man, doc/owampd.man, doc/owping.man, owampd/owampd.c, owping/owping.c:
+	*.c:
+		Disallow port ranges of a single value other than 0.
+		Disallow port ranges where low>high.
+
+	doc/*:
+		Document port range options.
+
+	jeff
+
+	* I2util/I2util/ErrLog.c, I2util/I2util/ErrLogSyslog.c, I2util/I2util/errlog.h, I2util/I2util/errlogsyslog.h, conf/owampd.conf, owamp/api.c, owamp/endpoint.c, owamp/owamp.h, owamp/owampP.h, owamp/protocol.c, owampd/owampd.c, owampd/owampdP.h, owampd/policy.c, owping/owping.c, owping/owpingP.h:
+	I2Util/*:
+		Adding functionality to allow error logs to be "reset" after a
+		process forks. Specifically added this functionality to the
+		"syslog" logger.
+
+	owampd.conf,owampd.c:
+		Added portrange to owampd.
+		Removed current code that closed file descriptors in child.
+		Did not work correctly - can only close descriptors from other
+		parent/child pipes. Will fix this another time.
+		Added code to reset syslog after fork.
+	endpoint.c:
+		Fixed bad error format string.
+
+	protocol.c,owampP.h:
+		Fixed a bug that resulted in the server configured port
+		value being lost, and not saved in the owp files with the
+		rest of the TestRequest record.
+
 2004-06-09  Jeff W. Boote  <boote@ellis.internet2.edu>
 
 	* /home/cvs/engdev/owamp/owampd/owampd.c, /home/cvs/engdev/owamp/owping/owping.c:

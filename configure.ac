@@ -27,9 +27,9 @@
 #
 #	Options:
 # Process this file with autoconf to produce a configure script.
-AC_INIT(owamp, 2.0a, owamp-bugs@internet2.edu)
+AC_INIT(owamp, 2.0dev-a, owamp-bugs@internet2.edu)
 AC_CONFIG_AUX_DIR(config)
-AM_INIT_AUTOMAKE(owamp, 2.0a, [no-define])
+AM_INIT_AUTOMAKE(owamp, 2.0dev-a, [no-define])
 AC_CONFIG_SRCDIR(owamp/context.c)
 AM_CONFIG_HEADER(owamp/config.h)
 
