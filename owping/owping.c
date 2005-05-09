@@ -1735,7 +1735,7 @@ main(
 
             tofp = owp_fetch_sid(ping_ctx.opt.save_to_test,
                     ping_ctx.cntrl,tosid);
-            if(tofp && !ping_ctx.opt.quiet &&
+            if(tofp && (!ping_ctx.opt.quiet || ping_ctx.opt.raw) &&
                     (do_records_all(ctx,stdout,tofp,
                                     local,remote) < 0)){
                 I2ErrLog(eh,
