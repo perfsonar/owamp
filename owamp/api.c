@@ -2650,11 +2650,17 @@ OWPReadDataHeader(
 
     hdr_ret->next_seqno = phrec.next_seqno;
     hdr_ret->num_skiprecs = phrec.num_skiprecs;
-    hdr_ret->num_datarecs = phrec.num_datarecs;
     hdr_ret->oset_skiprecs = phrec.oset_skiprecs;
     hdr_ret->oset_datarecs = phrec.oset_datarecs;
+    if(!phrec.finished){
+        hdr_ret->num_datarecs = (phrec.sbuf.st_size - phrec.hdr_len)/
+                                                    hdr_ret->rec_size;
+    }
+    else{
+        hdr_ret->num_datarecs = phrec.num_datarecs;
+    }
 
-    return phrec.num_datarecs;
+    return hdr_ret->num_datarecs;
 }
 
 /*

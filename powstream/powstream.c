@@ -129,6 +129,8 @@ usage(const char *progname, const char *msg)
 	fprintf(stderr, "\n");
 	print_output_args();
 
+	fprintf(stderr, "Distribution: %s\n", PACKAGE_STRING);
+
 	return;
 }
 
@@ -559,7 +561,8 @@ WriteSubSession(
 	rec->seq_no -= parse->first;
 	parse->seen[rec->seq_no].seen++;
 
-	if(OWPWriteDataRecord(parse->ctx,parse->fp,rec) != 0){
+        parse->n++;
+	if(!OWPWriteDataRecord(parse->ctx,parse->fp,rec)){
 		return -1;
 	}
 
@@ -621,7 +624,7 @@ WriteSubSession(
 	return 0;
 }
 
-static int
+static OWPBoolean
 WriteSubSessionLost(
 	struct pow_parse_rec	*parse
 		)
@@ -649,12 +652,13 @@ WriteSubSessionLost(
 		rec.recv = parse->missing;	/* for error est */
 		rec.recv.owptime = OWPULongToNum64(0);
 
-		if(OWPWriteDataRecord(parse->ctx,parse->fp,&rec) != 0){
-			return -1;
+                parse->n++;
+		if(!OWPWriteDataRecord(parse->ctx,parse->fp,&rec)){
+			return False;
 		}
 	}
 
-	return 0;
+	return True;
 }
 
 static u_int32_t
@@ -1165,7 +1169,7 @@ NextConnection:
 			char			newpath[PATH_MAX];
 			u_int32_t		arecs,nrecs;
 			off_t			fileend;
-			OWPSessionHeaderRec	hdr;
+			OWPSessionHeaderRec	rhdr, whdr;
 			OWPNum64		localstop;
 
 			if(sig_check())
@@ -1173,7 +1177,7 @@ NextConnection:
 
 			parse.first = appctx.opt.numPackets*sub;
 			parse.last = (appctx.opt.numPackets*(sub+1))-1;
-			parse.i = 0;
+			parse.i = parse.n = 0;
 			parse.next = 0;
 			parse.sync = 1;
 			parse.maxerr = 0.0;
@@ -1273,8 +1277,9 @@ AGAIN:
 
 			/* Fetch hdr for sub session */
 
-			arecs = OWPReadDataHeader(ctx,p->fp,&hdr);
-			parse.hdr = &hdr;
+			arecs = OWPReadDataHeader(ctx,p->fp,&rhdr);
+                        whdr = rhdr;
+			parse.hdr = &whdr;
 
 			/* Fetch time error estimate for missing packets */
 			if(!(OWPGetTimeOfDay(ctx,&parse.missing))){
@@ -1285,15 +1290,19 @@ AGAIN:
 			/*
 			 * Modify hdr for subsession.
 			 */
-			hdr.test_spec.start_time = startnum;
-			hdr.test_spec.npackets = appctx.opt.numPackets;
-			hdr.test_spec.slots = &slot;
+                        whdr.finished = 0;
+                        whdr.next_seqno = 0;
+                        whdr.num_skiprecs = 0;
+                        whdr.num_datarecs = 0;
+			whdr.test_spec.start_time = startnum;
+			whdr.test_spec.npackets = appctx.opt.numPackets;
+			whdr.test_spec.slots = &slot;
 
 			/*
 			 * Position of first record we need to look at.
 			 */
-			if(parse.begin < hdr.oset_datarecs)
-				parse.begin = hdr.oset_datarecs;
+			if(parse.begin < rhdr.oset_datarecs)
+				parse.begin = rhdr.oset_datarecs;
 			if(fseeko(p->fp,0,SEEK_END) != 0){
 				I2ErrLog(eh,"fseeko(): %M");
 				exit(1);
@@ -1312,8 +1321,8 @@ AGAIN:
 			 * How many records from "begin" to end of file.
 			 */
 			if(arecs){
-				nrecs = arecs -(parse.begin - hdr.oset_datarecs)
-                                                    / hdr.rec_size;
+				nrecs = arecs-(parse.begin - rhdr.oset_datarecs)
+                                                    / rhdr.rec_size;
 			}
 			else{
 				nrecs = 0;
@@ -1370,18 +1379,19 @@ AGAIN:
 			 */
 
 			/* write the file header */
-			if(OWPWriteDataHeader(ctx,parse.fp,&hdr) != 0){
+			if(!OWPWriteDataHeader(ctx,parse.fp,&whdr)){
 				I2ErrLog(eh,"OWPWriteDataHeader: %M");
 				goto error;
 			}
 
 			/* write relevant records to file */
-			if(OWPParseRecords(ctx,p->fp,nrecs,hdr.version,
+			if(OWPParseRecords(ctx,p->fp,nrecs,whdr.version,
 				WriteSubSession,(void*)&parse) != OWPErrOK){
 				I2ErrLog(eh,
-				"WriteSubSession: sub=%d,arecs=%lu,nrecs=%lu,begin=%lld,first=%lu,last=%lu,hdr.oset_datarecs=%llu,fileend=%lld: %M",
+				"WriteSubSession: sub=%d,arecs=%lu,nrecs=%lu,begin=%lld,first=%lu,last=%lu,rhdr.oset_datarecs=%llu,fileend=%lld: %M",
 					sub,arecs,nrecs,parse.begin,
-					parse.first,parse.last,hdr.oset_datarecs,fileend);
+					parse.first,parse.last,
+                                        rhdr.oset_datarecs,fileend);
 				goto error;
 			}
 			/*
@@ -1393,10 +1403,15 @@ AGAIN:
 				clearerr(p->fp);
 			}
 
-			if(WriteSubSessionLost(&parse)){
+			if(!WriteSubSessionLost(&parse)){
 				I2ErrLog(eh,"WriteSubSessionLost: %M");
 				goto error;
 			}
+
+                        if(!OWPWriteDataHeaderNumDataRecs(ctx,p->fp,parse.n)){
+                            I2ErrLog(eh,"OWPWriteDataHeaderNumDataRecs: %M");
+                            goto error;
+                        }
 
 			/*
 			 * Flush the FILE before linking to the "complete"
@@ -1487,7 +1502,7 @@ error:
 			if(parse.next)
 				parse.begin = parse.next;
 			else
-				parse.begin += parse.i * hdr.rec_size;
+				parse.begin += parse.i * rhdr.rec_size;
 
 		}
 

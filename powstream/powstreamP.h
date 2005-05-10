@@ -114,6 +114,7 @@ typedef struct pow_seen_rec{
 struct pow_parse_rec{
 	OWPContext		ctx;
 	u_int32_t		i;
+	u_int32_t		n;
 	FILE			*fp;	/* sub-session data file	*/
 	u_int32_t		first;
 	u_int32_t		last;

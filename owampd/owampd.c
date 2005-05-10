@@ -89,6 +89,7 @@ usage(
 #endif
 			"\n"
 			);
+	fprintf(stderr, "Distribution: %s\n", PACKAGE_STRING);
 	return;
 }
 
