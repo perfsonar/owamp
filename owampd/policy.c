@@ -1468,7 +1468,7 @@ GetNodeFromUserID(
 	key.dptr = &pid;
 	key.dsize = sizeof(pid);
 
-	memcpy(pid.user.userid,userid,sizeof(userid));
+	memcpy(pid.user.userid,userid,sizeof(pid.user.userid));
 
 	if(I2HashFetch(policy->idents,key,&val)){
 		return (OWPDPolicyNode)val.dptr;
