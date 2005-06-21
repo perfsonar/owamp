@@ -1307,7 +1307,8 @@ read_file:
     }
 
     /* now send Zero Integrity Block (between skips & data */
-    if(_OWPSendBlocksIntr(cntrl,cntrl->zero,1,intr) != 1){
+    memset(buf,0,_OWP_RIJNDAEL_BLOCK_SIZE);
+    if(_OWPSendBlocksIntr(cntrl,buf,1,intr) != 1){
         _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
         return _OWPFailControlSession(cntrl,err);
     }
@@ -1364,7 +1365,8 @@ final:
     _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_ACCEPT);
 
     /* now send final Zero Integrity Block */
-    if(_OWPSendBlocksIntr(cntrl,cntrl->zero,1,intr) != 1){
+    memset(buf,0,_OWP_RIJNDAEL_BLOCK_SIZE);
+    if(_OWPSendBlocksIntr(cntrl,buf,1,intr) != 1){
         return _OWPFailControlSession(cntrl,err);
     }
 

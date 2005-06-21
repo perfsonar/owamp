@@ -1018,7 +1018,8 @@ _OWPWriteTestRequest(
 	/*
 	 * Send 1 block of Integrity Zero Padding.
 	 */
-	if(_OWPSendBlocks(cntrl,cntrl->zero,1) != 1){
+        memset(buf,0,16);
+	if(_OWPSendBlocks(cntrl,buf,1) != 1){
 		cntrl->state = _OWPStateInvalid;
 		return OWPErrFATAL;
 	}
@@ -1979,7 +1980,8 @@ _OWPWriteStopSessions(
     /*
      * Complete WriteStopSessions by sending IZP.
      */
-    if(_OWPSendBlocksIntr(cntrl,cntrl->zero,1,retn_on_intr) != 1){
+    memset(buf,0,16);
+    if(_OWPSendBlocksIntr(cntrl,buf,1,retn_on_intr) != 1){
         return _OWPFailControlSession(cntrl,OWPErrFATAL);
     }
 
