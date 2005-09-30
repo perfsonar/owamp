@@ -137,7 +137,7 @@ AC_SUBST(OWP_PREFIX_CFLAGS)
 
 # Checks for header files.
 AC_HEADER_STDC
-AC_CHECK_HEADERS([errno.h netdb.h stdlib.h sys/param.h sys/socket.h sys/time.h sys/types.h sys/mman.h])
+AC_CHECK_HEADERS([errno.h netdb.h stdlib.h sys/param.h sys/socket.h sys/time.h sys/types.h sys/mman.h sys/timex.h])
 
 # Checks for typedefs, structures, and compiler characteristics.
 I2_C___ATTRIBUTE__
