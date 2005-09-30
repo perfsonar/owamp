@@ -197,9 +197,14 @@ OWPContextGetErrHandle(
 	return ctx->eh;
 }
 
+typedef union _OWPContextHashValue{
+    void    *value;
+    void    (*func)(void);
+} _OWPContextHashValue;
+
 struct _OWPContextHashRecord{
-	char	key[_OWP_CONTEXT_MAX_KEYLEN+1];
-	void	*value;
+	char	                key[_OWP_CONTEXT_MAX_KEYLEN+1];
+	_OWPContextHashValue	val;
 };
 
 struct _OWPFreeHashRecord{
@@ -354,7 +359,7 @@ _OWPControlAlloc(
 	/*
 	 * Init I/O fields
 	 */
-	cntrl->retn_on_intr = (int *)OWPContextConfigGet(ctx,OWPInterruptIO);
+	cntrl->retn_on_intr = (int *)OWPContextConfigGetV(ctx,OWPInterruptIO);
 
 	/*
 	 * Init encryption fields
@@ -371,10 +376,10 @@ _OWPControlAlloc(
 }
 
 static OWPBoolean
-ConfigSet(
-	I2Table		table,
-	const char	*key,
-	void		*value
+ConfigSetU(
+    I2Table                 table,
+    const char              *key,
+    _OWPContextHashValue    val
 	)
 {
 	struct _OWPContextHashRecord	*rec,*trec;
@@ -391,7 +396,7 @@ ConfigSet(
 
 	/* set key datum */
 	strncpy(rec->key,key,_OWP_CONTEXT_MAX_KEYLEN);
-	rec->value = value;
+	rec->val = val;
 
 	k.dptr = rec->key;
 	k.dsize = strlen(rec->key);
@@ -417,8 +422,34 @@ ConfigSet(
 	return False;
 }
 
-static void *
-ConfigGet(
+static OWPBoolean
+ConfigSetV(
+    I2Table                     table,
+    const char                  *key,
+    void                        *value
+	)
+{
+    _OWPContextHashValue  val;
+
+    val.value = value;
+    return ConfigSetU(table,key,val);
+}
+
+static OWPBoolean
+ConfigSetF(
+    I2Table                     table,
+    const char                  *key,
+    void                        (*func)(void)
+	)
+{
+    _OWPContextHashValue  val;
+
+    val.func = func;
+    return ConfigSetU(table,key,val);
+}
+
+static _OWPContextHashValue
+ConfigGetU(
 	I2Table		table,
 	const char	*key
 	)
@@ -426,6 +457,9 @@ ConfigGet(
 	struct _OWPContextHashRecord	*rec;
 	I2Datum				k,v;
 	char				kval[_OWP_CONTEXT_MAX_KEYLEN+1];
+        _OWPContextHashValue            not;
+        
+        not.value = NULL;
 
 	assert(key);
 
@@ -435,12 +469,36 @@ ConfigGet(
 	k.dsize = strlen(kval);
 
 	if(!I2HashFetch(table,k,&v)){
-		return NULL;
+		return not;
 	}
 
 	rec = (struct _OWPContextHashRecord*)v.dptr;
 
-	return rec->value;
+        return rec->val;
+}
+
+static void *
+ConfigGetV(
+	I2Table		table,
+	const char	*key
+	)
+{
+    _OWPContextHashValue    val = ConfigGetU(table,key);
+
+    return val.value;
+}
+
+static OWPFunc ConfigGetF(
+	I2Table		table,
+	const char	*key
+	)
+{
+    _OWPContextHashValue    val = ConfigGetU(table,key);
+
+    if(val.value == NULL)
+        return NULL;
+
+    return val.func;
 }
 
 static OWPBoolean
@@ -480,7 +538,7 @@ ConfigDelete(
  * Side Effect:	
  */
 OWPBoolean
-OWPContextConfigSet(
+OWPContextConfigSetV(
 	OWPContext	ctx,
 	const char	*key,
 	void		*value
@@ -488,18 +546,41 @@ OWPContextConfigSet(
 {
 	assert(ctx);
 
-	return ConfigSet(ctx->table,key,value);
+	return ConfigSetV(ctx->table,key,value);
+}
+
+OWPBoolean
+OWPContextConfigSetF(
+	OWPContext	ctx,
+	const char	*key,
+	OWPFunc		func
+	)
+{
+	assert(ctx);
+
+	return ConfigSetF(ctx->table,key,func);
 }
 
 void *
-OWPContextConfigGet(
+OWPContextConfigGetV(
 	OWPContext	ctx,
 	const char	*key
 	)
 {
 	assert(ctx);
 
-	return ConfigGet(ctx->table,key);
+	return ConfigGetV(ctx->table,key);
+}
+
+OWPFunc
+OWPContextConfigGetF(
+	OWPContext	ctx,
+	const char	*key
+	)
+{
+	assert(ctx);
+
+	return ConfigGetF(ctx->table,key);
 }
 
 OWPBoolean
@@ -527,7 +608,7 @@ OWPContextConfigDelete(
  * Side Effect:	
  */
 OWPBoolean
-OWPControlConfigSet(
+OWPControlConfigSetV(
 	OWPControl	cntrl,
 	const char	*key,
 	void		*value
@@ -535,18 +616,41 @@ OWPControlConfigSet(
 {
 	assert(cntrl);
 
-	return ConfigSet(cntrl->table,key,value);
+	return ConfigSetV(cntrl->table,key,value);
+}
+
+OWPBoolean
+OWPControlConfigSetF(
+	OWPControl	cntrl,
+	const char	*key,
+	OWPFunc		func
+	)
+{
+	assert(cntrl);
+
+	return ConfigSetF(cntrl->table,key,func);
 }
 
 void *
-OWPControlConfigGet(
+OWPControlConfigGetV(
 	OWPControl	cntrl,
 	const char	*key
 	)
 {
 	assert(cntrl);
 
-	return ConfigGet(cntrl->table,key);
+	return ConfigGetV(cntrl->table,key);
+}
+
+OWPFunc
+OWPControlConfigGetF(
+	OWPControl	cntrl,
+	const char	*key
+	)
+{
+	assert(cntrl);
+
+	return ConfigGetF(cntrl->table,key);
 }
 
 OWPBoolean
@@ -580,7 +684,7 @@ _OWPCallGetAESKey(
 
 	*err_ret = OWPErrOK;
 
-	func = (OWPGetAESKeyFunc)OWPContextConfigGet(ctx,OWPGetAESKey);
+	func = (OWPGetAESKeyFunc)OWPContextConfigGetF(ctx,OWPGetAESKey);
 
 	/*
 	 * Default action is no encryption support.
@@ -614,7 +718,7 @@ _OWPCallCheckControlPolicy(
 
 	*err_ret = OWPErrOK;
 
-	func = (OWPCheckControlPolicyFunc)OWPContextConfigGet(cntrl->ctx,
+	func = (OWPCheckControlPolicyFunc)OWPContextConfigGetF(cntrl->ctx,
 							OWPCheckControlPolicy);
 
 	/*
@@ -651,7 +755,7 @@ _OWPCallCheckTestPolicy(
 
 	*err_ret = OWPErrOK;
 
-	func = (OWPCheckTestPolicyFunc)OWPContextConfigGet(cntrl->ctx,
+	func = (OWPCheckTestPolicyFunc)OWPContextConfigGetF(cntrl->ctx,
 							OWPCheckTestPolicy);
 	/*
 	 * Default action is to allow anything.
@@ -683,7 +787,7 @@ _OWPCallTestComplete(
 {
 	OWPTestCompleteFunc	func;
 
-	func = (OWPTestCompleteFunc)OWPContextConfigGet(tsession->cntrl->ctx,
+	func = (OWPTestCompleteFunc)OWPContextConfigGetF(tsession->cntrl->ctx,
 							OWPTestComplete);
 	/*
 	 * Default action is nothing...
@@ -732,7 +836,7 @@ _OWPCallOpenFile(
 {
 	OWPOpenFileFunc	func;
 
-	func = (OWPOpenFileFunc)OWPContextConfigGet(cntrl->ctx,
+	func = (OWPOpenFileFunc)OWPContextConfigGetF(cntrl->ctx,
 							OWPOpenFile);
 	/*
 	 * Default action is nothing...
@@ -766,7 +870,7 @@ _OWPCallCloseFile(
 {
 	OWPCloseFileFunc	func;
 
-	func = (OWPCloseFileFunc)OWPContextConfigGet(cntrl->ctx,
+	func = (OWPCloseFileFunc)OWPContextConfigGetF(cntrl->ctx,
 							OWPCloseFile);
 	/*
 	 * Default action is nothing...

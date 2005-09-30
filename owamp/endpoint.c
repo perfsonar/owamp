@@ -334,7 +334,7 @@ anon_file(
 error:
     if(fpath) free(fpath);
     if(fd > -1) close(fd);
-    return NULL;
+    return -1;
 }
 
 
@@ -449,7 +449,7 @@ _OWPEndpointInit(
          */
         p = port;
     }
-    else if(!(portrange = (OWPPortRange)OWPContextConfigGet(cntrl->ctx,
+    else if(!(portrange = (OWPPortRange)OWPContextConfigGetV(cntrl->ctx,
                     OWPTestPortRange))){
         p = port = 0;
     }else{
@@ -2325,7 +2325,7 @@ parenterr:
      */
 #ifndef	NDEBUG
     {
-        int	waitfor = (int)OWPContextConfigGet(ctx,OWPChildWait);
+        int	waitfor = (int)OWPContextConfigGetV(ctx,OWPChildWait);
 
         if(waitfor){
             OWPError(ctx,OWPErrWARNING,OWPErrUNKNOWN,

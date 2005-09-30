@@ -438,10 +438,21 @@ OWPError_(
  * (Well... SIGPIPE is disabled... I suppose that is global.)
  *
  * There are specific defaults that can be modified within the context by
- * calling the OWPContextConfigSet function with the following keys and
+ * calling the OWPContextConfigSet{F,V} function with the following keys and
  * types. (The key is a string - the type indicates what type of data
  * will be stored/retrieved using that key.
+ * The 'F' version is for setting/getting functions and the 'V' version
+ * is for values. (The C standard does not allow us to treat them
+ * generically - I suppose I could have exposed a union, but this
+ * seems easier.)
  */
+
+/*
+ * This typedef is used for the "generic" type of all function pointer
+ * types. (void *) is used for the 'value' equivalent.
+ */
+
+typedef void (*OWPFunc)(void);
 
 /*
  * This type is used to hold a pointer to an integer pointer. That pointer
@@ -609,14 +620,27 @@ OWPContextGetErrHandle(
 	);
 
 extern OWPBoolean
-OWPContextConfigSet(
+OWPContextConfigSetF(
+	OWPContext	ctx,
+	const char	*key,
+	OWPFunc		func
+	);
+
+extern OWPBoolean
+OWPContextConfigSetV(
 	OWPContext	ctx,
 	const char	*key,
 	void		*value
 	);
 
+extern OWPFunc
+OWPContextConfigGetF(
+	OWPContext	ctx,
+	const char	*key
+	);
+
 extern void*
-OWPContextConfigGet(
+OWPContextConfigGetV(
 	OWPContext	ctx,
 	const char	*key
 	);
@@ -633,14 +657,27 @@ OWPContextConfigDelete(
  * connection.
  */
 extern OWPBoolean
-OWPControlConfigSet(
+OWPControlConfigSetF(
+	OWPControl	cntrl,
+	const char	*key,
+	OWPFunc		func
+	);
+
+extern OWPBoolean
+OWPControlConfigSetV(
 	OWPControl	cntrl,
 	const char	*key,
 	void		*value
 	);
 
+extern OWPFunc
+OWPControlConfigGetF(
+	OWPControl	cntrl,
+	const char	*key
+	);
+
 extern void*
-OWPControlConfigGet(
+OWPControlConfigGetV(
 	OWPControl	cntrl,
 	const char	*key
 	);

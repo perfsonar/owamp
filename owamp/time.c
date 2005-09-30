@@ -42,8 +42,10 @@
 #include <string.h>
 #include <assert.h>
 #include <sys/time.h>
-#include <sys/timex.h>
 #include <owamp/owamp.h>
+#ifdef  HAVE_SYS_TIMEX_H
+#include <sys/timex.h>
+#endif
 
 /*
  * Function:	_OWPInitNTP
@@ -85,27 +87,40 @@ _OWPInitNTP(
 	OWPContext	ctx
 	)
 {
-	struct timex	ntp_conf;
+    /*
+     * If the system has NTP system calls use them. Otherwise
+     * timestamps will be marked UNSYNC.
+     */
+#ifdef  HAVE_SYS_TIMEX_H
+    {
+        struct timex	ntp_conf;
 
-	ntp_conf.modes = 0;
+        ntp_conf.modes = 0;
 
-	if(ntp_adjtime(&ntp_conf) < 0){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"ntp_adjtime(): %M");
-		return 1;
-	}
+        if(ntp_adjtime(&ntp_conf) < 0){
+            OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"ntp_adjtime(): %M");
+            return 1;
+        }
 
-	if(ntp_conf.status & STA_UNSYNC){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"NTP: Status UNSYNC!");
-	}
+        if(ntp_conf.status & STA_UNSYNC){
+            OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                    "NTP: Status UNSYNC (clock offset issues likely)");
+        }
 
 #ifdef	STA_NANO
-	if( !(ntp_conf.status & STA_NANO)){
-		OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-		"_OWPInitNTP: STA_NANO must be set! - try \"ntptime -N\"");
-		return 1;
-	}
+        if( !(ntp_conf.status & STA_NANO)){
+            OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                    "_OWPInitNTP: STA_NANO must be set! - try \"ntptime -N\"");
+            return 1;
+        }
 #endif
-	return 0;
+    }
+#else
+    OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+            "NTP syscalls unavail: Status UNSYNC (clock offset issues likely)");
+#endif  /* HAVE_SYS_TIMEX_H */
+
+    return 0;
 }
 
 struct timespec *
@@ -116,78 +131,99 @@ _OWPGetTimespec(
 	u_int8_t	*sync
 	)
 {
-	struct timeval	tod;
-	struct timex	ntp_conf;
-	long		sec;
+    struct timeval      tod;
+    uint32_t            maxerr;
 
-	ntp_conf.modes = 0;
+    /*
+     * By default, assume the clock is unsynchronized.
+     */
+    *sync = 0;
+    maxerr = (uint32_t)0;
 
-	if(gettimeofday(&tod,NULL) != 0)
-		return NULL;
+    if(gettimeofday(&tod,NULL) != 0){
+        OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"gettimeofday(): %M");
+        return NULL;
+    }
 
-	if(ntp_adjtime(&ntp_conf) < 0)
-		return NULL;
+    /* assign localtime */
+    ts->tv_sec = tod.tv_sec;
+    ts->tv_nsec = tod.tv_usec * 1000;	/* convert to nsecs */
 
-	/* assign localtime */
-	ts->tv_sec = tod.tv_sec;
-	ts->tv_nsec = tod.tv_usec * 1000;	/* convert to nsecs */
+    /*
+     * If ntp system calls are available use them to determine
+     * time error.
+     */
+#ifdef HAVE_SYS_TIMEX_H
+    {
+        struct timex	ntp_conf;
 
-	/*
-	 * Apply ntp "offset"
-	 */
+        memset(&ntp_conf,0,sizeof(ntp_conf));
+        if(ntp_adjtime(&ntp_conf) < 0){
+            OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"ntp_adjtime(): %M");
+            return NULL;
+        }
+
+        /*
+         * Check sync flag
+         */
+        if(!(ntp_conf.status & STA_UNSYNC)){
+            long    sec;
+
+            *sync = 1;
+            /*
+             * Apply ntp "offset"
+             */
 #ifdef	STA_NANO
-	sec = 1000000000;
+            sec = 1000000000;
 #else
-	sec = 1000000;
+            sec = 1000000;
 #endif
-	/*
-	 * Convert negative offsets to positive ones by decreasing
-	 * the ts->tv_sec.
-	 */
-	while(ntp_conf.offset < 0){
-		ts->tv_sec--;
-		ntp_conf.offset += sec;
-	}
+            /*
+             * Convert negative offsets to positive ones by decreasing
+             * the ts->tv_sec.
+             */
+            while(ntp_conf.offset < 0){
+                ts->tv_sec--;
+                ntp_conf.offset += sec;
+            }
 
-	/*
-	 * Make sure the "offset" is less than 1 second
-	 */
-	while(ntp_conf.offset >= sec){
-		ts->tv_sec++;
-		ntp_conf.offset -= sec;
-	}
+            /*
+             * Make sure the "offset" is less than 1 second
+             */
+            while(ntp_conf.offset >= sec){
+                ts->tv_sec++;
+                ntp_conf.offset -= sec;
+            }
 
 #ifndef	STA_NANO
-	ntp_conf.offset *= 1000;
+            ntp_conf.offset *= 1000;
 #endif
-	ts->tv_nsec += ntp_conf.offset;
-	if(ts->tv_nsec >= 1000000000){
-		ts->tv_sec++;
-		ts->tv_nsec -= 1000000000;
-	}
+            ts->tv_nsec += ntp_conf.offset;
+            if(ts->tv_nsec >= 1000000000){
+                ts->tv_sec++;
+                ts->tv_nsec -= 1000000000;
+            }
 
-	/*
-	 * Check sync flag
-	 */
-	if(ntp_conf.status & STA_UNSYNC)
-		*sync = 0;
-	else
-		*sync = 1;
+            maxerr = (uint32_t)ntp_conf.maxerror;
+        }
 
-	/*
-	 * Set estimated error
-	 */
-	*esterr = (u_int32_t)ntp_conf.esterror;
-	assert((long)*esterr == ntp_conf.esterror);
+    }
+#endif
 
-	/*
-	 * Error estimate should never be 0, but I've seen ntp do it!
-	 */
-	if(!*esterr){
-		*esterr = 1;
-	}
+    /*
+     * Set estimated error
+     */
+    *esterr = maxerr;
 
-	return ts;
+    /*
+     * Make sure a non-zero error is always returned - perfection
+     * is not allowed if SYNC is true. ;)
+     */
+    if(*sync && !*esterr){
+        *esterr = 1;
+    }
+
+    return ts;
 }
 
 /*
