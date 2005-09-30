@@ -937,10 +937,8 @@ DONE:
              */
             OWPGetAESKeyFunc    getaeskey = getclientkey;
 
-            if(!OWPContextConfigSet(ctx,OWPGetAESKey,
-                        (void*)getaeskey)){
-                I2ErrLog(eh,
-                        "Unable to set AESKey for context: %M");
+            if(!OWPContextConfigSetF(ctx,OWPGetAESKey,(OWPFunc)getaeskey)){
+                I2ErrLog(eh,"Unable to set AESKey for context: %M");
                 aes = NULL;
                 goto DONE;
             }
@@ -1489,10 +1487,10 @@ main(
          * Setup test port range if specified.
          */
         if(ping_ctx.opt.portspec &&
-                !OWPContextConfigSet(ctx,OWPTestPortRange,
+                !OWPContextConfigSetV(ctx,OWPTestPortRange,
                     (void*)ping_ctx.opt.portspec)){
             I2ErrLog(eh,
-                    "OWPContextConfigSet(): Unable to set OWPTestPortRange?!");
+                    "OWPContextConfigSetV(): Unable to set OWPTestPortRange?!");
             exit(1);
         }
 #ifndef    NDEBUG
@@ -1500,11 +1498,11 @@ main(
          * Setup debugging of child processes.
          */
         if(ping_ctx.opt.childwait &&
-                !OWPContextConfigSet(ctx,
+                !OWPContextConfigSetV(ctx,
                     OWPChildWait,
                     (void*)ping_ctx.opt.childwait)){
             I2ErrLog(eh,
-                    "OWPContextConfigSet(): Unable to set OWPChildWait?!");
+                    "OWPContextConfigSetV(): Unable to set OWPChildWait?!");
         }
 #endif
 
