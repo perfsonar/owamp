@@ -499,10 +499,10 @@ ACCEPT:
 		 * set OWPChildWait if you want to attach
 		 * to them... (by resetting childwait back to non-zero)
 		 */
-		if(childwait && !OWPContextConfigSet(policy->ctx,OWPChildWait,
+		if(childwait && !OWPContextConfigSetV(policy->ctx,OWPChildWait,
 							(void*)childwait)){
 			OWPError(policy->ctx,OWPErrWARNING,OWPErrUNKNOWN,
-			"OWPContextConfigSet(): Unable to set OWPChildWait?!");
+			"OWPContextConfigSetV(): Unable to set OWPChildWait?!");
 		}
 	}
 	}
@@ -1023,7 +1023,7 @@ main(int argc, char *argv[])
 	* Start an error loggin session for reporting errors to the
 	* standard error
 	*/
-	progname = (progname = strrchr(argv[0], '/')) ? ++progname : *argv;
+	progname = (progname = strrchr(argv[0], '/')) ? ++progname : argv[0];
 	syslogattr.ident = progname;
 	syslogattr.logopt = LOG_PID;
 	syslogattr.facility = LOG_DAEMON;
@@ -1206,10 +1206,10 @@ main(int argc, char *argv[])
 	/*
 	 * Setup portrange
 	 */
-	if(opts.portspec && !OWPContextConfigSet(ctx,OWPTestPortRange,
+	if(opts.portspec && !OWPContextConfigSetV(ctx,OWPTestPortRange,
 				(void*)opts.portspec)){
 		I2ErrLog(errhand,
-		"OWPContextConfigSet(): Unable to set OWPTestPortRange?!");
+		"OWPContextConfigSetV(): Unable to set OWPTestPortRange?!");
 		exit(1);
 	}
 

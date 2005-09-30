@@ -1355,26 +1355,28 @@ OWPDPolicyInstall(
 	 * type.
 	 */
 
-	if(!OWPContextConfigSet(ctx,OWPDPOLICY,policy)){
+	if(!OWPContextConfigSetV(ctx,OWPDPOLICY,policy)){
 		return NULL;
 	}
-	if(!OWPContextConfigSet(ctx,OWPGetAESKey,(void*)getaeskey)){
+	if(!OWPContextConfigSetF(ctx,OWPGetAESKey,(OWPFunc)getaeskey)){
 		return NULL;
 	}
-	if(!OWPContextConfigSet(ctx,OWPCheckControlPolicy,
-						(void*)checkcontrolfunc)){
+	if(!OWPContextConfigSetF(ctx,OWPCheckControlPolicy,
+						(OWPFunc)checkcontrolfunc)){
 		return NULL;
 	}
-	if(!OWPContextConfigSet(ctx,OWPCheckTestPolicy,(void*)checktestfunc)){
+	if(!OWPContextConfigSetF(ctx,OWPCheckTestPolicy,
+                    (OWPFunc)checktestfunc)){
 		return NULL;
 	}
-	if(!OWPContextConfigSet(ctx,OWPTestComplete,(void*)testcompletefunc)){
+	if(!OWPContextConfigSetF(ctx,OWPTestComplete,
+                    (OWPFunc)testcompletefunc)){
 		return NULL;
 	}
-	if(!OWPContextConfigSet(ctx,OWPOpenFile,(void*)openfilefunc)){
+	if(!OWPContextConfigSetF(ctx,OWPOpenFile,(OWPFunc)openfilefunc)){
 		return NULL;
 	}
-	if(!OWPContextConfigSet(ctx,OWPCloseFile,(void*)closefilefunc)){
+	if(!OWPContextConfigSetF(ctx,OWPCloseFile,(OWPFunc)closefilefunc)){
 		return NULL;
 	}
 
@@ -1413,7 +1415,7 @@ OWPDGetAESKey(
 
 	*err_ret = OWPErrOK;
 
-	if(!(policy = (OWPDPolicy)OWPContextConfigGet(ctx,OWPDPOLICY))){
+	if(!(policy = (OWPDPolicy)OWPContextConfigGetV(ctx,OWPDPOLICY))){
 		OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
 				"OWPDGetAESKey: OWPDPOLICY not set");
 		*err_ret = OWPErrFATAL;
@@ -2195,7 +2197,7 @@ OWPDCheckControlPolicy(
 
 	ctx = OWPGetContext(cntrl);
 
-	if(!(policy = (OWPDPolicy)OWPContextConfigGet(ctx,OWPDPOLICY))){
+	if(!(policy = (OWPDPolicy)OWPContextConfigGetV(ctx,OWPDPOLICY))){
 		OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
 				"OWPDCheckControlPolicy: OWPDPOLICY not set");
 		*err_ret = OWPErrFATAL;
@@ -2242,7 +2244,7 @@ OWPDCheckControlPolicy(
 		 * Success - now save the node in the control config
 		 * for later hook functions to access.
 		 */
-		if(!OWPControlConfigSet(cntrl,OWPDPOLICY_NODE,node)){
+		if(!OWPControlConfigSetV(cntrl,OWPDPOLICY_NODE,node)){
 			OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
 	"OWPDCheckControlPolicy: Unable to save \"class\" for connection");
 			*err_ret = OWPErrFATAL;
@@ -2311,7 +2313,7 @@ OWPDCheckTestPolicy(
 	/*
 	 * Fetch the "user class" for this connection.
 	 */
-	if(!(node = (OWPDPolicyNode)OWPControlConfigGet(cntrl,
+	if(!(node = (OWPDPolicyNode)OWPControlConfigGetV(cntrl,
 						OWPDPOLICY_NODE))){
 		OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
 			"OWPDCheckTestPolicy: OWPDPOLICY_NODE not set");
@@ -2429,7 +2431,7 @@ OWPDOpenFile(
 	if(tinfo){
 		node = tinfo->node;
 	}
-	else if(!(node = (OWPDPolicyNode)OWPControlConfigGet(cntrl,
+	else if(!(node = (OWPDPolicyNode)OWPControlConfigGetV(cntrl,
 						OWPDPOLICY_NODE))){
 		OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
 			"OWPDOpenFile: OWPDPOLICY_NODE not set");
@@ -2639,7 +2641,7 @@ OWPDOpenFile(
 		 */
 		snprintf(key_name,sizeof(key_name),"%s%d",OWPDPOLICY_FILEINFO,
 							fileno(finfo->fp));
-		if(!OWPControlConfigSet(cntrl,key_name,finfo)){
+		if(!OWPControlConfigSetV(cntrl,key_name,finfo)){
 			goto error;
 		}
 	}
@@ -2765,7 +2767,7 @@ OWPDCloseFile(
 	else{
 		snprintf(key_name,sizeof(key_name),"%s%d",OWPDPOLICY_FILEINFO,
 							fileno(fp));
-		if((finfo = (OWPDFileInfo)OWPControlConfigGet(cntrl,key_name))){
+		if((finfo =(OWPDFileInfo)OWPControlConfigGetV(cntrl,key_name))){
 			/*
 			 * Delete the finfo record from the hash
 			 */
