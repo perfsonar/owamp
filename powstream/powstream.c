@@ -92,6 +92,7 @@ print_test_args()
 	fprintf(stderr,
 "              [Test Args]\n\n"
 "   -c count       number of test packets (per file)\n"
+"   -C count       number of test packets (per \"real\" test session)\n"
 "   -i wait        mean average time between packets (seconds)\n"
 "   -L timeout     maximum time to wait for a packet (seconds)\n"
 "   -s padding     size of the padding added to each packet (bytes)\n");
@@ -103,9 +104,9 @@ print_output_args()
 	fprintf(stderr,
 		"              [Output Args]\n\n"
 		"   -d dir         directory to save session file in\n"
-		"   -I Interval    duration for OWP test sessions(seconds)\n"
 		"   -p             print completed filenames to stdout\n"
 		"   -b bucketWidth create summary files with buckets(seconds)\n"
+                "   -N count       number of packets (per summary)\n"
 		"   -h             print this message and exit\n"
 		"   -e             syslog facility to log to\n"
 		"   -r             syslog facility to STDERR\n"
@@ -231,8 +232,8 @@ DONE:
 			 */
 			OWPGetAESKeyFunc	getaeskey = getclientkey;
 
-			if(!OWPContextConfigSet(ctx,OWPGetAESKey,
-						(void*)getaeskey)){
+			if(!OWPContextConfigSetF(ctx,OWPGetAESKey,
+						(OWPFunc)getaeskey)){
 				I2ErrLog(eh,
 					"Unable to set AESKey for context: %M");
 				aes = NULL;
@@ -538,7 +539,7 @@ SetupSession(
 }
 
 static int
-WriteSubSession(
+IterateSubSession(
 		OWPDataRec	*rec,
 		void		*data
 		)
@@ -552,19 +553,30 @@ WriteSubSession(
 	if(!parse->next && (rec->seq_no > parse->last))
 		parse->next = parse->begin + parse->i * parse->hdr->rec_size;
 
+        /* increase file index */
 	parse->i++;
 
+        /* return if this record is not part of this sub-session */
 	if((rec->seq_no < parse->first) || (rec->seq_no > parse->last) ||
-			OWPIsLostRecord(rec))
+			OWPIsLostRecord(rec)){
 		return 0;
+        }
 
+        /*
+         * Record is a good one, notice and count it.
+         */
 	rec->seq_no -= parse->first;
 	parse->seen[rec->seq_no].seen++;
 
         parse->n++;
-	if(!OWPWriteDataRecord(parse->ctx,parse->fp,rec)){
+
+        if(parse->do_subfile){
+    	    if(!OWPWriteDataRecord(parse->ctx,parse->fp,rec)){
 		return -1;
-	}
+	    }
+
+            return 0;
+        }
 
         /*
          * If doing summary, and this is not a duplicate packet, bucket
@@ -625,7 +637,7 @@ WriteSubSession(
 }
 
 static OWPBoolean
-WriteSubSessionLost(
+IterateSubSessionLost(
 	struct pow_parse_rec	*parse
 		)
 {
@@ -642,6 +654,8 @@ WriteSubSessionLost(
 			continue;
 		}
 		parse->lost++;
+
+                if(!parse->do_subfile) continue;
 
 		rec.seq_no = i;
 		rec.send.owptime = parse->seen[i].sendtime;
@@ -716,12 +730,13 @@ main(
 	char                    *endptr = NULL;
 	char                    optstring[128];
 	static char		*conn_opts = "A:S:k:u:";
-	static char		*test_opts = "c:i:s:L:";
-	static char		*out_opts = "d:I:pe:rb:";
+	static char		*test_opts = "c:C:N:i:s:L:";
+	static char		*out_opts = "d:pe:rb:";
 	static char		*gen_opts = "hw";
 
 	int			which=0;	/* which cntrl connect used */
-	u_int32_t		numSessions;
+	u_int32_t		numFileSessions;
+	u_int32_t		numSumSessions;
 	char			dirpath[PATH_MAX];
 	u_int32_t		iotime;
 	struct pow_parse_rec	parse;
@@ -776,10 +791,11 @@ main(
 
 	/* Set default options. */
 	memset(&appctx,0,sizeof(appctx));
-	appctx.opt.numPackets = 300;
+	appctx.opt.numSessPackets = 3000;
+	appctx.opt.numFilePackets = 300;
+	appctx.opt.numSumPackets = 300;
 	appctx.opt.lossThreshold = 10.0;
 	appctx.opt.meanWait = (float)0.1;
-	appctx.opt.seriesInterval = 1;
 
 	while ((ch = getopt(argc, argv, optstring)) != -1)
 		switch (ch) {
@@ -808,11 +824,27 @@ main(
 				exit(1);
 			}
 			break;
-		case 'c':
-			appctx.opt.numPackets = strtoul(optarg, &endptr, 10);
-			if (*endptr != '\0') {
+		case 'C':
+			appctx.opt.numSessPackets = strtoul(optarg,&endptr,10);
+			if((*endptr != '\0') || !appctx.opt.numSessPackets){
 				usage(progname, 
-				"Invalid value. Positive integer expected");
+				"Invalid \"-C\" value. Positive integer expected");
+				exit(1);
+			}
+			break;
+		case 'c':
+			appctx.opt.numFilePackets = strtoul(optarg, &endptr, 10);
+			if((*endptr != '\0') || !appctx.opt.numFilePackets){
+				usage(progname, 
+				"Invalid \"-c\" value. Positive integer expected");
+				exit(1);
+			}
+			break;
+		case 'N':
+			appctx.opt.numSumPackets = strtoul(optarg,&endptr,10);
+			if((*endptr != '\0') || !appctx.opt.numSumPackets){
+				usage(progname, 
+				"Invalid \"-N\" value. Positive integer expected");
 				exit(1);
 			}
 			break;
@@ -848,14 +880,6 @@ main(
 		case 'd':
 			if (!(appctx.opt.savedir = strdup(optarg))) {
 				I2ErrLog(eh,"malloc:%M");
-				exit(1);
-			}
-			break;
-		case 'I':
-			appctx.opt.seriesInterval =strtoul(optarg, &endptr, 10);
-			if (*endptr != '\0') {
-				usage(progname, 
-				"Invalid value. Positive integer expected");
 				exit(1);
 			}
 			break;
@@ -960,8 +984,40 @@ main(
 	file_offset = strlen(dirpath);
 	ext_offset = file_offset + OWP_TSTAMPCHARS;
 
+        /*
+         * Initialize numPackets values for Sessions/Files/Summaries
+         * (Each larger envelope must be a multiple of the smaller.)
+         */
+        if(appctx.opt.numFilePackets%appctx.opt.numSumPackets){
+            appctx.opt.numFilePackets = appctx.opt.numSumPackets *
+                ((appctx.opt.numFilePackets/appctx.opt.numSumPackets)+1);
+        }
+        if(appctx.opt.numSessPackets%appctx.opt.numFilePackets){
+            appctx.opt.numSessPackets = appctx.opt.numFilePackets *
+                ((appctx.opt.numSessPackets/appctx.opt.numFilePackets)+1);
+        }
+
+	/*
+	 * Determine how many pseudo sessions need to be combined to create
+	 * the longer sessionInterval requested.
+	 */
+	sessionTime = appctx.opt.numFilePackets * appctx.opt.meanWait;
+	numFileSessions = appctx.opt.numSessPackets/appctx.opt.numFilePackets;
+        numSumSessions = appctx.opt.numFilePackets/appctx.opt.numSumPackets;
+
+	if((sessionTime * numFileSessions) <
+				SETUP_ESTIMATE + appctx.opt.lossThreshold){
+		I2ErrLog(eh,"Holes in data are likely because lossThreshold(%d)"
+				" is too large a fraction of seriesLength(%d)",
+				appctx.opt.lossThreshold,
+				sessionTime*numFileSessions);
+	}
+
+        /*
+         * TODO: sumparse record initialization?
+         */
 	memset(&parse,0,sizeof(struct pow_parse_rec));
-	if(!(parse.seen = malloc(sizeof(pow_seen_rec)*appctx.opt.numPackets))){
+	if(!(parse.seen = malloc(sizeof(pow_seen_rec)*appctx.opt.numFilePackets))){
 		I2ErrLog(eh,"malloc(): %M");
 		exit(1);
 	}
@@ -983,29 +1039,11 @@ main(
 		 * definitely enough memory.
 		 */
 		if(!(parse.bucketvals = malloc(sizeof(u_int32_t) *
-						appctx.opt.numPackets))){
+						appctx.opt.numFilePackets))){
 			I2ErrLog(eh,"malloc(): %M");
 			exit(1);
 		}
 		parse.nbuckets = 0;
-	}
-
-
-	/*
-	 * Determine how many pseudo sessions need to be combined to create
-	 * the longer sessionInterval requested.
-	 */
-	sessionTime = appctx.opt.numPackets * appctx.opt.meanWait;
-	numSessions = appctx.opt.seriesInterval/sessionTime;
-	if(appctx.opt.seriesInterval%sessionTime)
-		numSessions++;
-
-	if((sessionTime * numSessions) <
-				SETUP_ESTIMATE + appctx.opt.lossThreshold){
-		I2ErrLog(eh,"Holes in data are likely because lossThreshold(%d)"
-				" is too large a fraction of seriesLength(%d)",
-				appctx.opt.lossThreshold,
-				sessionTime*numSessions);
 	}
 
 
@@ -1016,7 +1054,7 @@ main(
 	tspec.loss_timeout = OWPDoubleToNum64(appctx.opt.lossThreshold);
 	tspec.typeP = 0;
 	tspec.packet_size_padding = appctx.opt.padding;
-	tspec.npackets = appctx.opt.numPackets * numSessions;
+	tspec.npackets = appctx.opt.numSessPackets;
 
 	/*
 	 * inf_delay is used as the next largest number over lossThreshold
@@ -1093,7 +1131,7 @@ main(
 	/*
 	 * Set the retn_on_intr flag.
 	 */
-	if(!OWPContextConfigSet(ctx,OWPInterruptIO,(void*)&pow_intr)){
+	if(!OWPContextConfigSetV(ctx,OWPInterruptIO,(void*)&pow_intr)){
 		I2ErrLog(eh,"Unable to set Context var: %M");
 		exit(1);
 	}
@@ -1133,7 +1171,8 @@ main(
 		OWPAcceptType		aval;
 		u_int32_t		sub;
 		OWPNum64		stopnum;
-		OWPNum64		sessionStartnum,startnum,lastnum;
+		OWPNum64		sessionStartnum,substartnum,sublastnum;
+		OWPNum64		sumstartnum,sumlastnum;
 
 NextConnection:
 		sig_check();
@@ -1154,7 +1193,7 @@ NextConnection:
 
 		/* init vars for loop */
 		parse.begin=0;
-		lastnum=OWPULongToNum64(0);
+		sumlastnum = sublastnum = OWPULongToNum64(0);
 		call_stop = True;
 		sessionStartnum = *p->sessionStart;
 
@@ -1163,348 +1202,511 @@ NextConnection:
 		 * there are no more sub-sessions to fetch - i.e. the real
 		 * test session is complete.
 		 */
-		for(sub=0;sub<numSessions;sub++){
-			char			fname[PATH_MAX];
-			char			endname[PATH_MAX];
-			char			newpath[PATH_MAX];
-			u_int32_t		arecs,nrecs;
-			off_t			fileend;
-			OWPSessionHeaderRec	rhdr, whdr;
-			OWPNum64		localstop;
+                for(sub=0;sub<numFileSessions;sub++){
+                    char		fname[PATH_MAX];
+                    char		endname[PATH_MAX];
+                    char		newpath[PATH_MAX];
+                    u_int32_t		arecs,nrecs;
+                    u_int32_t		sum;
+                    off_t		fileend;
+                    OWPSessionHeaderRec	rhdr, whdr;
+                    OWPNum64		localstop;
+                    u_int32_t           subfirst,sublast;
 
-			if(sig_check())
-				goto NextConnection;
+                    /*
+                     * sublastnum contains offset for previous sub.
+                     * So - sessionStart + sublastnum is new
+                     * substartnum.
+                     */
+                    subfirst = appctx.opt.numFilePackets*sub;
+                    sublast = (appctx.opt.numFilePackets*(sub+1))-1;
+                    substartnum = OWPNum64Add(sessionStartnum,sublastnum);
 
-			parse.first = appctx.opt.numPackets*sub;
-			parse.last = (appctx.opt.numPackets*(sub+1))-1;
-			parse.i = parse.n = 0;
-			parse.next = 0;
-			parse.sync = 1;
-			parse.maxerr = 0.0;
-			parse.dups = parse.lost = 0;
-			parse.min_delay = inf_delay;
-			parse.max_delay = -inf_delay;
-			parse.nbuckets = 0;
-			assert(!parse.buckets ||
-					(I2HashNumEntries(parse.buckets)==0));
+                    /*
+                     * This loop sets sublastnum to the relative sublastnum
+                     * of this sub-session. (It starts at the relative
+                     * offset of the sublastnum from the previous session.)
+                     * It also initializes the "seen" array for this
+                     * sub-session. This array saves the presumed sendtimes
+                     * in the event "lost" records for those packets
+                     * need to be generated.
+                     */
+                    for(nrecs=0;nrecs<appctx.opt.numFilePackets;nrecs++){
+                        sublastnum = OWPNum64Add(sublastnum,
+                                OWPScheduleContextGenerateNextDelta(
+                                    p->sctx));
+                        parse.seen[nrecs].sendtime =
+                            OWPNum64Add(sessionStartnum,sublastnum);
+                    }
 
-			/*
-			 * lastnum contains offset for previous sub.
-			 * So - sessionStart + lastnum is new
-			 * startnum.
-			 */
-			startnum = OWPNum64Add(sessionStartnum,lastnum);
+                    for(sum=0;sum<numSumSessions;sum++){
 
-			/*
-			 * This loop sets lastnum to the relative lastnum
-			 * of this sub-session. (It starts at the relative
-			 * offset of the lastnum from the previous session.)
-			 * It also initializes the "seen" array for this
-			 * sub-session. This array saves the presumed sendtimes
-			 * in the event "lost" records for those packets
-			 * need to be generated.
-			 */
-			for(nrecs=0;nrecs<appctx.opt.numPackets;nrecs++){
-				lastnum = OWPNum64Add(lastnum,
-					OWPScheduleContextGenerateNextDelta(
-								p->sctx));
-				parse.seen[nrecs].sendtime =
-					OWPNum64Add(sessionStartnum,lastnum);
-				parse.seen[nrecs].seen = 0;
-			}
-			/*
-			 * set localstop to absolute time of final packet.
-			 */
-			localstop = OWPNum64Add(sessionStartnum,lastnum);
+                        if(sig_check())
+                            goto NextConnection;
 
-			/*
-			 * set stopnum to the time we should collect this
-			 * session.
-			 * subsession can't be over until after
-			 * lossThresh, then add iotime.
-			 */
-			stopnum = OWPNum64Add(localstop,
-					OWPNum64Add(tspec.loss_timeout,
-						OWPULongToNum64(iotime)));
+                        parse.first = subfirst + appctx.opt.numSumPackets*sum;
+                        parse.last = parse.first + sum -1;
+                        parse.i = parse.n = 0;
+                        parse.next = 0;
 
-			/*
-			 * Now try and setup the next session.
-			 * SetupSession checks for reset signals, and returns
-			 * non-zero if one happend.
-			 */
-			if(SetupSession(ctx,q,p,&stopnum))
-				goto NextConnection;
+                        parse.sync = 1;
+                        parse.maxerr = 0.0;
+                        parse.dups = parse.lost = 0;
+                        parse.min_delay = inf_delay;
+                        parse.max_delay = -inf_delay;
+                        parse.nbuckets = 0;
+                        assert(!parse.buckets ||
+                                (I2HashNumEntries(parse.buckets)==0));
+
+                        /*
+                         * sumlastnum contains offset for previous sub.
+                         * So - sessionStart + sublastnum is new
+                         * substartnum.
+                         */
+                        sumstartnum = OWPNum64Add(substartnum,sumlastnum);
+
+                        /*
+                         * This loop sets sublastnum to the relative sublastnum
+                         * of this sub-session. (It starts at the relative
+                         * offset of the sublastnum from the previous session.)
+                         * It also initializes the "seen" array for this
+                         * sub-session. This array saves the presumed sendtimes
+                         * in the event "lost" records for those packets
+                         * need to be generated.
+                         */
+                        for(nrecs=0;nrecs<appctx.opt.numSumPackets;nrecs++){
+                            parse.seen[nrecs+sum*appctx.opt.numSumPackets].seen
+                                = 0;
+                        }
+                        /*
+                         * set localstop to absolute time of final packet.
+                         */
+                        localstop = parse.seen[
+                            (sum+1)*appctx.opt.numSumPackets-1].sendtime;
+
+                        /*
+                         * set stopnum to the time we should collect this
+                         * session.
+                         * subsession can't be over until after
+                         * lossThresh, then add iotime.
+                         */
+                        stopnum = OWPNum64Add(localstop,
+                                OWPNum64Add(tspec.loss_timeout,
+                                    OWPULongToNum64(iotime)));
+
+
+                        /*
+                         * Now try and setup the next session.
+                         * SetupSession checks for reset signals, and returns
+                         * non-zero if one happend.
+                         */
+                        if(SetupSession(ctx,q,p,&stopnum))
+                            goto NextConnection;
+
 AGAIN:
-			/*
-			 * Wait until this "subsession" is complete.
-			 */
-			if(call_stop){
-				rc = OWPStopSessionsWait(p->cntrl,&stopnum,
-							NULL,&aval,&err_ret);
-			}
-			else{
-				rc=1; /* no more data coming */
-			}
-
-			if(rc<0){
-				/* error */
-				OWPControlClose(p->cntrl);
-				p->cntrl = NULL;
-				break;
-			}
-			if(rc==0){
-				/* session over */
-				call_stop = False;
-				/*
-				 * If aval non-zero, session data is invalid.
-				 */
-				if(aval)
-					break;
-			}
-			if(rc==2){
-				/*
-				 * system event
-				 */
-				if(sig_check())
-					goto NextConnection;
-
-				if(OWPSessionsActive(p->cntrl,NULL)){
-					goto AGAIN;
-				}
-			}
-			/* Else - time's up! Get to work.	*/
-
-
-			/* Fetch hdr for sub session */
-
-			arecs = OWPReadDataHeader(ctx,p->fp,&rhdr);
-                        whdr = rhdr;
-			parse.hdr = &whdr;
-
-			/* Fetch time error estimate for missing packets */
-			if(!(OWPGetTimeOfDay(ctx,&parse.missing))){
-				I2ErrLog(eh,"OWPGetTimeOfDay(): %M");
-				exit(1);
-			}
-
-			/*
-			 * Modify hdr for subsession.
-			 */
-                        whdr.finished = 0;
-                        whdr.next_seqno = 0;
-                        whdr.num_skiprecs = 0;
-                        whdr.num_datarecs = 0;
-			whdr.test_spec.start_time = startnum;
-			whdr.test_spec.npackets = appctx.opt.numPackets;
-			whdr.test_spec.slots = &slot;
-
-			/*
-			 * Position of first record we need to look at.
-			 */
-			if(parse.begin < rhdr.oset_datarecs)
-				parse.begin = rhdr.oset_datarecs;
-			if(fseeko(p->fp,0,SEEK_END) != 0){
-				I2ErrLog(eh,"fseeko(): %M");
-				exit(1);
-			}
-			if((fileend = ftello(p->fp)) < 0){
-				I2ErrLog(eh,"ftello(): %M");
-				exit(1);
-			}
-
-			if(fseeko(p->fp,parse.begin,SEEK_SET) != 0){
-				I2ErrLog(eh,"fseeko(): %M");
-				exit(1);
-			}
-
-			/*
-			 * How many records from "begin" to end of file.
-			 */
-			if(arecs){
-				nrecs = arecs-(parse.begin - rhdr.oset_datarecs)
-                                                    / rhdr.rec_size;
-			}
-			else{
-				nrecs = 0;
-			}
-
-			/*
-			 * No more data to parse.
-			 */
-			if(!call_stop && !nrecs)
-				break;
-
-			/*
-			 * Open a file for the sub-session
-			 */
-			strcpy(fname,dirpath);
-			sprintf(&fname[file_offset],OWP_TSTAMPFMT,startnum);
-			strcpy(&fname[ext_offset],INCOMPLETE_EXT);
-			while(!(parse.fp = fopen(fname,"wb+")) && errno==EINTR);
-			if(!parse.fp){
-				I2ErrLog(eh,"fopen(%s): %M",fname);
-				/*
-				 * Can't open the file.
-				 */
-				switch(errno){
-					/*
-					 * reasons to go to the next
-					 * sub-session
-					 * (Temporary resource problems.)
-					 */
-					case ENOMEM:
-					case EMFILE:
-					case ENFILE:
-					case ENOSPC:
-						break;
-					/*
-					 * Everything else is a reason to exit
-					 * (Probably permissions.)
-					 */
-					default:
-						exit(1);
-						break;
-				}
-
-				/*
-				 * Skip to next sub-session.
-				 */
-				continue;
-			}
-
-			/*
-			 * New file is created - all errors from here to
-			 * the end of the loop are sent to the error handling
-			 * section at the end of the loop.
-			 */
-
-			/* write the file header */
-			if(!OWPWriteDataHeader(ctx,parse.fp,&whdr)){
-				I2ErrLog(eh,"OWPWriteDataHeader: %M");
-				goto error;
-			}
-
-			/* write relevant records to file */
-			if(OWPParseRecords(ctx,p->fp,nrecs,whdr.version,
-				WriteSubSession,(void*)&parse) != OWPErrOK){
-				I2ErrLog(eh,
-				"WriteSubSession: sub=%d,arecs=%lu,nrecs=%lu,begin=%lld,first=%lu,last=%lu,rhdr.oset_datarecs=%llu,fileend=%lld: %M",
-					sub,arecs,nrecs,parse.begin,
-					parse.first,parse.last,
-                                        rhdr.oset_datarecs,fileend);
-				goto error;
-			}
-			/*
-			 * If we have read to the end of the stream, we need
-			 * to clear the eof flag so the stream will work
-			 * if the child process adds more records.
-			 */
-			if(feof(p->fp)){
-				clearerr(p->fp);
-			}
-
-			if(!WriteSubSessionLost(&parse)){
-				I2ErrLog(eh,"WriteSubSessionLost: %M");
-				goto error;
-			}
-
-                        if(!OWPWriteDataHeaderNumDataRecs(ctx,p->fp,parse.n)){
-                            I2ErrLog(eh,"OWPWriteDataHeaderNumDataRecs: %M");
-                            goto error;
+                        /*
+                         * Wait until this "subsession" is complete.
+                         */
+                        if(call_stop){
+                            rc = OWPStopSessionsWait(p->cntrl,&stopnum,
+                                    NULL,&aval,&err_ret);
+                        }
+                        else{
+                            rc=1; /* no more data coming */
                         }
 
-			/*
-			 * Flush the FILE before linking to the "complete"
-			 * name.
-			 */
-			fflush(parse.fp);
+                        if(rc<0){
+                            /* error */
+                            OWPControlClose(p->cntrl);
+                            p->cntrl = NULL;
+                            break;
+                        }
+                        if(rc==0){
+                            /* session over */
+                            call_stop = False;
+                            /*
+                             * If aval non-zero, session data is invalid.
+                             */
+                            if(aval)
+                                break;
+                        }
+                        if(rc==2){
+                            /*
+                             * system event
+                             */
+                            if(sig_check())
+                                goto NextConnection;
 
-			sprintf(endname,OWP_TSTAMPFMT,localstop);
-			strcpy(newpath,fname);
-			sprintf(&newpath[ext_offset],"%s%s%s",
-					OWP_NAME_SEP,endname,OWP_FILE_EXT);
-			if(link(fname,newpath) != 0){
-				I2ErrLog(eh,"link(): %M");
-			}
+                            if(OWPSessionsActive(p->cntrl,NULL)){
+                                goto AGAIN;
+                            }
+                        }
+                        /* Else - time's up! Get to work.	*/
 
-			if(parse.buckets){
-				char	sfname[PATH_MAX];
+                        /* Fetch hdr for sub session */
 
-				/*
-				 * -b indicates we want to save "summary"
-				 * stats.
-				 */
-				strcpy(sfname,newpath);
-				strcat(sfname,SUMMARY_EXT);
-				while(!(parse.sfp = fopen(sfname,"w")) &&
-								errno==EINTR);
-				/* (Ignore errors...) */
-				if(parse.sfp){
-					/* PRINT version 1 STATS */
-					fprintf(parse.sfp,"SUMMARY\t1.0\n");
-					fprintf(parse.sfp,"SENT\t%u\n",
-							appctx.opt.numPackets);
-					fprintf(parse.sfp,"MAXERR\t%g\n",
-								parse.maxerr);
-					fprintf(parse.sfp,"SYNC\t%u\n",
-								parse.sync);
-					fprintf(parse.sfp,"DUPS\t%u\n",
-								parse.dups);
-					fprintf(parse.sfp,"LOST\t%u\n",
-								parse.lost);
-					if(parse.min_delay < inf_delay){
-						fprintf(parse.sfp,"MIN\t%g\n",
-							parse.min_delay);
-					}
-					if(parse.max_delay > -inf_delay){
-						fprintf(parse.sfp,"MAX\t%g\n",
-							parse.max_delay);
-					}
+                        arecs = OWPReadDataHeader(ctx,p->fp,&rhdr);
+                        whdr = rhdr;
+                        parse.hdr = &whdr;
+
+                        /*
+                         * Determine fileend offset
+                         */
+                        if(fseeko(p->fp,0,SEEK_END) != 0){
+                            I2ErrLog(eh,"fseeko(): %M");
+                            exit(1);
+                        }
+                        if((fileend = ftello(p->fp)) < 0){
+                            I2ErrLog(eh,"ftello(): %M");
+                            exit(1);
+                        }
+
+                        /*
+                         * Position of first record we need to look at.
+                         */
+                        if(parse.begin < rhdr.oset_datarecs)
+                            parse.begin = rhdr.oset_datarecs;
+                        if(fseeko(p->fp,parse.begin,SEEK_SET) != 0){
+                            I2ErrLog(eh,"fseeko(): %M");
+                            exit(1);
+                        }
+
+                        /*
+                         * How many records from "begin" to end of file.
+                         */
+                        nrecs = (fileend - parse.begin) / rhdr.rec_size;
+
+                        /*
+                         * No more data to parse.
+                         */
+                        if(!call_stop && !nrecs)
+                            break;
+
+                        if(parse.buckets){
+                            char	sfname[PATH_MAX];
+
+                            /*
+                             * -b indicates we want to save "summary"
+                             * stats.
+                             */
+                            strcpy(sfname,dirpath);
+                            sprintf(&sfname[file_offset],OWP_TSTAMPFMT,
+                                    sumstartnum);
+                            sprintf(endname,OWP_TSTAMPFMT,localstop);
+                            sprintf(&sfname[ext_offset],"%s%s%s",
+                                    OWP_NAME_SEP,endname,OWP_FILE_EXT);
+                            strcat(sfname,SUMMARY_EXT);
+
+                            while(!(parse.sfp = fopen(sfname,"w")) &&
+                                    errno==EINTR);
+                            if(!parse.sfp){
+                                I2ErrLog(eh,"fopen(%s): %M",sfname);
+                                /*
+                                 * Can't open the file.
+                                 */
+                                switch(errno){
+                                    /*
+                                     * reasons to go to the next
+                                     * sub-session
+                                     * (Temporary resource problems.)
+                                     */
+                                    case ENOMEM:
+                                    case EMFILE:
+                                    case ENFILE:
+                                    case ENOSPC:
+                                        break;
+                                        /*
+                                         * Everything else is a reason to exit
+                                         * (Probably permissions.)
+                                         */
+                                    default:
+                                        exit(1);
+                                        break;
+                                }
+
+                                /*
+                                 * Skip to next sub-session.
+                                 */
+                                continue;
+                            }
+
+                            /* PRINT version 1 STATS */
+                            fprintf(parse.sfp,"SUMMARY\t1.0\n");
+                            fprintf(parse.sfp,"SENT\t%u\n",
+                                    appctx.opt.numFilePackets);
+                            fprintf(parse.sfp,"MAXERR\t%g\n",
+                                    parse.maxerr);
+                            fprintf(parse.sfp,"SYNC\t%u\n",
+                                    parse.sync);
+                            fprintf(parse.sfp,"DUPS\t%u\n",
+                                    parse.dups);
+                            fprintf(parse.sfp,"LOST\t%u\n",
+                                    parse.lost);
+                            if(parse.min_delay < inf_delay){
+                                fprintf(parse.sfp,"MIN\t%g\n",
+                                        parse.min_delay);
+                            }
+                            if(parse.max_delay > -inf_delay){
+                                fprintf(parse.sfp,"MAX\t%g\n",
+                                        parse.max_delay);
+                            }
 
 
-					fprintf(parse.sfp,"BUCKETWIDTH\t%g\n",
-							appctx.opt.bucketWidth);
+                            fprintf(parse.sfp,"BUCKETWIDTH\t%g\n",
+                                    appctx.opt.bucketWidth);
 
-					/*
-					 * PRINT out the BUCKETS
-					 */
-					fprintf(parse.sfp,"<BUCKETS>\n");
-					I2HashIterate(parse.buckets,
-							PrintBuckets,
-							&parse);
-					fprintf(parse.sfp,"</BUCKETS>\n");
+                            /*
+                             * PRINT out the BUCKETS
+                             */
+                            fprintf(parse.sfp,"<BUCKETS>\n");
+                            I2HashIterate(parse.buckets,
+                                    PrintBuckets,
+                                    &parse);
+                            fprintf(parse.sfp,"</BUCKETS>\n");
 
-					fclose(parse.sfp);
-					parse.sfp = NULL;
+                            fclose(parse.sfp);
+                            parse.sfp = NULL;
 
-					assert(!parse.bucketerror);
-				}
-			}
+                            assert(!parse.bucketerror);
+                        }
 
-			if(appctx.opt.printfiles){
-				/* Now print the filename to stdout */
-				fprintf(stdout,"%s\n",newpath);
-				fflush(stdout);
-			}
+                    }
+
+
+
+
+
+
+
+
+                    /* Fetch time error estimate for missing packets */
+                    if(!(OWPGetTimeOfDay(ctx,&parse.missing))){
+                        I2ErrLog(eh,"OWPGetTimeOfDay(): %M");
+                        exit(1);
+                    }
+
+                    /*
+                     * Modify hdr for subsession.
+                     */
+                    whdr.finished = 0;
+                    whdr.next_seqno = 0;
+                    whdr.num_skiprecs = 0;
+                    whdr.num_datarecs = 0;
+                    whdr.test_spec.start_time = substartnum;
+                    whdr.test_spec.npackets = appctx.opt.numFilePackets;
+                    whdr.test_spec.slots = &slot;
+
+                    /*
+                     * Determine fileend offset
+                     */
+                    if(fseeko(p->fp,0,SEEK_END) != 0){
+                        I2ErrLog(eh,"fseeko(): %M");
+                        exit(1);
+                    }
+                    if((fileend = ftello(p->fp)) < 0){
+                        I2ErrLog(eh,"ftello(): %M");
+                        exit(1);
+                    }
+
+                    /*
+                     * Position of first record we need to look at.
+                     */
+                    if(parse.begin < rhdr.oset_datarecs)
+                        parse.begin = rhdr.oset_datarecs;
+                    if(fseeko(p->fp,parse.begin,SEEK_SET) != 0){
+                        I2ErrLog(eh,"fseeko(): %M");
+                        exit(1);
+                    }
+
+                    /*
+                     * How many records from "begin" to end of file.
+                     */
+                    nrecs = (fileend - parse.begin) / rhdr.rec_size;
+
+                    /*
+                     * No more data to parse.
+                     */
+                    if(!call_stop && !nrecs)
+                        break;
+
+                    /*
+                     * Open a file for the sub-session
+                     */
+                    strcpy(fname,dirpath);
+                    sprintf(&fname[file_offset],OWP_TSTAMPFMT,substartnum);
+                    strcpy(&fname[ext_offset],INCOMPLETE_EXT);
+                    while(!(parse.fp = fopen(fname,"wb+")) && errno==EINTR);
+                    if(!parse.fp){
+                        I2ErrLog(eh,"fopen(%s): %M",fname);
+                        /*
+                         * Can't open the file.
+                         */
+                        switch(errno){
+                            /*
+                             * reasons to go to the next
+                             * sub-session
+                             * (Temporary resource problems.)
+                             */
+                            case ENOMEM:
+                            case EMFILE:
+                            case ENFILE:
+                            case ENOSPC:
+                                break;
+                                /*
+                                 * Everything else is a reason to exit
+                                 * (Probably permissions.)
+                                 */
+                            default:
+                                exit(1);
+                                break;
+                        }
+
+                        /*
+                         * Skip to next sub-session.
+                         */
+                        continue;
+                    }
+
+                    /*
+                     * New file is created - all errors from here to
+                     * the end of the loop are sent to the error handling
+                     * section at the end of the loop.
+                     */
+
+                    /* write the file header */
+                    if(!OWPWriteDataHeader(ctx,parse.fp,&whdr)){
+                        I2ErrLog(eh,"OWPWriteDataHeader: %M");
+                        goto error;
+                    }
+
+                    /* write relevant records to file */
+                    if(OWPParseRecords(ctx,p->fp,nrecs,whdr.version,
+                                IterateSubSession,(void*)&parse) != OWPErrOK){
+                        I2ErrLog(eh,
+                                "IterateSubSession: sub=%d,arecs=%lu,nrecs=%lu,begin=%lld,first=%lu,last=%lu,rhdr.oset_datarecs=%llu,fileend=%lld: %M",
+                                sub,arecs,nrecs,parse.begin,
+                                parse.first,parse.last,
+                                rhdr.oset_datarecs,fileend);
+                        goto error;
+                    }
+                    /*
+                     * If we have read to the end of the stream, we need
+                     * to clear the eof flag so the stream will work
+                     * if the child process adds more records.
+                     */
+                    if(feof(p->fp)){
+                        clearerr(p->fp);
+                    }
+
+
+
+    /*
+     * TODO: Setup subsession parse parameters
+     */
+
+
+                    if(!IterateSubSessionLost(&parse)){
+                        I2ErrLog(eh,"IterateSubSessionLost: %M");
+                        goto error;
+                    }
+
+                    if(!OWPWriteDataHeaderNumDataRecs(ctx,p->fp,parse.n)){
+                        I2ErrLog(eh,"OWPWriteDataHeaderNumDataRecs: %M");
+                        goto error;
+                    }
+
+                    /*
+                     * Flush the FILE before linking to the "complete"
+                     * name.
+                     */
+                    fflush(parse.fp);
+
+                    sprintf(endname,OWP_TSTAMPFMT,localstop);
+                    strcpy(newpath,fname);
+                    sprintf(&newpath[ext_offset],"%s%s%s",
+                            OWP_NAME_SEP,endname,OWP_FILE_EXT);
+                    if(link(fname,newpath) != 0){
+                        I2ErrLog(eh,"link(): %M");
+                    }
+
+                    if(parse.buckets){
+                        char	sfname[PATH_MAX];
+
+                        /*
+                         * -b indicates we want to save "summary"
+                         * stats.
+                         */
+                        strcpy(sfname,newpath);
+                        strcat(sfname,SUMMARY_EXT);
+                        while(!(parse.sfp = fopen(sfname,"w")) &&
+                                errno==EINTR);
+                        /* (Ignore errors...) */
+                        if(parse.sfp){
+                            /* PRINT version 1 STATS */
+                            fprintf(parse.sfp,"SUMMARY\t1.0\n");
+                            fprintf(parse.sfp,"SENT\t%u\n",
+                                    appctx.opt.numFilePackets);
+                            fprintf(parse.sfp,"MAXERR\t%g\n",
+                                    parse.maxerr);
+                            fprintf(parse.sfp,"SYNC\t%u\n",
+                                    parse.sync);
+                            fprintf(parse.sfp,"DUPS\t%u\n",
+                                    parse.dups);
+                            fprintf(parse.sfp,"LOST\t%u\n",
+                                    parse.lost);
+                            if(parse.min_delay < inf_delay){
+                                fprintf(parse.sfp,"MIN\t%g\n",
+                                        parse.min_delay);
+                            }
+                            if(parse.max_delay > -inf_delay){
+                                fprintf(parse.sfp,"MAX\t%g\n",
+                                        parse.max_delay);
+                            }
+
+
+                            fprintf(parse.sfp,"BUCKETWIDTH\t%g\n",
+                                    appctx.opt.bucketWidth);
+
+                            /*
+                             * PRINT out the BUCKETS
+                             */
+                            fprintf(parse.sfp,"<BUCKETS>\n");
+                            I2HashIterate(parse.buckets,
+                                    PrintBuckets,
+                                    &parse);
+                            fprintf(parse.sfp,"</BUCKETS>\n");
+
+                            fclose(parse.sfp);
+                            parse.sfp = NULL;
+
+                            assert(!parse.bucketerror);
+                        }
+                    }
+
+                    if(appctx.opt.printfiles){
+                        /* Now print the filename to stdout */
+                        fprintf(stdout,"%s\n",newpath);
+                        fflush(stdout);
+                    }
 error:
-			if(parse.buckets)
-				I2HashClean(parse.buckets);
-			fclose(parse.fp);
-			parse.fp = NULL;
-			/* unlink old name */
-			if(unlink(fname) != 0){
-				I2ErrLog(eh,"unlink(): %M");
-			}
+                    if(parse.buckets)
+                        I2HashClean(parse.buckets);
+                    fclose(parse.fp);
+                    parse.fp = NULL;
+                    /* unlink old name */
+                    if(unlink(fname) != 0){
+                        I2ErrLog(eh,"unlink(): %M");
+                    }
 
-			/*
-			 * Setup begin offset for next time around.
-			 */
-			if(parse.next)
-				parse.begin = parse.next;
-			else
-				parse.begin += parse.i * rhdr.rec_size;
+                    /*
+                     * Setup begin offset for next time around.
+                     */
+                    if(parse.next)
+                        parse.begin = parse.next;
+                    else
+                        parse.begin += parse.i * rhdr.rec_size;
 
-		}
+                }
 
 		if(p->cntrl && call_stop){
 			if(OWPStopSessions(p->cntrl,NULL,&aval)<OWPErrWARNING){
@@ -1523,7 +1725,7 @@ error:
 		if(sig_check())
 			goto NextConnection;
 
-		if(sub < numSessions){
+		if(sub < numFileSessions){
 			/*
 			 * This session ended prematurely - q needs to
 			 * be reset for an immediate start time!.

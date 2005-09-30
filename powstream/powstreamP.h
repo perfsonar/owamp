@@ -71,13 +71,14 @@ typedef	struct {
 		I2Boolean	childwait;        /* -w */
 #endif
 
-		u_int32_t	numPackets;       /* -c */
+		u_int32_t	numSessPackets;       /* -C */
+		u_int32_t	numFilePackets;       /* -c */
+		u_int32_t	numSumPackets;       /* -N */
 		double		lossThreshold;    /* -L (seconds) */
 		double		meanWait;        /* -i  (seconds) */
 		u_int32_t	padding;          /* -s */
 
 		char		*savedir;	/* -d */
-		u_int32_t	seriesInterval;	/* -I (seconds) */
 		I2Boolean	printfiles;	/* -p */
 		int		facility;	/* -e */
 		I2Boolean	verbose;	/* -r stderr too */
@@ -112,17 +113,31 @@ typedef struct pow_seen_rec{
 } pow_seen_rec, *pow_seen;
 
 struct pow_parse_rec{
+        /* parse state */
 	OWPContext		ctx;
-	u_int32_t		i;
-	u_int32_t		n;
-	FILE			*fp;	/* sub-session data file	*/
-	u_int32_t		first;
-	u_int32_t		last;
+
+        OWPBoolean              do_subfile;
+
+        /* file offsets for parsing */
 	off_t			begin;
 	off_t			next;
-	pow_seen		seen;
+
+        /* "real" seq_no's for first/last in this {sub,sum}session */
+	u_int32_t		first;
+	u_int32_t		last;
+
+	u_int32_t		i;  /* current record index into file */
+	u_int32_t		n;  /* number of records counted/written */
+
+	pow_seen		seen; /* index is in sub-session space */
+
+
+        /* sub-session fields */
+	FILE			*fp;	/* sub-session data file	*/
 	OWPSessionHeader	hdr;
 	OWPTimeStamp		missing;/* used to hold err est		*/
+
+        /* Summary fields */
 	FILE			*sfp;	/* summary file			*/
 	I2Table			buckets;
 	u_int32_t		*bucketvals;
