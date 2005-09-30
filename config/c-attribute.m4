@@ -6,13 +6,12 @@ dnl
 dnl	This macro is used to test for the gcc __attribute__ keyword.
 dnl
 
-AC_DEFUN(I2_C___ATTRIBUTE__, [
+AC_DEFUN([I2_C___ATTRIBUTE__], [
 AC_MSG_CHECKING(for __attribute__)
 AC_CACHE_VAL(ac_cv___attribute__, [
-AC_TRY_COMPILE([
+AC_COMPILE_IFELSE([
 #include <stdlib.h>
-],
-[
+
 static void foo(void) __attribute__ ((noreturn));
 
 static void
