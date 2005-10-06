@@ -42,7 +42,7 @@
 #include <string.h>
 #include <assert.h>
 #include <sys/time.h>
-#include <owamp/owamp.h>
+#include <owamp/owampP.h>
 #ifdef  HAVE_SYS_TIMEX_H
 #include <sys/timex.h>
 #endif
@@ -641,8 +641,8 @@ OWPTimespecToTimestamp(
 	}
 	else{
 		tstamp->sync = 0;
-		tstamp->scale = 0;
-		tstamp->multiplier = 0;
+		tstamp->scale = 64;
+		tstamp->multiplier = 1;
 	}
 
 	return tstamp;

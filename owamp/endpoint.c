@@ -240,7 +240,7 @@ reopen_datafile(
  * Function:	CmpLostPacket
  *
  * Description:	
- * 	Used to compare the 64 bit keys for the OWPLostPacket records.
+ * 	Used to compare the 32 bit keys for the OWPLostPacket records.
  *
  * In Args:	
  *
@@ -256,8 +256,8 @@ CmpLostPacket(
         I2Datum	y
         )
 {
-    u_int64_t	*xn = (u_int64_t*)x.dptr;
-    u_int64_t	*yn = (u_int64_t*)y.dptr;
+    u_int32_t	*xn = (u_int32_t*)x.dptr;
+    u_int32_t	*yn = (u_int32_t*)y.dptr;
 
     return !(*xn == *yn);
 }
@@ -280,9 +280,9 @@ HashLostPacket(
         I2Datum	k
         )
 {
-    u_int64_t	*kn = (u_int64_t*)k.dptr;
+    u_int32_t	*kn = (u_int32_t*)k.dptr;
 
-    return *kn & 0xFFFFFFFFUL;
+    return *kn & 0xFFFFUL;
 }
 
 static int
@@ -361,7 +361,7 @@ _OWPEndpointInit(
     int			    sbuf_size;
     int			    sopt;
     socklen_t		    opt_size;
-    u_int64_t		    i;
+    u_int32_t		    i;
     OWPTimeStamp            tstamp;
     u_int16_t		    port=0;
     u_int16_t		    p;
@@ -1080,7 +1080,7 @@ run_sender(
     struct timespec sleeptime;
     u_int32_t	    esterror;
     u_int32_t	    lasterror=0;
-    int		    sync;
+    u_int8_t	    sync;
     ssize_t	    sent;
     u_int32_t	    *seq;
     u_int8_t	    clr_buffer[32];
@@ -1427,7 +1427,7 @@ finish_sender:
 static OWPLostPacket
 alloc_node(
         OWPEndpoint	ep,
-        u_int64_t	seq
+        u_int32_t	seq
         )
 {
     OWPLostPacket	node;
@@ -1441,7 +1441,7 @@ alloc_node(
     }
 
     if(!ep->freelist){
-        u_int64_t	i;
+        u_int32_t	i;
 
         OWPError(ep->cntrl->ctx,OWPErrWARNING,OWPErrUNKNOWN,
                 "alloc_node: Allocating nodes for lost-packet-buffer!");
@@ -1491,7 +1491,7 @@ free_node(
 
     if(I2HashDelete(ep->lost_packet_buffer,k) != 0){
         OWPError(ep->cntrl->ctx,OWPErrWARNING,OWPErrUNKNOWN,
-                "I2HashDelete: Unable to remove seq #%llu from lost-packet hash",
+                "I2HashDelete: Unable to remove seq #%lu from lost-packet hash",
                 node->seq);
     }
 
@@ -1504,7 +1504,7 @@ free_node(
 static OWPLostPacket
 get_node(
         OWPEndpoint	ep,
-        u_int64_t	seq
+        u_int32_t	seq
         )
 {
     OWPLostPacket	node;
@@ -1676,7 +1676,7 @@ run_receiver(
     u_int8_t            iv[16];
     u_int8_t            recvbuf[10];
     u_int32_t           esterror,lasterror=0;
-    int                 sync;
+    u_int8_t            sync;
     OWPTimeStamp        expecttime;
     OWPSessionHeaderRec hdr;
     u_int8_t            lostrec[_OWP_DATAREC_SIZE];
@@ -1825,7 +1825,7 @@ again:
         owp_intr = 0;
         if(setitimer(ITIMER_REAL,&wake,NULL) != 0){
             OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                    "setitimer(wake=%d,%d) seq=%llu: %M",
+                    "setitimer(wake=%d,%d) seq=%lu: %M",
                     wake.it_value.tv_sec,wake.it_value.tv_usec,
                     ep->end->seq);
             goto error;
@@ -2436,7 +2436,10 @@ AGAIN:
          */
     }
 
-    *aval = ep->acceptval;
+    if(*aval == OWP_CNTRL_ACCEPT){
+        *aval = ep->acceptval;
+    }
+
     return;
 }
 

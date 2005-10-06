@@ -861,6 +861,8 @@ OWPSessionsActive(
 
     for(tsession = cntrl->tests;tsession;tsession = tsession->next){
         if(tsession->endpoint){
+            /* initialize laval before querying status */
+            laval = OWP_CNTRL_ACCEPT;
             _OWPEndpointStatus(tsession->endpoint,&laval,&err);
             if(laval < 0){
                 n++;
@@ -895,7 +897,6 @@ OWPSessionsActive(
 static OWPErrSeverity
 _OWPStopSendSessions(
         OWPControl      cntrl,
-        int             *retn_on_intr,
         OWPAcceptType   *acceptval_ret,  /* in/out */
         u_int32_t       *num_sessions
         )
@@ -968,8 +969,9 @@ _OWPStopSendSessions(
 
         /*
          * Read next_seqno and num_skips for verification purposes.
+         * (IGNORE intr for this local file i/o)
          */
-        if(I2Readni(sptr->endpoint->skiprecfd,sdr,8,retn_on_intr) != 8){
+        if(I2Readn(sptr->endpoint->skiprecfd,sdr,8) != 8){
             OWPError(cntrl->ctx,OWPErrWARNING,errno,"I2Readni(skiprecfd): %M");
             *acceptval = OWP_CNTRL_FAILURE;
             err2 = MIN(OWPErrWARNING,err2);
@@ -1105,7 +1107,7 @@ OWPStopSessions(
 		intr = retn_on_intr;
 	}
 
-	err = _OWPStopSendSessions(cntrl,intr,acceptval,&num_sessions);
+	err = _OWPStopSendSessions(cntrl,acceptval,&num_sessions);
 	err2 = MIN(err,err2);
 	if(err2 < OWPErrWARNING){
             goto done;
@@ -1358,7 +1360,7 @@ AGAIN:
      * Stop Send sessions - the other side does not want more packets.
      * Do this first to be a "good" citizen.
      */
-    err2 = _OWPStopSendSessions(cntrl,intr,acceptval,&num_sessions);
+    err2 = _OWPStopSendSessions(cntrl,acceptval,&num_sessions);
     *err_ret = MIN(*err_ret,err2);
     if(*err_ret < OWPErrWARNING){
         goto done;

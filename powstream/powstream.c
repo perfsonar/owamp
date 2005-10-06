@@ -1541,7 +1541,7 @@ AGAIN:
             fprintf(fp,"</BUCKETS>\n");
 
             fclose(fp);
-            fp = NULL;
+            parse.fp = fp = NULL;
 
             /*
              * Relink the incomplete file as a complete one.

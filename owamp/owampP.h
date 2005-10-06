@@ -892,7 +892,7 @@ _OWPGetTimespec(
         OWPContext	ctx,
         struct timespec	*ts,
         u_int32_t	*esterr,
-        int		*sync
+        u_int8_t	*sync
         );
 
 /*
