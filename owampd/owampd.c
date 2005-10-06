@@ -987,7 +987,7 @@ LoadConfig(
 int
 main(int argc, char *argv[])
 {
-	char			*progname;
+	char			*progname=NULL;
 	OWPErrSeverity		out = OWPErrFATAL;
 	char			pid_file[MAXPATHLEN],
 		                info_file[MAXPATHLEN];
@@ -1019,11 +1019,15 @@ main(int argc, char *argv[])
 	char *optstring = "hvc:d:R:a:S:e:ZU:G:P:";
 #endif
 
+        /*
+         * remove any path component from argv[0] for progname.
+         */
+        progname = (progname = strrchr(argv[0],'/')) ? progname+1 : *argv;
+
 	/*
 	* Start an error loggin session for reporting errors to the
 	* standard error
 	*/
-	progname = (progname = strrchr(argv[0], '/')) ? ++progname : argv[0];
 	syslogattr.ident = progname;
 	syslogattr.logopt = LOG_PID;
 	syslogattr.facility = LOG_DAEMON;

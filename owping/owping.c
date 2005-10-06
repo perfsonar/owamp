@@ -1187,7 +1187,7 @@ main(
 #endif
     ia.fp = stderr;
 
-    progname = (progname = strrchr(argv[0], '/')) ? ++progname : *argv;
+    progname = (progname = strrchr(argv[0], '/')) ? progname+1 : *argv;
 
     /*
      * Start an error logging session for reporing errors to the

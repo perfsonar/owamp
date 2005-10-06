@@ -43,8 +43,8 @@
  */
 #define	POWLOCK	".powlock"
 #define	POWTMPFILEFMT	"pow.XXXXXX"
-#define INCOMPLETE_EXT	".i"
-#define SUMMARY_EXT	".sum"
+#define POW_INC_EXT	".i"
+#define POW_SUM_EXT	".sum"
 
 /*
  * Reasonable limits on these so dynamic memory is not needed.
@@ -71,9 +71,7 @@ typedef	struct {
 		I2Boolean	childwait;        /* -w */
 #endif
 
-		u_int32_t	numSessPackets;       /* -C */
-		u_int32_t	numFilePackets;       /* -c */
-		u_int32_t	numSumPackets;       /* -N */
+		u_int32_t	numPackets;       /* -c */
 		double		lossThreshold;    /* -L (seconds) */
 		double		meanWait;        /* -i  (seconds) */
 		u_int32_t	padding;          /* -s */
@@ -83,6 +81,7 @@ typedef	struct {
 		int		facility;	/* -e */
 		I2Boolean	verbose;	/* -r stderr too */
 		double		bucketWidth;	/* -b (seconds) */
+                u_int32_t       numBucketPackets;   /* -C */
 
 	} opt;
 
@@ -100,7 +99,8 @@ typedef struct pow_cntrl_rec{
 	OWPScheduleContext	sctx;
 	OWPSID			sid;
 	OWPNum64		*sessionStart;
-	OWPNum64		owptime_mem;
+	OWPNum64		sessionStartNum;
+	OWPNum64		sessionEndNum;
 	FILE			*fp;
 	FILE			*testfp;
 	char			fname[PATH_MAX];
@@ -113,32 +113,14 @@ typedef struct pow_seen_rec{
 } pow_seen_rec, *pow_seen;
 
 struct pow_parse_rec{
-        /* parse state */
 	OWPContext		ctx;
-
-        OWPBoolean              do_subfile;
-
-        /* file offsets for parsing */
-	off_t			begin;
-	off_t			next;
-
-        /* "real" seq_no's for first/last in this {sub,sum}session */
+	u_int32_t		i;
 	u_int32_t		first;
 	u_int32_t		last;
-
-	u_int32_t		i;  /* current record index into file */
-	u_int32_t		n;  /* number of records counted/written */
-
-	pow_seen		seen; /* index is in sub-session space */
-
-
-        /* sub-session fields */
-	FILE			*fp;	/* sub-session data file	*/
+	off_t			begin;
+	off_t			next;
+	pow_seen		seen;
 	OWPSessionHeader	hdr;
-	OWPTimeStamp		missing;/* used to hold err est		*/
-
-        /* Summary fields */
-	FILE			*sfp;	/* summary file			*/
 	I2Table			buckets;
 	u_int32_t		*bucketvals;
 	u_int32_t		nbuckets;
@@ -149,5 +131,6 @@ struct pow_parse_rec{
 	u_int32_t		lost;
 	double			min_delay;
 	double			max_delay;
+        FILE                *fp;
 };
 #endif
