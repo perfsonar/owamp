@@ -680,6 +680,15 @@ IterateSumSession(
         }
     }
 
+    /*
+     * Save ttl info
+     */
+    parse->ttl_count[rec->ttl]++;
+    if(rec->ttl != 255){
+        parse->max_ttl = MAX(parse->max_ttl,rec->ttl);
+    }
+    parse->min_ttl = MIN(parse->min_ttl,rec->ttl);
+
     return 0;
 }
 
@@ -757,11 +766,11 @@ mmap_copy_file(
         return rc;
     }
 
-    if(!(fptr = mmap(NULL,sbuf.st_size,PROT_READ,MAP_FILE,fromfd,0))){
+    if(!(fptr = mmap(NULL,sbuf.st_size,PROT_READ|PROT_WRITE,MAP_FILE|MAP_SHARED,fromfd,0))){
         I2ErrLog(eh,"mmap(FROM session file): %M");
         return -1;
     }
-    if(!(tptr = mmap(NULL,sbuf.st_size,PROT_WRITE,MAP_FILE,tofd,0))){
+    if(!(tptr = mmap(NULL,sbuf.st_size,PROT_READ|PROT_WRITE,MAP_FILE|MAP_SHARED,tofd,0))){
         I2ErrLog(eh,"mmap(TO session file): %M");
         return -1;
     }
@@ -1100,8 +1109,8 @@ main(
     if(sessionTime < SETUP_ESTIMATE + appctx.opt.lossThreshold){
         I2ErrLog(eh,
                 "Warning: Holes in data are likely because"
-                " lossThreshold(%d) is too large a fraction"
-                " of approx file session duration(%d)",
+                " lossThreshold(%g) is too large a fraction"
+                " of approx file session duration(%lu)",
                 appctx.opt.lossThreshold,sessionTime);
     }
 
@@ -1279,7 +1288,6 @@ wait_again:
          * test session is complete.
          */
         for(sum=0;sum<numSummaries;sum++){
-            FILE                *fp;
             u_int32_t           arecs,nrecs;
             off_t               fileend;
             OWPSessionHeaderRec hdr;
@@ -1297,7 +1305,11 @@ wait_again:
             parse.dups = parse.lost = 0;
             parse.min_delay = inf_delay;
             parse.max_delay = -inf_delay;
+            memset(&parse.ttl_count,0,sizeof(parse.ttl_count));
+            parse.min_ttl = 255;
+            parse.max_ttl = 0;
             parse.nbuckets = 0;
+            parse.fp = NULL;
             assert(!parse.buckets || (I2HashNumEntries(parse.buckets)==0));
 
             /*
@@ -1346,7 +1358,7 @@ wait_again:
              * non-zero if one happend.
              */
             if(SetupSession(ctx,q,p,&stopnum))
-                goto cleanup;
+                goto NextConnection;
 AGAIN:
             /*
              * Wait until this "sumsession" is complete.
@@ -1410,26 +1422,28 @@ AGAIN:
             }
 
             /*
-             * Position of first record we need to look at.
+             * Determine offset to end of datarecs
              */
+            if(hdr.oset_skiprecs > hdr.oset_datarecs){
+                fileend = hdr.oset_skiprecs;
+            }
+            else{
+                if(fseeko(p->fp,0,SEEK_END) != 0){
+                    I2ErrLog(eh,"fseeko(): %M");
+                    abort();
+                }
+                if((fileend = ftello(p->fp)) < 0){
+                    I2ErrLog(eh,"ftello(): %M");
+                    abort();
+                }
+            }
+
+            /* Determine first position of first record we need to look at. */
             if(parse.begin < hdr.oset_datarecs){
                 parse.begin = hdr.oset_datarecs;
             }
-
             if(fseeko(p->fp,parse.begin,SEEK_SET) != 0){
                 I2ErrLog(eh,"fseeko(): %M");
-                abort();
-            }
-
-            /*
-             * Determine fileend offset
-             */
-            if(fseeko(p->fp,0,SEEK_END) != 0){
-                I2ErrLog(eh,"fseeko(): %M");
-                abort();
-            }
-            if((fileend = ftello(p->fp)) < 0){
-                I2ErrLog(eh,"ftello(): %M");
                 abort();
             }
 
@@ -1477,11 +1491,11 @@ AGAIN:
             sprintf(&tfname[file_offset],"%s%s%s%s%s",
                     startname,OWP_NAME_SEP,endname,POW_SUM_EXT,POW_INC_EXT);
 
-            while(!(fp = fopen(tfname,"w")) && errno==EINTR){
+            while(!(parse.fp = fopen(tfname,"w")) && errno==EINTR){
                 if(sig_check())
                     goto NextConnection;
             }
-            if(!fp){
+            if(!parse.fp){
 
                 I2ErrLog(eh,"fopen(%s): %M",tfname);
 
@@ -1512,36 +1526,60 @@ AGAIN:
                  */
                 goto cleanup;
             }
-            parse.fp = fp;
 
             /*
              * File is good, write to it.
              */
 
             /* PRINT version 1 STATS */
-            fprintf(fp,"SUMMARY\t1.0\n");
-            fprintf(fp,"SENT\t%u\n",appctx.opt.numBucketPackets);
-            fprintf(fp,"MAXERR\t%g\n",parse.maxerr);
-            fprintf(fp,"SYNC\t%u\n",parse.sync);
-            fprintf(fp,"DUPS\t%u\n",parse.dups);
-            fprintf(fp,"LOST\t%u\n",parse.lost);
-            if(parse.min_delay < inf_delay){
-                fprintf(fp,"MIN\t%g\n",parse.min_delay);
-            }
-            if(parse.max_delay > -inf_delay){
-                fprintf(fp,"MAX\t%g\n",parse.max_delay);
-            }
-            fprintf(fp,"BUCKETWIDTH\t%g\n",appctx.opt.bucketWidth);
+            fprintf(parse.fp,"SUMMARY\t2.0\n");
+            fprintf(parse.fp,"SENT\t%u\n",appctx.opt.numBucketPackets);
+            fprintf(parse.fp,"MAXERR\t%g\n",parse.maxerr);
+            fprintf(parse.fp,"SYNC\t%u\n",parse.sync);
+            fprintf(parse.fp,"DUPS\t%u\n",parse.dups);
+            fprintf(parse.fp,"LOST\t%u\n",parse.lost);
 
             /*
-             * PRINT out the BUCKETS
+             * PRINT out the delay information/BUCKETS
              */
-            fprintf(fp,"<BUCKETS>\n");
+            if(parse.min_delay < inf_delay){
+                fprintf(parse.fp,"MIN\t%g\n",parse.min_delay);
+            }
+            if(parse.max_delay > -inf_delay){
+                fprintf(parse.fp,"MAX\t%g\n",parse.max_delay);
+            }
+            fprintf(parse.fp,"BUCKETWIDTH\t%g\n",appctx.opt.bucketWidth);
+            fprintf(parse.fp,"<BUCKETS>\n");
             I2HashIterate(parse.buckets,PrintBuckets,&parse);
-            fprintf(fp,"</BUCKETS>\n");
+            fprintf(parse.fp,"</BUCKETS>\n");
 
-            fclose(fp);
-            parse.fp = fp = NULL;
+            /*
+             * PRINT out the ttl information/buckets
+             * (255 is reported if ttl is not reported, so do not
+             * report any ttl info if all packets report in this bin.)
+             */
+            if(parse.ttl_count[255] < appctx.opt.numBucketPackets+parse.lost){
+                if(parse.min_ttl < 255){
+                    fprintf(parse.fp,"MINTTL\t%u\n",parse.min_ttl);
+                }
+                if(parse.max_ttl > 0){
+                    fprintf(parse.fp,"MAXTTL\t%u\n",parse.max_ttl);
+                }
+
+                /*
+                 * PRINT out the TTLBUCKETS
+                 */
+                fprintf(parse.fp,"<TTLBUCKETS>\n");
+                for(nrecs=0;nrecs<255;nrecs++){
+                    if(!parse.ttl_count[nrecs])
+                        continue;
+                    fprintf(parse.fp,"\t%u\t%u\n",nrecs,parse.ttl_count[nrecs]);
+                }
+                fprintf(parse.fp,"</TTLBUCKETS>\n");
+            }
+
+            fclose(parse.fp);
+            parse.fp = NULL;
 
             /*
              * Relink the incomplete file as a complete one.
@@ -1568,9 +1606,6 @@ cleanup:
 
             if(parse.buckets)
                 I2HashClean(parse.buckets);
-            if(fp)
-                fclose(fp);
-            fp = NULL;
 
             /*
              * Setup begin offset for next time around.
@@ -1641,12 +1676,10 @@ cleanup:
         }
 
         /*
-         * TODO: mmap_copy_file()
          * stat the "from" file, ftruncate the to file,
          * mmap both of them, then do a memcpy between them.
          */
-        fflush(p->testfp);
-        if(mmap_copy_file(tofd,fileno(p->testfp)) == 0){
+        if(mmap_copy_file(tofd,fileno(p->fp)) == 0){
             /*
              * Relink the incomplete file as a complete one.
              */
