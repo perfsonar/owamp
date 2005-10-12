@@ -2,23 +2,23 @@
  *      $Id$
  */
 /************************************************************************
- *									*
- *			     Copyright (C)  2002			*
- *				Internet2				*
- *			     All Rights Reserved			*
- *									*
+ *                                                                      *
+ *                             Copyright (C)  2002                      *
+ *                                Internet2                             *
+ *                             All Rights Reserved                      *
+ *                                                                      *
  ************************************************************************/
 /*
- *	File:		endpoint.c
+ *        File:         endpoint.c
  *
- *	Author:		Jeff W. Boote
- *			Internet2
+ *        Author:       Jeff W. Boote
+ *                      Internet2
  *
- *	Date:		Wed May 29 09:17:21 MDT 2002
+ *        Date:         Wed May 29 09:17:21 MDT 2002
  *
- *	Description:	
- *		This file contains the "default" implementation for
- *		the send and recv endpoints of an OWAMP test session.
+ *        Description:        
+ *                This file contains the "default" implementation for
+ *                the send and recv endpoints of an OWAMP test session.
  */
 #include "owampP.h"
 
@@ -36,28 +36,28 @@
 
 
 /*
- * Function:	EndpointAlloc
+ * Function:        EndpointAlloc
  *
- * Description:	
- * 	Allocate a record to keep track of the state information for
- * 	this endpoint. (Much of this state is also in the control record
- * 	and the TestSession record... May simplify this in the future
- * 	to just reference the other records.)
+ * Description:        
+ *         Allocate a record to keep track of the state information for
+ *         this endpoint. (Much of this state is also in the control record
+ *         and the TestSession record... May simplify this in the future
+ *         to just reference the other records.)
  *
- * In Args:	
+ * In Args:        
  *
- * Out Args:	
+ * Out Args:        
  *
- * Scope:	
- * Returns:	
- * Side Effect:	
+ * Scope:        
+ * Returns:        
+ * Side Effect:        
  */
 static OWPEndpoint
 EndpointAlloc(
-        OWPControl	cntrl
+        OWPControl  cntrl
         )
 {
-    OWPEndpoint	ep = calloc(1,sizeof(OWPEndpointRec));
+    OWPEndpoint ep = calloc(1,sizeof(OWPEndpointRec));
 
     if(!ep){
         OWPError(cntrl->ctx,OWPErrFATAL,errno,"malloc(EndpointRec)");
@@ -106,24 +106,24 @@ SkipFree(
 }
 
 /*
- * Function:	EndpointClear
+ * Function:        EndpointClear
  *
- * Description:	
- * 	Clear out any resources that are used in the Endpoint record
- * 	that are not needed in the parent process after the endpoint
- * 	forks off to do the actual test.
+ * Description:        
+ *         Clear out any resources that are used in the Endpoint record
+ *         that are not needed in the parent process after the endpoint
+ *         forks off to do the actual test.
  *
- * In Args:	
+ * In Args:        
  *
- * Out Args:	
+ * Out Args:        
  *
- * Scope:	
- * Returns:	
- * Side Effect:	
+ * Scope:        
+ * Returns:        
+ * Side Effect:        
  */
 static void
 EndpointClear(
-        OWPEndpoint	ep
+        OWPEndpoint ep
         )
 {
     if(!ep)
@@ -148,23 +148,23 @@ EndpointClear(
 }
 
 /*
- * Function:	EndpointFree
+ * Function:        EndpointFree
  *
- * Description:	
- * 	completely free all resoruces associated with an endpoint record.
+ * Description:        
+ *         completely free all resoruces associated with an endpoint record.
  *
- * In Args:	
+ * In Args:        
  *
- * Out Args:	
+ * Out Args:        
  *
- * Scope:	
- * Returns:	
- * Side Effect:	
+ * Scope:        
+ * Returns:        
+ * Side Effect:        
  */
 static void
 EndpointFree(
-        OWPEndpoint	ep,
-        OWPAcceptType	aval
+        OWPEndpoint     ep,
+        OWPAcceptType   aval
         )
 {
     if(!ep)
@@ -197,30 +197,30 @@ EndpointFree(
 }
 
 /*
- * Function:	reopen_datafile
+ * Function:        reopen_datafile
  *
- * Description:	
- * 	This function takes a fp and creates a new fp to the same file
- * 	record. This is used to ensure that the fp used for the actual
- * 	test is buffered properly. And - allows the test to write to the
- * 	same file without modifying a fp passed in by an application.
+ * Description:        
+ *         This function takes a fp and creates a new fp to the same file
+ *         record. This is used to ensure that the fp used for the actual
+ *         test is buffered properly. And - allows the test to write to the
+ *         same file without modifying a fp passed in by an application.
  *
- * In Args:	
+ * In Args:        
  *
- * Out Args:	
+ * Out Args:        
  *
- * Scope:	
- * Returns:	
- * Side Effect:	
+ * Scope:        
+ * Returns:        
+ * Side Effect:        
  */
 static FILE*
 reopen_datafile(
-        OWPContext	ctx,
-        FILE		*infp
+        OWPContext  ctx,
+        FILE        *infp
         )
 {
-    int	newfd;
-    FILE	*fp;
+    int     newfd;
+    FILE    *fp;
 
     if( (newfd = dup(fileno(infp))) < 0){
         OWPError(ctx,OWPErrFATAL,errno,"dup(%d): %M",
@@ -237,50 +237,50 @@ reopen_datafile(
 }
 
 /*
- * Function:	CmpLostPacket
+ * Function:        CmpLostPacket
  *
- * Description:	
- * 	Used to compare the 32 bit keys for the OWPLostPacket records.
+ * Description:        
+ *         Used to compare the 32 bit keys for the OWPLostPacket records.
  *
- * In Args:	
+ * In Args:        
  *
- * Out Args:	
+ * Out Args:        
  *
- * Scope:	
- * Returns:	
- * Side Effect:	
+ * Scope:        
+ * Returns:        
+ * Side Effect:        
  */
 static int
 CmpLostPacket(
-        I2Datum	x,
-        I2Datum	y
+        I2Datum x,
+        I2Datum y
         )
 {
-    u_int32_t	*xn = (u_int32_t*)x.dptr;
-    u_int32_t	*yn = (u_int32_t*)y.dptr;
+    u_int32_t   *xn = (u_int32_t*)x.dptr;
+    u_int32_t   *yn = (u_int32_t*)y.dptr;
 
     return !(*xn == *yn);
 }
 
 /*
- * Function:	HashLostPacket
+ * Function:        HashLostPacket
  *
- * Description:	
+ * Description:        
  *
- * In Args:	
+ * In Args:        
  *
- * Out Args:	
+ * Out Args:        
  *
- * Scope:	
- * Returns:	
- * Side Effect:	
+ * Scope:        
+ * Returns:        
+ * Side Effect:        
  */
 u_int32_t
 HashLostPacket(
-        I2Datum	k
+        I2Datum k
         )
 {
-    u_int32_t	*kn = (u_int32_t*)k.dptr;
+    u_int32_t   *kn = (u_int32_t*)k.dptr;
 
     return *kn & 0xFFFFUL;
 }
@@ -288,7 +288,7 @@ HashLostPacket(
 static int
 anon_file(
         OWPContext  ctx
-         )
+        )
 {
     char    *tmpdir = NULL;
     char    *fpath = NULL;
@@ -346,28 +346,28 @@ error:
  */
 OWPBoolean
 _OWPEndpointInit(
-        OWPControl	cntrl,
-        OWPTestSession	tsession,
-        OWPAddr		localaddr,
-        FILE		*fp,
+        OWPControl      cntrl,
+        OWPTestSession  tsession,
+        OWPAddr         localaddr,
+        FILE            *fp,
         OWPAcceptType   *aval,
-        OWPErrSeverity	*err_ret
+        OWPErrSeverity  *err_ret
         )
 {
     struct sockaddr_storage sbuff;
-    socklen_t		    sbuff_len=sizeof(sbuff);
-    OWPEndpoint		    ep;
+    socklen_t               sbuff_len=sizeof(sbuff);
+    OWPEndpoint             ep;
     OWPPacketSizeT          tpsize;
-    int			    sbuf_size;
-    int			    sopt;
-    socklen_t		    opt_size;
-    u_int32_t		    i;
+    int                     sbuf_size;
+    int                     sopt;
+    socklen_t               opt_size;
+    u_int32_t               i;
     OWPTimeStamp            tstamp;
-    u_int16_t		    port=0;
-    u_int16_t		    p;
-    u_int16_t		    range;
+    u_int16_t               port=0;
+    u_int16_t               p;
+    u_int16_t               range;
     OWPPortRange            portrange=NULL;
-    int			    saveerr=0;
+    int                     saveerr=0;
 
     *err_ret = OWPErrFATAL;
     *aval = OWP_CNTRL_UNAVAILABLE_TEMP;
@@ -382,7 +382,7 @@ _OWPEndpointInit(
 
     tpsize = OWPTestPacketSize(localaddr->saddr->sa_family,
             ep->cntrl->mode,tsession->test_spec.packet_size_padding);
-    tpsize += 128;	/* Add fuzz space for IP "options" */
+    tpsize += 128;        /* Add fuzz space for IP "options" */
     sbuf_size = tpsize;
     if((OWPPacketSizeT)sbuf_size != tpsize){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
@@ -422,9 +422,9 @@ _OWPEndpointInit(
 
     /* first - see if saddr specifs a port directly... */
     switch(localaddr->saddr->sa_family){
-        struct sockaddr_in	*s4;
-#ifdef	AF_INET6
-        struct sockaddr_in6	*s6;
+        struct sockaddr_in  *s4;
+#ifdef        AF_INET6
+        struct sockaddr_in6 *s6;
 
         case AF_INET6:
         s6 = (struct sockaddr_in6*)localaddr->saddr;
@@ -453,7 +453,7 @@ _OWPEndpointInit(
                     OWPTestPortRange))){
         p = port = 0;
     }else{
-        u_int32_t	r;
+        u_int32_t   r;
 
         /*
          * Get a random 32 bit number to aid in selecting first
@@ -476,9 +476,9 @@ _OWPEndpointInit(
     do{
         /* Specify the port number */
         switch(localaddr->saddr->sa_family){
-            struct sockaddr_in	*s4;
-#ifdef	AF_INET6
-            struct sockaddr_in6	*s6;
+            struct sockaddr_in  *s4;
+#ifdef        AF_INET6
+            struct sockaddr_in6 *s6;
 
             case AF_INET6:
             s6 = (struct sockaddr_in6*)localaddr->saddr;
@@ -553,8 +553,8 @@ success:
      * If we are receiver, sid is valid and we need to open file.
      */
     if(!ep->send){
-        size_t		size;
-        OWPLostPacket	alist;
+        size_t          size;
+        OWPLostPacket   alist;
 
         /*
          * pre-allocate nodes for lost_packet buffer.
@@ -572,7 +572,7 @@ success:
          * at least minimize the dynamic allocations during the
          * test.
          */
-#define PACKBUFFALLOCFACTOR	2
+#define PACKBUFFALLOCFACTOR        2
 
         ep->freelist=NULL;
         ep->numalist = OWPTestPacketRate(cntrl->ctx,
@@ -601,7 +601,7 @@ success:
                         ep->numalist*PACKBUFFALLOCFACTOR,
                         CmpLostPacket,HashLostPacket))){
             OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                "_OWPEndpointInit: Unable to initialize lost packet buffer");
+                    "_OWPEndpointInit: Unable to initialize lost packet buffer");
             goto error;
         }
 
@@ -651,7 +651,7 @@ success:
             setvbuf(ep->datafile,NULL,_IONBF,0);
         }
         else{
-            struct stat	statbuf;
+            struct stat        statbuf;
 
             /* stat to find out st_blksize */
             if(fstat(fileno(ep->datafile),&statbuf) != 0){
@@ -703,7 +703,7 @@ success:
          * TODO: Determine correct sockopt for IPV6!
          */
         switch(localaddr->saddr->sa_family){
-#ifdef	AF_INET6
+#ifdef        AF_INET6
             case AF_INET6:
 #ifdef IPV6_RECVHOPLIMIT
                 sopt = 1;
@@ -777,7 +777,7 @@ success:
          * of dynamic allocations tht need to happen during
          * a test.
          */
-#define PACKBUFFALLOCFACTOR	2
+#define PACKBUFFALLOCFACTOR        2
 
         ep->free_skiplist=NULL;
         ep->num_allocskip = .10 * ep->tsession->test_spec.npackets;
@@ -829,7 +829,7 @@ success:
          * name in IPv6.)
          */
         switch(localaddr->saddr->sa_family){
-#ifdef	AF_INET6
+#ifdef        AF_INET6
             case AF_INET6:
 #ifdef IPV6_UNICAST_HOPS
                 sopt = 255;
@@ -866,8 +866,8 @@ success:
         }
 
         if(ep->tsession->test_spec.typeP){
-            int	optname = IP_TOS;
-            int	optlevel = IP_TOS;
+            int optname = IP_TOS;
+            int optlevel = IP_TOS;
 
             /*
              * TODO: Decoding of typeP will need to change if
@@ -904,7 +904,7 @@ success:
                     optlevel = IPPROTO_IP;
                     optname = IP_TOS;
                     break;
-#ifdef	AF_INET6
+#ifdef        AF_INET6
                 case AF_INET6:
                     optlevel = IPPROTO_IPV6;
                     optname = IP_TOS;
@@ -953,7 +953,7 @@ static int owp_int;
  */
 static void
 sig_nothing(
-        int	signo
+        int signo
         )
 {
     switch(signo){
@@ -969,7 +969,7 @@ sig_nothing(
 
 static void
 sig_catch(
-        int	signo
+        int signo
         )
 {
     switch(signo){
@@ -997,7 +997,7 @@ static void
 skip(
         OWPEndpoint ep,
         u_int32_t   seq
-        )
+    )
 {
     OWPSkip node;
 
@@ -1053,45 +1053,45 @@ skip(
 }
 
 /*
- * Function:	run_sender
+ * Function:        run_sender
  *
- * Description:	
- * 		This function is the main processing function for a "sender"
- * 		sub-process.
+ * Description:        
+ *                 This function is the main processing function for a "sender"
+ *                 sub-process.
  *
- * In Args:	
+ * In Args:        
  *
- * Out Args:	
+ * Out Args:        
  *
- * Scope:	
- * Returns:	
- * Side Effect:	
+ * Scope:        
+ * Returns:        
+ * Side Effect:        
  */
 static void
 run_sender(
-        OWPEndpoint	ep
+        OWPEndpoint ep
         )
 {
-    u_int32_t	    i;
+    u_int32_t       i;
     struct timespec currtime;
     struct timespec nexttime;
     struct timespec timeout;
     struct timespec latetime;
     struct timespec sleeptime;
-    u_int32_t	    esterror;
-    u_int32_t	    lasterror=0;
-    u_int8_t	    sync;
-    ssize_t	    sent;
-    u_int32_t	    *seq;
-    u_int8_t	    clr_buffer[32];
-    u_int8_t	    zeroiv[16];
-    u_int8_t	    *payload;
-    u_int8_t	    *tstamp;
-    u_int8_t	    *tstamperr;
+    u_int32_t       esterror;
+    u_int32_t       lasterror=0;
+    u_int8_t        sync;
+    ssize_t         sent;
+    u_int32_t       *seq;
+    u_int8_t        clr_buffer[32];
+    u_int8_t        zeroiv[16];
+    u_int8_t        *payload;
+    u_int8_t        *tstamp;
+    u_int8_t        *tstamperr;
     OWPTimeStamp    owptstamp;
-    OWPNum64	    nextoffset;
+    OWPNum64        nextoffset;
     OWPSkip         sr;
-    u_int32_t	    num_skiprecs;
+    u_int32_t       num_skiprecs;
 
     /*
      * Initialize pointers to various positions in the packet buffer,
@@ -1126,16 +1126,16 @@ run_sender(
              * compiler warnings...
              */
             OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                "run_sender: Bogus \"mode\" bits!");
+                    "run_sender: Bogus \"mode\" bits!");
             exit(OWP_CNTRL_FAILURE);
     }
 
     /*
      * set random bits.
      */
-#if	defined(OWP_ZERO_TEST_PAYLOAD)
+#if        defined(OWP_ZERO_TEST_PAYLOAD)
     memset(payload,0,ep->tsession->test_spec.packet_size_padding);
-#elif	!defined(OWP_VARY_TEST_PAYLOAD)
+#elif        !defined(OWP_VARY_TEST_PAYLOAD)
     /*
      * Ignore errors here - it isn't that critical that it be random.
      * (just trying to defeat modem compression and the like.)
@@ -1170,7 +1170,7 @@ run_sender(
         /*
          * First setup "this" packet.
          */
-#if	defined(OWP_VARY_TEST_PAYLOAD) && !defined(OWP_ZERO_TEST_PAYLOAD)
+#if        defined(OWP_VARY_TEST_PAYLOAD) && !defined(OWP_ZERO_TEST_PAYLOAD)
         (void)I2RandomBytes(ep->cntrl->ctx->rand_src,payload,
                             ep->tsession->test_spec.packet_size_padding);
 #endif
@@ -1250,22 +1250,17 @@ AGAIN:
                  * becomes easier. (OWPSendBlocks becomes more
                  * involved...)
                  */
-                ((u_int32_t*)clr_buffer)[4] ^=
-                    ((u_int32_t*)ep->payload)[0];
-                ((u_int32_t*)clr_buffer)[5] ^=
-                    ((u_int32_t*)ep->payload)[1];
-                ((u_int32_t*)clr_buffer)[6] ^=
-                    ((u_int32_t*)ep->payload)[2];
-                ((u_int32_t*)clr_buffer)[7] ^=
-                    ((u_int32_t*)ep->payload)[3];
+                ((u_int32_t*)clr_buffer)[4] ^= ((u_int32_t*)ep->payload)[0];
+                ((u_int32_t*)clr_buffer)[5] ^= ((u_int32_t*)ep->payload)[1];
+                ((u_int32_t*)clr_buffer)[6] ^= ((u_int32_t*)ep->payload)[2];
+                ((u_int32_t*)clr_buffer)[7] ^= ((u_int32_t*)ep->payload)[3];
                 rijndaelEncrypt(ep->cntrl->encrypt_key.rk,
                         ep->cntrl->encrypt_key.Nr,
                         &clr_buffer[16],&ep->payload[16]);
             }
 
             if( (sent = sendto(ep->sockfd,ep->payload,
-                            ep->len_payload,0,
-                            ep->remoteaddr->saddr,
+                            ep->len_payload,0,ep->remoteaddr->saddr,
                             ep->remoteaddr->saddrlen)) < 0){
                 switch(errno){
                     /* retry errors */
@@ -1309,8 +1304,7 @@ SKIP_SEND:
 
             sleeptime = nexttime;
             timespecsub(&sleeptime,&currtime);
-            if((nanosleep(&sleeptime,NULL) == 0) ||
-                    (errno == EINTR)){
+            if((nanosleep(&sleeptime,NULL) == 0) || (errno == EINTR)){
                 goto AGAIN;
             }
             OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
@@ -1415,7 +1409,7 @@ finish_sender:
         if(I2Writeni(ep->skiprecfd,skipmsg,_OWP_SKIPREC_SIZE,&owp_int) !=
                 _OWP_SKIPREC_SIZE){
             OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                "run_sender: I2Writeni(): %M");
+                    "run_sender: I2Writeni(): %M");
             exit(OWP_CNTRL_FAILURE);
         }
     }
@@ -1426,12 +1420,12 @@ finish_sender:
 
 static OWPLostPacket
 alloc_node(
-        OWPEndpoint	ep,
-        u_int32_t	seq
+        OWPEndpoint ep,
+        u_int32_t   seq
         )
 {
-    OWPLostPacket	node;
-    I2Datum		k,v;
+    OWPLostPacket   node;
+    I2Datum         k,v;
 
     if((seq >= ep->tsession->test_spec.npackets) ||
             (ep->end && (seq <= ep->end->seq))){
@@ -1441,7 +1435,7 @@ alloc_node(
     }
 
     if(!ep->freelist){
-        u_int32_t	i;
+        u_int32_t   i;
 
         OWPError(ep->cntrl->ctx,OWPErrWARNING,OWPErrUNKNOWN,
                 "alloc_node: Allocating nodes for lost-packet-buffer!");
@@ -1480,11 +1474,11 @@ alloc_node(
 
 static void
 free_node(
-        OWPEndpoint	ep,
-        OWPLostPacket	node
+        OWPEndpoint     ep,
+        OWPLostPacket   node
         )
 {
-    I2Datum	k;
+    I2Datum k;
 
     k.dptr = &node->seq;
     k.dsize = sizeof(node->seq);
@@ -1503,12 +1497,12 @@ free_node(
 
 static OWPLostPacket
 get_node(
-        OWPEndpoint	ep,
-        u_int32_t	seq
+        OWPEndpoint ep,
+        u_int32_t   seq
         )
 {
-    OWPLostPacket	node;
-    I2Datum		k,v;
+    OWPLostPacket   node;
+    I2Datum         k,v;
 
     /*
      * optimize for most frequent case.
@@ -1524,7 +1518,7 @@ get_node(
         node = ep->end;
 
         while(node->seq < seq){
-            OWPTimeStamp	abs;
+            OWPTimeStamp        abs;
 
             node->next = alloc_node(ep,node->seq+1);
             node->next->relative = OWPNum64Add(node->relative,
@@ -1570,27 +1564,27 @@ get_node(
 
 static ssize_t
 recvfromttl(
-        OWPContext	ctx,
-        int		sockfd,
-        void		*buf,
-        size_t		buf_len,
-        struct sockaddr	*local,
-        socklen_t	local_len __attribute__((unused)),
-        struct sockaddr	*peer,
-        socklen_t	*peer_len,
-        u_int8_t	*ttl
+        OWPContext      ctx,
+        int             sockfd,
+        void            *buf,
+        size_t          buf_len,
+        struct sockaddr *local,
+        socklen_t       local_len __attribute__((unused)),
+        struct sockaddr *peer,
+        socklen_t       *peer_len,
+        u_int8_t        *ttl
         )
 {
-    struct msghdr	msg;
-    struct iovec	iov[1];
-    ssize_t		rc;
-    struct cmsghdr	*cmdmsgptr;
+    struct msghdr       msg;
+    struct iovec        iov[1];
+    ssize_t             rc;
+    struct cmsghdr      *cmdmsgptr;
     union {
-        struct cmsghdr	cm;
-        char		control[CMSG_SPACE(sizeof(u_int8_t))];
+        struct cmsghdr  cm;
+        char            control[CMSG_SPACE(sizeof(u_int8_t))];
     } cmdmsgdata;
 
-    *ttl = 255;	/* initialize to default value */
+    *ttl = 255;        /* initialize to default value */
 
     iov[0].iov_base = buf;
     iov[0].iov_len = buf_len;
@@ -1619,7 +1613,7 @@ recvfromttl(
             (cmdmsgptr);
             cmdmsgptr = CMSG_NXTHDR(&msg,cmdmsgptr)){
         switch(local->sa_family){
-#ifdef	AF_INET6
+#ifdef        AF_INET6
             case AF_INET6:
                 if(cmdmsgptr->cmsg_level == IPPROTO_IPV6 &&
                         cmdmsgptr->cmsg_type ==
@@ -1658,7 +1652,7 @@ NEXTCMSG:
 
 static void
 run_receiver(
-        OWPEndpoint	ep
+        OWPEndpoint ep
         )
 {
     double              fudge;
@@ -1721,8 +1715,8 @@ run_receiver(
         case OWP_MODE_AUTHENTICATED:
             tstamp = &ep->payload[16];
             tstamperr = &ep->payload[24];
-            z1 = &ep->payload[4];	/* 12 octets Zero Integrity */
-            z2 = &ep->payload[26];	/* 6 octets Zero Integrity */
+            z1 = &ep->payload[4];        /* 12 octets Zero Integrity */
+            z2 = &ep->payload[26];        /* 6 octets Zero Integrity */
             memset(zero,0,sizeof(zero));
             break;
         default:
@@ -1799,8 +1793,8 @@ run_receiver(
     }
 
     while(1){
-        struct sockaddr_storage	peer_addr;
-        socklen_t		peer_addr_len;
+        struct sockaddr_storage        peer_addr;
+        socklen_t                peer_addr_len;
 again:
         /*
          * set itimer to go off just past loss_timeout after the time
@@ -1816,7 +1810,7 @@ again:
         timespecadd((struct timespec*)&wake.it_value,&fudgespec);
         timespecsub((struct timespec*)&wake.it_value,&currtime);
 
-        wake.it_value.tv_usec /= 1000;	/* convert nsec to usec	*/
+        wake.it_value.tv_usec /= 1000;        /* convert nsec to usec        */
         tvalclear(&wake.it_interval);
 
         /*
@@ -1983,7 +1977,7 @@ again:
         /*
          * Verify peer before looking at packet.
          */
-        if(I2SockAddrEqual(	ep->remoteaddr->saddr,
+        if(I2SockAddrEqual(        ep->remoteaddr->saddr,
                     ep->remoteaddr->saddrlen,
                     (struct sockaddr*)&peer_addr,
                     peer_addr_len,I2SADDR_ALL) <= 0){
@@ -2144,18 +2138,18 @@ error:
  */
 OWPBoolean
 _OWPEndpointInitHook(
-        OWPControl	cntrl,
-        OWPTestSession	tsession,
-        OWPAcceptType	*aval,
-        OWPErrSeverity	*err_ret
+        OWPControl      cntrl,
+        OWPTestSession  tsession,
+        OWPAcceptType   *aval,
+        OWPErrSeverity  *err_ret
         )
 {
-    OWPContext		ctx = OWPGetContext(cntrl);
-    OWPEndpoint		*end_data = &tsession->endpoint;
-    OWPEndpoint		ep = tsession->endpoint;
-    struct sigaction	act;
-    struct sigaction	chldact,usr1act,usr2act,intact,pipeact,alrmact;
-    sigset_t		sigs,osigs;
+    OWPContext          ctx = OWPGetContext(cntrl);
+    OWPEndpoint         *end_data = &tsession->endpoint;
+    OWPEndpoint         ep = tsession->endpoint;
+    struct sigaction    act;
+    struct sigaction    chldact,usr1act,usr2act,intact,pipeact,alrmact;
+    sigset_t            sigs,osigs;
 
     /*
      * By default, failures from here are recoverable... Set this
@@ -2216,7 +2210,7 @@ _OWPEndpointInitHook(
     sigemptyset(&act.sa_mask);
     act.sa_flags = 0;
 
-    if(		(sigaction(SIGUSR1,&act,&usr1act) != 0) ||
+    if(     (sigaction(SIGUSR1,&act,&usr1act) != 0) ||
             (sigaction(SIGUSR2,&act,&usr2act) != 0) ||
             (sigaction(SIGINT,&act,&intact) != 0) ||
             (sigaction(SIGALRM,&act,&alrmact) != 0)){
@@ -2227,7 +2221,7 @@ _OWPEndpointInitHook(
     }
 
     act.sa_handler = SIG_IGN;
-    if(		(sigaction(SIGPIPE,&act,&pipeact) != 0)){
+    if(     (sigaction(SIGPIPE,&act,&pipeact) != 0)){
         OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"sigaction(): %M");
         EndpointFree(ep,OWP_CNTRL_FAILURE);
         *end_data = NULL;
@@ -2278,12 +2272,12 @@ _OWPEndpointInitHook(
 
     if(ep->child > 0){
         /* parent */
-        int			childstatus;
+        int childstatus;
 
         /*
          * Reset parent's sig handlers.
          */
-        if(		(sigaction(SIGUSR1,&usr1act,NULL) != 0) ||
+        if(     (sigaction(SIGUSR1,&usr1act,NULL) != 0) ||
                 (sigaction(SIGUSR2,&usr2act,NULL) != 0) ||
                 (sigaction(SIGINT,&intact,NULL) != 0) ||
                 (sigaction(SIGPIPE,&pipeact,NULL) != 0) ||
@@ -2293,7 +2287,7 @@ _OWPEndpointInitHook(
             goto parenterr;
         }
 
-        /* reset sig_mask to the old one (-SIGCHLD)	*/
+        /* reset sig_mask to the old one (-SIGCHLD)        */
         if(sigprocmask(SIG_SETMASK,&osigs,NULL) != 0){
             OWPError(ctx,OWPErrWARNING,OWPErrUNKNOWN,
                     "sigprocmask(): %M");
@@ -2323,9 +2317,9 @@ parenterr:
      * busy loop for systems where debugger doesn't support
      * child follow_fork mode functionality...
      */
-#ifndef	NDEBUG
+#ifndef        NDEBUG
     {
-        int	waitfor = (int)OWPContextConfigGetV(ctx,OWPChildWait);
+        int waitfor = (int)OWPContextConfigGetV(ctx,OWPChildWait);
 
         if(waitfor){
             OWPError(ctx,OWPErrWARNING,OWPErrUNKNOWN,
@@ -2381,8 +2375,8 @@ parenterr:
 
 OWPBoolean
 _OWPEndpointStart(
-        OWPEndpoint	ep,
-        OWPErrSeverity	*err_ret
+        OWPEndpoint     ep,
+        OWPErrSeverity  *err_ret
         )
 {
     *err_ret = OWPErrOK;
@@ -2398,13 +2392,13 @@ _OWPEndpointStart(
 
 void
 _OWPEndpointStatus(
-        OWPEndpoint	ep,
-        OWPAcceptType	*aval,		/* out */
-        OWPErrSeverity	*err_ret
+        OWPEndpoint     ep,
+        OWPAcceptType   *aval,      /* out */
+        OWPErrSeverity  *err_ret
         )
 {
-    pid_t			p;
-    int			childstatus;
+    pid_t   p;
+    int     childstatus;
 
     *err_ret = OWPErrOK;
 
@@ -2446,12 +2440,12 @@ AGAIN:
 
 void
 _OWPEndpointStop(
-        OWPEndpoint	ep,
-        OWPAcceptType	*aval,
-        OWPErrSeverity	*err_ret
+        OWPEndpoint     ep,
+        OWPAcceptType   *aval,
+        OWPErrSeverity  *err_ret
         )
 {
-    int		    sig;
+    int             sig;
     OWPAcceptType   teststatus=OWP_CNTRL_ACCEPT;
 
     if((ep->acceptval >= 0) || (ep->child == 0)){

@@ -45,153 +45,180 @@
 #include <sys/param.h>
 
 /*
-** This function sets up a binary key based on a 32-byte
-** hex-encoded raw key material.
-*/
+ ** This function sets up a binary key based on a 32-byte
+ ** hex-encoded raw key material.
+ */
 int 
-makeKey(keyInstance *key, BYTE direction, char *keyMaterial) {
-	int i;
-	u8 cipherKey[MAXKB];
-	
-	if (key == NULL) {
-		return BAD_KEY_INSTANCE;
-	}
+makeKey(
+        keyInstance *key,
+        BYTE        direction,
+        char        *keyMaterial
+        )
+{
+    int i;
+    u8  cipherKey[MAXKB];
+
+    if (key == NULL) {
+        return BAD_KEY_INSTANCE;
+    }
 
 
-	/* initialize key schedule: */
-	/*	keyMat = key->keyMaterial; */
- 	for (i = 0; i < 128/8; i++) {
-		int t, v;
+    /* initialize key schedule: */
+    /*        keyMat = key->keyMaterial; */
+    for (i = 0; i < 128/8; i++) {
+        int t, v;
 
-		t = *keyMaterial++;
-		if ((t >= '0') && (t <= '9')) v = (t - '0') << 4;
-		else if ((t >= 'a') && (t <= 'f')) v = (t - 'a' + 10) << 4;
-		else if ((t >= 'A') && (t <= 'F')) v = (t - 'A' + 10) << 4;
-		else return BAD_KEY_MAT;
-		
-		t = *keyMaterial++;
-		if ((t >= '0') && (t <= '9')) v ^= (t - '0');
-		else if ((t >= 'a') && (t <= 'f')) v ^= (t - 'a' + 10);
-		else if ((t >= 'A') && (t <= 'F')) v ^= (t - 'A' + 10);
-		else return BAD_KEY_MAT;
-		
-		cipherKey[i] = (u8)v;
-	}
+        t = *keyMaterial++;
+        if ((t >= '0') && (t <= '9')) v = (t - '0') << 4;
+        else if ((t >= 'a') && (t <= 'f')) v = (t - 'a' + 10) << 4;
+        else if ((t >= 'A') && (t <= 'F')) v = (t - 'A' + 10) << 4;
+        else return BAD_KEY_MAT;
 
-	
-	if (direction == DIR_ENCRYPT) {
-		key->Nr = rijndaelKeySetupEnc(key->rk, cipherKey, 128);
-	} else {
-		key->Nr = rijndaelKeySetupDec(key->rk, cipherKey, 128);
-	}
-	
-	return TRUE;
+        t = *keyMaterial++;
+        if ((t >= '0') && (t <= '9')) v ^= (t - '0');
+        else if ((t >= 'a') && (t <= 'f')) v ^= (t - 'a' + 10);
+        else if ((t >= 'A') && (t <= 'F')) v ^= (t - 'A' + 10);
+        else return BAD_KEY_MAT;
+
+        cipherKey[i] = (u8)v;
+    }
+
+
+    if (direction == DIR_ENCRYPT) {
+        key->Nr = rijndaelKeySetupEnc(key->rk, cipherKey, 128);
+    } else {
+        key->Nr = rijndaelKeySetupDec(key->rk, cipherKey, 128);
+    }
+
+    return TRUE;
 }
 
 
 /*
-** This function takes hex-encoded IV and converts it to binary.
-*/
-int cipherInit(BYTE *binIV, char *hexIV) {
-	if (hexIV != NULL) {
-		int i;
- 		for (i = 0; i < MAX_IV_SIZE; i++) {
-			int t, j;
+ ** This function takes hex-encoded IV and converts it to binary.
+ */
+int
+cipherInit(
+        BYTE    *binIV,
+        char    *hexIV
+        )
+{
+    if (hexIV != NULL) {
+        int i;
+        for (i = 0; i < MAX_IV_SIZE; i++) {
+            int t, j;
 
-			t = hexIV[2*i];
-			if ((t >= '0') && (t <= '9')) j = (t - '0') << 4;
-			else if ((t >= 'a') && (t <= 'f')) j = (t - 'a' + 10) << 4;
-			else if ((t >= 'A') && (t <= 'F')) j = (t - 'A' + 10) << 4;
-			else return BAD_CIPHER_INSTANCE;
-		
-			t = hexIV[2*i+1];
-			if ((t >= '0') && (t <= '9')) j ^= (t - '0');
-			else if ((t >= 'a') && (t <= 'f')) j ^= (t - 'a' + 10);
-			else if ((t >= 'A') && (t <= 'F')) j ^= (t - 'A' + 10);
-			else return BAD_CIPHER_INSTANCE;
-			
-			binIV[i] = (u8)j;
-		}
-	} else {
-		memset(binIV, 0, MAX_IV_SIZE);
-	}
-	return TRUE;
+            t = hexIV[2*i];
+            if ((t >= '0') && (t <= '9')) j = (t - '0') << 4;
+            else if ((t >= 'a') && (t <= 'f')) j = (t - 'a' + 10) << 4;
+            else if ((t >= 'A') && (t <= 'F')) j = (t - 'A' + 10) << 4;
+            else return BAD_CIPHER_INSTANCE;
+
+            t = hexIV[2*i+1];
+            if ((t >= '0') && (t <= '9')) j ^= (t - '0');
+            else if ((t >= 'a') && (t <= 'f')) j ^= (t - 'a' + 10);
+            else if ((t >= 'A') && (t <= 'F')) j ^= (t - 'A' + 10);
+            else return BAD_CIPHER_INSTANCE;
+
+            binIV[i] = (u8)j;
+        }
+    } else {
+        memset(binIV, 0, MAX_IV_SIZE);
+    }
+    return TRUE;
 }
 
 /*
-** This function encrypts a given number of bits (= inputlen),
-** assumed to bo divisible by 128 (= 16 bytes * 8 bits/byte).
-** NOTICE that binIV is automatically updated in the end.
-*/
-int blockEncrypt(BYTE *binIV, keyInstance *key,
-		BYTE *input, int inputLen, BYTE *outBuffer) {
-	int i, numBlocks;
-	u8 block[16], *iv;
+ ** This function encrypts a given number of bits (= inputlen),
+ ** assumed to bo divisible by 128 (= 16 bytes * 8 bits/byte).
+ ** NOTICE that binIV is automatically updated in the end.
+ */
+int
+blockEncrypt(
+        BYTE        *binIV,
+        keyInstance *key,
+        BYTE        *input,
+        int         inputLen,
+        BYTE        *outBuffer
+        )
+{
+    int i, numBlocks;
+    u8  block[16], *iv;
 
-	if (binIV == NULL || key == NULL)
-		return BAD_CIPHER_STATE;
-	
-	
-	if (input == NULL || inputLen <= 0) {
-		return 0; /* nothing to do */
-	}
+    if (binIV == NULL || key == NULL)
+        return BAD_CIPHER_STATE;
 
-	numBlocks = inputLen/128;
 
-	iv = binIV;
-	for (i = numBlocks; i > 0; i--) {
-		((u32*)block)[0] = ((u32*)input)[0] ^ ((u32*)iv)[0];
-		((u32*)block)[1] = ((u32*)input)[1] ^ ((u32*)iv)[1];
-		((u32*)block)[2] = ((u32*)input)[2] ^ ((u32*)iv)[2];
-		((u32*)block)[3] = ((u32*)input)[3] ^ ((u32*)iv)[3];
-		rijndaelEncrypt(key->rk, key->Nr, block, outBuffer);
-		iv = outBuffer;
-		input += 16;
-		outBuffer += 16;
-	}
-	
-	/* Update the IV so we don't  have to do it in owamp library. */
-	   memcpy(binIV, iv, 16); 
+    if (input == NULL || inputLen <= 0) {
+        return 0; /* nothing to do */
+    }
 
-	return 128*numBlocks;
+    numBlocks = inputLen/128;
+
+    iv = binIV;
+    for (i = numBlocks; i > 0; i--) {
+        ((u32*)block)[0] = ((u32*)input)[0] ^ ((u32*)iv)[0];
+        ((u32*)block)[1] = ((u32*)input)[1] ^ ((u32*)iv)[1];
+        ((u32*)block)[2] = ((u32*)input)[2] ^ ((u32*)iv)[2];
+        ((u32*)block)[3] = ((u32*)input)[3] ^ ((u32*)iv)[3];
+        rijndaelEncrypt(key->rk, key->Nr, block, outBuffer);
+        iv = outBuffer;
+        input += 16;
+        outBuffer += 16;
+    }
+
+    /* Update the IV so we don't  have to do it in owamp library. */
+    memcpy(binIV, iv, 16); 
+
+    return 128*numBlocks;
 }
 
 /*
-** This function encrypts a given number of bits (= inputlen),
-** assumed to be divisible by 128 (= #bits in 16 bytes).
-** NOTICE that binIV is updated! (CBC mode)
-*/
-int blockDecrypt(BYTE *binIV, keyInstance *key,
-		BYTE *input, int inputLen, BYTE *outBuffer) {
-	int i, numBlocks;
-	u8 block[16], *iv;
+ ** This function encrypts a given number of bits (= inputlen),
+ ** assumed to be divisible by 128 (= #bits in 16 bytes).
+ ** NOTICE that binIV is updated! (CBC mode)
+ */
+int
+blockDecrypt(
+        BYTE        *binIV,
+        keyInstance *key,
+        BYTE        *input,
+        int         inputLen,
+        BYTE        *outBuffer
+        )
+{
+    int i, numBlocks;
+    u8  block[16], *iv;
 
-	if (binIV == NULL || key == NULL) 
-		return BAD_CIPHER_STATE;
+    if (binIV == NULL || key == NULL) 
+        return BAD_CIPHER_STATE;
 
-	if (input == NULL || inputLen <= 0) 
-		return 0; /* nothing to do */
+    if (input == NULL || inputLen <= 0) 
+        return 0; /* nothing to do */
 
-	numBlocks = inputLen/128;
+    numBlocks = inputLen/128;
 
-	iv = binIV;
-	for (i = numBlocks; i > 0; i--) {
-		rijndaelDecrypt(key->rk, key->Nr, input, block);
-		((u32*)block)[0] ^= ((u32*)iv)[0];
-		((u32*)block)[1] ^= ((u32*)iv)[1];
-		((u32*)block)[2] ^= ((u32*)iv)[2];
-		((u32*)block)[3] ^= ((u32*)iv)[3];
-		memcpy(binIV, input, 16);
-		memcpy(outBuffer, block, 16);
-		input += 16;
-		outBuffer += 16;
-	}
-	
-	return 128*numBlocks;
+    iv = binIV;
+    for (i = numBlocks; i > 0; i--) {
+        rijndaelDecrypt(key->rk, key->Nr, input, block);
+        ((u32*)block)[0] ^= ((u32*)iv)[0];
+        ((u32*)block)[1] ^= ((u32*)iv)[1];
+        ((u32*)block)[2] ^= ((u32*)iv)[2];
+        ((u32*)block)[3] ^= ((u32*)iv)[3];
+        memcpy(binIV, input, 16);
+        memcpy(outBuffer, block, 16);
+        input += 16;
+        outBuffer += 16;
+    }
+
+    return 128*numBlocks;
 }
 
 void
-bytes2Key(keyInstance *key, BYTE *sid)
+bytes2Key(
+        keyInstance *key,
+        BYTE        *sid
+        )
 {
-	key->Nr = rijndaelKeySetupEnc(key->rk, sid, 128);
+    key->Nr = rijndaelKeySetupEnc(key->rk, sid, 128);
 }

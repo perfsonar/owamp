@@ -129,7 +129,7 @@ usage(const char *progname, const char *msg)
                 "usage: %s is not a known name for this program.\n",progname);
     }
 
-	fprintf(stderr, "Distribution: %s\n", PACKAGE_STRING);
+    fprintf(stderr, "Distribution: %s\n", PACKAGE_STRING);
 
     return;
 }

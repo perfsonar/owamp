@@ -1,34 +1,34 @@
 /*
-**      $Id$
-*/
+ **      $Id$
+ */
 /************************************************************************
-*									*
-*			     Copyright (C)  2002			*
-*				Internet2				*
-*			     All Rights Reserved			*
-*									*
-************************************************************************/
+ *                                                                      *
+ *                             Copyright (C)  2002                      *
+ *                                Internet2                             *
+ *                             All Rights Reserved                      *
+ *                                                                      *
+ ************************************************************************/
 /*
-**	File:		owamp.h
-**
-**	Author:		Jeff W. Boote
-**			Anatoly Karp
-**
-**	Date:		Wed Mar 20 11:10:33  2002
-**
-**	Description:	
-**	This header file describes the owamp API. The owamp API is intended
-**	to provide a portable layer for implementing the owamp protocol.
-*/
-#ifndef	OWAMP_H
-#define	OWAMP_H
+ **        File:        owamp.h
+ **
+ **        Author:      Jeff W. Boote
+ **                     Anatoly Karp
+ **
+ **        Date:        Wed Mar 20 11:10:33  2002
+ **
+ **        Description:        
+ **        This header file describes the owamp API. The owamp API is intended
+ **        to provide a portable layer for implementing the owamp protocol.
+ */
+#ifndef        OWAMP_H
+#define        OWAMP_H
 
 #include <I2util/util.h>
 
 /*
  * Portablility sanity checkes.
  */
-#if	HAVE_CONFIG_H
+#if        HAVE_CONFIG_H
 #undef PACKAGE_BUGREPORT
 #undef PACKAGE_NAME
 #undef PACKAGE_STRING
@@ -37,25 +37,25 @@
 
 #include <owamp/config.h>
 
-#if	!HAVE_ERRNO_H || !HAVE_NETDB_H || !HAVE_STDLIB_H || !HAVE_SYS_PARAM_H
-#error	Missing Header!
+#if        !HAVE_ERRNO_H || !HAVE_NETDB_H || !HAVE_STDLIB_H || !HAVE_SYS_PARAM_H
+#error        Missing Header!
 #endif
 
-#if	!HAVE_GETADDRINFO || !HAVE_SOCKET
-#error	Missing needed networking capabilities! (getaddrinfo and socket)
+#if        !HAVE_GETADDRINFO || !HAVE_SOCKET
+#error        Missing needed networking capabilities! (getaddrinfo and socket)
 #endif
 
 
-#if	!HAVE_MALLOC || !HAVE_MEMSET
-#error	Missing needed memory functions!
+#if        !HAVE_MALLOC || !HAVE_MEMSET
+#error        Missing needed memory functions!
 #endif
-#endif	/* HAVE_CONFIG_H */
+#endif        /* HAVE_CONFIG_H */
 
-#ifndef	HAVE___ATTRIBUTE__
+#ifndef        HAVE___ATTRIBUTE__
 #define __attribute__(x)
 #endif
 
-#if	defined HAVE_DECL_FSEEKO && !HAVE_DECL_FSEEKO
+#if        defined HAVE_DECL_FSEEKO && !HAVE_DECL_FSEEKO
 #define fseeko(a,b,c) fseek(a,b,c)
 #endif
 
@@ -68,11 +68,11 @@
 #include <netdb.h>
 #include <time.h>
 
-#ifndef	False
-#define	False	(0)
+#ifndef        False
+#define        False        (0)
 #endif
-#ifndef	True
-#define	True	(!False)
+#ifndef        True
+#define        True        (!False)
 #endif
 
 #ifndef MIN
@@ -86,13 +86,13 @@
  * Filename/path component macros used by various parts of owamp.
  */
 #ifndef OWP_PATH_SEPARATOR
-#define	OWP_PATH_SEPARATOR	"/"
+#define OWP_PATH_SEPARATOR        "/"
 #endif
-#ifndef	OWP_PATH_SEPARATOR_LEN
-#define	OWP_PATH_SEPARATOR_LEN	1
+#ifndef OWP_PATH_SEPARATOR_LEN
+#define OWP_PATH_SEPARATOR_LEN        1
 #endif
-#ifndef	OWP_FILE_EXT
-#define	OWP_FILE_EXT	".owp"
+#ifndef OWP_FILE_EXT
+#define OWP_FILE_EXT        ".owp"
 #endif
 
 /*
@@ -120,18 +120,18 @@
 #include <owamp/rijndael-api-fst.h>
 
 /* Default mode offered by the server */
-#define OWP_DEFAULT_OFFERED_MODE 	(OWP_MODE_OPEN|OWP_MODE_AUTHENTICATED|OWP_MODE_ENCRYPTED)
+#define OWP_DEFAULT_OFFERED_MODE         (OWP_MODE_OPEN|OWP_MODE_AUTHENTICATED|OWP_MODE_ENCRYPTED)
 
 /*
  * TODO: 4824 should eventually be replaced by an IANA blessed service name.
  */
-#define OWP_CONTROL_SERVICE_NAME	"4824"
+#define OWP_CONTROL_SERVICE_NAME        "4824"
 
 /*
  * Default value to use for the listen backlog. We pick something large
  * and let the OS truncate it if it isn't willing to do that much.
  */
-#define OWP_LISTEN_BACKLOG	(64)
+#define OWP_LISTEN_BACKLOG        (64)
 
 /*
  * OWPNum64 is interpreted as 32bits of "seconds" and 32bits of
@@ -168,94 +168,101 @@ typedef u_int64_t OWPNum64;
  * type is changed from an u_int64_t to some kind of structure.
  *
  */
-#define OWPNum64Diff(x,y)	((x>y) ? (x-y) : (y-x))
-#define OWPNum64Add(x,y)	(x+y)
-#define OWPNum64Sub(x,y)	(x-y)
-#define OWPNum64Cmp(x,y)	((x<y) ? -1 : ((x>y) ? 1 : 0))
+#define OWPNum64Add(x,y)    (x+y)
+#define OWPNum64Sub(x,y)    (x-y)
+#define OWPNum64Cmp(x,y)    ((x<y)?\
+        (-1):\
+        ((x>y)?1:0))
+#define OWPNum64Diff(x,y)   ((x>y)?\
+        (x-y):\
+        (y-x))
 
 extern OWPNum64
 OWPNum64Mult(
-	OWPNum64	x,
-	OWPNum64	y
-	);
+        OWPNum64    x,
+        OWPNum64    y
+        );
 
 extern OWPNum64
 OWPULongToNum64(
-	u_int32_t	from);
+        u_int32_t   from
+        );
 
 
 extern void
 OWPNum64ToTimeval(
-	struct timeval	*to,
-	OWPNum64	from
-	);
+        struct timeval  *to,
+        OWPNum64        from
+        );
 
 extern void
 OWPTimevalToNum64(
-	OWPNum64	*to,
-	struct timeval	*from
-	);
+        OWPNum64        *to,
+        struct timeval  *from
+        );
 
 extern void
 OWPNum64ToTimespec(
-	struct timespec	*to,
-	OWPNum64	from
-	);
+        struct timespec *to,
+        OWPNum64        from
+        );
 
 extern void
 OWPTimespecToNum64(
-	OWPNum64	*to,
-	struct timespec	*from
-	);
+        OWPNum64        *to,
+        struct timespec *from
+        );
 
 extern double
 OWPNum64ToDouble(
-	OWPNum64	from
-	);
+        OWPNum64    from
+        );
 
 extern OWPNum64
 OWPDoubleToNum64(
-	double		from
-	);
+        double      from
+        );
 
 extern OWPNum64
-OWPUsecToNum64(u_int32_t usec);
+OWPUsecToNum64(
+        u_int32_t   usec
+        );
 
 /*
  * These structures are opaque to the API user.
  * They are used to maintain state internal to the library.
  */
-typedef struct OWPContextRec	*OWPContext;
-typedef struct OWPControlRec	*OWPControl;
-typedef struct OWPAddrRec	*OWPAddr;
+typedef struct OWPContextRec    *OWPContext;
+typedef struct OWPControlRec    *OWPControl;
+typedef struct OWPAddrRec       *OWPAddr;
 
 /*
  * Timestamp related types and structures needed throughout.
  */
 
 typedef struct OWPTimeStampRec{
-	OWPNum64		owptime;
-	u_int8_t		sync;
-	u_int8_t		multiplier;
-	u_int8_t		scale;
+    OWPNum64    owptime;
+    u_int8_t    sync;
+    u_int8_t    multiplier;
+    u_int8_t    scale;
 } OWPTimeStamp;
 
 
 /* Codes for returning error severity and type. */
 /* values are mapped to syslog "priorities" we want to use. */
 typedef enum {
-	OWPErrFATAL=3,
-	OWPErrWARNING=4,
-	OWPErrINFO=6,
-	OWPErrDEBUG=7,
-	OWPErrOK=8
+    OWPErrFATAL=3,
+    OWPErrWARNING=4,
+    OWPErrINFO=6,
+    OWPErrDEBUG=7,
+    OWPErrOK=8
 } OWPErrSeverity;
 
 typedef enum {
-	OWPErrUNKNOWN=0,
-	OWPErrPOLICY,
-	OWPErrINVALID,
-	OWPErrUNSUPPORTED
+    OWPErrUNKNOWN=0,
+    OWPErrPOLICY,
+    OWPErrINVALID,
+    OWPErrUNSUPPORTED
 } OWPErrType;
 
 
@@ -265,49 +272,50 @@ typedef enum {
  * of a test session.
  */
 typedef enum{
-	OWP_CNTRL_INVALID=-1,           /* No value yet                     */
-	OWP_CNTRL_ACCEPT=0,             /* ok                               */
-	OWP_CNTRL_REJECT=1,             /* reject for any reason            */
-	OWP_CNTRL_FAILURE=2,            /* internal failure                 */
-	OWP_CNTRL_UNSUPPORTED=3,        /* request functionality unsupported */
-        OWP_CNTRL_UNAVAILABLE_PERM=4,   /* Permanent resource limitation    */
-        OWP_CNTRL_UNAVAILABLE_TEMP=5    /* Temporary resource limitation    */
+    OWP_CNTRL_INVALID=-1,           /* No value yet                     */
+    OWP_CNTRL_ACCEPT=0,             /* ok                               */
+    OWP_CNTRL_REJECT=1,             /* reject for any reason            */
+    OWP_CNTRL_FAILURE=2,            /* internal failure                 */
+    OWP_CNTRL_UNSUPPORTED=3,        /* request functionality unsupported */
+    OWP_CNTRL_UNAVAILABLE_PERM=4,   /* Permanent resource limitation    */
+    OWP_CNTRL_UNAVAILABLE_TEMP=5    /* Temporary resource limitation    */
 } OWPAcceptType;
 
-typedef u_int32_t	OWPBoolean;
-typedef u_int8_t	OWPSID[16];
-typedef u_int8_t	OWPSequence[4];
+typedef u_int32_t   OWPBoolean;
+typedef u_int8_t    OWPSID[16];
+typedef u_int8_t    OWPSequence[4];
 
 /*
  * technically the username in the client greeting message can have u_int8_t
  * but this implementation limits it to a valid "char" type.
  */
-#define	OWP_USERID_LEN	16
-typedef char		OWPUserID[OWP_USERID_LEN+1];	/* add 1 for '\0' */
-typedef u_int8_t	OWPKey[16];
+#define OWP_USERID_LEN        16
+typedef char        OWPUserID[OWP_USERID_LEN+1];        /* add 1 for '\0' */
+typedef u_int8_t    OWPKey[16];
 
-#define	OWP_MODE_UNDEFINED		(0)
-#define	OWP_MODE_OPEN			(01)
-#define	OWP_MODE_AUTHENTICATED		(02)
-#define	OWP_MODE_ENCRYPTED		(04)
-#define	OWP_MODE_DOCIPHER	(OWP_MODE_AUTHENTICATED|OWP_MODE_ENCRYPTED)
 
-typedef u_int32_t	OWPSessionMode;
+#define OWP_MODE_UNDEFINED      (0)
+#define OWP_MODE_OPEN           (01)
+#define OWP_MODE_AUTHENTICATED  (02)
+#define OWP_MODE_ENCRYPTED      (04)
+#define OWP_MODE_DOCIPHER       (OWP_MODE_AUTHENTICATED|OWP_MODE_ENCRYPTED)
+
+typedef u_int32_t        OWPSessionMode;
 
 typedef enum {
-	OWPSlotUnspecifiedType = -1,	/* invalid value	*/
-	OWPSlotRandExpType = 0,
-	OWPSlotLiteralType = 1
+    OWPSlotUnspecifiedType = -1,        /* invalid value        */
+    OWPSlotRandExpType = 0,
+    OWPSlotLiteralType = 1
 } OWPSlotType;
 
 typedef struct{
-	OWPSlotType	slot_type;
-	OWPNum64	mean;
+    OWPSlotType slot_type;
+    OWPNum64    mean;
 } OWPSlotRandExp;
 
 typedef struct{
-	OWPSlotType	slot_type;
-	OWPNum64	offset;
+    OWPSlotType slot_type;
+    OWPNum64    offset;
 } OWPSlotLiteral;
 
 /*
@@ -319,25 +327,25 @@ typedef struct{
  * slot type.
  */
 typedef struct{
-	OWPSlotType	slot_type;
-	OWPNum64	mean_delay;
+    OWPSlotType slot_type;
+    OWPNum64    mean_delay;
 } OWPSlotAny;
 
 typedef union OWPSlotUnion{
-	OWPSlotType	slot_type;
-	OWPSlotRandExp	rand_exp;
-	OWPSlotLiteral	literal;
-	OWPSlotAny	any;
+    OWPSlotType     slot_type;
+    OWPSlotRandExp  rand_exp;
+    OWPSlotLiteral  literal;
+    OWPSlotAny      any;
 } OWPSlot;
 
 typedef struct{
-	OWPNum64	start_time;
-	OWPNum64	loss_timeout;
-	u_int32_t	typeP;
-	u_int32_t	packet_size_padding;
-	u_int32_t	npackets;
-	u_int32_t	nslots;
-	OWPSlot		*slots;
+    OWPNum64        start_time;
+    OWPNum64        loss_timeout;
+    u_int32_t       typeP;
+    u_int32_t       packet_size_padding;
+    u_int32_t       npackets;
+    u_int32_t       nslots;
+    OWPSlot         *slots;
 } OWPTestSpec;
 
 typedef u_int32_t OWPPacketSizeT;
@@ -347,56 +355,56 @@ typedef u_int32_t OWPPacketSizeT;
  * generator. Multiple contexts can be allocated to maintain multiple
  * "streams" of schedules.
  */
-typedef struct OWPScheduleContextRec	*OWPScheduleContext;
+typedef struct OWPScheduleContextRec        *OWPScheduleContext;
 
 OWPScheduleContext
 OWPScheduleContextCreate(
-		OWPContext	ctx,
-		OWPSID		sid,
-		OWPTestSpec	*tspec
-		);
+        OWPContext      ctx,
+        OWPSID          sid,
+        OWPTestSpec     *tspec
+        );
 
 void
 OWPScheduleContextFree(
-	OWPScheduleContext	sctx
-		);
+        OWPScheduleContext  sctx
+        );
 
 OWPErrSeverity
 OWPScheduleContextReset(
-	OWPScheduleContext	sctx,
-		OWPSID		sid,
-		OWPTestSpec	*tspec
-		);
+        OWPScheduleContext  sctx,
+        OWPSID              sid,
+        OWPTestSpec         *tspec
+        );
 
 OWPNum64
 OWPScheduleContextGenerateNextDelta(
-	OWPScheduleContext	sctx
-		);
+        OWPScheduleContext  sctx
+        );
 void
 OWPScheduleContextFree(
-	OWPScheduleContext	sctx
-		);
+        OWPScheduleContext  sctx
+        );
 
 /*
  * These functions expose the exponential deviates for the exponential
  * distribution used to generate send schedules.
  */
-typedef struct OWPExpContextRec		*OWPExpContext;
+typedef struct OWPExpContextRec *OWPExpContext;
 
 OWPExpContext
 OWPExpContextCreate(
-		OWPContext	ctx,
-		u_int8_t	seed[16]
-		);
+        OWPContext      ctx,
+        u_int8_t        seed[16]
+        );
 OWPNum64
 OWPExpContextNext(
-		OWPExpContext	exp
-		);
+        OWPExpContext   exp
+        );
 
 void
 OWPExpContextFree(
-		OWPExpContext	exp
-		);
+        OWPExpContext   exp
+        );
 
 
 /*
@@ -405,32 +413,32 @@ OWPExpContextFree(
  * Notice that this macro expands to multiple statements so it is
  * imperative that you enclose it's use in {} in single statement
  * context's such as:
- * 	if(test)
- * 		OWPError(...);	NO,NO,NO,NO!
+ *         if(test)
+ *                 OWPError(...);        NO,NO,NO,NO!
  * Instead:
- * 	if(test){
- * 		OWPError(...);
- * 	}
+ *         if(test){
+ *                 OWPError(...);
+ *         }
  *
  *
  * (Sure would be nice if it were possible to to vararg macros...)
  */
-#define OWPError	I2ErrLocation_(__FILE__,__DATE__,__LINE__);	\
-			OWPError_
+#define OWPError        I2ErrLocation_(__FILE__,__DATE__,__LINE__);        \
+    OWPError_
 
 /*
  * Don't call this directly - use the OWPError macro.
- * 	Let me repeat.
+ *         Let me repeat.
  * Don't call this directly - use the OWPError macro.
  */
 extern void
 OWPError_(
-	OWPContext	ctx,
-	OWPErrSeverity	severity,
-	OWPErrType	etype,
-	const char	*fmt,
-	...
-	);
+        OWPContext      ctx,
+        OWPErrSeverity  severity,
+        OWPErrType      etype,
+        const char      *fmt,
+        ...
+        );
 
 /*
  * The "context"  is used to basically initializes the library. There is no
@@ -462,17 +470,17 @@ typedef void (*OWPFunc)(void);
  * ignore the interrupt and restart the i/o.
  * (this can be used to ignore some signals and return on others.)
  */
-#define OWPInterruptIO		"OWPInterruptIO"
+#define OWPInterruptIO                "OWPInterruptIO"
 
 /*
  * This type is used to hold a pointer to a port-range record. This
  * record is used to indicate what port ranges should be used for
  * opening test connections.
  */
-#define	OWPTestPortRange	"OWPTestPortRange"
-typedef	struct OWPPortRangeRec{
-	u_int16_t	low;
-	u_int16_t	high;
+#define        OWPTestPortRange        "OWPTestPortRange"
+typedef        struct OWPPortRangeRec{
+    u_int16_t       low;
+    u_int16_t       high;
 } OWPPortRangeRec, *OWPPortRange;
 
 /*
@@ -485,14 +493,14 @@ typedef	struct OWPPortRangeRec{
  *
  * If an application doesn't set this, Encrypted and Authenticated
  * mode will be disabled.
- */	
-#define	OWPGetAESKey		"OWPGetAESKey"
-typedef OWPBoolean	(*OWPGetAESKeyFunc)(
-	OWPContext	ctx,
-	const OWPUserID	userid,
-	OWPKey		key_ret,
-	OWPErrSeverity	*err_ret
-);
+ */        
+#define        OWPGetAESKey                "OWPGetAESKey"
+typedef OWPBoolean      (*OWPGetAESKeyFunc)(
+        OWPContext      ctx,
+        const OWPUserID userid,
+        OWPKey          key_ret,
+        OWPErrSeverity  *err_ret
+        );
 
 /*
  * This function will be called from OWPControlOpen and OWPServerAccept
@@ -504,15 +512,15 @@ typedef OWPBoolean	(*OWPGetAESKeyFunc)(
  *
  * If an application doesn't set this, all connections will be allowed.
  */
-#define OWPCheckControlPolicy	"OWPCheckControlPolicy"
+#define OWPCheckControlPolicy        "OWPCheckControlPolicy"
 typedef OWPBoolean (*OWPCheckControlPolicyFunc)(
-	OWPControl	cntrl,
-	OWPSessionMode	mode_req,
-	const OWPUserID	userid,
-	struct sockaddr	*local_sa_addr,
-	struct sockaddr	*remote_sa_addr,
-	OWPErrSeverity	*err_ret
-);
+        OWPControl      cntrl,
+        OWPSessionMode  mode_req,
+        const OWPUserID userid,
+        struct sockaddr *local_sa_addr,
+        struct sockaddr *remote_sa_addr,
+        OWPErrSeverity  *err_ret
+        );
 
 /*
  * This function will be called by OWPRequestTestSession if
@@ -537,29 +545,29 @@ typedef OWPBoolean (*OWPCheckControlPolicyFunc)(
  * writing (a receiver context) and not being opened for reading (a fetch
  * context).
  */
-#define OWPCheckTestPolicy	"OWPCheckTestPolicy"
+#define OWPCheckTestPolicy        "OWPCheckTestPolicy"
 typedef OWPBoolean (*OWPCheckTestPolicyFunc)(
-	OWPControl	cntrl,
-	OWPBoolean	local_sender,
-	struct sockaddr	*local_sa_addr,
-	struct sockaddr	*remote_sa_addr,
-	socklen_t	sa_len,
-	OWPTestSpec	*test_spec,
-	void		**closure,
-	OWPErrSeverity	*err_ret
-);
+        OWPControl      cntrl,
+        OWPBoolean      local_sender,
+        struct sockaddr *local_sa_addr,
+        struct sockaddr *remote_sa_addr,
+        socklen_t       sa_len,
+        OWPTestSpec     *test_spec,
+        void            **closure,
+        OWPErrSeverity  *err_ret
+        );
 
 /*
  * This function will be called when a test is "complete". It is used
  * to free resources that were allocated on behalf of the test including
  * memory associated with the "closure" pointer itself if necessary.
  */
-#define OWPTestComplete		"OWPTestComplete"
+#define OWPTestComplete                "OWPTestComplete"
 typedef void (*OWPTestCompleteFunc)(
-	OWPControl	cntrl,
-	void		*closure,
-	OWPAcceptType	aval
-	);
+        OWPControl      cntrl,
+        void            *closure,
+        OWPAcceptType   aval
+        );
 
 /*
  * This function will be called by the test endpoint initialization
@@ -568,13 +576,13 @@ typedef void (*OWPTestCompleteFunc)(
  * to an application. (fname_ret is PATH_MAX+1 to include a nul byte.)
  * (if 
  */
-#define OWPOpenFile		"OWPOpenFile"
+#define OWPOpenFile                "OWPOpenFile"
 typedef FILE* (*OWPOpenFileFunc)(
-	OWPControl	cntrl,
-	void		*closure,
-	OWPSID		sid,
-	char		fname_ret[PATH_MAX+1]
-	);
+        OWPControl  cntrl,
+        void        *closure,
+        OWPSID      sid,
+        char        fname_ret[PATH_MAX+1]
+        );
 
 /*
  * This function will be called by the test endpoint "cleanup" code
@@ -583,15 +591,15 @@ typedef FILE* (*OWPOpenFileFunc)(
  * For example, a delete-on-fetch functionality could be implemented here
  * to delete the given file now that is it no longer needed.
  */
-#define OWPCloseFile		"OWPCloseFile"
+#define OWPCloseFile                "OWPCloseFile"
 typedef void (*OWPCloseFileFunc)(
-	OWPControl	cntrl,
-	void		*closure,
-	FILE		*fp,
-	OWPAcceptType	aval
-	);
+        OWPControl      cntrl,
+        void            *closure,
+        FILE            *fp,
+        OWPAcceptType   aval
+        );
 
-#ifndef	NDEBUG
+#ifndef NDEBUG
 /*
  * This integer type is used to aid in child-debugging. If OWPChildWait is
  * set and non-zero forked off endpoints will go into a busy-wait loop to
@@ -601,55 +609,55 @@ typedef void (*OWPCloseFileFunc)(
  * used did not implement the follow-fork-mode option.) This was a quick
  * fix. (This will not be used if owamp is compiled with -DNDEBUG.)
  */
-#define	OWPChildWait	"OWPChildWait"
+#define OWPChildWait        "OWPChildWait"
 #endif
 
 extern OWPContext
 OWPContextCreate(
-	I2ErrHandle	eh
-);
+        I2ErrHandle eh
+        );
 
 extern void
 OWPContextFree(
-	OWPContext	ctx
-);
+        OWPContext  ctx
+        );
 
 extern I2ErrHandle
 OWPContextGetErrHandle(
-	OWPContext	ctx
-	);
+        OWPContext  ctx
+        );
 
 extern OWPBoolean
 OWPContextConfigSetF(
-	OWPContext	ctx,
-	const char	*key,
-	OWPFunc		func
-	);
+        OWPContext  ctx,
+        const char  *key,
+        OWPFunc     func
+        );
 
 extern OWPBoolean
 OWPContextConfigSetV(
-	OWPContext	ctx,
-	const char	*key,
-	void		*value
-	);
+        OWPContext  ctx,
+        const char  *key,
+        void        *value
+        );
 
 extern OWPFunc
 OWPContextConfigGetF(
-	OWPContext	ctx,
-	const char	*key
-	);
+        OWPContext  ctx,
+        const char  *key
+        );
 
 extern void*
 OWPContextConfigGetV(
-	OWPContext	ctx,
-	const char	*key
-	);
+        OWPContext  ctx,
+        const char  *key
+        );
 
 extern OWPBoolean
 OWPContextConfigDelete(
-	OWPContext	ctx,
-	const char	*key
-	);
+        OWPContext  ctx,
+        const char  *key
+        );
 
 /*
  * The following functions are completely analogous to the Context versions
@@ -658,35 +666,35 @@ OWPContextConfigDelete(
  */
 extern OWPBoolean
 OWPControlConfigSetF(
-	OWPControl	cntrl,
-	const char	*key,
-	OWPFunc		func
-	);
+        OWPControl  cntrl,
+        const char  *key,
+        OWPFunc     func
+        );
 
 extern OWPBoolean
 OWPControlConfigSetV(
-	OWPControl	cntrl,
-	const char	*key,
-	void		*value
-	);
+        OWPControl  cntrl,
+        const char  *key,
+        void        *value
+        );
 
 extern OWPFunc
 OWPControlConfigGetF(
-	OWPControl	cntrl,
-	const char	*key
-	);
+        OWPControl  cntrl,
+        const char  *key
+        );
 
 extern void*
 OWPControlConfigGetV(
-	OWPControl	cntrl,
-	const char	*key
-	);
+        OWPControl  cntrl,
+        const char  *key
+        );
 
 extern OWPBoolean
 OWPControlConfigDelete(
-	OWPControl	cntrl,
-	const char	*key
-	);
+        OWPControl  cntrl,
+        const char  *key
+        );
 
 /*
  * The OWPAddrBy* functions are used to allow the OWP API to more
@@ -698,21 +706,21 @@ OWPControlConfigDelete(
  */
 extern OWPAddr
 OWPAddrByNode(
-	OWPContext	ctx,
-	const char	*node	/* dns or valid char representation of addr */
-);
+        OWPContext  ctx,
+        const char  *node   /* dns or valid char representation of addr */
+        );
 
 extern OWPAddr
 OWPAddrByAddrInfo(
-	OWPContext		ctx,
-	const struct addrinfo	*ai	/* valid addrinfo linked list	*/
-);
+        OWPContext              ctx,
+        const struct addrinfo   *ai        /* valid addrinfo linked list        */
+        );
 
 extern OWPAddr
 OWPAddrBySockFD(
-	OWPContext	ctx,
-	int		fd	/* fd must be an already connected socket */
-);
+        OWPContext  ctx,
+        int         fd        /* fd must be an already connected socket */
+        );
 
 /*
  * Return the address for the local side of the control connection.
@@ -720,30 +728,30 @@ OWPAddrBySockFD(
  */
 OWPAddr
 OWPAddrByLocalControl(
-	OWPControl cntrl
-	);
+        OWPControl  cntrl
+        );
 
 void
 OWPAddrNodeName(
-	OWPAddr	addr,
-	char	*buf,
-	size_t	*len	/* in/out parameter for buf len */
-	);
+        OWPAddr     addr,
+        char        *buf,
+        size_t      *len        /* in/out parameter for buf len */
+        );
 
 void
 OWPAddrNodeService(
-	OWPAddr	addr,
-	char	*buf,
-	size_t	*len	/* in/out parameter for buf len */
-	);
+        OWPAddr     addr,
+        char        *buf,
+        size_t      *len        /* in/out parameter for buf len */
+        );
 
 /*
  * return FD for given OWPAddr or -1 if it doesn't refer to a socket yet.
  */
 extern int
 OWPAddrFD(
-	OWPAddr	addr
-	);
+        OWPAddr     addr
+        );
 
 /*
  * return socket address length (for use in calling accept etc...)
@@ -751,13 +759,13 @@ OWPAddrFD(
  */
 extern socklen_t
 OWPAddrSockLen(
-	OWPAddr	addr
-	);
+        OWPAddr     addr
+        );
 
 extern OWPErrSeverity
 OWPAddrFree(
-	OWPAddr	addr
-);
+        OWPAddr     addr
+        );
 
 /*
  * OWPControlOpen allocates an OWPclient structure, opens a connection to
@@ -769,15 +777,15 @@ OWPAddrFree(
  * when acting as a client of another OWP server).
  *
  * err_ret values:
- * 	OWPErrOK	completely successful - highest level mode ok'd
- * 	OWPErrINFO	session connected with less than highest level mode
- * 	OWPErrWARNING	session connected but future problems possible
- * 	OWPErrFATAL	function will return NULL - connection is closed.
- * 		(Errors will have been reported through the OWPErrFunc
- * 		in all cases.)
+ *         OWPErrOK        completely successful - highest level mode ok'd
+ *         OWPErrINFO        session connected with less than highest level mode
+ *         OWPErrWARNING        session connected but future problems possible
+ *         OWPErrFATAL        function will return NULL - connection is closed.
+ *                 (Errors will have been reported through the OWPErrFunc
+ *                 in all cases.)
  * function return values:
- * 	If successful - even marginally - a valid OWPclient handle
- * 	is returned. If unsuccessful, NULL is returned.
+ *         If successful - even marginally - a valid OWPclient handle
+ *         is returned. If unsuccessful, NULL is returned.
  *
  * local_addr can only be set using OWPAddrByNode or OWPAddrByAddrInfo
  * server_addr can use any of the OWPAddrBy* functions.
@@ -789,22 +797,22 @@ OWPAddrFree(
  */
 extern OWPControl
 OWPControlOpen(
-	OWPContext	ctx,
-	OWPAddr		local_addr,	/* src addr or NULL		*/
-	OWPAddr		server_addr,	/* server addr or NULL		*/
-	u_int32_t	mode_mask,	/* OR of OWPSessionMode vals	*/
-	OWPUserID	userid,		/* null if unwanted		*/
-	OWPNum64	*uptime_ret,	/* server uptime - ret or NULL	*/
-	OWPErrSeverity	*err_ret
-);
+        OWPContext      ctx,
+        OWPAddr         local_addr,     /* src addr or NULL             */
+        OWPAddr         server_addr,    /* server addr or NULL          */
+        u_int32_t       mode_mask,      /* OR of OWPSessionMode vals    */
+        OWPUserID       userid,         /* null if unwanted             */
+        OWPNum64        *uptime_ret,    /* server uptime - ret or NULL  */
+        OWPErrSeverity  *err_ret
+        );
 
 /*
  * Client and Server
  */
 extern OWPErrSeverity
 OWPControlClose(
-	OWPControl	cntrl
-);
+        OWPControl  cntrl
+        );
 
 /*
  * Request a test session - if the function returns True, then the function
@@ -833,16 +841,16 @@ OWPControlClose(
  */
 extern OWPBoolean
 OWPSessionRequest(
-	OWPControl	control_handle,
-	OWPAddr		sender,
-	OWPBoolean	server_conf_sender,
-	OWPAddr		receiver,
-	OWPBoolean	server_conf_receiver,
-	OWPTestSpec	*test_spec,
-	FILE		*fp,		/* only used if !server_conf_receiver */
-	OWPSID		sid_ret,
-	OWPErrSeverity	*err_ret
-);
+        OWPControl      control_handle,
+        OWPAddr         sender,
+        OWPBoolean      server_conf_sender,
+        OWPAddr         receiver,
+        OWPBoolean      server_conf_receiver,
+        OWPTestSpec     *test_spec,
+        FILE            *fp,
+        OWPSID          sid_ret,
+        OWPErrSeverity  *err_ret
+        );
 
 /*
  * Start all test sessions - if successful, returns OWPErrOK.
@@ -851,17 +859,17 @@ OWPSessionRequest(
  */
 extern OWPErrSeverity
 OWPStartSessions(
-	OWPControl	control_handle
-);
+        OWPControl  control_handle
+        );
 
 /*
  * Wait for test sessions to complete. This function will return the
  * following integer values:
- * 	<0	ErrorCondition
- * 	0	StopSessions received, acted upon, and sent back.
- * 	1	wake_time reached
+ *         <0        ErrorCondition
+ *         0        StopSessions received, acted upon, and sent back.
+ *         1        wake_time reached
  *
- *	2	system event (signal)
+ *        2        system event (signal)
  *
  * To effect a poll - specify a waketime in the past. 1 will be returned
  * if there is nothing to read.
@@ -890,32 +898,32 @@ OWPStartSessions(
  */
 extern int
 OWPStopSessionsWait(
-	OWPControl	control_handle,
-	OWPNum64	*wake_time,		/* abs time */
-	int		*retn_on_intr,
-	OWPAcceptType	*acceptval,		/* out */
-	OWPErrSeverity	*err_ret
-);
+        OWPControl      control_handle,
+        OWPNum64        *wake_time,                /* abs time */
+        int             *retn_on_intr,
+        OWPAcceptType   *acceptval,                /* out */
+        OWPErrSeverity  *err_ret
+        );
 
 /*
  * Used to poll the status of a test endpoint.
  *
  * returns:
- * 		True if it could get the status,
- * 		False if it could not. (session with given sid wasn't found,
- * 		or "send" indicated a remote endpoint.)
+ *                 True if it could get the status,
+ *                 False if it could not. (session with given sid wasn't found,
+ *                 or "send" indicated a remote endpoint.)
  *
- * 		aval returns the following for status:
- * 	<0	Test is not yet complete.
- * 	>=0	Accept value of completed test. 0 indicates success
- * 		other values indicate type of error test encountered.
+ *                 aval returns the following for status:
+ *         <0        Test is not yet complete.
+ *         >=0        Accept value of completed test. 0 indicates success
+ *                 other values indicate type of error test encountered.
  */
 extern OWPBoolean
 OWPSessionStatus(
-	OWPControl	cntrl,
-	OWPSID		sid,	/* SID of test to poll	*/
-	OWPAcceptType	*aval	/* out - return accept value	*/
-	);
+        OWPControl      cntrl,
+        OWPSID          sid,        /* SID of test to poll        */
+        OWPAcceptType   *aval        /* out - return accept value        */
+        );
 
 /*
  * Used to determine how many local endpoints are still active.
@@ -926,13 +934,13 @@ OWPSessionStatus(
  * complete session.
  *
  * returns:
- * 	number of active endpoints.
+ *         number of active endpoints.
  */
 extern int
 OWPSessionsActive(
-		OWPControl	cntrl,
-		OWPAcceptType	*acceptval	/* rtn */
-		);
+        OWPControl      cntrl,
+        OWPAcceptType   *acceptval        /* rtn */
+        );
 
 /*
  * Send the StopSession message, and wait for the response.
@@ -941,10 +949,10 @@ OWPSessionsActive(
  */
 extern OWPErrSeverity
 OWPStopSessions(
-	OWPControl	control_handle,
-	int		*retn_on_intr,
-	OWPAcceptType	*acceptval	/* in/out */
-);
+        OWPControl      control_handle,
+        int             *retn_on_intr,
+        OWPAcceptType   *acceptval        /* in/out */
+        );
 
 
 /*
@@ -968,35 +976,35 @@ OWPStopSessions(
  */
 extern int
 OWPControlFD(
-	OWPControl	control_handle
-);
+        OWPControl  control_handle
+        );
 
 extern int
 OWPErrorFD(
-	OWPContext	ctx
-	);
+        OWPContext  ctx
+        );
 
 extern
 OWPAddr
 OWPServerSockCreate(
-	OWPContext	ctx,
-	OWPAddr		addr,
-	OWPErrSeverity	*err_ret
-	);
+        OWPContext      ctx,
+        OWPAddr         addr,
+        OWPErrSeverity  *err_ret
+        );
 
 
 /*!
- * Function:	OWPControlAccept
+ * Function:        OWPControlAccept
  *
- * Description:	
- * 		This function is used to initialiize the communication
- * 		to the peer.
+ * Description:        
+ *                 This function is used to initialiize the communication
+ *                 to the peer.
  *           
- * In Args:	
- * 		connfd,connsaddr, and connsaddrlen are all returned
- * 		from "accept".
+ * In Args:        
+ *                 connfd,connsaddr, and connsaddrlen are all returned
+ *                 from "accept".
  *
- * Returns:	Valid OWPControl handle on success, NULL if
+ * Returns:        Valid OWPControl handle on success, NULL if
  *              the request has been rejected, or error has occurred.
  *
  *              If *rtn_on_intr and an inturrupt happens during write/read
@@ -1010,70 +1018,70 @@ OWPServerSockCreate(
  */
 extern OWPControl
 OWPControlAccept(
-	OWPContext	ctx,		/* library context		*/
-	int		connfd,		/* conencted socket		*/
-	struct sockaddr	*connsaddr,	/* connected socket addr	*/
-	socklen_t	connsaddrlen,	/* connected socket addr len	*/
-	u_int32_t	mode_offered,	/* advertised server mode	*/
-	OWPNum64	uptime,		/* uptime report		*/
-	int		*retn_on_intr,	/* return on i/o interrupt	*/
-	OWPErrSeverity	*err_ret	/* err - return			*/
-		 );
+        OWPContext      ctx,            /* library context              */
+        int             connfd,         /* conencted socket             */
+        struct sockaddr *connsaddr,     /* connected socket addr        */
+        socklen_t       connsaddrlen,   /* connected socket addr len    */
+        u_int32_t       mode_offered,   /* advertised server mode       */
+        OWPNum64        uptime,         /* uptime report                */
+        int             *retn_on_intr,  /* return on i/o interrupt      */
+        OWPErrSeverity  *err_ret        /* err - return                 */
+        );
 
 typedef enum OWPRequestType{
-	OWPReqInvalid=-1,
-	OWPReqSockClose=10,
-	OWPReqSockIntr=11,
-	OWPReqTest=1,
-	OWPReqStartSessions=2,
-	OWPReqStopSessions=3,
-	OWPReqFetchSession=4
+    OWPReqInvalid=-1,
+    OWPReqSockClose=10,
+    OWPReqSockIntr=11,
+    OWPReqTest=1,
+    OWPReqStartSessions=2,
+    OWPReqStopSessions=3,
+    OWPReqFetchSession=4
 } OWPRequestType;
 
 extern OWPRequestType
 OWPReadRequestType(
-		OWPControl	cntrl,
-		int		*retn_on_intr
-		);
+        OWPControl  cntrl,
+        int         *retn_on_intr
+        );
 
 extern OWPErrSeverity
 OWPProcessTestRequest(
-	OWPControl	cntrl,
-	int		*retn_on_intr
-		);
+        OWPControl  cntrl,
+        int         *retn_on_intr
+        );
 
 extern OWPErrSeverity
 OWPProcessStartSessions(
-	OWPControl	cntrl,
-	int		*retn_on_intr
-	);
+        OWPControl  cntrl,
+        int         *retn_on_intr
+        );
 
 extern OWPErrSeverity
 OWPProcessStopSessions(
-	OWPControl	cntrl
-	);
+        OWPControl  cntrl
+        );
 
 extern OWPErrSeverity
 OWPProcessFetchSession(
-	OWPControl	cntrl,
-	int		*retn_on_intr
-	);
+        OWPControl  cntrl,
+        int         *retn_on_intr
+        );
 
 extern OWPContext
 OWPGetContext(
-	OWPControl	cntrl
-	);
+        OWPControl  cntrl
+        );
 
 extern OWPSessionMode
 OWPGetMode(
-	OWPControl	cntrl
-	);
+        OWPControl  cntrl
+        );
 
 
 /*
-** Given the protocol family, OWAMP mode and packet padding,
-** compute the size of resulting full IP test packet.
-*/
+ ** Given the protocol family, OWAMP mode and packet padding,
+ ** compute the size of resulting full IP test packet.
+ */
 
 /*
  * Payload size is used to determine how large the buffers need to be
@@ -1081,53 +1089,53 @@ OWPGetMode(
  */
 extern OWPPacketSizeT
 OWPTestPayloadSize(
-		OWPSessionMode	mode,
-		u_int32_t	padding
-		);
+        OWPSessionMode  mode,
+        u_int32_t       padding
+        );
 /*
  * PacketSize is used to compute the full packet size - this is used to
  * determine bandwidth requirements for policy purposes.
  */
 extern OWPPacketSizeT
 OWPTestPacketSize(
-		int		af,
-		OWPSessionMode	mode,
-		u_int32_t	padding
-		);
+        int             af,
+        OWPSessionMode  mode,
+        u_int32_t       padding
+        );
 
 /*
  * Returns # packets/second: 0.0 on error.
  */
 extern double
 OWPTestPacketRate(
-		OWPContext	ctx,
-		OWPTestSpec	*tspec
-		);
+        OWPContext      ctx,
+        OWPTestSpec     *tspec
+        );
 
 /*
  * Returns bits/second: 0.0 on error.
  */
 extern double
 OWPTestPacketBandwidth(
-		OWPContext	ctx,
-		int		af,
-		OWPSessionMode	mode,
-		OWPTestSpec	*tspec
-		);
+        OWPContext      ctx,
+        int             af,
+        OWPSessionMode  mode,
+        OWPTestSpec     *tspec
+        );
 
 extern u_int32_t
 OWPFetchSession(
-	OWPControl		cntrl,
-	FILE			*fp,
-	u_int32_t		begin,
-	u_int32_t		end,
-	OWPSID			sid,
-	OWPErrSeverity		*err_ret
-	);
+        OWPControl      cntrl,
+        FILE            *fp,
+        u_int32_t       begin,
+        u_int32_t       end,
+        OWPSID          sid,
+        OWPErrSeverity  *err_ret
+        );
 
 /*
-** Processing Session data to/from local disk.
-*/
+ ** Processing Session data to/from local disk.
+ */
 
 /*
  * This data structure is used to read/write a session header. When
@@ -1136,29 +1144,29 @@ OWPFetchSession(
  * are not valid.
  */
 typedef struct OWPSessionHeaderRec{
-	OWPBoolean		header;		/* RO: TestSession header? */
-	u_int32_t		version;	/* RO: File version */
-	u_int32_t		rec_size;	/* RO: data record size */
-	u_int32_t		finished;	/* RW: is session finished?
-						 * 0:no,1:yes,2:unknown */
+    OWPBoolean              header;         /* RO: TestSession header?  */
+    u_int32_t               version;        /* RO: File version         */
+    u_int32_t               rec_size;       /* RO: data record size     */
+    u_int32_t               finished;       /* RW: is session finished?
+                                               0:no,1:yes,2:unknown     */
 
-        u_int32_t               next_seqno;     /* RW: next seq for sender */
-        u_int32_t               num_skiprecs;   /* RW: nskips */
-        u_int32_t               num_datarecs;   /* RW: nrecs */
+    u_int32_t               next_seqno;     /* RW: next seq for sender  */
+    u_int32_t               num_skiprecs;   /* RW: nskips               */
+    u_int32_t               num_datarecs;   /* RW: nrecs                */
 
-        off_t                   oset_skiprecs;  /* RO: file offset to skips */
-        off_t                   oset_datarecs;  /* RO: file offset to data */
-        struct stat             sbuf;           /* RO: sbuf of file */
+    off_t                   oset_skiprecs;  /* RO: file offset to skips */
+    off_t                   oset_datarecs;  /* RO: file offset to data  */
+    struct stat             sbuf;           /* RO: sbuf of file         */
 
-	u_int8_t		ipvn;		/* RO: ipvn of addrs */
-	socklen_t		addr_len;	/* RO: saddr_len of saddrs */
-	struct sockaddr_storage	addr_sender;    /* RW */
-	struct sockaddr_storage	addr_receiver;  /* RW */
-	OWPBoolean		conf_sender;    /* RW */
-	OWPBoolean		conf_receiver;  /* RW */
-	OWPSID			sid;            /* RW */
-	OWPTestSpec		test_spec;      /* RW */
-} OWPSessionHeaderRec, *OWPSessionHeader;       /* RW */
+    u_int8_t                ipvn;           /* RO: ipvn of addrs        */
+    socklen_t               addr_len;       /* RO: saddr_len of saddrs  */
+    struct sockaddr_storage addr_sender;    /* RW                       */
+    struct sockaddr_storage addr_receiver;  /* RW                       */
+    OWPBoolean              conf_sender;    /* RW                       */
+    OWPBoolean              conf_receiver;  /* RW                       */
+    OWPSID                  sid;            /* RW                       */
+    OWPTestSpec             test_spec;      /* RW                       */
+} OWPSessionHeaderRec, *OWPSessionHeader;
 
 /*
  * Write data header to the file.
@@ -1166,10 +1174,10 @@ typedef struct OWPSessionHeaderRec{
  */
 extern OWPBoolean
 OWPWriteDataHeader(
-		OWPContext		ctx,
-		FILE			*fp,
-		OWPSessionHeader	hdr
-		);
+        OWPContext          ctx,
+        FILE                *fp,
+        OWPSessionHeader    hdr
+        );
 
 /*
  *  OWPWriteDataHeaderNumSkipRecs
@@ -1208,10 +1216,10 @@ OWPWriteDataHeaderNumDataRecs(
  */
 extern u_int32_t
 OWPReadDataHeader(
-		OWPContext		ctx,
-		FILE			*fp,
-		OWPSessionHeader	hdr_ret
-		);
+        OWPContext          ctx,
+        FILE                *fp,
+        OWPSessionHeader    hdr_ret
+        );
 
 /*
  * OWPReadDataHeaderSlots
@@ -1235,26 +1243,26 @@ OWPReadDataHeaderSlots(
         );
 
 /*
-** Applications use this type to manipulate individual timestamp data records.
-*/
+ ** Applications use this type to manipulate individual timestamp data records.
+ */
 typedef struct OWPDataRec {
-	u_int32_t	seq_no;
-	OWPTimeStamp	send;
-	OWPTimeStamp	recv;
-	u_int8_t	ttl;
+    u_int32_t       seq_no;
+    OWPTimeStamp    send;
+    OWPTimeStamp    recv;
+    u_int8_t        ttl;
 } OWPDataRec;
 
 /*
  * Write data record to a file.
  * Returns:
- * 0	Success
+ * 0        Success
  */
 extern OWPBoolean
 OWPWriteDataRecord(
-		OWPContext		ctx,
-		FILE			*fp,
-		OWPDataRec		*rec
-		);
+        OWPContext  ctx,
+        FILE        *fp,
+        OWPDataRec  *rec
+        );
 
 /*
  * This (type of) function is used by Fetch-Client to process
@@ -1279,31 +1287,30 @@ OWPWriteDataRecord(
  * it will return OWPErrFATAL.
  */
 typedef int (*OWPDoDataRecord)(
-	OWPDataRec	*rec,
-	void		*udata
-       );
+        OWPDataRec  *rec,
+        void        *udata
+        );
 
 extern OWPErrSeverity
 OWPParseRecords(
-	OWPContext		ctx,
-	FILE			*fp,
-	u_int32_t		num_rec, 
-	u_int32_t		file_version,	/* as reported by
-						   OWPReadDataHeader */
-	OWPDoDataRecord		proc_rec,
-	void			*udata		/* passed into proc_rec */
-	);
+        OWPContext      ctx,
+        FILE            *fp,
+        u_int32_t       num_rec, 
+        u_int32_t       file_version,   /* from OWPReadDataHeader   */
+        OWPDoDataRecord proc_rec,
+        void            *udata          /* passed into proc_rec     */
+        );
 
 extern double
 OWPDelay(
-	OWPTimeStamp	*send_time,
-	OWPTimeStamp	*recv_time
-	);
+        OWPTimeStamp    *send_time,
+        OWPTimeStamp    *recv_time
+        );
 
 extern OWPBoolean
 OWPIsLostRecord(
-	OWPDataRec	*rec
-	);
+        OWPDataRec      *rec
+        );
 
 /*
  * How much disk space will a given test require?
@@ -1311,144 +1318,146 @@ OWPIsLostRecord(
  */
 extern u_int64_t
 OWPTestDiskspace(
-		OWPTestSpec	*tspec
-		);
+        OWPTestSpec     *tspec
+        );
 
 /*
  * time.c conversion functions.
  */
 
-#define	OWPJAN_1970	(unsigned long)0x83aa7e80	/* diffs in epoch*/
+#define OWPJAN_1970 (unsigned long)0x83aa7e80        /* diffs in epoch*/
 
-#ifndef	tvalclear
-#define	tvalclear(a)	(a)->tv_sec = (a)->tv_usec = 0
-#endif
-#ifndef	tvaladd
-#define tvaladd(a,b)					\
-	do{						\
-		(a)->tv_sec += (b)->tv_sec;		\
-		(a)->tv_usec += (b)->tv_usec;		\
-		if((a)->tv_usec >= 1000000){		\
-			(a)->tv_sec++;			\
-			(a)->tv_usec -= 1000000;	\
-		}					\
-	} while (0)
-#endif
-#ifndef	tvalsub
-#define tvalsub(a,b)					\
-	do{						\
-		(a)->tv_sec -= (b)->tv_sec;		\
-		(a)->tv_usec -= (b)->tv_usec;		\
-		if((a)->tv_usec < 0){			\
-			(a)->tv_sec--;			\
-			(a)->tv_usec += 1000000;	\
-		}					\
-	} while (0)
+#ifndef tvalclear
+#define tvalclear(a)        (a)->tv_sec = (a)->tv_usec = 0
 #endif
 
-#ifndef	tvalcmp
-#define	tvalcmp(tvp,uvp,cmp)					\
-	(((tvp)->tv_sec == (uvp)->tv_sec) ?			\
-	 	((tvp)->tv_usec cmp (uvp)->tv_usec) :		\
-		((tvp)->tv_sec cmp (uvp)->tv_sec))
+#ifndef tvaladd
+#define tvaladd(a,b)                        \
+    do{                                     \
+        (a)->tv_sec += (b)->tv_sec;         \
+        (a)->tv_usec += (b)->tv_usec;       \
+        if((a)->tv_usec >= 1000000){        \
+            (a)->tv_sec++;                  \
+            (a)->tv_usec -= 1000000;        \
+        }                                   \
+    } while (0)
+#endif
+
+#ifndef tvalsub
+#define tvalsub(a,b)                        \
+    do{                                     \
+        (a)->tv_sec -= (b)->tv_sec;         \
+        (a)->tv_usec -= (b)->tv_usec;       \
+        if((a)->tv_usec < 0){               \
+            (a)->tv_sec--;                  \
+            (a)->tv_usec += 1000000;        \
+        }                                   \
+    } while (0)
+#endif
+
+#ifndef tvalcmp
+#define tvalcmp(tvp,uvp,cmp)                \
+    (((tvp)->tv_sec == (uvp)->tv_sec) ?     \
+     ((tvp)->tv_usec cmp (uvp)->tv_usec) :  \
+     ((tvp)->tv_sec cmp (uvp)->tv_sec))
 #endif
 
 /* Operations on timespecs */
-#ifndef	timespecclear
+#ifndef timespecclear
 #define timespecclear(tvp)      ((tvp)->tv_sec = (tvp)->tv_nsec = 0)
 #endif
 
-#ifndef	timespecisset
+#ifndef timespecisset
 #define timespecisset(tvp)      ((tvp)->tv_sec || (tvp)->tv_nsec)
 #endif
 
-#ifndef	timespeccmp
-#define timespeccmp(tvp, uvp, cmp)					\
-	(((tvp)->tv_sec == (uvp)->tv_sec) ?				\
-		((tvp)->tv_nsec cmp (uvp)->tv_nsec) :			\
-		((tvp)->tv_sec cmp (uvp)->tv_sec))
+#ifndef timespeccmp
+#define timespeccmp(tvp, uvp, cmp)          \
+    (((tvp)->tv_sec == (uvp)->tv_sec) ?     \
+     ((tvp)->tv_nsec cmp (uvp)->tv_nsec) :  \
+     ((tvp)->tv_sec cmp (uvp)->tv_sec))
 #endif
 
-#ifndef	timespecadd
-#define timespecadd(vvp, uvp)						\
-	do {								\
-		(vvp)->tv_sec += (uvp)->tv_sec;				\
-		(vvp)->tv_nsec += (uvp)->tv_nsec;			\
-		if ((vvp)->tv_nsec >= 1000000000){			\
-			(vvp)->tv_sec++;				\
-			(vvp)->tv_nsec -= 1000000000;			\
-		}							\
-	} while (0)
+#ifndef        timespecadd
+#define timespecadd(vvp, uvp)               \
+    do {                                    \
+        (vvp)->tv_sec += (uvp)->tv_sec;     \
+        (vvp)->tv_nsec += (uvp)->tv_nsec;   \
+        if ((vvp)->tv_nsec >= 1000000000){  \
+            (vvp)->tv_sec++;                \
+            (vvp)->tv_nsec -= 1000000000;   \
+        }                                   \
+    } while (0)
 #endif
 
 #ifndef timespecsub
-#define timespecsub(vvp, uvp)						\
-	do {								\
-		(vvp)->tv_sec -= (uvp)->tv_sec;				\
-		(vvp)->tv_nsec -= (uvp)->tv_nsec;			\
-		if ((vvp)->tv_nsec < 0) {				\
-			(vvp)->tv_sec--;				\
-			(vvp)->tv_nsec += 1000000000;			\
-		}							\
-	} while (0)
+#define timespecsub(vvp, uvp)               \
+    do {                                    \
+        (vvp)->tv_sec -= (uvp)->tv_sec;     \
+        (vvp)->tv_nsec -= (uvp)->tv_nsec;   \
+        if ((vvp)->tv_nsec < 0) {           \
+            (vvp)->tv_sec--;                \
+            (vvp)->tv_nsec += 1000000000;   \
+        }                                   \
+    } while (0)
 #endif
 
-#ifndef	timespecdiff
-#define	timespecdiff(vvp,uvp)						\
-	do {								\
-		struct timespec	ts1_,ts2_;				\
-		if(timespeccmp(vvp,uvp,>)){				\
-			ts1_ = *vvp;					\
-			ts2_ = *uvp;					\
-		}else{							\
-			ts1_ = *uvp;					\
-			ts2_ = *vvp;					\
-		}							\
-		timespecsub(&ts1_,&ts2_);				\
-		*vvp = ts1_;						\
-	} while(0)
+#ifndef        timespecdiff
+#define        timespecdiff(vvp,uvp)        \
+    do {                                    \
+        struct timespec        ts1_,ts2_;   \
+        if(timespeccmp(vvp,uvp,>)){         \
+            ts1_ = *vvp;                    \
+            ts2_ = *uvp;                    \
+        }else{                              \
+            ts1_ = *uvp;                    \
+            ts2_ = *vvp;                    \
+        }                                   \
+        timespecsub(&ts1_,&ts2_);           \
+        *vvp = ts1_;                        \
+    } while(0)
 #endif
 
 extern OWPNum64
 OWPGetRTTBound(
-	OWPControl	cntrl
-	);
+        OWPControl  cntrl
+        );
 
 extern double
 OWPGetTimeStampError(
-	OWPTimeStamp	*tstamp
-	);
+        OWPTimeStamp    *tstamp
+        );
 
 extern OWPTimeStamp *
 OWPGetTimeOfDay(
-	OWPContext	ctx,
-	OWPTimeStamp	*tstamp
-);
+        OWPContext      ctx,
+        OWPTimeStamp    *tstamp
+        );
 
 extern OWPTimeStamp *
 OWPTimevalToTimestamp(
-	OWPTimeStamp	*tstamp,
-	struct timeval	*tval
-);
+        OWPTimeStamp    *tstamp,
+        struct timeval  *tval
+        );
 
 extern struct timeval *
 OWPTimestampToTimeval(
-	struct timeval	*tval,
-	OWPTimeStamp	*tstamp
-	);
+        struct timeval  *tval,
+        OWPTimeStamp    *tstamp
+        );
 
 extern OWPTimeStamp *
 OWPTimespecToTimestamp(
-	OWPTimeStamp	*tstamp,
-	struct timespec	*tval,
-	u_int32_t	*errest,	/* usec's */
-	u_int32_t	*last_errest	/* usec's */
-	);
+        OWPTimeStamp    *tstamp,
+        struct timespec *tval,
+        u_int32_t       *errest,        /* usec's */
+        u_int32_t       *last_errest    /* usec's */
+        );
 
 extern struct timespec *
 OWPTimestampToTimespec(
-	struct timespec	*tval,
-	OWPTimeStamp	*tstamp
-	);
+        struct timespec *tval,
+        OWPTimeStamp    *tstamp
+        );
 
-#endif	/* OWAMP_H */
+#endif        /* OWAMP_H */
