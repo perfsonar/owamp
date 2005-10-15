@@ -1676,7 +1676,7 @@ run_receiver(
     u_int8_t            lostrec[_OWP_DATAREC_SIZE];
     OWPLostPacket       node;
     int                 owp_intr;
-    u_int32_t           finished = _OWP_SESSION_FIN_INCOMPLETE;
+    u_int32_t           finished = OWP_SESSION_FINISHED_INCOMPLETE;
     OWPDataRec          datarec;
 
     /*
@@ -1684,7 +1684,7 @@ run_receiver(
      * get the real starttime.
      */
     memset(&hdr,0,sizeof(hdr));
-    hdr.finished = _OWP_SESSION_FIN_ERROR;
+    hdr.finished = OWP_SESSION_FINISHED_ERROR;
     memcpy(&hdr.sid,ep->tsession->sid,sizeof(hdr.sid));
     memcpy(&hdr.addr_sender,ep->tsession->sender->saddr,
             ep->tsession->sender->saddrlen);

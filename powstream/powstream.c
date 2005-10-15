@@ -296,6 +296,266 @@ DONE:
     }
 }
 
+static int
+mmap_copy_file(
+        int tofd,
+        int fromfd
+        )
+{
+    struct stat sbuf;
+    int         rc;
+    void        *fptr,*tptr;
+
+    if((rc = fstat(fromfd,&sbuf)) != 0){
+        I2ErrLog(eh,"fstat: %M, copying session file");
+        return rc;
+    }
+
+    if((rc = ftruncate(tofd,sbuf.st_size)) != 0){
+        I2ErrLog(eh,"ftruncate(%llu): %M, creating session file",sbuf.st_size);
+        return rc;
+    }
+
+    if(!(fptr = mmap(NULL,sbuf.st_size,PROT_READ|PROT_WRITE,MAP_FILE|MAP_SHARED,fromfd,0))){
+        I2ErrLog(eh,"mmap(FROM session file): %M");
+        return -1;
+    }
+    if(!(tptr = mmap(NULL,sbuf.st_size,PROT_READ|PROT_WRITE,MAP_FILE|MAP_SHARED,tofd,0))){
+        I2ErrLog(eh,"mmap(TO session file): %M");
+        return -1;
+    }
+
+    memcpy(tptr,fptr,sbuf.st_size);
+
+    if((rc = munmap(fptr,sbuf.st_size)) != 0){
+        I2ErrLog(eh,"munmap(FROM session file): %M");
+        return -1;
+    }
+    if((rc = munmap(tptr,sbuf.st_size)) != 0){
+        I2ErrLog(eh,"munmap(TO session file): %M");
+        return -1;
+    }
+
+    return 0;
+}
+
+typedef struct pow_maxsend_rec{
+    u_int32_t   index;
+    OWPNum64    sendtime;
+} pow_maxsend_rec;
+
+static int
+GetMaxSend(
+        OWPDataRec  *rec,
+        void        *data
+        )
+{
+    pow_maxsend_rec   *sndrec = (pow_maxsend_rec *)data;
+
+    if(rec->seq_no > sndrec->index){
+        sndrec->index = rec->seq_no;
+        sndrec->sendtime = rec->send.owptime;
+    }
+
+    return 0;
+}
+
+/*
+ * Function:    write_session
+ *
+ * Description:    
+ *              Takes a completed session and copies it from the
+ *              unlinked file - possibly computing a new endtime
+ *              based on the last "valid" record in the file.
+ *              (Technically, it should probably be based on the
+ *              scheduled sendtime
+ *
+ * In Args:    
+ *
+ * Out Args:    
+ *
+ * Scope:    
+ * Returns:    
+ * Side Effect:    
+ */
+static void
+write_session(
+        pow_cntrl   p,
+        OWPBoolean  newend
+        )
+{
+    OWPNum64        endnum;
+    char            tfname[PATH_MAX];
+    char            fname[PATH_MAX];
+    char            startname[PATH_MAX];
+    char            endname[PATH_MAX];
+    int             tofd;
+
+    if(newend){
+        OWPSessionHeaderRec hdr;
+        struct flock        flk;
+        pow_maxsend_rec     sndrec;
+        u_int32_t           i;
+
+        /*
+         * This section reads the packet records
+         * in the time period of this sum-session.
+         */
+        if( !OWPReadDataHeader(p->ctx,p->fp,&hdr)){
+            I2ErrLog(eh,"OWPReadDataHeader(session data): %M");
+            return;
+        }
+
+        /*
+         * Determine offset to last datarec
+         */
+        if(hdr.finished != OWP_SESSION_FINISHED_NORMAL){
+            /*
+             * Don't worry about unlocking, closing the file
+             * after the copy during session reset will do that
+             * automatically.
+             */
+            memset(&flk,0,sizeof(flk));
+            flk.l_start = 0;
+            flk.l_len = 0;
+            flk.l_whence = SEEK_SET;
+            flk.l_type = F_RDLCK;
+
+            if( fcntl(fileno(p->fp), F_SETLK, &flk) < 0){
+                I2ErrLog(eh,"Lock failure: fcntl(session data): %M");
+                return;
+            }
+
+            /*
+             * Re-read after lock.
+             */
+            if( !OWPReadDataHeader(p->ctx,p->fp,&hdr)){
+                I2ErrLog(eh,"OWPReadDataHeader(session data): %M");
+                return;
+            }
+
+            /*
+             * If the session did not complete, then num_datarecs
+             * can be determined from the filesize.
+             */
+            if(!hdr.num_datarecs){
+                hdr.num_datarecs = (hdr.sbuf.st_size - hdr.oset_datarecs) /
+                    hdr.rec_size;
+            }
+        }
+
+        if(!hdr.num_datarecs){
+            I2ErrLog(eh,"No data - skip writing session (%llu,%llu)",
+                    p->currentSessionStartNum,p->currentSessionEndNum);
+            return;
+        }
+
+        /*
+         * Read all records and find the "last" one in the file.
+         */
+        if(fseeko(p->fp,hdr.oset_datarecs,SEEK_SET) != 0){
+            I2ErrLog(eh,"fseeko(): %M");
+            return;
+        }
+
+        /*
+         * Find the last index in the file so it can be used to compute
+         * the assumed "send" time for the "end" time of the session.
+         */
+        memset(&sndrec,0,sizeof(sndrec));
+        if(OWPParseRecords(p->ctx,p->fp,hdr.num_datarecs,hdr.version,GetMaxSend,
+                    (void*)&sndrec) != OWPErrOK){
+            I2ErrLog(eh,"GetMaxIndex: %M");
+            return;
+        }
+
+        /*
+         * Compute endnum based on the send schedule and the index of the
+         * last valid packet in the file.
+         */
+        (void)OWPScheduleContextReset(p->sctx,NULL,NULL);
+        endnum = p->currentSessionStartNum;
+        for(i=0;i<sndrec.index+1;i++){
+            endnum = OWPNum64Add(endnum,
+                    OWPScheduleContextGenerateNextDelta(p->sctx));
+        }
+    }
+    else{
+        endnum = p->currentSessionEndNum;
+    }
+
+    /*
+     * Make a temporary session filename to hold data.
+     */
+    strcpy(tfname,dirpath);
+    sprintf(startname,OWP_TSTAMPFMT,p->currentSessionStartNum);
+    sprintf(endname,OWP_TSTAMPFMT,endnum);
+    sprintf(&tfname[file_offset],"%s%s%s%s%s",
+            startname,OWP_NAME_SEP,endname,
+            OWP_FILE_EXT,POW_INC_EXT);
+
+    while(((tofd = open(tfname,O_RDWR|O_CREAT|O_EXCL,
+                        S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH)) < 0) && errno==EINTR);
+    if(tofd < 0){
+
+        I2ErrLog(eh,"open(%s): %M",tfname);
+
+        /*
+         * Can't open the file.
+         */
+        switch(errno){
+            /*
+             * reasons to go to the next
+             * session
+             * (Temporary resource problems.)
+             */
+            case EMFILE:
+            case ENFILE:
+            case ENOSPC:
+            case EDQUOT:
+                break;
+                /*
+                 * Everything else is a reason to exit
+                 * (Probably permissions.)
+                 */
+            default:
+                exit(1);
+                break;
+        }
+
+        /*
+         * Skip to next session.
+         */
+        return;
+    }
+
+    /*
+     * stat the "from" file, ftruncate the to file,
+     * mmap both of them, then do a memcpy between them.
+     */
+    if(mmap_copy_file(tofd,fileno(p->fp)) == 0){
+        /*
+         * Relink the incomplete file as a complete one.
+         */
+        strcpy(fname,tfname);
+        sprintf(&fname[ext_offset],"%s",OWP_FILE_EXT);
+        if(link(tfname,fname) != 0){
+            /* note, but ignore the error */
+            I2ErrLog(eh,"link(%s,%s): %M",tfname,fname);
+        } else if(appctx.opt.printfiles){
+            /* Now print the filename to stdout */
+            fprintf(stdout,"%s\n",fname);
+            fflush(stdout);
+        }
+    }
+    if(unlink(tfname) != 0){
+        /* note, but ignore the error */
+        I2ErrLog(eh,"unlink(%s): %M",tfname);
+    }
+
+    return;
+}
+
 static void
 ResetSession(
         pow_cntrl        p,        /* connection we are configuring        */
@@ -310,6 +570,12 @@ ResetSession(
         OWPControlClose(p->cntrl);
         p->cntrl = NULL;
     }
+
+    /*
+     * Output "early-terminated" owp file
+     */
+    write_session(p,True);
+
     if(p->fp){
         fclose(p->fp);
         p->fp = NULL;
@@ -319,8 +585,8 @@ ResetSession(
         p->testfp = NULL;
     }
     p->numPackets = 0;
-    p->sessionStart = NULL;
-    q->sessionStart = NULL;
+    p->nextSessionStart = NULL;
+    q->nextSessionStart = NULL;
 
     return;
 }
@@ -418,11 +684,11 @@ SetupSession(
             }
 
             if(OWPNum64Cmp(currtime.owptime,*stop) > 0){
-                if(p->sessionStart){
-                    q->sessionStart = &q->sessionStartNum;
-                    *q->sessionStart = *p->sessionStart;
+                if(p->nextSessionStart){
+                    q->nextSessionStart = &q->nextSessionStartNum;
+                    *q->nextSessionStart = *p->nextSessionStart;
                 }else
-                    q->sessionStart = NULL;
+                    q->nextSessionStart = NULL;
                 return 0;
             }
         }
@@ -464,15 +730,15 @@ SetupSession(
     currtime.owptime = OWPNum64Add(currtime.owptime,
             OWPULongToNum64(SETUP_ESTIMATE));
 
-    if(p->sessionStart){
-        if(OWPNum64Cmp(currtime.owptime,*p->sessionStart) > 0){
-            p->sessionStart = NULL;
+    if(p->nextSessionStart){
+        if(OWPNum64Cmp(currtime.owptime,*p->nextSessionStart) > 0){
+            p->nextSessionStart = NULL;
         }
     }
 
-    if(!p->sessionStart){
-        p->sessionStartNum = currtime.owptime;
-        p->sessionStart = &p->sessionStartNum;
+    if(!p->nextSessionStart){
+        p->nextSessionStartNum = currtime.owptime;
+        p->nextSessionStart = &p->nextSessionStartNum;
     }
 
     /*
@@ -528,7 +794,7 @@ SetupSession(
      * Make the actual request for the test specifying the testfp
      * to hold the results.
      */
-    tspec.start_time = *p->sessionStart;
+    tspec.start_time = *p->nextSessionStart;
     if(!OWPSessionRequest(p->cntrl,OWPAddrByNode(ctx,appctx.remote_test),
                 True, NULL, False,(OWPTestSpec*)&tspec,p->testfp,p->sid,&err)){
         I2ErrLog(eh,"OWPSessionRequest: Failed");
@@ -564,9 +830,9 @@ SetupSession(
     /*
      * Compute end of session
      */
-    p->sessionEndNum = p->sessionStartNum;
+    p->nextSessionEndNum = p->nextSessionStartNum;
     for(i=0;i<p->numPackets;i++){
-        p->sessionEndNum = OWPNum64Add(p->sessionEndNum,
+        p->nextSessionEndNum = OWPNum64Add(p->nextSessionEndNum,
                 OWPScheduleContextGenerateNextDelta(p->sctx));
     }
 
@@ -577,11 +843,11 @@ SetupSession(
     (void)OWPScheduleContextReset(p->sctx,NULL,NULL);
 
     /*
-     * Set q->sessionStartNum to end of p's session.
+     * Set q->nextSessionStartNum to end of p's session.
      * (Used when this function is called for the "other" connection.)
      */
-    q->sessionStartNum = p->sessionEndNum;
-    q->sessionStart = &q->sessionStartNum;
+    q->nextSessionStartNum = p->nextSessionEndNum;
+    q->nextSessionStart = &q->nextSessionStartNum;
 
     return 0;
 
@@ -746,48 +1012,6 @@ PrintBuckets(
     return True;
 }
 
-static int
-mmap_copy_file(
-        int tofd,
-        int fromfd
-        )
-{
-    struct stat sbuf;
-    int         rc;
-    void        *fptr,*tptr;
-
-    if((rc = fstat(fromfd,&sbuf)) != 0){
-        I2ErrLog(eh,"fstat: %M, copying session file");
-        return rc;
-    }
-
-    if((rc = ftruncate(tofd,sbuf.st_size)) != 0){
-        I2ErrLog(eh,"ftruncate(%llu): %M, creating session file",sbuf.st_size);
-        return rc;
-    }
-
-    if(!(fptr = mmap(NULL,sbuf.st_size,PROT_READ|PROT_WRITE,MAP_FILE|MAP_SHARED,fromfd,0))){
-        I2ErrLog(eh,"mmap(FROM session file): %M");
-        return -1;
-    }
-    if(!(tptr = mmap(NULL,sbuf.st_size,PROT_READ|PROT_WRITE,MAP_FILE|MAP_SHARED,tofd,0))){
-        I2ErrLog(eh,"mmap(TO session file): %M");
-        return -1;
-    }
-
-    memcpy(tptr,fptr,sbuf.st_size);
-
-    if((rc = munmap(fptr,sbuf.st_size)) != 0){
-        I2ErrLog(eh,"munmap(FROM session file): %M");
-        return -1;
-    }
-    if((rc = munmap(tptr,sbuf.st_size)) != 0){
-        I2ErrLog(eh,"munmap(TO session file): %M");
-        return -1;
-    }
-
-    return 0;
-}
 
 int
 main(
@@ -1154,6 +1378,7 @@ main(
     memset(&pcntrl,0,2*sizeof(pow_cntrl_rec));
     strcpy(pcntrl[0].fname,dirpath);
     strcpy(pcntrl[1].fname,dirpath);
+    pcntrl[0].ctx = pcntrl[1].ctx = ctx;
 
     /*
      * Add time for file buffering. 
@@ -1212,13 +1437,11 @@ main(
         OWPAcceptType   aval;
         u_int32_t       sum;
         OWPNum64        stopnum;
-        OWPNum64        sessionStartNum,sessionEndNum,
-                        startnum,lastnum;
+        OWPNum64        startnum,lastnum;
         char            tfname[PATH_MAX];
         char            fname[PATH_MAX];
         char            startname[PATH_MAX];
         char            endname[PATH_MAX];
-        int             tofd;
 
 NextConnection:
         sig_check();
@@ -1246,8 +1469,8 @@ NextConnection:
          * Make local copies of start/end - SetupSession modifies
          * them.
          */
-        sessionStartNum = p->sessionStartNum;
-        sessionEndNum = p->sessionEndNum;
+        p->currentSessionStartNum = p->nextSessionStartNum;
+        p->currentSessionEndNum = p->nextSessionEndNum;
 
         /*
          * Call StopSessionsWait (blocking) if no summaries
@@ -1314,10 +1537,10 @@ wait_again:
 
             /*
              * lastnum contains offset for previous sum.
-             * So - sessionStart + lastnum is new
+             * So - currentSessionStart + lastnum is new
              * startnum.
              */
-            startnum = OWPNum64Add(sessionStartNum,lastnum);
+            startnum = OWPNum64Add(p->currentSessionStartNum,lastnum);
 
             /*
              * This loop sets lastnum to the relative lastnum
@@ -1334,14 +1557,14 @@ wait_again:
                         OWPScheduleContextGenerateNextDelta(p->sctx));
 
                 parse.seen[nrecs].sendtime =
-                    OWPNum64Add(sessionStartNum,lastnum);
+                    OWPNum64Add(p->currentSessionStartNum,lastnum);
 
                 parse.seen[nrecs].seen = 0;
             }
             /*
              * set localstop to absolute time of final packet.
              */
-            localstop = OWPNum64Add(sessionStartNum,lastnum);
+            localstop = OWPNum64Add(p->currentSessionStartNum,lastnum);
 
             /*
              * set stopnum to the time we should collect this
@@ -1418,7 +1641,7 @@ AGAIN:
              */
             if(!hdr.header){
                 I2ErrLog(eh,"OWPReadDataHeader failed");
-                abort();
+                break;
             }
 
             /*
@@ -1430,11 +1653,11 @@ AGAIN:
             else{
                 if(fseeko(p->fp,0,SEEK_END) != 0){
                     I2ErrLog(eh,"fseeko(): %M");
-                    abort();
+                    break;
                 }
                 if((fileend = ftello(p->fp)) < 0){
                     I2ErrLog(eh,"ftello(): %M");
-                    abort();
+                    break;
                 }
             }
 
@@ -1444,7 +1667,7 @@ AGAIN:
             }
             if(fseeko(p->fp,parse.begin,SEEK_SET) != 0){
                 I2ErrLog(eh,"fseeko(): %M");
-                abort();
+                break;
             }
 
             /*
@@ -1626,82 +1849,10 @@ cleanup:
             }
         }
 
-        /*
-         * Make a temporary session filename to hold data.
-         */
-        strcpy(tfname,dirpath);
-        sprintf(startname,OWP_TSTAMPFMT,sessionStartNum);
-        sprintf(endname,OWP_TSTAMPFMT,sessionEndNum);
-        sprintf(&tfname[file_offset],"%s%s%s%s%s",
-                startname,OWP_NAME_SEP,endname,
-                OWP_FILE_EXT,POW_INC_EXT);
-
-        while(((tofd = open(tfname,O_RDWR|O_CREAT|O_EXCL,
-                            S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH)) < 0) &&
-                errno==EINTR){
-            if(sig_check())
-                goto NextConnection;
-        }
-        if(tofd < 0){
-
-            I2ErrLog(eh,"open(%s): %M",tfname);
-
-            /*
-             * Can't open the file.
-             */
-            switch(errno){
-                /*
-                 * reasons to go to the next
-                 * session
-                 * (Temporary resource problems.)
-                 */
-                case EMFILE:
-                case ENFILE:
-                case ENOSPC:
-                case EDQUOT:
-                    break;
-                    /*
-                     * Everything else is a reason to exit
-                     * (Probably permissions.)
-                     */
-                default:
-                    exit(1);
-                    break;
-            }
-
-            /*
-             * Skip to next session.
-             */
-            goto session_cleanup;
-        }
 
         /*
-         * stat the "from" file, ftruncate the to file,
-         * mmap both of them, then do a memcpy between them.
-         */
-        if(mmap_copy_file(tofd,fileno(p->fp)) == 0){
-            /*
-             * Relink the incomplete file as a complete one.
-             */
-            strcpy(fname,tfname);
-            sprintf(&fname[ext_offset],"%s",OWP_FILE_EXT);
-            if(link(tfname,fname) != 0){
-                /* note, but ignore the error */
-                I2ErrLog(eh,"link(%s,%s): %M",tfname,fname);
-            } else if(appctx.opt.printfiles){
-                /* Now print the filename to stdout */
-                fprintf(stdout,"%s\n",fname);
-                fflush(stdout);
-            }
-        }
-        if(unlink(tfname) != 0){
-            /* note, but ignore the error */
-            I2ErrLog(eh,"unlink(%s): %M",tfname);
-        }
-
-
-        /*
-         * TODO: Is this a good idea?
+         * If we broke out of the loop early, then the connections
+         * are in a strange state and need to be reset.
          */
         if(sum < numSummaries){
             /*
@@ -1709,9 +1860,14 @@ cleanup:
              * be reset for an immediate start time!.
              */
             ResetSession(q,p);
+            goto NextConnection;
         }
 
-session_cleanup:
+        /*
+         * Write out the complete owp session file.
+         */
+        write_session(p,False);
+
         /*
          * This session is complete - reset p.
          */

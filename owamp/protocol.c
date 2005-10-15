@@ -2189,7 +2189,7 @@ _OWPReadStopSessions(
         struct flock                flk;
         OWPNum64                    lowR,highR,threshR;
         u_int32_t                   lowI,midI,highI,num_recs;
-        u_int8_t                    rbuf[_OWP_DATAREC_SIZE];
+        u_int8_t                    rbuf[_OWP_MAXDATAREC_SIZE];
         OWPDataRec                  rec;
         OWPSkipRec                  prev_skip, curr_skip;
         u_int32_t                   next_seqno;
@@ -2277,13 +2277,13 @@ _OWPReadStopSessions(
          * (Verify that disk space is a multiple of datarec size too...)
          */
         toff = fhdr.sbuf.st_size - fhdr.oset_datarecs;
-        if(toff % _OWP_DATAREC_SIZE){
+        if(toff % fhdr.rec_size){
             OWPError(cntrl->ctx,OWPErrFATAL,EFTYPE,
                     "_OWPReadStopSessions: Invalid records for sid(%s)",
                     sid_name);
             goto err;
         }
-        fhdr.num_datarecs = num_recs = toff / _OWP_DATAREC_SIZE;
+        fhdr.num_datarecs = num_recs = toff / fhdr.rec_size;
 
         /*
          * If there is no data, this is a very simple file...
@@ -2333,7 +2333,7 @@ _OWPReadStopSessions(
         /*
          * Read the first packet record to get the recv(0) for lowR.
          */
-        if(fread(rbuf,_OWP_DATAREC_SIZE,1,rfp) != 1){
+        if(fread(rbuf,fhdr.rec_size,1,rfp) != 1){
             OWPError(cntrl->ctx,OWPErrFATAL,errno,
                     "fread(): Reading session file for sid(%s): %M",sid_name);
             goto err;
@@ -2385,7 +2385,7 @@ _OWPReadStopSessions(
             /*
              * determine offset from midI
              */
-            toff = fhdr.oset_datarecs + midI * _OWP_DATAREC_SIZE;
+            toff = fhdr.oset_datarecs + midI * fhdr.rec_size;
 
             /*
              * Seek to midI data record.
@@ -2398,7 +2398,7 @@ _OWPReadStopSessions(
             /*
              * Read the packet record from midI.
              */
-            if(fread(rbuf,_OWP_DATAREC_SIZE,1,rfp) != 1){
+            if(fread(rbuf,fhdr.rec_size,1,rfp) != 1){
                 OWPError(cntrl->ctx,OWPErrFATAL,errno,
                         "fread(): Reading session file for sid(%s): %M",
                         sid_name);
@@ -2432,7 +2432,7 @@ thresh_pos:
          * sent time. The sent time must be less than (stop - timeout)
          * for the record to be kept.
          */
-        toff = fhdr.oset_datarecs + (lowI * _OWP_DATAREC_SIZE);
+        toff = fhdr.oset_datarecs + (lowI * fhdr.rec_size);
         threshR = OWPNum64Sub(stoptime.owptime,tptr->test_spec.loss_timeout);
 
         /*
@@ -2448,7 +2448,7 @@ thresh_pos:
             /*
              * Read the packet record from midI.
              */
-            if(fread(rbuf,_OWP_DATAREC_SIZE,1,rfp) != 1){
+            if(fread(rbuf,fhdr.rec_size,1,rfp) != 1){
                 OWPError(cntrl->ctx,OWPErrFATAL,errno,
                         "fread(): Reading session file sid(%s): %M",
                         sid_name);
@@ -2468,7 +2468,7 @@ thresh_pos:
              */
             if(!(OWPNum64Cmp(rec.send.owptime,threshR) > 0)){
                 if(wfp != rfp){
-                    if(fwrite(rbuf,_OWP_DATAREC_SIZE,1,wfp) != 1){
+                    if(fwrite(rbuf,fhdr.rec_size,1,wfp) != 1){
                         OWPError(cntrl->ctx,OWPErrFATAL,errno,
                                 "fwrite(): Writing session file sid(%s): %M",
                                 sid_name);
@@ -2505,7 +2505,7 @@ thresh_pos:
                      * Seek new wfp to beginning of record that is not
                      * valid. It will be written over.
                      */
-                    toff = fhdr.oset_datarecs + (j * _OWP_DATAREC_SIZE);
+                    toff = fhdr.oset_datarecs + (j * fhdr.rec_size);
                     if(fseeko(wfp,toff,SEEK_SET) != 0){
                         OWPError(cntrl->ctx,OWPErrFATAL,errno,"fseeko(): %M");
                         goto loop_err;
@@ -2557,7 +2557,7 @@ done_data:
          * Advance fp beyond datarecords, write skip records and write
          * NumSkipRecords
          */
-        toff = fhdr.oset_datarecs + (num_recs * _OWP_DATAREC_SIZE);
+        toff = fhdr.oset_datarecs + (num_recs * fhdr.rec_size);
         if(fseeko(rfp,toff,SEEK_SET) != 0){
             OWPError(cntrl->ctx,OWPErrFATAL,errno,"fseeko(): %M");
             goto err;
@@ -2640,7 +2640,7 @@ done_skips:
             goto err;
         }
 
-        if( !_OWPWriteDataHeaderFinished(cntrl->ctx,rfp,_OWP_SESSION_FIN_NORMAL,
+        if( !_OWPWriteDataHeaderFinished(cntrl->ctx,rfp,OWP_SESSION_FINISHED_NORMAL,
                     next_seqno)){
             goto err;
         }
@@ -2683,6 +2683,13 @@ err:
      * take everything in receivers list and put it back in tests list
      * so error cleanup at higher levels will work.
      */
+    while(receivers){
+        tptr = receivers;
+        receivers = receivers->next;
+
+        tptr->next = cntrl->tests;
+        cntrl->tests = tptr;
+    }
 
     OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
             "_OWPReadStopSessions: Failed");

@@ -95,12 +95,15 @@ typedef	struct {
 } powapp_trec, *powapp_t;
 
 typedef struct pow_cntrl_rec{
+	OWPContext		ctx;
 	OWPControl		cntrl;
 	OWPScheduleContext	sctx;
 	OWPSID			sid;
-	OWPNum64		*sessionStart;
-	OWPNum64		sessionStartNum;
-	OWPNum64		sessionEndNum;
+	OWPNum64		*nextSessionStart;
+	OWPNum64		nextSessionStartNum;
+	OWPNum64		nextSessionEndNum;
+	OWPNum64		currentSessionStartNum;
+	OWPNum64		currentSessionEndNum;
 	FILE			*fp;
 	FILE			*testfp;
 	char			fname[PATH_MAX];

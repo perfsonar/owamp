@@ -916,6 +916,7 @@ OWPProcessStartSessions(
 struct DoDataState{
     OWPControl      cntrl;
     OWPErrSeverity  err;
+    u_int32_t       rec_size;
     OWPBoolean      send;
     u_int32_t       begin;
     u_int32_t       end;
@@ -959,7 +960,7 @@ DoDataRecords(
         /*
          * Encode this record into cntrl->msg buffer.
          */
-        if(!_OWPEncodeDataRecord(&buf[dstate->inbuf*_OWP_DATAREC_SIZE],
+        if(!_OWPEncodeDataRecord(&buf[dstate->inbuf*dstate->rec_size],
                     rec)){
             return -1;
         }
@@ -1057,7 +1058,7 @@ read_file:
         goto failed;
     }
 
-    if(fhdr.finished == _OWP_SESSION_FIN_ERROR){
+    if(fhdr.finished == OWP_SESSION_FINISHED_ERROR){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
                 "OWPProcessFetchSession(\"%s\"): Invalid file!",
                 fname);
@@ -1069,7 +1070,7 @@ read_file:
      * terminate normally - we MUST deny here.
      */
     if((begin == 0) && (end == 0xFFFFFFFF) &&
-            (fhdr.finished != _OWP_SESSION_FIN_NORMAL)){
+            (fhdr.finished != OWP_SESSION_FINISHED_NORMAL)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrWARNING,
                 "OWPProcessFetchSession(\"%s\"): Request for complete session, but session not yet terminated!",
                 fname);
@@ -1084,7 +1085,7 @@ read_file:
      *
      * If num_datarecs is set, the data up to that point can be trusted.
      */
-    if(fhdr.finished != _OWP_SESSION_FIN_NORMAL){
+    if(fhdr.finished != OWP_SESSION_FINISHED_NORMAL){
         memset(&flk,0,sizeof(flk));
         flk.l_start = 0;
         flk.l_len = 0;
@@ -1132,7 +1133,7 @@ read_file:
          */
         if(!fhdr.num_datarecs){
             fhdr.num_datarecs = (fhdr.sbuf.st_size - fhdr.oset_datarecs) / 
-                _OWP_DATAREC_SIZE;
+                                                            fhdr.rec_size;
         }
     }
 
@@ -1142,6 +1143,7 @@ read_file:
     dodata.cntrl = cntrl;
     dodata.intr = intr;
     dodata.err = OWPErrOK;
+    dodata.rec_size = fhdr.rec_size;
     dodata.send = False;
     dodata.begin = begin;
     dodata.end = end;
@@ -1153,7 +1155,7 @@ read_file:
      * Now - count the number of records that will be sent.
      * short-cut the count if full session is requested.
      */
-    if((fhdr.finished == _OWP_SESSION_FIN_NORMAL) &&
+    if((fhdr.finished == OWP_SESSION_FINISHED_NORMAL) &&
             (begin == 0) && (end == 0xFFFFFFFF)){
         sendrecs = fhdr.num_datarecs;
     }
@@ -1178,7 +1180,7 @@ read_file:
          * count ignoring all "missing" packets after the
          * last seen one.
          */
-        if((fhdr.finished != _OWP_SESSION_FIN_NORMAL) &&
+        if((fhdr.finished != OWP_SESSION_FINISHED_NORMAL) &&
                 (dodata.maxiseen < end)){
             dodata.end = dodata.maxiseen;
 
@@ -1342,13 +1344,12 @@ read_file:
          * Set "blks" to number of AES blocks that need to be sent to
          * hold all "leftover" records.
          */
-        int blks = dodata.inbuf * _OWP_DATAREC_SIZE /
-            _OWP_RIJNDAEL_BLOCK_SIZE + 1;
+        int blks = (dodata.inbuf*fhdr.rec_size/_OWP_RIJNDAEL_BLOCK_SIZE) + 1;
 
         /* zero out any partial data blocks */
-        memset(&buf[dodata.inbuf*_OWP_DATAREC_SIZE],0,
+        memset(&buf[dodata.inbuf*fhdr.rec_size],0,
                 (blks*_OWP_RIJNDAEL_BLOCK_SIZE)-
-                (dodata.inbuf*_OWP_DATAREC_SIZE));
+                (dodata.inbuf*fhdr.rec_size));
 
         /*
          * Write enough AES blocks to get remaining records.

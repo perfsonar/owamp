@@ -1571,6 +1571,25 @@ ntohll(
 }
 #endif
 
+static OWPSessionFinishedType
+GetSessionFinishedType(
+        OWPContext  ctx,
+        u_int32_t   val
+        )
+{
+    switch(val){
+        case OWP_SESSION_FINISHED_ERROR:
+            return OWP_SESSION_FINISHED_ERROR;
+        case OWP_SESSION_FINISHED_NORMAL:
+            return OWP_SESSION_FINISHED_NORMAL;
+        case OWP_SESSION_FINISHED_INCOMPLETE:
+            return OWP_SESSION_FINISHED_INCOMPLETE;
+        default:
+            OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
+                    "GetSessionFinishedType: Invalid val %u",val);
+            return OWP_SESSION_FINISHED_ERROR;
+    }
+}
 
 /*
  *  Functions for writing and reading headers. The format varies
@@ -1644,125 +1663,126 @@ ntohll(
  *      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+                               +
  *    16|                   Recv Timestamp                              |
  *      +                               +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-*    20|                               |       Recv Error Estimate     |
-*      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-*
-*  Version 3: Session Request as per version 12 of the protocol (use hdr len
-        *  to skip the file header which includes file specific fields, the
-        *  session request and possibly the skip records. (skip records
-            *  can be between the session request and the packet records or
-            *  follow everything.
-            *
-            *       0                   1                   2                   3
-            *       0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-            *      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-            *    00|       "O"     |       "w"     |       "A"     |       \0      |
-            *      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-            *    04|                            Version                            |
-            *      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-            *    08|                            Finished                           |
-            *      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-            *    12|                           Next Seqno                          |
-            *      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-            *    16|                     Number of Skip Ranges                     |
-            *      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-            *    20|                       Number of Records                       |
-            *      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-            *    24|                      oset to Skip Ranges                      |
-            *    28|                                                               |
-            *      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-        *    32|                        oset to Records                        |
-        *    36|                                                               |
-        *      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-        *    40|                                                               |
-        *      ...                 TestRequestPreamble (protocol.c)          ...
-        *   148|                                                               |
-        *      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-        *   152|                                                               |
-        *   156|                   Slot(1) definitions (16 octets each)        |
-        *   160|                                                               |
-        *   164|                                                               |
-    *      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-*   168:(168+(16*(nslots-1))) (16 octets for each additional slot)
-    *      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    *      |                                                               |
-    *      |                   Integrity Zero Padding (16 octets)          |
-    *      |                                                               |
-    *      |                                                               |
-    *      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    *
-    * Then individual packet records or skip records start. It does not matter
-    * which is first. The Num Skip Records and Num Data Records fields are
-    * used to determine how long these ranges will be.
-    *
-    * The format for individual packet records is documented in the
-    * header for the _OWPDecodeDataRecord function which should be used
-    * to fetch them.
-    *
-    * The format for individual skip records is documented in the
-    * header for the _OWPDecodeSkipRecord function which should be used
-    * to fetch them.
-    *
-    * If Number of Skip Ranges == 0, then the value of oset to Skip Ranges
-    * can remain nil.
-    *
-    * The API is setup to work from two points of view.
-    *
-    * Endpoint Reciever:
-    *  Packets come in and it will not know about skips until
-    *  after all data records are done. If WriteDataHeader is called with
-    *  num_skiprecs == 0, then the file will be setup in this mode. Then
-    *  the WriteDataHeaderNumDataRecs function will need to be called to
-    *  set that field in the file data records are complete. When the
-    *  StopSessions message comes across it will include the skip_recs and
-    *  the WriteDataHeaaderNumSkipRecs function can be called to add skip
-    *  records. This function will set the skip_oset if skip_oset is
-    *  currently nil in addition to the num_skips. Then skip records
-    *  are written until complete. The num_datarecs field MUST be set
-    *  before the WriteDataHeaderNumskips can be called.
-    *
-    * FetchClient:
-    *  Entire session is retrieved. Skip records come before data records
-    *  in a Fetch response so WriteDataHeader is called with num_skiprecs
-    *  set. (If num_skiprecs is 0, then oset_skips will be initialized
-            *  to null.) SkipRecords can be written until they are complete. Then
-    *  datarecords can be written. In this case the number of records will
-    *  also have already been set with WriteDataHeader.
-    *  WriteDataHeaderNumSkipRecs is not valid to be called for a file that
-    *  is initialized this way but WriteDataHeaderNumDataRecs 
-    *
-    */
+ *    20|                               |       Recv Error Estimate     |
+ *      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *
+ *  Version 3: Session Request as per version 12 of the protocol (use hdr len
+ *  to skip the file header which includes file specific fields, the
+ *  session request and possibly the skip records. (skip records
+ *  can be between the session request and the packet records or
+ *  follow everything.
+ *
+ *       0                   1                   2                   3
+ *       0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ *      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *    00|       "O"     |       "w"     |       "A"     |       \0      |
+ *      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *    04|                            Version                            |
+ *      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *    08|                            Finished                           |
+ *      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *    12|                           Next Seqno                          |
+ *      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *    16|                     Number of Skip Ranges                     |
+ *      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *    20|                       Number of Records                       |
+ *      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *    24|                      oset to Skip Ranges                      |
+ *    28|                                                               |
+ *      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *    32|                        oset to Records                        |
+ *    36|                                                               |
+ *      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *    40|                                                               |
+ *      ...                 TestRequestPreamble (protocol.c)          ...
+ *   148|                                                               |
+ *      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *   152|                                                               |
+ *   156|                   Slot(1) definitions (16 octets each)        |
+ *   160|                                                               |
+ *   164|                                                               |
+ *      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *   168:(168+(16*(nslots-1))) (16 octets for each additional slot)
+ *      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *      |                                                               |
+ *      |                   Integrity Zero Padding (16 octets)          |
+ *      |                                                               |
+ *      |                                                               |
+ *      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *
+ * Then individual packet records or skip records start. It does not matter
+ * which is first. The Num Skip Records and Num Data Records fields are
+ * used to determine how long these ranges will be.
+ *
+ * The format for individual packet records is documented in the
+ * header for the _OWPDecodeDataRecord function which should be used
+ * to fetch them.
+ *
+ * The format for individual skip records is documented in the
+ * header for the _OWPDecodeSkipRecord function which should be used
+ * to fetch them.
+ *
+ * If Number of Skip Ranges == 0, then the value of oset to Skip Ranges
+ * can remain nil.
+ *
+ * The API is setup to work from two points of view.
+ *
+ * Endpoint Reciever:
+ *  Packets come in and it will not know about skips until
+ *  after all data records are done. If WriteDataHeader is called with
+ *  num_skiprecs == 0, then the file will be setup in this mode. Then
+ *  the WriteDataHeaderNumDataRecs function will need to be called to
+ *  set that field in the file data records are complete. When the
+ *  StopSessions message comes across it will include the skip_recs and
+ *  the WriteDataHeaaderNumSkipRecs function can be called to add skip
+ *  records. This function will set the skip_oset if skip_oset is
+ *  currently nil in addition to the num_skips. Then skip records
+ *  are written until complete. The num_datarecs field MUST be set
+ *  before the WriteDataHeaderNumskips can be called.
+ *
+ * FetchClient:
+ *  Entire session is retrieved. Skip records come before data records
+ *  in a Fetch response so WriteDataHeader is called with num_skiprecs
+ *  set. (If num_skiprecs is 0, then oset_skips will be initialized
+ *  to null.) SkipRecords can be written until they are complete. Then
+ *  datarecords can be written. In this case the number of records will
+ *  also have already been set with WriteDataHeader.
+ *  WriteDataHeaderNumSkipRecs is not valid to be called for a file that
+ *  is initialized this way but WriteDataHeaderNumDataRecs 
+ *
+ */
 
-    /*
-     * Function:    _OWPReadDataHeaderInitial
-     *
-     * Description:
-     *      This function reads the initial file fields and also verifies the
-     *      file is valid.
-     *
-     *
-     * In Args:    
-     *
-     * Out Args:    
-     *
-     * Scope:    
-     * Returns:    
-     * Side Effect:    
-     *      fp will be advanced to the start of the TestRequestPreamble
-     *      for version >= 2 files. For version <=1 files fp will be
-     *      at the begining of data records.
-     */
-    static u_int8_t owp_magic[] = _OWP_MAGIC_FILETYPE;
-    OWPBoolean
-    _OWPReadDataHeaderInitial(
-            OWPContext                  ctx,
-            FILE                        *fp,
-            _OWPSessionHeaderInitial    phdr
-            )
+ /*
+  * Function:    _OWPReadDataHeaderInitial
+  *
+  * Description:
+  *      This function reads the initial file fields and also verifies the
+  *      file is valid.
+  *
+  *
+  * In Args:    
+  *
+  * Out Args:    
+  *
+  * Scope:    
+  * Returns:    
+  * Side Effect:    
+  *      fp will be advanced to the start of the TestRequestPreamble
+  *      for version >= 2 files. For version <=1 files fp will be
+  *      at the begining of data records.
+  */
+ static u_int8_t owp_magic[] = _OWP_MAGIC_FILETYPE;
+ OWPBoolean
+ _OWPReadDataHeaderInitial(
+         OWPContext                  ctx,
+         FILE                        *fp,
+         _OWPSessionHeaderInitial    phdr
+         )
 {
     u_int8_t    read_magic[sizeof(owp_magic)];
     int         err;
     u_int64_t   oset;
+    u_int32_t   finished=0;
 
     /*
      * Initialize private file header record.
@@ -1860,9 +1880,11 @@ ntohll(
                         oset);
                 return False;
             }
+            phdr->rec_size = _OWP_DATARECV2_SIZE;
 
             break;
         case 3:
+            phdr->rec_size = _OWP_DATARECV3_SIZE;
             break;
         default:
             OWPError(ctx,OWPErrFATAL,EINVAL,
@@ -1877,13 +1899,13 @@ ntohll(
     /*
      * Finished
      */
-    if(fread(&phdr->finished, 1, 4, fp) != 4){
+    if(fread(&finished, 1, 4, fp) != 4){
         err = errno;
         OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fread(): %M");
         errno = err;
         return False;
     }
-    phdr->finished = ntohl(phdr->finished);
+    phdr->finished = GetSessionFinishedType(ctx,ntohl(finished));
 
     if(phdr->version < 3)
         return True;
@@ -1978,13 +2000,14 @@ ntohll(
  */
 OWPBoolean
 _OWPWriteDataHeaderFinished(
-        OWPContext  ctx,
-        FILE        *fp,
-        u_int32_t   finished,
-        u_int32_t   next_seqno
+        OWPContext              ctx,
+        FILE                    *fp,
+        OWPSessionFinishedType  finished,
+        u_int32_t               next_seqno
         )
 {
     int err;
+    u_int32_t   finword;
 
     if(finished > 2){
         OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
@@ -2005,8 +2028,8 @@ _OWPWriteDataHeaderFinished(
     /*
      * Write
      */
-    finished = htonl(finished);
-    if(fwrite(&finished,1,sizeof(finished),fp) != 4){
+    finword = htonl((u_int32_t)finished);
+    if(fwrite(&finword,1,sizeof(finword),fp) != 4){
         err = errno;
         OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fwrite(): %M");
         errno = err;
@@ -2129,7 +2152,7 @@ OWPWriteDataHeaderNumSkipRecs(
      * Convert off_t oset_skiprecs to network ordered u_int64_t
      */
     phrec.oset_skiprecs = phrec.oset_datarecs +
-        (_OWP_DATAREC_SIZE * phrec.num_datarecs);
+        (phrec.rec_size * phrec.num_datarecs);
     n64 = (u_int64_t)phrec.oset_skiprecs;
     if(phrec.oset_skiprecs != (off_t)n64){
         OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
@@ -2271,7 +2294,7 @@ OWPWriteDataHeader(
         )
 {
     u_int32_t   ver;
-    u_int32_t   finished = 2; /* 2 means unknown */
+    u_int32_t   finished = OWP_SESSION_FINISHED_INCOMPLETE;
     u_int64_t   oset;
     u_int64_t   skip_oset = 0;
     u_int64_t   data_oset;
@@ -2402,7 +2425,7 @@ OWPWriteDataHeader(
         data_oset = oset;
 
         if(hdr->num_datarecs){
-            skip_oset = oset + (hdr->num_datarecs * _OWP_DATAREC_SIZE);
+            skip_oset = oset + (hdr->num_datarecs * hdr->rec_size);
         }
     }
 
@@ -2574,16 +2597,7 @@ OWPReadDataHeader(
 
     hdr_ret->version = phrec.version;
     hdr_ret->sbuf = phrec.sbuf;
-
-    switch(phrec.version){
-        case 0: case 1: case 2:
-            hdr_ret->rec_size = _OWP_DATARECV2_SIZE;
-            break;
-        case 3:
-        default:
-            hdr_ret->rec_size = _OWP_DATAREC_SIZE;
-            break;
-    }
+    hdr_ret->rec_size = phrec.rec_size;
 
     /*
      * Decode the header if present(version 2).
@@ -2655,7 +2669,7 @@ OWPReadDataHeader(
     hdr_ret->num_skiprecs = phrec.num_skiprecs;
     hdr_ret->oset_skiprecs = phrec.oset_skiprecs;
     hdr_ret->oset_datarecs = phrec.oset_datarecs;
-    if(!phrec.finished){
+    if(phrec.finished != OWP_SESSION_FINISHED_NORMAL){
         hdr_ret->num_datarecs = (phrec.sbuf.st_size - phrec.hdr_len)/
             hdr_ret->rec_size;
     }
@@ -2855,7 +2869,7 @@ OWPParseRecords(
         )
 {
     size_t      len_rec;
-    u_int8_t    rbuf[_OWP_DATAREC_SIZE];
+    u_int8_t    rbuf[_OWP_MAXDATAREC_SIZE];
     u_int32_t   i;
     OWPDataRec  rec;
     int         rc;

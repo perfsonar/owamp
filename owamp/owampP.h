@@ -60,7 +60,8 @@
 #define _OWP_TESTREC_OFFSET (40)
 #define _OWP_DATARECV2_SIZE (24)
 #define _OWP_DATARECV3_SIZE (25)
-#define _OWP_DATAREC_SIZE   _OWP_DATARECV3_SIZE
+#define _OWP_DATAREC_SIZE _OWP_DATARECV3_SIZE
+#define _OWP_MAXDATAREC_SIZE _OWP_DATAREC_SIZE
 #define _OWP_SKIPREC_SIZE   (8)
 
 /*
@@ -385,10 +386,6 @@ _OWPCreateSID(
         OWPTestSession  tsession
         );
 
-#define _OWP_SESSION_FIN_ERROR      0
-#define _OWP_SESSION_FIN_NORMAL     1
-#define _OWP_SESSION_FIN_INCOMPLETE 2
-
 /*
  * This structure is used to hold the initial "fixed"
  * fields in an owp file. Filled in with _OWPReadDataHeaderInitial().
@@ -397,27 +394,30 @@ typedef struct _OWPSessionHeaderInitialRec{
     /*
      * File info, and fields for all versions
      */
-    OWPBoolean  header;     /* True if version >= 2
-                             * indicates test req available
-                             */
-    struct stat sbuf;
-    u_int32_t   version;
-    off_t       hdr_len;    /* same as oset_datarecs for version >= 3 */
+    OWPBoolean              header;     /* True if version >= 2
+                                         * indicates test req available
+                                         */
+    struct stat             sbuf;
+    u_int32_t               version;
+    u_int32_t               rec_size;
+
+                            /* same as oset_datarecs for version >= 3 */
+    off_t                   hdr_len;
 
     /*
      * Added for Version 2 (also test req)
      */
-    u_int32_t   finished;
+    OWPSessionFinishedType  finished;
 
     /*
      * Added for Version 3
      */
-    u_int32_t   next_seqno;
-    u_int32_t   num_skiprecs;
-    u_int32_t   num_datarecs;
+    u_int32_t               next_seqno;
+    u_int32_t               num_skiprecs;
+    u_int32_t               num_datarecs;
 
-    off_t       oset_skiprecs;
-    off_t       oset_datarecs;
+    off_t                   oset_skiprecs;
+    off_t                   oset_datarecs;
 } _OWPSessionHeaderInitialRec, *_OWPSessionHeaderInitial;
 
 extern OWPBoolean
@@ -627,7 +627,7 @@ _OWPReadTestRequest(
 
 extern OWPBoolean
 _OWPEncodeDataRecord(
-        u_int8_t        buf[_OWP_DATAREC_SIZE],
+        u_int8_t        buf[_OWP_MAXDATAREC_SIZE],
         OWPDataRec      *rec
         );
 

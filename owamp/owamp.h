@@ -1136,6 +1136,11 @@ OWPFetchSession(
 /*
  ** Processing Session data to/from local disk.
  */
+typedef enum{
+    OWP_SESSION_FINISHED_ERROR=0,       /* Invalid session datafile     */
+    OWP_SESSION_FINISHED_NORMAL=1,      /* Complete datafile            */
+    OWP_SESSION_FINISHED_INCOMPLETE=2   /* StopSessions did not happen  */
+} OWPSessionFinishedType;
 
 /*
  * This data structure is used to read/write a session header. When
@@ -1147,7 +1152,7 @@ typedef struct OWPSessionHeaderRec{
     OWPBoolean              header;         /* RO: TestSession header?  */
     u_int32_t               version;        /* RO: File version         */
     u_int32_t               rec_size;       /* RO: data record size     */
-    u_int32_t               finished;       /* RW: is session finished?
+    OWPSessionFinishedType  finished;       /* RW: is session finished?
                                                0:no,1:yes,2:unknown     */
 
     u_int32_t               next_seqno;     /* RW: next seq for sender  */
