@@ -2022,7 +2022,7 @@ _OWPWriteStopSessions(
 void
 _OWPEncodeSkipRecord(
         u_int8_t    buf[_OWP_SKIPREC_SIZE],
-        OWPSkip     skip
+        OWPSkip    skip
         )
 {
     u_int32_t        nlbuf;
@@ -2044,7 +2044,7 @@ _OWPEncodeSkipRecord(
  *
  * Description:        
  *         This function is used to decode the "skip record" and
- *         place the values in the given OWPSkipRec.
+ *         place the values in the given _OWPSkipRec.
  *
  * In Args:        
  *
@@ -2056,7 +2056,7 @@ _OWPEncodeSkipRecord(
  */
 void
 _OWPDecodeSkipRecord(
-        OWPSkip     skip,
+        OWPSkip    skip,
         u_int8_t    buf[_OWP_SKIPREC_SIZE]
         )
 {
@@ -2191,7 +2191,7 @@ _OWPReadStopSessions(
         u_int32_t                   lowI,midI,highI,num_recs;
         u_int8_t                    rbuf[_OWP_MAXDATAREC_SIZE];
         OWPDataRec                  rec;
-        OWPSkipRec                  prev_skip, curr_skip;
+        OWPSkipRec                 prev_skip, curr_skip;
         u_int32_t                   next_seqno;
         u_int32_t                   num_skips;
 
@@ -2443,7 +2443,7 @@ thresh_pos:
             goto err;
         }
 
-        for(j=lowI;j<fhdr.num_datarecs;j++){
+        for(j=lowI;j<(fhdr.num_datarecs-lowI);j++){
 
             /*
              * Read the packet record from midI.

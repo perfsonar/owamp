@@ -1248,7 +1248,7 @@ OWPReadDataHeaderSlots(
         );
 
 /*
- ** Applications use this type to manipulate individual timestamp data records.
+ * Applications use this type to manipulate individual timestamp data records.
  */
 typedef struct OWPDataRec {
     u_int32_t       seq_no;
@@ -1305,6 +1305,37 @@ OWPParseRecords(
         OWPDoDataRecord proc_rec,
         void            *udata          /* passed into proc_rec     */
         );
+
+/*
+ * OWPReadDataSkipRecs
+ *  This function is used to read the "skips" out of the file. It is only
+ *  valid for data files of version 2 or above so it is important to check
+ *  the file version.
+ *  OWPReadDataHeader can be used to determine how many skips
+ *  are in the file, and the caller of this function is required to pass
+ *  in the memory for "skips".
+ *
+ *  (For very large session files it may become necessary to create a
+ *  Parse interface so the entire array does not have to be in memory
+ *  at one time - but for now I will be wasteful.)
+ *
+ * Returns:
+ * OWPBoolean - T if successful, F if not.
+ */
+typedef struct OWPSkipRec OWPSkipRec, *OWPSkip;
+struct OWPSkipRec{
+    u_int32_t   begin;
+    u_int32_t   end;
+};
+
+extern OWPBoolean
+OWPReadDataSkips(
+        OWPContext          ctx,
+        FILE                *fp,
+        u_int32_t           nskips,
+        OWPSkip             skips
+        );
+
 
 extern double
 OWPDelay(

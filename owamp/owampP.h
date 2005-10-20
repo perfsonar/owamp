@@ -269,11 +269,10 @@ struct OWPLostPacketRec{
     OWPLostPacket   next;
 };
 
-typedef struct OWPSkipRec OWPSkipRec, *OWPSkip;
-struct OWPSkipRec{
-    u_int32_t   begin;
-    u_int32_t   end;
-    OWPSkip     next;
+typedef struct _OWPSkipRec _OWPSkipRec, *_OWPSkip;
+struct _OWPSkipRec{
+    OWPSkipRec  sr;
+    _OWPSkip    next;
 };
 
 /*
@@ -320,10 +319,10 @@ typedef struct OWPEndpointRec{
     /* Keep track of which packets the sender actually sent */
     u_int32_t       nextseq;
     u_int32_t       num_allocskip;
-    OWPSkip         skip_allocated;
-    OWPSkip         free_skiplist;
-    OWPSkip         head_skip;
-    OWPSkip         tail_skip;
+    _OWPSkip        skip_allocated;
+    _OWPSkip        free_skiplist;
+    _OWPSkip        head_skip;
+    _OWPSkip        tail_skip;
 
 } OWPEndpointRec, *OWPEndpoint;
 

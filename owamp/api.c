@@ -2926,6 +2926,99 @@ OWPParseRecords(
 }
 
 /*
+ * Function:        OWPReadDataSkips
+ *
+ * Description:        
+ *         This function will read all the skip records out of the
+ *         file fp. skips is assumed to be an array of OWPSkip records of
+ *         length nskips.
+ *
+ * In Args:        
+ *
+ * Out Args:        
+ *
+ * Scope:        
+ * Returns:        
+ * Side Effect:        
+ */
+OWPBoolean
+OWPReadDataSkips(
+        OWPContext  ctx,
+        FILE        *fp,
+        u_int32_t   nskips,
+        OWPSkip     skips
+        )
+{
+    int                         err;
+    _OWPSessionHeaderInitialRec phrec;
+    u_int32_t                   i;
+
+    /* buffer for Skips 32 bit aligned */
+    u_int8_t                    msg[_OWP_SKIPREC_SIZE];
+
+    /*
+     * validate array.
+     */
+    assert(skips);
+
+    /*
+     * Stat the file and get the "initial" fields from the header.
+     */
+    if(!_OWPReadDataHeaderInitial(ctx,fp,&phrec)){
+        return False;
+    }
+
+    /*
+     * this function is currently only supported for version 2 files.
+     */
+    if(phrec.version < 2){
+        OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                "OWPReadDataSkips: Invalid file version (%d)",
+                phrec.version);
+        errno = ENOSYS;
+        return False;
+    }
+
+    if(phrec.num_skiprecs != nskips){
+        OWPError(ctx,OWPErrFATAL, OWPErrINVALID,
+                "OWPReadDataSkips: nskips requested (%lu) doesn't match file (%lu).",
+                nskips,phrec.num_skiprecs);
+
+        return False;
+    }
+
+    /*
+     * Position fp to beginning of skip records.
+     */
+    if(fseeko(fp,phrec.oset_skiprecs,SEEK_SET)){
+        err = errno;
+        OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fseeko(): %M");
+        errno = err;
+        return False;
+    }
+
+    for(i=0;i<nskips;i++){
+
+        /*
+         * Read slot into buffer.
+         */
+        if(fread(msg,1,_OWP_SKIPREC_SIZE,fp) != _OWP_SKIPREC_SIZE){
+            err = errno;
+            OWPError(ctx,OWPErrFATAL,errno,"fread(): %M");
+            errno = err;
+            return False;
+        }
+
+        /*
+         * Decode slot buffer into slot record.
+         */
+        _OWPDecodeSkipRecord(&skips[i],msg);
+    }
+
+    return True;
+}
+
+/*
  * Function:        OWPIsLostRecord
  *
  * Description:        

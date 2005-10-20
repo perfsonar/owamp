@@ -91,10 +91,10 @@ LostFree(
 
 static void
 SkipFree(
-        OWPSkip skip
+        _OWPSkip    skip
         )
 {
-    OWPSkip st;
+    _OWPSkip    st;
 
     while(skip){
         st = skip->next;
@@ -738,7 +738,7 @@ success:
         }
     }
     else{
-        OWPSkip askip;
+        _OWPSkip    askip;
 
         /*
          * Create a file for sharing skip records. Shared memory could
@@ -783,7 +783,7 @@ success:
         ep->num_allocskip = .10 * ep->tsession->test_spec.npackets;
         ep->num_allocskip = MIN(ep->num_allocskip,100);
 
-        if(!(askip = calloc(sizeof(OWPSkipRec),ep->num_allocskip))){
+        if(!(askip = calloc(sizeof(_OWPSkipRec),ep->num_allocskip))){
             OWPError(cntrl->ctx,OWPErrFATAL,errno,"calloc(): %M");
             goto error;
         }
@@ -999,21 +999,21 @@ skip(
         u_int32_t   seq
     )
 {
-    OWPSkip node;
+    _OWPSkip    node;
 
     /*
      * If this is the next seq in a current hole, increase the
      * hole size and return.
      */
-    if(ep->tail_skip && (ep->tail_skip->end + 1 == seq)){
-        ep->tail_skip->end = seq;
+    if(ep->tail_skip && (ep->tail_skip->sr.end + 1 == seq)){
+        ep->tail_skip->sr.end = seq;
         return;
     }
 
     if(!ep->free_skiplist){
         u_int32_t   i;
 
-        if(!(node = calloc(sizeof(OWPSkipRec),ep->num_allocskip))){
+        if(!(node = calloc(sizeof(_OWPSkipRec),ep->num_allocskip))){
             OWPError(ep->cntrl->ctx,OWPErrFATAL,errno,
                     "calloc(): %M");
             exit(OWP_CNTRL_UNAVAILABLE_TEMP);
@@ -1038,7 +1038,7 @@ skip(
     node = ep->free_skiplist;
     ep->free_skiplist = ep->free_skiplist->next;
 
-    node->begin = node->end = seq;
+    node->sr.begin = node->sr.end = seq;
     node->next = NULL;
 
     if(!ep->tail_skip){
@@ -1090,7 +1090,7 @@ run_sender(
     u_int8_t        *tstamperr;
     OWPTimeStamp    owptstamp;
     OWPNum64        nextoffset;
-    OWPSkip         sr;
+    _OWPSkip        sr;
     u_int32_t       num_skiprecs;
 
     /*
@@ -1405,7 +1405,7 @@ finish_sender:
     for(sr = ep->head_skip; sr; sr = sr->next){
         u_int8_t   skipmsg[_OWP_SKIPREC_SIZE];
 
-        _OWPEncodeSkipRecord((u_int8_t *)skipmsg,sr);
+        _OWPEncodeSkipRecord((u_int8_t *)skipmsg,&sr->sr);
         if(I2Writeni(ep->skiprecfd,skipmsg,_OWP_SKIPREC_SIZE,&owp_int) !=
                 _OWP_SKIPREC_SIZE){
             OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,

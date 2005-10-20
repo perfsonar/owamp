@@ -340,8 +340,10 @@ mmap_copy_file(
 }
 
 typedef struct pow_maxsend_rec{
-    u_int32_t   index;
-    OWPNum64    sendtime;
+    OWPSessionHeader    hdr;
+    u_int32_t           index;
+    OWPNum64            sendtime;
+    OWPSkip             skips;
 } pow_maxsend_rec;
 
 static int
@@ -350,7 +352,26 @@ GetMaxSend(
         void        *data
         )
 {
-    pow_maxsend_rec   *sndrec = (pow_maxsend_rec *)data;
+    pow_maxsend_rec     *sndrec = (pow_maxsend_rec *)data;
+    u_int32_t           iskip =0;
+
+    if(sndrec->skips){
+        /*
+         * Look for first skip range with "end" greater than seq_no
+         */
+        while((iskip < sndrec->hdr->num_skiprecs) &&
+                (rec->seq_no > sndrec->skips[iskip].end)){
+            iskip++;
+        }
+        /*
+         * If seq_no is within this range, it is not available
+         * as a max end time.
+         */
+        if((iskip < sndrec->hdr->num_skiprecs) &&
+                (rec->seq_no > sndrec->skips[iskip].begin)){
+            return 0;
+        }
+    }
 
     if(rec->seq_no > sndrec->index){
         sndrec->index = rec->seq_no;
@@ -391,6 +412,13 @@ write_session(
     char            endname[PATH_MAX];
     int             tofd;
 
+    /*
+     * If this session does not have a started session, there is no
+     * reason to continue.
+     */
+    if(!p->fp || !p->session_started)
+        return;
+
     if(newend){
         OWPSessionHeaderRec hdr;
         struct flock        flk;
@@ -401,8 +429,10 @@ write_session(
          * This section reads the packet records
          * in the time period of this sum-session.
          */
-        if( !OWPReadDataHeader(p->ctx,p->fp,&hdr)){
-            I2ErrLog(eh,"OWPReadDataHeader(session data): %M");
+        (void)OWPReadDataHeader(p->ctx,p->fp,&hdr);
+        if( !hdr.header){
+            I2ErrLog(eh,"OWPReadDataHeader(session data [%llu,%llu])",
+                    p->currentSessionStartNum,p->currentSessionEndNum);
             return;
         }
 
@@ -429,8 +459,10 @@ write_session(
             /*
              * Re-read after lock.
              */
-            if( !OWPReadDataHeader(p->ctx,p->fp,&hdr)){
-                I2ErrLog(eh,"OWPReadDataHeader(session data): %M");
+            (void)OWPReadDataHeader(p->ctx,p->fp,&hdr);
+            if( !hdr.header){
+                I2ErrLog(eh,"OWPReadDataHeader(session data [%llu,%llu])",
+                        p->currentSessionStartNum,p->currentSessionEndNum);
                 return;
             }
 
@@ -445,8 +477,10 @@ write_session(
         }
 
         if(!hdr.num_datarecs){
-            I2ErrLog(eh,"No data - skip writing session (%llu,%llu)",
-                    p->currentSessionStartNum,p->currentSessionEndNum);
+            if(appctx.opt.verbose > 1){
+                I2ErrLog(eh,"No data - skip writing session (%llu,%llu)",
+                        p->currentSessionStartNum,p->currentSessionEndNum);
+            }
             return;
         }
 
@@ -463,11 +497,27 @@ write_session(
          * the assumed "send" time for the "end" time of the session.
          */
         memset(&sndrec,0,sizeof(sndrec));
+        sndrec.hdr = &hdr;
+        if(hdr.num_skiprecs){
+            if( !(sndrec.skips = calloc(hdr.num_skiprecs,sizeof(OWPSkipRec)))){
+                I2ErrLog(eh,"calloc: %M");
+                return;
+            }
+            if( !OWPReadDataSkips(p->ctx,p->fp,hdr.num_skiprecs,
+                        sndrec.skips)){
+                I2ErrLog(eh,"OWPReadDataSkips: %M");
+                free(sndrec.skips);
+                return;
+            }
+        }
+
         if(OWPParseRecords(p->ctx,p->fp,hdr.num_datarecs,hdr.version,GetMaxSend,
                     (void*)&sndrec) != OWPErrOK){
+            if(sndrec.skips) free(sndrec.skips);
             I2ErrLog(eh,"GetMaxIndex: %M");
             return;
         }
+        if(sndrec.skips) free(sndrec.skips);
 
         /*
          * Compute endnum based on the send schedule and the index of the
@@ -565,7 +615,7 @@ ResetSession(
     OWPAcceptType   aval = OWP_CNTRL_ACCEPT;
     int             intr=1;
 
-    if(p->numPackets && p->cntrl &&
+    if(p->numPackets && p->call_stop && p->cntrl &&
             (OWPStopSessions(p->cntrl,&intr,&aval)<OWPErrWARNING)){
         OWPControlClose(p->cntrl);
         p->cntrl = NULL;
@@ -585,6 +635,8 @@ ResetSession(
         p->testfp = NULL;
     }
     p->numPackets = 0;
+    p->call_stop = False;
+    p->session_started = False;
     p->nextSessionStart = NULL;
     q->nextSessionStart = NULL;
 
@@ -816,6 +868,12 @@ SetupSession(
     }
     if(sig_check())
         return 1;
+    /*
+     * session_started will be set to true when the loop that parses this
+     * session data begins.
+     */
+    p->call_stop = True;
+    p->session_started = False;
 
     /*
      * Assign new sid to schedule context for computing new schedule.
@@ -1033,8 +1091,9 @@ main(
     char                    optstring[128];
     static char             *conn_opts = "A:S:k:u:";
     static char             *test_opts = "c:i:s:L:";
-    static char             *out_opts = "d:C:pe:rb:";
+    static char             *out_opts = "d:N:pe:rb:v";
     static char             *gen_opts = "hw";
+    static char             *posixly_correct="POSIXLY_CORRECT=True";
 
     int                     which=0;        /* which cntrl connect used */
     u_int32_t               numSummaries;
@@ -1057,23 +1116,42 @@ main(
     syslogattr.facility = LOG_USER;
     syslogattr.priority = LOG_ERR;
     syslogattr.line_info = I2MSG;
-#ifndef        NDEBUG
-    syslogattr.line_info |= I2FILE | I2LINE;
-#endif
 
+    /* Set default options. */
+    memset(&appctx,0,sizeof(appctx));
+    appctx.opt.numPackets = 300;
+    appctx.opt.lossThreshold = 10.0;
+    appctx.opt.meanWait = (float)0.1;
+    appctx.opt.bucketWidth = (float)0.0001; /* 100 usecs */
+
+    /*
+     * Fix getopt if the brain-dead GNU version is being used.
+     */
+    if(putenv(posixly_correct) != 0){
+        fprintf(stderr,"Unable to set POSIXLY_CORRECT getopt mode");
+        exit(1);
+    }
     opterr = 0;
     while((ch = getopt(argc, argv, optstring)) != -1){
-        if(ch == 'e'){
-            int fac;
-            if((fac = I2ErrLogSyslogFacility(optarg)) == -1){
-                fprintf(stderr,"Invalid -e: Syslog facility \"%s\" unknown\n",
-                        optarg);
-                exit(1);
-            }
-            syslogattr.facility = fac;
-        }
-        else if(ch == 'r'){
-            syslogattr.logopt |= LOG_PERROR;
+        int fac;
+        switch (ch){
+            case 'e':
+                if((fac = I2ErrLogSyslogFacility(optarg)) == -1){
+                    fprintf(stderr,
+                            "Invalid -e: Syslog facility \"%s\" unknown\n",
+                            optarg);
+                    exit(1);
+                }
+                syslogattr.facility = fac;
+                break;
+            case 'v':
+                appctx.opt.verbose++;
+                /* fallthrough */
+            case 'r':
+                syslogattr.logopt |= LOG_PERROR;
+                break;
+            default:
+                break;
         }
     }
     opterr = optreset = optind = 1;
@@ -1082,18 +1160,16 @@ main(
      * Start an error logging session for reporing errors to the
      * standard error
      */
+    if(appctx.opt.verbose > 1){
+        syslogattr.logopt |= LOG_PID;
+        syslogattr.line_info |= I2FILE | I2LINE;
+    }
     eh = I2ErrOpen(progname, I2ErrLogSyslog, &syslogattr, NULL, NULL);
     if(! eh) {
         fprintf(stderr, "%s : Couldn't init error module\n", progname);
         exit(1);
     }
 
-    /* Set default options. */
-    memset(&appctx,0,sizeof(appctx));
-    appctx.opt.numPackets = 300;
-    appctx.opt.lossThreshold = 10.0;
-    appctx.opt.meanWait = (float)0.1;
-    appctx.opt.bucketWidth = (float)0.0001; /* 100 usecs */
 
     while ((ch = getopt(argc, argv, optstring)) != -1){
         switch (ch) {
@@ -1176,7 +1252,7 @@ main(
                     exit(1);
                 }
                 break;
-            case 'C':
+            case 'N':
                 appctx.opt.numBucketPackets =
                     strtoul(optarg, &endptr, 10);
                 if (*endptr != '\0') {
@@ -1186,6 +1262,7 @@ main(
                 break;
             case 'e':
             case 'r':
+            case 'v':
                 /* handled in prior getopt call... */
                 break;
                 /* Generic options.*/
@@ -1433,7 +1510,6 @@ main(
      */
     while(1){
         pow_cntrl       p,q;
-        int             call_stop;
         OWPAcceptType   aval;
         u_int32_t       sum;
         OWPNum64        stopnum;
@@ -1463,7 +1539,6 @@ NextConnection:
         /* init vars for loop */
         parse.begin=0;
         lastnum=OWPULongToNum64(0);
-        call_stop = True;
 
         /*
          * Make local copies of start/end - SetupSession modifies
@@ -1472,6 +1547,12 @@ NextConnection:
         p->currentSessionStartNum = p->nextSessionStartNum;
         p->currentSessionEndNum = p->nextSessionEndNum;
 
+        if(appctx.opt.verbose > 1){
+            sprintf(startname,OWP_TSTAMPFMT,p->currentSessionStartNum);
+            sprintf(endname,OWP_TSTAMPFMT,p->currentSessionEndNum);
+            fprintf(stderr,"Starting session [%s - %s] v=%d\n",startname,endname,appctx.opt.verbose);
+        }
+            
         /*
          * Call StopSessionsWait (blocking) if no summaries
          * are wanted.
@@ -1484,6 +1565,7 @@ NextConnection:
              */
             if(SetupSession(ctx,q,p,NULL))
                 goto NextConnection;
+            p->session_started = True;
 wait_again:
             rc = OWPStopSessionsWait(p->cntrl,NULL,&pow_intr,&aval,&err_ret);
             if(rc<0){
@@ -1501,7 +1583,7 @@ wait_again:
                 }
                 goto wait_again;
             }
-            call_stop = False;
+            p->call_stop = False;
 
         }
 
@@ -1586,7 +1668,7 @@ AGAIN:
             /*
              * Wait until this "sumsession" is complete.
              */
-            if(call_stop){
+            if(p->call_stop){
                 rc = OWPStopSessionsWait(p->cntrl,&stopnum,NULL,&aval,&err_ret);
             }
             else{
@@ -1601,7 +1683,7 @@ AGAIN:
             }
             if(rc==0){
                 /* session over */
-                call_stop = False;
+                p->call_stop = False;
                 /*
                  * If aval non-zero, session data is invalid.
                  */
@@ -1620,6 +1702,7 @@ AGAIN:
                 }
             }
             /* Else - time's up! Get to work.        */
+            p->session_started = True;
 
             /*
              * If not doing buckets, then the loop is
@@ -1678,7 +1761,7 @@ AGAIN:
             /*
              * No more data to parse.
              */
-            if(!call_stop && !nrecs)
+            if(!p->call_stop && !nrecs)
                 break;
 
             /*
@@ -1842,7 +1925,7 @@ cleanup:
                 break;
         }
 
-        if(p->cntrl && call_stop){
+        if(p->cntrl && p->call_stop){
             if(OWPStopSessions(p->cntrl,NULL,&aval)<OWPErrWARNING){
                 OWPControlClose(p->cntrl);
                 p->cntrl = NULL;
