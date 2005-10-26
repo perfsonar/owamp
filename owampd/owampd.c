@@ -369,10 +369,26 @@ static I2Boolean
 ClosePipes(
         I2Datum key,
         I2Datum value,
-        void    *app_data   __attribute__((unused))
+        void    *app_data
         )
 {
     ChldState   cstate = value.dptr;
+    int         sd = 0;
+
+    if(app_data){
+        sd = *(int *)app_data;
+    }
+
+    /*
+     * shutdown the socket if terminating so child processes will
+     * not wait for responses when releasing resources.
+     */
+    if(sd){
+        if( (shutdown(cstate->fd,SHUT_RDWR) != 0)){
+            OWPError(cstate->policy->ctx,OWPErrWARNING,OWPErrUNKNOWN,
+                    "shutdown(%d,SHUT_RDWR): %M", cstate->fd);
+        }
+    }
 
     while((close(cstate->fd) < 0) && (errno == EINTR));
     if(I2HashDelete(fdtable,key) != 0){
@@ -1630,7 +1646,8 @@ main(int argc, char *argv[])
      * Close all the pipes so pipe i/o can stay simple. (Don't have
      * to deal with interrupts for this.)
      */
-    I2HashIterate(fdtable,ClosePipes,NULL);
+    rc=1;
+    I2HashIterate(fdtable,ClosePipes,&rc);
 
     /*
      * Loop until all children have been waited for, or until
@@ -1651,7 +1668,6 @@ main(int argc, char *argv[])
         I2ErrLog(errhand,
                 "Children still alive... Time for brute force.");
         kill(-mypid,SIGKILL);
-        exit(1);
     }
 
     I2ErrLog(errhand,"%s: exited.",progname);

@@ -1175,13 +1175,6 @@ OWPStopSessions(
     }
 
 done:
-    if(err2 < OWPErrWARNING){
-        if(*acceptval == OWP_CNTRL_ACCEPT){
-            *acceptval = OWP_CNTRL_FAILURE;
-        }
-        (void)_OWPFailControlSession(cntrl,err2);
-    }
-
     /*
      * Free memory from sessions
      */
@@ -1190,10 +1183,16 @@ done:
         err2 = MIN(err,err2);
     }
 
+    if(err2 < OWPErrWARNING){
+        if(*acceptval == OWP_CNTRL_ACCEPT){
+            *acceptval = OWP_CNTRL_FAILURE;
+        }
+        (void)_OWPFailControlSession(cntrl,err2);
+    }
 
     cntrl->state &= ~_OWPStateTest;
 
-    return MIN(err,err2);
+    return err2;
 }
 
 int

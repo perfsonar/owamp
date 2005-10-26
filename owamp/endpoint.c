@@ -1615,22 +1615,32 @@ recvfromttl(
         switch(local->sa_family){
 #ifdef        AF_INET6
             case AF_INET6:
+#ifdef  IPV6_HOPLIMIT
                 if(cmdmsgptr->cmsg_level == IPPROTO_IPV6 &&
-                        cmdmsgptr->cmsg_type ==
-                        IPV6_UNICAST_HOPS){
-                    memcpy(ttl,CMSG_DATA(cmdmsgptr),
-                            sizeof(u_int8_t));
+                        cmdmsgptr->cmsg_type == IPV6_HOPLIMIT){
+                    /*
+                     * IPV6_HOPLIMIT is defined as an int, type coercion
+                     * will convert it to a u_int8_t.
+                     */
+                    *ttl = *(int *)CMSG_DATA(cmdmsgptr);
                     goto NEXTCMSG;
                 }
+#endif
                 break;
 #endif
             case AF_INET:
+#ifdef  IP_RECVTTL
+                /*
+                 * TODO: Linux has used (cmsg_type == IP_TTL). FreeBSD,
+                 * OS X use IP_RECVTTL - and this use seems more inline
+                 * with the standards... Need to check if Linux is fixed.
+                 */
                 if(cmdmsgptr->cmsg_level == IPPROTO_IP &&
-                        cmdmsgptr->cmsg_type == IP_TTL){
-                    memcpy(ttl,CMSG_DATA(cmdmsgptr),
-                            sizeof(u_int8_t));
+                        cmdmsgptr->cmsg_type == IP_RECVTTL){
+                    *ttl = *(u_int8_t *)CMSG_DATA(cmdmsgptr);
                     goto NEXTCMSG;
                 }
+#endif
                 break;
             default:
                 OWPError(ctx,OWPErrFATAL,OWPErrINVALID,

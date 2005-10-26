@@ -120,14 +120,14 @@ static void
 print_output_args()
 {
     fprintf(stderr,
-            "              [Output Args]\n\n"
-            "   -d dir         directory to save session file in\n"
-            "   -C count       number of test packets (per summary)\n"
-            "   -p             print completed filenames to stdout\n"
-            "   -b bucketWidth create summary files with buckets(seconds)\n"
-            "   -h             print this message and exit\n"
-            "   -e             syslog facility to log to\n"
-            "   -r             syslog facility to STDERR\n"
+"              [Output Args]\n\n"
+"   -d dir         directory to save session file in\n"
+"   -N count       number of test packets (per summary)\n"
+"   -p             print filenames to stdout, and summarize sessions\n"
+"   -b bucketWidth create summary files with buckets(seconds)\n"
+"   -h             print this message and exit\n"
+"   -e             syslog facility to log to\n"
+"   -r             syslog facility to STDERR\n"
            );
 }
 
@@ -1569,9 +1569,9 @@ NextConnection:
 wait_again:
             rc = OWPStopSessionsWait(p->cntrl,NULL,&pow_intr,&aval,&err_ret);
             if(rc<0){
-                /* error */
-                OWPControlClose(p->cntrl);
-                p->cntrl = NULL;
+                /* error - reset sessions and start over. */
+                CloseSessions();
+                goto NextConnection;
             }
             else if(rc==2){
                 /*
@@ -1932,19 +1932,9 @@ cleanup:
             }
         }
 
-
         /*
-         * If we broke out of the loop early, then the connections
-         * are in a strange state and need to be reset.
+         * TODO: Write out complete session summary
          */
-        if(sum < numSummaries){
-            /*
-             * This session ended prematurely - q needs to
-             * be reset for an immediate start time!.
-             */
-            ResetSession(q,p);
-            goto NextConnection;
-        }
 
         /*
          * Write out the complete owp session file.
@@ -1959,6 +1949,13 @@ cleanup:
         while(p->testfp && (fclose(p->testfp) != 0) && errno==EINTR);
         p->fp = p->testfp = NULL;
 
+        if(sum < numSummaries){
+            /*
+             * This session ended prematurely - q needs to
+             * be reset for an immediate start time!.
+             */
+            ResetSession(q,p);
+        }
     }
 
     exit(0);

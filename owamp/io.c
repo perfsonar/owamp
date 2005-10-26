@@ -37,7 +37,7 @@ _OWPSendBlocksIntr(
     n = I2Writeni(cntrl->sockfd,buf,num_blocks*_OWP_RIJNDAEL_BLOCK_SIZE,
             retn_on_intr);
     if(n < 0){
-        if(!*retn_on_intr || (errno != EINTR)){
+        if(!*retn_on_intr || ((errno != EINTR) && (errno != EPIPE))){
             OWPError(cntrl->ctx,OWPErrFATAL,errno,
                     "I2Writeni(): %M");
         }
@@ -60,7 +60,7 @@ _OWPReceiveBlocksIntr(
     n = I2Readni(cntrl->sockfd,buf,num_blocks*_OWP_RIJNDAEL_BLOCK_SIZE,
             retn_on_intr);
     if(n < 0){
-        if(!*retn_on_intr || (errno != EINTR)){
+        if(!*retn_on_intr || ((errno != EINTR) && (errno != EPIPE))){
             OWPError(cntrl->ctx,OWPErrFATAL,errno,"I2Readni(): %M");
         }
         return -1;
