@@ -20,6 +20,7 @@
  */
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #include <owamp/owamp.h>
 
 struct OWPExpContextRec{
@@ -278,7 +279,7 @@ int CheckSlots(
             case OWPSlotLiteralType:
                 break;
             default:
-                OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                OWPError(ctx,OWPErrFATAL,EINVAL,
                         "OWPScheduleContextGenerateNextDelta: Invalid slot");
                 return 1;
         }

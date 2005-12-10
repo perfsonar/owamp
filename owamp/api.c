@@ -1151,7 +1151,6 @@ OWPStopSessions(
      */
     (void)OWPGetTimeOfDay(cntrl->ctx,&stoptime);
 
-
     /*
      * Stop Recv side sessions now that we have received the
      * StopSessions message (even though it has not been completely
@@ -1328,6 +1327,11 @@ AGAIN:
             break;
 
         case OWPReqSockClose:
+            /*
+             * TODO: Go through all recv sessions and delete
+             * all missing packet records *after* the last
+             * good one. (section 3.8 of draft 14)
+             */
             OWPError(cntrl->ctx,OWPErrFATAL,errno,
                     "OWPStopSessionsWait: Control socket closed: %M");
             *err_ret = OWPErrFATAL;
@@ -1450,10 +1454,10 @@ OWPAddrNodeName(
     }
 
     if(!addr->node_set && addr->saddr &&
-            getnameinfo(addr->saddr,addr->saddrlen,
+            (getnameinfo(addr->saddr,addr->saddrlen,
                 addr->node,sizeof(addr->node),
                 addr->port,sizeof(addr->port),
-                NI_NUMERICHOST|NI_NUMERICSERV) == 0){
+                NI_NUMERICHOST|NI_NUMERICSERV) == 0)){
         addr->node_set = 1;
         addr->port_set = 1;
     }
@@ -1500,13 +1504,11 @@ OWPAddrNodeService(
         goto bail;
     }
 
-    if(!addr->port_set && addr->saddr &&
-            getnameinfo(addr->saddr,addr->saddrlen,
-                addr->node,sizeof(addr->node),
-                addr->port,sizeof(addr->port),
-                NI_NUMERICHOST|NI_NUMERICSERV) == 0){
-        addr->node_set = 1;
-        addr->port_set = 1;
+    if(!addr->port_set){
+        char    t[NI_MAXHOST];
+        size_t  lent = NI_MAXHOST;
+
+        OWPAddrNodeName(addr,t,&lent);
     }
 
     if(addr->port_set){

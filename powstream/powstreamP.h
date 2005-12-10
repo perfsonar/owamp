@@ -129,7 +129,6 @@ struct pow_parse_rec{
     I2Table             buckets;
     u_int32_t           *bucketvals;
     u_int32_t           nbuckets;
-    I2Boolean           bucketerror;
     double              maxerr;
     u_int32_t           sync;
     u_int32_t           dups;

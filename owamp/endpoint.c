@@ -307,7 +307,7 @@ anon_file(
         goto error;
     }
 
-    if( !(fpath = calloc(sizeof(char),(size_t)pathlen))){
+    if( !(fpath = calloc((size_t)pathlen,sizeof(char)))){
         OWPError(ctx,OWPErrFATAL,errno,"calloc(%d): %M",pathlen);
         goto error;
     }
@@ -582,7 +582,7 @@ success:
             PACKBUFFALLOCFACTOR;
         ep->numalist = MAX(ep->numalist,100);
 
-        if(!(alist = calloc(sizeof(OWPLostPacketRec),ep->numalist))){
+        if(!(alist = calloc(ep->numalist,sizeof(OWPLostPacketRec)))){
             OWPError(cntrl->ctx,OWPErrFATAL,errno,"calloc(): %M");
             goto error;
         }
@@ -597,8 +597,7 @@ success:
             ep->freelist = &alist[i];
         }
 
-        if(!(ep->lost_packet_buffer = I2HashInit(cntrl->ctx->eh,
-                        ep->numalist*PACKBUFFALLOCFACTOR,
+        if(!(ep->lost_packet_buffer = I2HashInit(cntrl->ctx->eh,ep->numalist,
                         CmpLostPacket,HashLostPacket))){
             OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
                     "_OWPEndpointInit: Unable to initialize lost packet buffer");
@@ -783,7 +782,7 @@ success:
         ep->num_allocskip = .10 * ep->tsession->test_spec.npackets;
         ep->num_allocskip = MIN(ep->num_allocskip,100);
 
-        if(!(askip = calloc(sizeof(_OWPSkipRec),ep->num_allocskip))){
+        if(!(askip = calloc(ep->num_allocskip,sizeof(_OWPSkipRec)))){
             OWPError(cntrl->ctx,OWPErrFATAL,errno,"calloc(): %M");
             goto error;
         }
@@ -1013,7 +1012,7 @@ skip(
     if(!ep->free_skiplist){
         u_int32_t   i;
 
-        if(!(node = calloc(sizeof(_OWPSkipRec),ep->num_allocskip))){
+        if(!(node = calloc(ep->num_allocskip,sizeof(_OWPSkipRec)))){
             OWPError(ep->cntrl->ctx,OWPErrFATAL,errno,
                     "calloc(): %M");
             exit(OWP_CNTRL_UNAVAILABLE_TEMP);
@@ -1439,7 +1438,7 @@ alloc_node(
 
         OWPError(ep->cntrl->ctx,OWPErrWARNING,OWPErrUNKNOWN,
                 "alloc_node: Allocating nodes for lost-packet-buffer!");
-        if(!(node = calloc(sizeof(OWPLostPacketRec),ep->numalist))){
+        if(!(node = calloc(ep->numalist,sizeof(OWPLostPacketRec)))){
             OWPError(ep->cntrl->ctx,OWPErrFATAL,errno,
                     "calloc(): %M");
             return NULL;
@@ -1633,7 +1632,9 @@ recvfromttl(
                 /*
                  * TODO: Linux has used (cmsg_type == IP_TTL). FreeBSD,
                  * OS X use IP_RECVTTL - and this use seems more inline
-                 * with the standards... Need to check if Linux is fixed.
+                 * with the standards... Need to check if Linux is fixed
+                 * in latest versions or will need to add an additional
+                 * check for IP_TTL here.
                  */
                 if(cmdmsgptr->cmsg_level == IPPROTO_IP &&
                         cmdmsgptr->cmsg_type == IP_RECVTTL){
@@ -1678,7 +1679,6 @@ run_receiver(
     u_int8_t            *z1,*z2;
     u_int8_t            zero[12];
     u_int8_t            iv[16];
-    u_int8_t            recvbuf[10];
     u_int32_t           esterror,lasterror=0;
     u_int8_t            sync;
     OWPTimeStamp        expecttime;
@@ -1803,8 +1803,8 @@ run_receiver(
     }
 
     while(1){
-        struct sockaddr_storage        peer_addr;
-        socklen_t                peer_addr_len;
+        struct sockaddr_storage peer_addr;
+        socklen_t               peer_addr_len;
 again:
         /*
          * set itimer to go off just past loss_timeout after the time
@@ -1844,11 +1844,12 @@ again:
 
         peer_addr_len = sizeof(peer_addr);
         memset(&peer_addr,0,sizeof(peer_addr));
-        if(recvfromttl(ep->cntrl->ctx,ep->sockfd,
+        if(!owp_usr2 &&
+                (recvfromttl(ep->cntrl->ctx,ep->sockfd,
                     ep->payload,ep->len_payload,
                     ep->localaddr->saddr,ep->localaddr->saddrlen,
                     (struct sockaddr*)&peer_addr,&peer_addr_len,
-                    &datarec.ttl) != (ssize_t)ep->len_payload){
+                    &datarec.ttl) != (ssize_t)ep->len_payload)){
             if(errno != EINTR){
                 OWPError(ep->cntrl->ctx,OWPErrFATAL,
                         OWPErrUNKNOWN,"recvfromttl(): %M");
@@ -1887,6 +1888,27 @@ again:
         timespecadd(&expectspec,&lostspec);
 
         /*
+         * If owp_usr2, then StopSessions has been received. We
+         * need to flush all records for the test now. So, artificailly
+         * set currtime to a time greater than expectspec so the loop
+         * will continue until all packet records are flushed.
+         * XXX:
+         * This is an over-kill solution to ensure missing
+         * packet records are in the session. A better solution
+         * would only flush record up through the "Next Seqno"
+         * field passed in the StopSessions message from the
+         * sender. But, since that is not available in this
+         * process- and we have no way of knowing just how far offset the 
+         * sender/receiver clocks are, this is the temporary
+         * fix. Unneeded records will be deleted by the parent.
+         */
+        if(owp_usr2){
+            timespecclear(&currtime);
+            timespecadd(&currtime,&expectspec);
+            timespecadd(&currtime,&lostspec);
+        }
+
+        /*
          * Flush the missing packet buffer. Output missing packet
          * records along the way.
          */
@@ -1901,8 +1923,7 @@ again:
              * already have missing packet records in our
              * queue.)
              */
-            if(!ep->begin->hit &&
-                    (ep->begin->seq < ep->tsession->test_spec.npackets)){
+            if(!ep->begin->hit){
                 /*
                  * set fields in datarec for missing packet
                  * record.
@@ -1935,18 +1956,6 @@ again:
                     maxseq = datarec.seq_no;
                 }
             }
-            /*
-             * This is not likely... But it is a sure indication
-             * of problems.
-             */
-            else if((ep->begin->hit) &&
-                    (ep->begin->seq >= ep->tsession->test_spec.npackets)){
-                OWPError(ep->cntrl->ctx,OWPErrFATAL,
-                        OWPErrINVALID,
-                        "Invalid packet seq received");
-                goto error;
-            }
-
 
             /*
              * Pop the front off the queue.
@@ -1969,6 +1978,13 @@ again:
             timespecclear(&expectspec);
             timespecadd(&expectspec,&ep->begin->absolute);
             timespecadd(&expectspec,&lostspec);
+
+            if(owp_usr2){
+                timespecclear(&currtime);
+                timespecadd(&currtime,&expectspec);
+                timespecadd(&currtime,&lostspec);
+            }
+
         }
 
         /*
@@ -2036,8 +2052,12 @@ again:
         }
 
         datarec.seq_no = ntohl(*seq);
-        if(datarec.seq_no >= ep->tsession->test_spec.npackets)
+        if(datarec.seq_no >= ep->tsession->test_spec.npackets){
+            OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                    "run_recv: Invalid seq_no received");
             goto error;
+        }
+
         /*
          * If it is no-longer in the buffer, than we ignore
          * it.
@@ -2058,20 +2078,10 @@ again:
          */
         _OWPDecodeTimeStamp(&datarec.send,tstamp);
         if(!_OWPDecodeTimeStampErrEstimate(&datarec.send,tstamperr)){
-            goto again;
-        }
-
-        /*
-         * Encode the recv time to buffer right away to catch
-         * problems with the esterror.
-         */
-        _OWPEncodeTimeStamp(&recvbuf[0],&datarec.recv);
-        if(!_OWPEncodeTimeStampErrEstimate(&recvbuf[8],&datarec.recv)){
             OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                    "Invalid recv timestamp!");
+                    "Invalid send timestamp!");
             goto error;
         }
-
 
         /*
          * Now we can start the validity tests from Section 4.2 of

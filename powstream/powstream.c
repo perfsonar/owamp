@@ -952,10 +952,18 @@ IterateSumSession(
     parse->seen[rec->seq_no].seen++;
 
     /*
+     * Delay and ttl values only count for the first recieved
+     * packet, so return if this was a duplicate.
+     */
+    if(parse->seen[rec->seq_no].seen > 1){
+        return 0;
+    }
+
+    /*
      * If doing summary, and this is not a duplicate packet, bucket
      * this delay.
      */
-    if(parse->buckets && (parse->seen[rec->seq_no].seen == 1)){
+    if(parse->buckets){
         I2Datum key,val;
         double  d;
         int     b;
@@ -987,7 +995,7 @@ IterateSumSession(
         b = (d<0)?floor(d):ceil(d);
 
         key.dsize = b;
-        key.dptr = &key.dsize;
+        key.dptr = NULL;
         if(I2HashFetch(parse->buckets,key,&val)){
             (*(u_int32_t*)val.dptr)++;
         }
@@ -1868,8 +1876,14 @@ AGAIN:
                 if(parse.min_ttl < 255){
                     fprintf(parse.fp,"MINTTL\t%u\n",parse.min_ttl);
                 }
+                else{
+                    fprintf(parse.fp,"MINTTL\tundef\n");
+                }
                 if(parse.max_ttl > 0){
                     fprintf(parse.fp,"MAXTTL\t%u\n",parse.max_ttl);
+                }
+                else{
+                    fprintf(parse.fp,"MAXTTL\tundef\n");
                 }
 
                 /*

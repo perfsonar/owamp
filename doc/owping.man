@@ -59,6 +59,36 @@ seconds to and from the \fIpeerhost\fR. Then, the receivers on each host
 will wait a reasonable period after that to count possible duplicate packets.
 (See the \fI\-L\fR option.) Upon completion of the sessions, summary statistics
 are printed to STDOUT.
+.PP
+The normal texual summary information was designed to be similar to the
+results from \fBping\fR as possible. It includes:
+.IP SID
+Session Identifier. This value is unique for every test session.
+.IP sent, lost, duplicates
+Number of packets that were sent, lost, and duplicated as seen by \fBOWAMP\fR.
+.IP min delay, median delay, error estimate
+Minimum and Median delay seen for sample. Maximum error estimate for
+the sample.
+.IP Jitter
+An estimate of how "stable" the delay samples are. \fBowping\fR reports
+the interquartile range for this. (The 95th percentile of delay - 50th
+percentile of delay).
+.IP Additional percentiles
+If the \fI\-a\fR option is used, percentiles from the sample are
+displayed.
+.IP TTL information
+\fBOWAMP\fR collects TTL information from the packets. The minimum and maximum
+TTL value seen is reported. The number of distinct TTL values that have been
+seen is also reported.
+.IP reordering
+Finally \fBOWAMP\fR reports the amount of re-ordering it observed. A
+description of the metric used to report this can be found at:
+.br
+\%http://www.internet2.edu/~shalunov/ippm/draft-shalunov-reordering-definition-01.txt.
+.PP
+The \fI\-v\fR option can be used to print out information about each
+individual packet record. Additionally, the \fI\-R\fR and \fI\-M\fR options
+can be used to output the data in more programmer friendly formats.
 .SH OPTIONS
 .TP
 \fB\-h\fR
@@ -111,7 +141,7 @@ mutually exclusive with the \fI\-D\fR option.
 .I send_schedule
 indicates the scheduled delay between sent packets. This is done by
 specifying a list of \fIdelays\fR in a comma separated string (spaces are
-not allowed. Each \fIdelay\fR
+not allowed). Each \fIdelay\fR
 is indicated by a \fIvalue\fR and a \fItype\fR. There are two currently
 available types of \fIdelays\fR that can be specified:
 .RS
@@ -267,11 +297,51 @@ Unset.
 .RE
 .SS Output Options:
 .TP
-\fB\-a\fR \fIpercentile\fR
+\fB\-a\fR \fIpercentile_list\fR
 .br
-Specify an additional \fIpercentile\fR to print out in addition to the 
-minimum and the median when printing summary statistics.
+.I percentile_list
+indicates the list of quantiles to be reported out in addition to
+median. This is done by specifying a list of \fIpercentiles\fR in
+a comma separated string (spaces are not allowed). Each \fIpercentile\fR
+is indicated by a floating point value between 0.0 and 100.0.
+
+This value is only used if \fBowping\fR is reporting summary statistics.
 .RS
+.IP Default:
+Unset.
+.RE
+.TP
+\fB\-M\fR
+.br
+Print summary information in a more computer parsable format. Specifically,
+values are printed out in a key/value style. Units are seconds for all values.
+
+The \fI\-M\fR option implies \fI\-Q\fR.
+.RS
+.IP Default:
+Unset.
+.RE
+.TP
+\fB\-n\fR \fIunits\fR
+.br
+.I units
+indicates what units time values should be reported in. \fIunits\fR is
+specified using a single charactor specifying the units wanted.
+.RS
+.PP
+The available units are:
+.br
+.TS
+li l .
+\'n\'	nanoseconds (ns)
+\'u\'	microseconds (us)
+\'m\'	milliseconds (ms)
+\'s\'	seconds (s)
+.TE
+.PP
+This is only used for the summary statistics and the \fB\-v\fR mode of
+reporting individual records. In particular, it is not used for the
+\fB\-R\fR or \fB\-m\fR output modes.
 .IP Default:
 Unset.
 .RE

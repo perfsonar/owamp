@@ -42,9 +42,11 @@ typedef    struct {
      */
     struct  {
         /* Flags */
+
         I2Boolean       records;            /* -v */
         I2Boolean       quiet;              /* -Q */
         I2Boolean       raw;                /* -R */
+        I2Boolean       machine;            /* -M */
 
         I2Boolean       to;                 /* -t */
         I2Boolean       from;               /* -f */
@@ -58,7 +60,11 @@ typedef    struct {
 
         double          lossThreshold;      /* -L */
         double          delayStart;         /* -z */
-        float           percentile;         /* -a */
+
+        float           *percentiles;       /* -a */
+        u_int32_t       npercentiles;
+        char            units;              /* -n */
+        float           bucket_width;       /* -b */
 
         char            *srcaddr;           /* -S */
 

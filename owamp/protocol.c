@@ -2191,7 +2191,7 @@ _OWPReadStopSessions(
         u_int32_t                   lowI,midI,highI,num_recs;
         u_int8_t                    rbuf[_OWP_MAXDATAREC_SIZE];
         OWPDataRec                  rec;
-        OWPSkipRec                 prev_skip, curr_skip;
+        OWPSkipRec                  prev_skip, curr_skip;
         u_int32_t                   next_seqno;
         u_int32_t                   num_skips;
 
@@ -2288,7 +2288,7 @@ _OWPReadStopSessions(
         /*
          * If there is no data, this is a very simple file...
          */
-        if(!fhdr.num_datarecs) goto done_data;
+        if(!fhdr.num_datarecs) goto clean_data;
 
         /*
          * Seek to beginning of data records.
@@ -2520,6 +2520,8 @@ loop_err:
             goto err;
         }
 
+clean_data:
+
         /*
          * No longer need two fp's.
          */
@@ -2527,7 +2529,6 @@ loop_err:
             fclose(wfp);
         }
 
-done_data:
         /*
          * Write NumDataRecords into file.
          * (This MUST be done before adding any skip records to the file

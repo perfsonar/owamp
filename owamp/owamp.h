@@ -1349,6 +1349,187 @@ OWPIsLostRecord(
         );
 
 /*
+ * TODO: This needs lots of clean-up to be a good public interface.
+ * Most of these fields do not really need to be exposed.
+ *
+ * This structure is used to pass into a OWPDoDataRecord function
+ * that will parse an owd file and generate some statistics.
+ */
+typedef struct OWPPacketRec OWPPacketRec, *OWPPacket;
+struct OWPPacketRec{
+    OWPPacket       next;
+    u_int32_t       seq;        /* packet seq no */
+    OWPNum64        schedtime;   /* scheduled send time */
+    u_int32_t       seen;       /* how many times seen? */
+    OWPBoolean      lost;
+};
+
+typedef struct OWPBucketRec OWPBucketRec, *OWPBucket;
+struct OWPBucketRec{
+    OWPBucket   next;
+    int         b;      /* bucket index */
+    u_int32_t   n;      /* samples in this bucket */
+};
+
+typedef struct OWPStatsRec{
+
+    /*
+     * Error reporting context
+     */
+    OWPContext          ctx;
+
+    /*
+     * Output values
+     */
+    FILE                *output;    /* If set, verbose description of rec's */
+
+    char                fromhost[NI_MAXHOST];
+    char                fromaddr[NI_MAXHOST];
+    char                fromserv[NI_MAXSERV];
+
+    char                tohost[NI_MAXHOST];
+    char                toaddr[NI_MAXHOST];
+    char                toserv[NI_MAXSERV];
+    
+    float               scale_factor;
+    char                scale_abrv[3];
+
+    /*
+     * data file information
+     */
+    FILE                *fp;
+    OWPSessionHeaderRec hdr_rec;
+    OWPSessionHeader    hdr;    /* file header                          */
+    OWPSkip             skips;
+    long int            iskip;
+
+    /*
+     * TestSession information
+     */
+    OWPScheduleContext  sctx;
+    u_int32_t           isctx;  /* index for next seq_no */
+    OWPNum64            endnum; /* current sched time for (isctx-1) */
+
+    /*
+     * Parsing information
+     */
+    u_int32_t           i;      /* keeps track of current record index  */
+
+    u_int32_t           first;  /* first seqno of interest (inclusive)  */
+    u_int32_t           last;   /* last seqno of interest (non-inclusive)   */
+
+    off_t               begin_oset; /* starting file offset                 */
+    off_t               next_oset;  /* upon completing, this will have either
+                                     * null, or the offset of the first seqno
+                                     * greater than or equal to "last".
+                                     */
+    u_int32_t           sent;   /* actual number sent */
+
+    /*
+     * Packet records (used to count dups/lost)
+     */
+    I2Table         ptable;
+    long int        plistlen;
+    OWPPacket       pallocated;
+    OWPPacket       pfreelist;
+    OWPPacket       pbegin;
+    OWPPacket       pend;
+
+    /*
+     * Delay histogram
+     */
+    double          bucketwidth;
+    I2Table         btable;
+    long int        blistlen;
+    OWPBucket       ballocated;
+    OWPBucket       bfreelist;
+    OWPBucket       *bsort;
+    uint32_t        bsorti;         /* current index */
+    uint32_t        bsortsize;      /* number used in sort array */
+    uint32_t        bsortlen;       /* number allocated */
+
+    /*
+     * TTL info - histogram of received TTL values.
+     */
+    u_int8_t        ttl_count[256];
+
+    /*
+     * Reordering buffers
+     */
+    long int        rlistlen;
+    long int        rindex;
+    long int        rnumseqno;
+    u_int32_t       *rseqno;    /* buffer of seqno's seen */
+    u_int32_t       *rn;        /* number of j-reordered packets */
+
+    /*
+     * Summary Stats
+     */
+    double          inf_delay;
+    double          min_delay;
+    double          max_delay;
+    OWPBoolean      sync;
+    double          maxerr;
+
+    u_int32_t       dups;
+    u_int32_t       lost;
+
+} OWPStatsRec, *OWPStats;
+
+/*
+ * Stats utility functions:
+ *
+ * The Stats functions are used to create/free context for statistics
+ * functions as well as providing those functions.
+ */
+
+extern void
+OWPStatsFree(
+        OWPStats    stats
+        );
+
+extern OWPStats
+OWPStatsCreate(
+        OWPContext          ctx,
+        FILE                *fp,
+        OWPSessionHeader    hdr,
+        char                *fromhost,  /* from hostname */
+        char                *tohost,    /* to hostname */
+        char                scale,
+        double              bucketWidth
+        );
+
+extern OWPBoolean
+OWPStatsParse(
+        OWPStats    stats,
+        FILE        *output,
+        off_t       begin_oset,
+        u_int32_t   first,
+        u_int32_t   last
+        );
+
+extern OWPBoolean
+OWPStatsPrintSummary(
+        OWPStats    stats,
+        FILE        *output,
+        float       *percentiles,
+        u_int32_t   npercentiles
+        );
+
+extern OWPBoolean
+OWPStatsPrintMachine(
+        OWPStats    stats,
+        FILE        *output
+        );
+
+extern float
+OWPStatsScaleFactor(
+        char        scale,
+        char        *abrv,
+        size_t      *abrv_len
+        );
+
+/*
  * How much disk space will a given test require?
  * (This is only an estimate - duplicates/loss will change this.)
  */
