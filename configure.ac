@@ -150,6 +150,9 @@ AC_CHECK_MEMBERS([struct sockaddr.sa_len], , ,
 # Checks for library functions.
 AC_FUNC_MALLOC
 AC_CHECK_FUNCS([memset socket getaddrinfo mergesort])
+AC_SEARCH_LIBS(gethostbyname, nsl)
+AC_SEARCH_LIBS(socketpair, socket)
+AC_SEARCH_LIBS(finite,m)
 
 # Checks for variable/function declarations.
 AC_CHECK_DECLS([optreset])
