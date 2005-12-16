@@ -49,6 +49,8 @@ typedef struct {
     char            *user;
     char            *group;
 
+    OWPBoolean      allowroot;
+
     double          diskfudge;
     u_int32_t       dieby;
     u_int32_t       controltimeout;

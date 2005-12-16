@@ -112,32 +112,4 @@ typedef struct pow_cntrl_rec{
     OWPBoolean          session_started;
 } pow_cntrl_rec, *pow_cntrl;
 
-typedef struct pow_seen_rec{
-    OWPNum64    sendtime;   /* presumed send time. */
-    u_int32_t   seen;
-} pow_seen_rec, *pow_seen;
-
-struct pow_parse_rec{
-    OWPContext          ctx;
-    u_int32_t           i;
-    u_int32_t           first;
-    u_int32_t           last;
-    off_t               begin;
-    off_t               next;
-    pow_seen            seen;
-    OWPSessionHeader    hdr;
-    I2Table             buckets;
-    u_int32_t           *bucketvals;
-    u_int32_t           nbuckets;
-    double              maxerr;
-    u_int32_t           sync;
-    u_int32_t           dups;
-    u_int32_t           lost;
-    double              min_delay;
-    double              max_delay;
-    u_int32_t           min_ttl;
-    u_int32_t           max_ttl;
-    u_int32_t           ttl_count[256];
-    FILE                *fp;
-};
 #endif

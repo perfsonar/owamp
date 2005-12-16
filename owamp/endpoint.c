@@ -1628,20 +1628,26 @@ recvfromttl(
                 break;
 #endif
             case AF_INET:
-#ifdef  IP_RECVTTL
                 /*
-                 * TODO: Linux has used (cmsg_type == IP_TTL). FreeBSD,
-                 * OS X use IP_RECVTTL - and this use seems more inline
-                 * with the standards... Need to check if Linux is fixed
-                 * in latest versions or will need to add an additional
-                 * check for IP_TTL here.
+                 * FreeBSD and OS X seem to use IP_RECVTTL. Linux
+                 * seems to use IP_TTL - but still has IP_RECVTTL
+                 * defined.
+                 *
+                 * Gotta love standards...
                  */
+#ifdef  IP_RECVTTL
                 if(cmdmsgptr->cmsg_level == IPPROTO_IP &&
                         cmdmsgptr->cmsg_type == IP_RECVTTL){
                     *ttl = *(u_int8_t *)CMSG_DATA(cmdmsgptr);
                     goto NEXTCMSG;
                 }
+                else
 #endif
+                if(cmdmsgptr->cmsg_level == IPPROTO_IP &&
+                        cmdmsgptr->cmsg_type == IP_TTL){
+                    *ttl = *(u_int8_t *)CMSG_DATA(cmdmsgptr);
+                    goto NEXTCMSG;
+                }
                 break;
             default:
                 OWPError(ctx,OWPErrFATAL,OWPErrINVALID,

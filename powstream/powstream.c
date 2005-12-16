@@ -405,12 +405,16 @@ write_session(
         OWPBoolean  newend
         )
 {
-    OWPNum64        endnum;
-    char            tfname[PATH_MAX];
-    char            fname[PATH_MAX];
-    char            startname[PATH_MAX];
-    char            endname[PATH_MAX];
-    int             tofd;
+    OWPSessionHeaderRec hdr;
+    OWPNum64            endnum;
+    char                tfname[PATH_MAX];
+    char                fname[PATH_MAX];
+    char                startname[PATH_MAX];
+    char                endname[PATH_MAX];
+    int                 tofd = -1;
+    FILE                *fp = NULL;
+    OWPBoolean          dotf = False;
+    OWPStats            stats = NULL;
 
     /*
      * If this session does not have a started session, there is no
@@ -419,8 +423,15 @@ write_session(
     if(!p->fp || !p->session_started)
         return;
 
+    (void)OWPReadDataHeader(p->ctx,p->fp,&hdr);
+    if( !hdr.header){
+        I2ErrLog(eh,"OWPReadDataHeader(session data [%llu,%llu])",
+                p->currentSessionStartNum,p->currentSessionEndNum);
+        return;
+    }
+
+
     if(newend){
-        OWPSessionHeaderRec hdr;
         struct flock        flk;
         pow_maxsend_rec     sndrec;
         u_int32_t           i;
@@ -429,13 +440,6 @@ write_session(
          * This section reads the packet records
          * in the time period of this sum-session.
          */
-        (void)OWPReadDataHeader(p->ctx,p->fp,&hdr);
-        if( !hdr.header){
-            I2ErrLog(eh,"OWPReadDataHeader(session data [%llu,%llu])",
-                    p->currentSessionStartNum,p->currentSessionEndNum);
-            return;
-        }
-
         /*
          * Determine offset to last datarec
          */
@@ -559,6 +563,7 @@ write_session(
              * session
              * (Temporary resource problems.)
              */
+            case ENOMEM:
             case EMFILE:
             case ENFILE:
             case ENOSPC:
@@ -576,8 +581,9 @@ write_session(
         /*
          * Skip to next session.
          */
-        return;
+        goto skip_data;
     }
+    dotf=True;
 
     /*
      * stat the "from" file, ftruncate the to file,
@@ -598,9 +604,117 @@ write_session(
             fflush(stdout);
         }
     }
-    if(unlink(tfname) != 0){
+
+skip_data:
+
+    while((close(tofd) != 0) && errno==EINTR);
+    if(dotf && (unlink(tfname) != 0)){
         /* note, but ignore the error */
         I2ErrLog(eh,"unlink(%s): %M",tfname);
+    }
+    dotf=False;
+
+    /*
+     * Write out complete session summary
+     */
+
+    /*
+     * Create the stats record if empty. (Did not go through
+     * subsession loop.)
+     */
+    if( !(stats = OWPStatsCreate(p->ctx,p->fp,&hdr,NULL,NULL,'m',
+                    appctx.opt.bucketWidth))){
+        I2ErrLog(eh,"OWPStatsCreate failed");
+        return;
+    }
+
+    /*
+     * Parse the data and compute the statistics
+     */
+    if( !OWPStatsParse(stats,NULL,0,0,~0)){
+        I2ErrLog(eh,"OWPStatsParse failed");
+        goto skip_sum;
+    }
+
+    /*
+     * Make a temporary session filename to hold data.
+     */
+    strcpy(tfname,dirpath);
+    sprintf(startname,OWP_TSTAMPFMT,p->currentSessionStartNum);
+    sprintf(endname,OWP_TSTAMPFMT,endnum);
+    sprintf(&tfname[file_offset],"%s%s%s%s%s",
+            startname,OWP_NAME_SEP,endname,
+            POW_SUM_EXT,POW_INC_EXT);
+
+    while(!(fp = fopen(tfname,"w")) && errno==EINTR);
+    if(!fp){
+
+        I2ErrLog(eh,"fopen(%s): %M",tfname);
+
+        /*
+         * Can't open the file.
+         */
+        switch(errno){
+            /*
+             * reasons to go to the next
+             * session
+             * (Temporary resource problems.)
+             */
+            case ENOMEM:
+            case EMFILE:
+            case ENFILE:
+            case ENOSPC:
+            case EDQUOT:
+                break;
+                /*
+                 * Everything else is a reason to exit
+                 * (Probably permissions.)
+                 */
+            default:
+                exit(1);
+                break;
+        }
+
+        /*
+         * Skip to next session.
+         */
+        goto skip_sum;
+    }
+    dotf=True;
+
+    /*
+     * Actually print out stats
+     */
+    if(!OWPStatsPrintMachine(stats,fp)){
+        goto skip_sum;
+    }
+
+    /*
+     * Relink the incomplete file as a complete one.
+     */
+    strcpy(fname,tfname);
+    sprintf(&fname[ext_offset],"%s",POW_SUM_EXT);
+    if(link(tfname,fname) != 0){
+        /* note, but ignore the error */
+        I2ErrLog(eh,"link(%s,%s): %M",tfname,fname);
+    } else if(appctx.opt.printfiles){
+        /* Now print the filename to stdout */
+        fprintf(stdout,"%s\n",fname);
+        fflush(stdout);
+    }
+
+skip_sum:
+    if(dotf && (unlink(tfname) != 0)){
+        /* note, but ignore the error */
+        I2ErrLog(eh,"unlink(%s): %M",tfname);
+    }
+
+    if(fp){
+        fclose(fp);
+    }
+
+    if(stats){
+        OWPStatsFree(stats);
     }
 
     return;
@@ -921,164 +1035,6 @@ file_clean:
     return 0;
 }
 
-static int
-IterateSumSession(
-        OWPDataRec  *rec,
-        void        *data
-        )
-{
-    struct pow_parse_rec    *parse = (struct pow_parse_rec*)data;
-
-    /*
-     * Mark the first offset that has a record greater than this
-     * sum-session so the next sum-session can start searching here.
-     */
-    if(!parse->next && (rec->seq_no > parse->last))
-        parse->next = parse->begin + parse->i * parse->hdr->rec_size;
-
-    /* increase file index */
-    parse->i++;
-
-    /* return if this record is not part of this sum-session */
-    if((rec->seq_no < parse->first) || (rec->seq_no > parse->last) ||
-            OWPIsLostRecord(rec)){
-        return 0;
-    }
-
-    /*
-     * Record is a good one, notice and count it.
-     */
-    rec->seq_no -= parse->first;
-    parse->seen[rec->seq_no].seen++;
-
-    /*
-     * Delay and ttl values only count for the first recieved
-     * packet, so return if this was a duplicate.
-     */
-    if(parse->seen[rec->seq_no].seen > 1){
-        return 0;
-    }
-
-    /*
-     * If doing summary, and this is not a duplicate packet, bucket
-     * this delay.
-     */
-    if(parse->buckets){
-        I2Datum key,val;
-        double  d;
-        int     b;
-
-        /*
-         * If either side is unsynchronized, record that.
-         */
-        if(!rec->send.sync || !rec->recv.sync){
-            parse->sync = 0;
-        }
-        /*
-         * Comute error from send/recv.
-         */
-        d = OWPGetTimeStampError(&rec->send) + OWPGetTimeStampError(&rec->recv);
-        parse->maxerr = MAX(parse->maxerr,d);
-
-        d = OWPDelay(&rec->send,&rec->recv);
-
-        /*
-         * Save max/min delays
-         */
-        parse->max_delay = MAX(parse->max_delay,d);
-        parse->min_delay = MIN(parse->min_delay,d);
-
-        /*
-         * Compute bucket index value.
-         */
-        d /= appctx.opt.bucketWidth;
-        b = (d<0)?floor(d):ceil(d);
-
-        key.dsize = b;
-        key.dptr = NULL;
-        if(I2HashFetch(parse->buckets,key,&val)){
-            (*(u_int32_t*)val.dptr)++;
-        }
-        else{
-            val.dsize = sizeof(u_int32_t);
-            val.dptr = &parse->bucketvals[parse->nbuckets];
-            parse->bucketvals[parse->nbuckets++] = 1;
-
-            if(I2HashStore(parse->buckets,key,val) != 0){
-                I2ErrLog(eh,"I2HashStore(): Unable to store bucket!");
-                return -1;
-            }
-
-        }
-    }
-
-    /*
-     * Save ttl info
-     */
-    parse->ttl_count[rec->ttl]++;
-    if(rec->ttl != 255){
-        parse->max_ttl = MAX(parse->max_ttl,rec->ttl);
-    }
-    parse->min_ttl = MIN(parse->min_ttl,rec->ttl);
-
-    return 0;
-}
-
-static void
-IterateSumSessionLost(
-        struct pow_parse_rec        *parse
-        )
-{
-    u_int32_t   i,n;
-
-    n = parse->last - parse->first + 1;
-
-    for(i=0;i<n;i++){
-        if(parse->seen[i].seen){
-            parse->dups += (parse->seen[i].seen - 1);
-            continue;
-        }
-        parse->lost++;
-    }
-
-    return;
-}
-
-static u_int32_t
-inthash(
-        I2Datum        key
-       )
-{
-    return (u_int32_t)key.dsize;
-}
-
-static int
-intcmp(
-        const I2Datum        x,
-        const I2Datum        y
-      )
-{
-    return(x.dsize != y.dsize);
-}
-
-static I2Boolean
-PrintBuckets(
-        I2Datum key,
-        I2Datum value,
-        void    *data
-        )
-{
-    struct pow_parse_rec    *parse = (struct pow_parse_rec*)data;
-    int rc;
-
-    fprintf(parse->fp,"\t%d\t%u\n",(int)key.dsize,*(u_int32_t*)value.dptr);
-    rc = I2HashDelete(parse->buckets,key);
-    assert(rc==0);
-
-    return True;
-}
-
-
 int
 main(
         int     argc,
@@ -1106,7 +1062,6 @@ main(
     int                     which=0;        /* which cntrl connect used */
     u_int32_t               numSummaries;
     u_int32_t               iotime;
-    struct pow_parse_rec    parse;
     struct flock            flk;
     struct sigaction        act;
 
@@ -1379,35 +1334,6 @@ main(
             exit(1);
         }
         numSummaries = appctx.opt.numPackets/appctx.opt.numBucketPackets;
-
-        memset(&parse,0,sizeof(struct pow_parse_rec));
-        if(!(parse.seen = malloc(sizeof(pow_seen_rec)*
-                        appctx.opt.numBucketPackets))){
-            I2ErrLog(eh,"malloc(): %M");
-            exit(1);
-        }
-
-        /*
-         * NOTE:
-         * Will use the dsize of the key datum to actually hold
-         * the bucket index, therefore I need to install the cmp
-         * and hash functions. The "actual" datatype is 'unsigned'
-         * so be careful to cast appropriately.
-         */
-        if(!(parse.buckets = I2HashInit(eh,0,intcmp,inthash))){
-            I2ErrLog(eh,"I2HashInit(): %M");
-            exit(1);
-        }
-        /*
-         * Can't use more buckets than we have packets, so this is
-         * definitely enough memory.
-         */
-        if(!(parse.bucketvals = malloc(sizeof(u_int32_t) *
-                        appctx.opt.numBucketPackets))){
-            I2ErrLog(eh,"malloc(): %M");
-            exit(1);
-        }
-        parse.nbuckets = 0;
     }
 
     /*
@@ -1455,8 +1381,6 @@ main(
         exit(1);
     }
     ctx = appctx.lib_ctx;
-    parse.ctx = ctx;
-
 
     owp_set_auth(ctx,progname,&appctx); 
 
@@ -1526,6 +1450,7 @@ main(
         char            fname[PATH_MAX];
         char            startname[PATH_MAX];
         char            endname[PATH_MAX];
+        OWPStats        stats = NULL;
 
 NextConnection:
         sig_check();
@@ -1545,7 +1470,6 @@ NextConnection:
         }
 
         /* init vars for loop */
-        parse.begin=0;
         lastnum=OWPULongToNum64(0);
 
         /*
@@ -1560,7 +1484,7 @@ NextConnection:
             sprintf(endname,OWP_TSTAMPFMT,p->currentSessionEndNum);
             fprintf(stderr,"Starting session [%s - %s] v=%d\n",startname,endname,appctx.opt.verbose);
         }
-            
+
         /*
          * Call StopSessionsWait (blocking) if no summaries
          * are wanted.
@@ -1600,30 +1524,21 @@ wait_again:
          * there are no more sum-sessions to fetch - i.e. the real
          * test session is complete.
          */
+
+        if(stats){
+            OWPStatsFree(stats);
+            stats = NULL;
+        }
+
         for(sum=0;sum<numSummaries;sum++){
-            u_int32_t           arecs,nrecs;
-            off_t               fileend;
+            u_int32_t           nrecs;
             OWPSessionHeaderRec hdr;
             OWPNum64            localstop;
+            FILE                *fp=NULL;
+            OWPBoolean          dotf = False;
 
             if(sig_check())
                 goto NextConnection;
-
-            parse.first = appctx.opt.numBucketPackets*sum;
-            parse.last = (appctx.opt.numBucketPackets*(sum+1))-1;
-            parse.i = 0;
-            parse.next = 0;
-            parse.sync = 1;
-            parse.maxerr = 0.0;
-            parse.dups = parse.lost = 0;
-            parse.min_delay = inf_delay;
-            parse.max_delay = -inf_delay;
-            memset(&parse.ttl_count,0,sizeof(parse.ttl_count));
-            parse.min_ttl = 255;
-            parse.max_ttl = 0;
-            parse.nbuckets = 0;
-            parse.fp = NULL;
-            assert(!parse.buckets || (I2HashNumEntries(parse.buckets)==0));
 
             /*
              * lastnum contains offset for previous sum.
@@ -1636,20 +1551,12 @@ wait_again:
              * This loop sets lastnum to the relative lastnum
              * of this sum-session. (It starts at the relative
              * offset of the lastnum from the previous session.)
-             * It also initializes the "seen" array for this
-             * sum-session. This array saves the presumed sendtimes
-             * in the event "lost" records for those packets
-             * need to be generated.
              */
             for(nrecs=0;nrecs<appctx.opt.numBucketPackets;nrecs++){
 
                 lastnum = OWPNum64Add(lastnum,
                         OWPScheduleContextGenerateNextDelta(p->sctx));
 
-                parse.seen[nrecs].sendtime =
-                    OWPNum64Add(p->currentSessionStartNum,lastnum);
-
-                parse.seen[nrecs].seen = 0;
             }
             /*
              * set localstop to absolute time of final packet.
@@ -1709,23 +1616,15 @@ AGAIN:
                     goto AGAIN;
                 }
             }
-            /* Else - time's up! Get to work.        */
-            p->session_started = True;
 
-            /*
-             * If not doing buckets, then the loop is
-             * complete.
-             */
-            if(!parse.buckets){
-                continue;
-            }
+            /* Time's up! Get to work.        */
+            p->session_started = True;
 
             /*
              * This section reads the packet records
              * in the time period of this sum-session.
              */
             (void)OWPReadDataHeader(ctx,p->fp,&hdr);
-            parse.hdr = &hdr;
 
             /*
              * If no data, then skip.
@@ -1736,56 +1635,31 @@ AGAIN:
             }
 
             /*
-             * Determine offset to end of datarecs
+             * Create the stats record if empty. (first time in loop)
              */
-            if(hdr.oset_skiprecs > hdr.oset_datarecs){
-                fileend = hdr.oset_skiprecs;
-            }
-            else{
-                if(fseeko(p->fp,0,SEEK_END) != 0){
-                    I2ErrLog(eh,"fseeko(): %M");
+            if(!stats){
+                if( !(stats = OWPStatsCreate(ctx,p->fp,&hdr,NULL,NULL,'m',
+                                appctx.opt.bucketWidth))){
+                    I2ErrLog(eh,"OWPStatsCreate failed");
                     break;
                 }
-                if((fileend = ftello(p->fp)) < 0){
-                    I2ErrLog(eh,"ftello(): %M");
-                    break;
-                }
-            }
-
-            /* Determine first position of first record we need to look at. */
-            if(parse.begin < hdr.oset_datarecs){
-                parse.begin = hdr.oset_datarecs;
-            }
-            if(fseeko(p->fp,parse.begin,SEEK_SET) != 0){
-                I2ErrLog(eh,"fseeko(): %M");
-                break;
             }
 
             /*
-             * How many records from "begin" to end of file.
+             * Parse the data and compute the statistics
              */
-            nrecs = (fileend - parse.begin) / hdr.rec_size;
+            if( !OWPStatsParse(stats,NULL,stats->next_oset,
+                        appctx.opt.numBucketPackets*sum,
+                        (appctx.opt.numBucketPackets*(sum+1))-1)){
+                I2ErrLog(eh,"OWPStatsParse failed");
+                break;
+            }
 
             /*
              * No more data to parse.
              */
-            if(!p->call_stop && !nrecs)
+            if(!p->call_stop && !stats->sent)
                 break;
-
-            /*
-             * Iterate over the records in the file and
-             * calculate summary statistics.
-             */
-            if(OWPParseRecords(ctx,p->fp,nrecs,hdr.version,IterateSumSession,
-                        (void*)&parse) != OWPErrOK){
-                I2ErrLog(eh,
-                        "IterateSumSession: sum=%d,arecs=%lu,nrecs=%lu,begin=%lld,first=%lu,last=%lu,oset_datarecs=%llu,fileend=%lld: %M",
-                        sum,arecs,nrecs,parse.begin,
-                        parse.first,parse.last,
-                        hdr.oset_datarecs,fileend);
-                goto cleanup;
-            }
-            IterateSumSessionLost(&parse);
 
             /*
              * If we have read to the end of the stream, we need
@@ -1805,11 +1679,11 @@ AGAIN:
             sprintf(&tfname[file_offset],"%s%s%s%s%s",
                     startname,OWP_NAME_SEP,endname,POW_SUM_EXT,POW_INC_EXT);
 
-            while(!(parse.fp = fopen(tfname,"w")) && errno==EINTR){
+            while(!(fp = fopen(tfname,"w")) && errno==EINTR){
                 if(sig_check())
                     goto NextConnection;
             }
-            if(!parse.fp){
+            if(!fp){
 
                 I2ErrLog(eh,"fopen(%s): %M",tfname);
 
@@ -1825,6 +1699,7 @@ AGAIN:
                     case EMFILE:
                     case ENFILE:
                     case ENOSPC:
+                    case EDQUOT:
                         break;
                         /*
                          * Everything else is a reason to exit
@@ -1840,66 +1715,14 @@ AGAIN:
                  */
                 goto cleanup;
             }
+            dotf=True;
 
             /*
              * File is good, write to it.
              */
-
-            /* PRINT version 1 STATS */
-            fprintf(parse.fp,"SUMMARY\t2.0\n");
-            fprintf(parse.fp,"SENT\t%u\n",appctx.opt.numBucketPackets);
-            fprintf(parse.fp,"MAXERR\t%g\n",parse.maxerr);
-            fprintf(parse.fp,"SYNC\t%u\n",parse.sync);
-            fprintf(parse.fp,"DUPS\t%u\n",parse.dups);
-            fprintf(parse.fp,"LOST\t%u\n",parse.lost);
-
-            /*
-             * PRINT out the delay information/BUCKETS
-             */
-            if(parse.min_delay < inf_delay){
-                fprintf(parse.fp,"MIN\t%g\n",parse.min_delay);
+            if(!OWPStatsPrintMachine(stats,fp)){
+                goto cleanup;
             }
-            if(parse.max_delay > -inf_delay){
-                fprintf(parse.fp,"MAX\t%g\n",parse.max_delay);
-            }
-            fprintf(parse.fp,"BUCKETWIDTH\t%g\n",appctx.opt.bucketWidth);
-            fprintf(parse.fp,"<BUCKETS>\n");
-            I2HashIterate(parse.buckets,PrintBuckets,&parse);
-            fprintf(parse.fp,"</BUCKETS>\n");
-
-            /*
-             * PRINT out the ttl information/buckets
-             * (255 is reported if ttl is not reported, so do not
-             * report any ttl info if all packets report in this bin.)
-             */
-            if(parse.ttl_count[255] < appctx.opt.numBucketPackets+parse.lost){
-                if(parse.min_ttl < 255){
-                    fprintf(parse.fp,"MINTTL\t%u\n",parse.min_ttl);
-                }
-                else{
-                    fprintf(parse.fp,"MINTTL\tundef\n");
-                }
-                if(parse.max_ttl > 0){
-                    fprintf(parse.fp,"MAXTTL\t%u\n",parse.max_ttl);
-                }
-                else{
-                    fprintf(parse.fp,"MAXTTL\tundef\n");
-                }
-
-                /*
-                 * PRINT out the TTLBUCKETS
-                 */
-                fprintf(parse.fp,"<TTLBUCKETS>\n");
-                for(nrecs=0;nrecs<255;nrecs++){
-                    if(!parse.ttl_count[nrecs])
-                        continue;
-                    fprintf(parse.fp,"\t%u\t%u\n",nrecs,parse.ttl_count[nrecs]);
-                }
-                fprintf(parse.fp,"</TTLBUCKETS>\n");
-            }
-
-            fclose(parse.fp);
-            parse.fp = NULL;
 
             /*
              * Relink the incomplete file as a complete one.
@@ -1918,22 +1741,17 @@ AGAIN:
             }
 
 cleanup:
+            if(fp){
+                fclose(fp);
+            }
+            fp = NULL;
+
             /* unlink old name */
-            if(unlink(tfname) != 0){
+            if(dotf && (unlink(tfname) != 0)){
                 /* note, but ignore the error */
                 I2ErrLog(eh,"unlink(%s): %M",tfname);
             }
-
-            if(parse.buckets)
-                I2HashClean(parse.buckets);
-
-            /*
-             * Setup begin offset for next time around.
-             */
-            if(parse.next)
-                parse.begin = parse.next;
-            else
-                parse.begin += parse.i * hdr.rec_size;
+            dotf=False;
 
             if(!p->cntrl)
                 break;
@@ -1945,10 +1763,6 @@ cleanup:
                 p->cntrl = NULL;
             }
         }
-
-        /*
-         * TODO: Write out complete session summary
-         */
 
         /*
          * Write out the complete owp session file.

@@ -1172,8 +1172,6 @@ OWPDPolicyInstall(
     int         len;
     FILE        *kfp,*lfp;
     int         rc;        /* row count */
-    uid_t       euid;
-    gid_t       egid;
 
     /*
      * use variables for the func pointers so the compiler can give
@@ -1220,25 +1218,6 @@ OWPDPolicyInstall(
             !(policy->keys = I2HashInit(eh,0,NULL,NULL))){
         OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
                 "OWPDPolicyInstall: Unable to allocate hashes");
-        return NULL;
-    }
-
-    /*
-     * If the euid is different from "real" uid, than the
-     * "real" uid is "root". Temporarily
-     * take root permissions back to open the keys and
-     * limits files.
-     */
-    euid = geteuid();
-    if((euid != getuid()) && (seteuid(getuid()) != 0)){
-        OWPError(ctx,OWPErrFATAL,errno,
-                "OWPDPolicyInstall: seteuid(): %M");
-        return NULL;
-    }
-    egid = getegid();
-    if((egid != getgid()) && (setegid(getgid()) != 0)){
-        OWPError(ctx,OWPErrFATAL,errno,
-                "OWPDPolicyInstall: setegid(): %M");
         return NULL;
     }
 
@@ -1294,20 +1273,6 @@ OWPDPolicyInstall(
                     lfname);
             return NULL;
         }
-    }
-
-    /*
-     * Now set euid/egid back to original.
-     */
-    if((seteuid(euid) != 0)){
-        OWPError(ctx,OWPErrFATAL,errno,
-                "OWPDPolicyInstall: seteuid(): %M");
-        return NULL;
-    }
-    if((setegid(egid) != 0)){
-        OWPError(ctx,OWPErrFATAL,errno,
-                "OWPDPolicyInstall: setegid(): %M");
-        return NULL;
     }
 
     /*

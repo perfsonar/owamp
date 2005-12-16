@@ -874,6 +874,9 @@ LoadConfig(
         else if(!strncasecmp(key,"loglocation",12)){
             syslogattr.line_info |= I2FILE|I2LINE;
         }
+        else if(!strncasecmp(key,"rootfolly",10)){
+            opts.allowroot = True;
+        }
         else if(!strncasecmp(key,"datadir",8)){
             if(!(opts.datadir = strdup(val))) {
                 fprintf(stderr,"strdup(): %s\n",
@@ -1030,9 +1033,9 @@ main(int argc, char *argv[])
     sigset_t            sigs;
 
 #ifndef NDEBUG
-    char                *optstring = "hvc:d:R:a:S:e:ZU:G:P:w";
+    char                *optstring = "a:c:d:e:fG:hP:R:S:U:vwZ";
 #else        
-    char                *optstring = "hvc:d:R:a:S:e:ZU:G:P:";
+    char                *optstring = "a:c:d:e:fG:hP:R:S:U:vZ";
 #endif
 
     /*
@@ -1150,9 +1153,11 @@ main(int argc, char *argv[])
      */
     while ((ch = getopt(argc, argv, optstring)) != -1){
         switch (ch) {
-            /* Connection options. */
-            case 'v':        /* -v "verbose" */
-                opts.verbose = True;
+            case 'a':        /* -a "authmode" */
+                if (!(opts.authmode = strdup(optarg))) {
+                    I2ErrLog(errhand,"strdup(): %M");
+                    exit(1);
+                }
                 break;
             case 'd':        /* -d "data directory" */
                 if (!(opts.datadir = strdup(optarg))) {
@@ -1160,11 +1165,11 @@ main(int argc, char *argv[])
                     exit(1);
                 }
                 break;
-            case 'a':        /* -a "authmode" */
-                if (!(opts.authmode = strdup(optarg))) {
-                    I2ErrLog(errhand,"strdup(): %M");
-                    exit(1);
-                }
+            case 'f':       /* -f */
+                opts.allowroot = True;
+                break;
+            case 'v':        /* -v "verbose" */
+                opts.verbose = True;
                 break;
             case 'S':  /* -S "src addr" */
                 if (!(opts.srcnode = strdup(optarg))) {
@@ -1265,32 +1270,53 @@ main(int argc, char *argv[])
     }
 
     /*
+     * Install policy for "ctx" - and return policy record.
+     */
+    if(!(policy = OWPDPolicyInstall(ctx,opts.datadir,opts.confdir,
+                    opts.diskfudge,&lbuf,&lbuf_max))){
+        I2ErrLog(errhand, "PolicyInit failed. Exiting...");
+        exit(1);
+    };
+
+    /*
+     * Done with the line buffer. (reset to 0 for consistancy.)
+     */
+    if(lbuf){
+        free(lbuf);
+    }
+    lbuf = NULL;
+    lbuf_max = 0;
+
+    /*
      * If running as root warn if the -U/-G flags not set.
      */
     if(!geteuid()){
         struct passwd        *pw;
         struct group        *gr;
 
-        if(!opts.user){
-            I2ErrLog(errhand,"Running owampd as root is folly!");
-            I2ErrLog(errhand,"Use the -U option!");
-            exit(1);
-        }
-
         /*
          * Validate user option.
          */
+        if(!opts.user){
+            /* no-op */
+            ;
+        }
         if((pw = getpwnam(opts.user))){
             setuser = pw->pw_uid;
         }
         else if(opts.user[0] == '-'){
             setuser = strtoul(&opts.user[1],NULL,10);
-            if(errno || !getpwuid(setuser))
-                setuser = 0;
+            if(errno || !getpwuid(setuser)){
+                I2ErrLog(errhand,"Invalid user/-U option: %s",
+                        opts.user);
+                exit(1);
+            }
         }
-        if(!setuser){
-            I2ErrLog(errhand,"Invalid user/-U option: %s",
-                    opts.user);
+
+        if(!setuser && !opts.allowroot){
+            I2ErrLog(errhand,"Running owampd as root is folly!");
+            I2ErrLog(errhand,
+                    "Use the -U option! (or allow root with the -f option)");
             exit(1);
         }
 
@@ -1328,26 +1354,7 @@ main(int argc, char *argv[])
                     opts.user);
             exit(1);
         }
-
     }
-
-    /*
-     * Install policy for "ctx" - and return policy record.
-     */
-    if(!(policy = OWPDPolicyInstall(ctx,opts.datadir,opts.confdir,
-                    opts.diskfudge,&lbuf,&lbuf_max))){
-        I2ErrLog(errhand, "PolicyInit failed. Exiting...");
-        exit(1);
-    };
-
-    /*
-     * Done with the line buffer. (reset to 0 for consistancy.)
-     */
-    if(lbuf){
-        free(lbuf);
-    }
-    lbuf = NULL;
-    lbuf_max = 0;
 
     /*
      * Setup the "default_mode".

@@ -159,7 +159,9 @@ PacketAlloc(
          * avoided if possible)
          */
         OWPError(stats->ctx,OWPErrINFO,OWPErrUNKNOWN,
-                "PacketAlloc: Allocating nodes for OWPPacket buffer!");
+                "PacketAlloc: Allocating OWPPacket!: plistlen=%u, timeout=%g",
+                stats->plistlen,
+                OWPNum64ToDouble(stats->hdr->test_spec.loss_timeout));
 
         if(!(node = calloc(sizeof(OWPPacketRec),stats->plistlen))){
             OWPError(stats->ctx,OWPErrFATAL,errno,"calloc(): %M");
@@ -743,12 +745,12 @@ OWPStatsCreate(
      * If this factor is too small, there will be entries in syslog and
      * it can be increased. (A dynmic allocation will happen in this event.)
      */
-#define PACKETBUFFERALLOCFACTOR   1.5
+#define PACKETBUFFERALLOCFACTOR   2.5
     d = OWPTestPacketRate(stats->ctx,&stats->hdr->test_spec) *
             OWPNum64ToDouble(stats->hdr->test_spec.loss_timeout) *
             PACKETBUFFERALLOCFACTOR;
     if(d > LONG_MAX){
-        OWPError(stats->ctx,OWPErrWARNING,OWPErrUNKNOWN,
+        OWPError(stats->ctx,OWPErrDEBUG,OWPErrUNKNOWN,
                 "%s: Extreme packet rate (%g) requires excess memory usage",d);
         stats->plistlen = LONG_MAX;
     }
@@ -900,11 +902,6 @@ PacketBeginFlush(
         /* count dups */
         stats->dups += (node->seen - 1);
     }
-    else{
-        OWPError(stats->ctx,OWPErrWARNING,EINVAL,
-                "PacketBeginFlush: no record found for packet seq_no = %u",
-                node->seq);
-    }
 
 flush:
 
@@ -955,7 +952,7 @@ IterateSummarizeSession(
      * last packet of the "previous" session - should reordering be counted?
      *
      */ 
-    if((rec->seq_no < stats->first) || (rec->seq_no >= stats->last)){
+    if((rec->seq_no < stats->first) || (rec->seq_no > stats->last)){
         return 0;
     }
 
@@ -1165,10 +1162,11 @@ BucketBufferSortCmp(
     return (b1->b - b2->b);
 }
 
-static double
+static OWPBoolean
 BucketBufferSortPercentile(
         OWPStats    stats,
-        double      alpha
+        double      alpha,
+        double      *delay_ret
         )
 {
     uint32_t    i;
@@ -1184,10 +1182,11 @@ BucketBufferSortPercentile(
     }
 
     if(i >= stats->bsortsize){
-        return NAN;
+        return False;
     }
 
-    return (stats->bsort[i]->b * stats->bucketwidth);
+    *delay_ret = stats->bsort[i]->b * stats->bucketwidth;
+    return True;
 }
 
 OWPBoolean
@@ -1348,16 +1347,6 @@ OWPStatsParse(
     while(stats->pbegin && PacketBeginFlush(stats));
 
     /*
-     * Cleanup summary values.
-     */
-    if(stats->min_delay >= stats->inf_delay){
-        stats->min_delay = NAN;
-    }
-    if(stats->max_delay <= -stats->inf_delay){
-        stats->max_delay = NAN;
-    }
-
-    /*
      * TODO: Sort Delay histogram
      */
 
@@ -1454,6 +1443,10 @@ OWPStatsPrintSummary(
     u_int8_t    nttl=0;
     u_int8_t    minttl=255;
     u_int8_t    maxttl=0;
+    char        minval[80];
+    char        maxval[80];
+    char        n1val[80];
+    double      d1, d2;
 
     PrintStatsHeader(stats,output);
     fprintf(output,"%u sent, %u lost (%.1f%%), %u duplicates\n",
@@ -1463,10 +1456,43 @@ OWPStatsPrintSummary(
      * Min, Median
      */
 
-    fprintf(output,"one-way delay min/median = %.3g/%.3g %s, ",
-            stats->min_delay*stats->scale_factor,
-            BucketBufferSortPercentile(stats,0.5)*stats->scale_factor,
-            stats->scale_abrv);
+    /*
+     * parse min/max - Sure would be easier if C99 soft-float were portable...
+     * XXX: Just use NAN as the float value once that works everywhere!
+     *      (BucketBufferSortPercentile would be WAY easier!!!)
+     */
+    if(stats->min_delay >= stats->inf_delay){
+        strncpy(minval,"nan",sizeof(minval));
+    }
+    else if( (snprintf(minval,sizeof(minval),"%.3g",
+                    stats->min_delay * stats->scale_factor) < 0)){
+        OWPError(stats->ctx,OWPErrWARNING,errno,
+                    "OWPStatsPrintSummary: snprintf(): %M");
+        strncpy(minval,"XXX",sizeof(minval));
+    }
+    if(stats->max_delay <= -stats->inf_delay){
+        strncpy(maxval,"nan",sizeof(maxval));
+    }
+    else if( (snprintf(maxval,sizeof(maxval),"%.3g",
+                    stats->max_delay * stats->scale_factor) < 0)){
+        OWPError(stats->ctx,OWPErrWARNING,errno,
+                    "OWPStatsPrintSummary: snprintf(): %M");
+        strncpy(maxval,"XXX",sizeof(maxval));
+    }
+
+    if( !BucketBufferSortPercentile(stats,0.5,&d1)){
+        strncpy(n1val,"nan",sizeof(n1val));
+    }
+    else if(snprintf(n1val,sizeof(n1val),"%.3g",
+                      d1 * stats->scale_factor) < 0){
+        OWPError(stats->ctx,OWPErrWARNING,errno,
+                    "OWPStatsPrintSummary: snprintf(): %M");
+        strncpy(n1val,"XXX",sizeof(n1val));
+    }
+
+
+    fprintf(output,"one-way delay min/median/max = %s/%s/%s %s, ",
+            minval,n1val,maxval,stats->scale_abrv);
     if(stats->sync){
         fprintf(output,"(err=%.3g %s)\n",stats->maxerr * stats->scale_factor,
                 stats->scale_abrv);
@@ -1479,10 +1505,18 @@ OWPStatsPrintSummary(
     /*
      * "jitter"
      */
-    fprintf(output,"one-way jitter = %.3g %s (P95-P50)\n",
-            (BucketBufferSortPercentile(stats,0.95) -
-             BucketBufferSortPercentile(stats,0.5)) * stats->scale_factor,
-            stats->scale_abrv);
+    if( !BucketBufferSortPercentile(stats,0.95,&d1) ||
+        !BucketBufferSortPercentile(stats,0.5,&d2)){
+        strncpy(n1val,"nan",sizeof(n1val));
+    }
+    else if(snprintf(n1val,sizeof(n1val),"%.3g",
+                      (d1-d2) * stats->scale_factor) < 0){
+        OWPError(stats->ctx,OWPErrWARNING,errno,
+                    "OWPStatsPrintSummary: snprintf(): %M");
+        strncpy(n1val,"XXX",sizeof(n1val));
+    }
+    fprintf(output,"one-way jitter = %s %s (P95-P50)\n",
+            n1val,stats->scale_abrv);
 
     /*
      * Print out random percentiles
@@ -1490,11 +1524,17 @@ OWPStatsPrintSummary(
     if(npercentiles){
         fprintf(output,"Percentiles:\n");
         for(ui=0;ui<npercentiles;ui++){
-            fprintf(output,"\t%.1f: %.3g %s\n",
-                    percentiles[ui],
-                    BucketBufferSortPercentile(stats,
-                        percentiles[ui]/100.0) * stats->scale_factor,
-                    stats->scale_abrv);
+            if( !BucketBufferSortPercentile(stats,percentiles[ui]/100.0,&d1)){
+                strncpy(n1val,"nan",sizeof(n1val));
+            }
+            else if(snprintf(n1val,sizeof(n1val),"%.3g",
+                        d1 * stats->scale_factor) < 0){
+                OWPError(stats->ctx,OWPErrWARNING,errno,
+                        "OWPStatsPrintSummary: snprintf(): %M");
+                strncpy(n1val,"XXX",sizeof(n1val));
+            }
+            fprintf(output,"\t%.1f: %s %s\n",
+                    percentiles[ui],n1val,stats->scale_abrv);
         }
     }
 
@@ -1539,6 +1579,7 @@ OWPStatsPrintSummary(
         fprintf(output,"%ld-reordering not handled\n",stats->rlistlen+1);
     }
 
+    fprintf(output,"\n");
 
     return True;
 }
@@ -1620,6 +1661,8 @@ OWPStatsPrintMachine(
         fprintf(output,"</TTLBUCKETS>\n");
 
     }
+
+    fprintf(output,"\n");
 
     return True;
 }
