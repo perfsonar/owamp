@@ -152,7 +152,8 @@ representation of the address. It is possible to set the source address
 without setting the \fIport\fR by simply leaving off the ':' and \fIport\fR
 specification. If an IPv6 address is specified, note that the accepted format
 contains \fInodename\fR in square brackets as: [fe80::fe9f:62d8]. This
-ensures the port number is distinct from the address specification.
+ensures the port number is distinct from the address specification. The
+address can be wildcarded by only specifying the \fIport\fR portion.
 .RS
 .IP Default:
 \fInodename\fR is wildcarded as any currently available address

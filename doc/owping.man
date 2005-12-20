@@ -27,7 +27,7 @@
 owping \- Client application to request one-way latency tests.
 .SH SYNOPSIS
 .B owping 
-[\fIoptions\fR] peerhost
+[\fIoptions\fR] peerhost [server[:server_port]]
 .SH DESCRIPTION
 \fBowping\fR is a command line client application that is used to
 initiate one-way latency tests.
@@ -309,6 +309,21 @@ This value is only used if \fBowping\fR is reporting summary statistics.
 .RS
 .IP Default:
 Unset.
+.RE
+.TP
+\fB\-b\fR \fIbucket_width\fR
+.br
+To reasonably compute the delay summary statistics, \fBowping\fR creates
+a histogram of the delays. (This is used to compute percentiles of
+delay such as median.) The
+.I bucket_width
+indicates the resolution of the bins in the histogram. This value
+is specified using a floating point value and the units are seconds.
+
+This value is only used if \fBowping\fR is reporting summary statistics.
+.RS
+.IP Default:
+0.0001 (100 usecs)
 .RE
 .TP
 \fB\-M\fR

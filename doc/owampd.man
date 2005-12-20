@@ -99,6 +99,16 @@ Syslog \fIfacility\fR to which messages are logged.
 LOG_DAEMON
 .RE
 .TP
+.B \-f
+Disables the requirement that \fBowampd\fR be run
+with \fInon-root\fR permissions. There are legitimate reasons to run
+.B owampd
+as root, but it is more risky. (For example, some operating systems
+require root permissions to set the TOS bits used by the \fI\-D\fR and
+\fI\-H\fR options of \fBowping\fR.) This additional option was
+added to ensure that root permissions are only used when explicitly
+intended.
+.TP
 .BI \-G " group"
 Specify the gid for the \fBowampd\fR process. \fIgroup\fR can
 be specified using a valid group name or by using \-gid. This option is
