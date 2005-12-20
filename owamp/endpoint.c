@@ -139,6 +139,10 @@ EndpointClear(
         ep->payload = NULL;
     }
 
+    if(ep->lost_packet_buffer){
+        I2HashClose(ep->lost_packet_buffer);
+    }
+    ep->lost_packet_buffer = NULL;
     LostFree(ep->lost_allocated);
     ep->lost_allocated = NULL;
     SkipFree(ep->skip_allocated);

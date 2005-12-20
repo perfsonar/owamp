@@ -808,6 +808,7 @@ sig_check()
     }
     if(pow_exit){
         I2ErrLog(eh,"SIGTERM/SIGINT: Exiting.");
+while(1);
         exit(0);
     }
     if(pow_reset){
@@ -1064,6 +1065,7 @@ main(
     u_int32_t               iotime;
     struct flock            flk;
     struct sigaction        act;
+    OWPStats                stats = NULL;
 
     progname = (progname = strrchr(argv[0], '/')) ? progname+1 : *argv;
 
@@ -1345,7 +1347,7 @@ main(
         I2ErrLog(eh,
                 "Warning: Holes in data are likely because"
                 " lossThreshold(%g) is too large a fraction"
-                " of approx file session duration(%lu)",
+                " of approx summary session duration(%lu)",
                 appctx.opt.lossThreshold,sessionTime);
     }
 
@@ -1450,7 +1452,6 @@ main(
         char            fname[PATH_MAX];
         char            startname[PATH_MAX];
         char            endname[PATH_MAX];
-        OWPStats        stats = NULL;
 
 NextConnection:
         sig_check();
@@ -1523,8 +1524,10 @@ wait_again:
          * This loops on each "sum" session - it completes when
          * there are no more sum-sessions to fetch - i.e. the real
          * test session is complete.
+         *
+         * stats structures are specific to the file - so any previous
+         * one is no longer valid when we get back here.
          */
-
         if(stats){
             OWPStatsFree(stats);
             stats = NULL;

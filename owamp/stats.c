@@ -560,6 +560,8 @@ OWPStatsFree(
         stats->hdr->test_spec.slots = NULL;
     }
 
+    free(stats);
+
     return;
 }
 
