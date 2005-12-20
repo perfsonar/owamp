@@ -43,22 +43,43 @@ AC_ARG_WITH(efence,
 				[yes means use -L/usr/local/lib -lefence]),
 		with_efence=$withval, with_efence=no)
 
+AC_ARG_WITH(mallocdebug,
+		AC_HELP_STRING([--with-mallocdebug=<path/libefence.a>],
+				[yes means use -lMallocDebug]),
+		with_mallocdebug=$withval, with_mallocdebug=no)
+
+if test "$with_efence" != "no" -a "$with_mallocdebug" != "no"; then
+    AC_MSG_ERROR([--with-efence not valid with --with-mallocdebug]);
+fi
+
 #
-# setup efence
+# setup malloc debugging environment
 #
 MALLOCDEBUGLIBS=""
 if test "$with_efence" != "no"; then
-	if test "$with_efence" = "yes"; then
-		MALLOCDEBUGLIBS="-L/usr/local/lib -lefence"
-	else
-		efence_dir=`dirname $with_efence`
-		efence_file=`basename $with_efence`
-		case $efence_dir in
-			/*) ;; # already absolute path
-			*) efence_dir="`pwd`/$efence_dir" ;;
-		esac
-		MALLOCDEBUGLIBS="$efence_dir/$efence_file"
-	fi
+    if test "$with_efence" = "yes"; then
+        MALLOCDEBUGLIBS="-L/usr/local/lib -lefence"
+    else
+        efence_dir=`dirname $with_efence`
+        efence_file=`basename $with_efence`
+        case $efence_dir in
+            /*) ;; # already absolute path
+            *) efence_dir="`pwd`/$efence_dir" ;;
+        esac
+        MALLOCDEBUGLIBS="$efence_dir/$efence_file"
+    fi
+elif test "$with_mallocdebug" != "no"; then
+    if test "$with_mallocdebug" = "yes"; then
+        MALLOCDEBUGLIBS="-lMallocDebug"
+    else
+        mallocdebug_dir=`dirname $with_mallocdebug`
+        mallocdebug_file=`basename $with_mallocdebug`
+        case $mallocdebug_dir in
+            /*) ;; # already absolute path
+            *) mallocdebug_dir="`pwd`/$mallocdebug_dir" ;;
+        esac
+        MALLOCDEBUGLIBS="$mallocdebug_dir/$mallocdebug_file"
+    fi
 fi
 AC_SUBST(MALLOCDEBUGLIBS)
 
