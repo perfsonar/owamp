@@ -808,7 +808,6 @@ sig_check()
     }
     if(pow_exit){
         I2ErrLog(eh,"SIGTERM/SIGINT: Exiting.");
-while(1);
         exit(0);
     }
     if(pow_reset){
