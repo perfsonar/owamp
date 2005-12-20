@@ -24,5 +24,5 @@ AM_CFLAGS	= $(OWP_PREFIX_CFLAGS)
 bin_PROGRAMS	= powstream
 
 powstream_SOURCES	= powstream.c powstreamP.h
-powstream_LDADD	= $(OWPLIBS) $(I2UTILLIBS) -lm $(MALLOCDEBUGLIBS)
+powstream_LDADD	= $(OWPLIBS) $(I2UTILLIBS) $(MALLOCDEBUGLIBS)
 powstream_DEPENDENCIES = $(OWPLIBDEPS) $(I2UTILLIBDEPS)

@@ -174,6 +174,7 @@ AC_CHECK_FUNCS([memset socket getaddrinfo mergesort])
 AC_SEARCH_LIBS(gethostbyname, nsl)
 AC_SEARCH_LIBS(socketpair, socket)
 AC_SEARCH_LIBS(finite,m)
+AC_SEARCH_LIBS(ceil,m)
 
 # Checks for variable/function declarations.
 AC_CHECK_DECLS([optreset])
