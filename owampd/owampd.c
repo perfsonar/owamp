@@ -76,10 +76,13 @@ usage(
             "   -c confidr        Configuration directory\n"
             "   -d datadir        Data directory\n"
             "   -e facility       Syslog \"facility\" to log errors\n"
+            "   -f                Allow owampd to run as root\n"
             "   -G group          Run as group \"group\" :-gid also valid\n"
             "   -h                Print this message and exit\n"
            );
     fprintf(stderr,
+            "   -P portrange      port range for recivers to use\n"
+            "   -R vardir         directory for owampd.pid file\n"
             "   -S nodename:port  Srcaddr to bind to\n"
             "   -U user           Run as user \"user\" :-uid also valid\n"
             "   -v                verbose output\n"

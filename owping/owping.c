@@ -54,21 +54,25 @@ print_conn_args()
             "              [Connection Args]",
             "   -A authmode    requested modes: [A]uthenticated, [E]ncrypted, [O]pen",
             "   -k keyfile     AES keyfile to use with Authenticated/Encrypted modes",
-            "   -u username    username to use with Authenticated/Encrypted modes",
-            "   -S srcaddr     use this as a local address for control connection and tests");
+            "   -S srcaddr     use this as a local address for control connection and tests",
+            "   -u username    username to use with Authenticated/Encrypted modes"
+            );
 }
 
     static void
 print_test_args()
 {
-    fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n",
+    fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n",
             "              [Test Args]",
-            "   -f | -F file   perform one-way test from testhost [and save results to file]",
-            "   -t | -T file   perform one-way test to testhost [and save results to file]",
             "   -c count       number of test packets",
+            "   -D DSCP        RFC 2474 style DSCP value for TOS byte",
+            "   -f | -F file   perform one-way test from testhost [and save results to file]",
+            "   -H PHB         RFC 2836 style Per Hop Behavior value for TOS byte",
             "   -i wait        mean average time between packets (seconds)",
             "   -L timeout     maximum time to wait for a packet before declaring it lost (seconds)",
+            "   -P portrange   port range for recievers to use",
             "   -s padding     size of the padding added to each packet (bytes)",
+            "   -t | -T file   perform one-way test to testhost [and save results to file]",
             "   -z delayStart  time to wait before executing test (seconds)"
             );
 }
@@ -76,14 +80,15 @@ print_test_args()
     static void
 print_output_args()
 {
-    fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n",
+    fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n",
             "              [Output Args]",
-            "   -h             print this message and exit",
-            "   -Q             run the test and exit without reporting statistics",
+            "   -a alpha       report an additional percentile level for the delays",
+            "   -b bucketwidth bin size for histogram calculations",
             "   -M             print machine (perl) readable summary",
+            "   -n units       \'n\',\'u\',\'m\', or \'s\'",
+            "   -Q             run the test and exit without reporting statistics",
             "   -R             print RAW data: \"SEQNO STIME SS SERR RTIME RS RERR TTL\\n\"",
-            "   -v             print out individual delays",
-            "   -a alpha       report an additional percentile level for the delays"
+            "   -v             print out individual delays"
            );
 }
 
@@ -97,11 +102,16 @@ usage(const char *progname, const char *msg)
                 progname, "[arguments] testaddr [servaddr]",
                 "[arguments] are as follows: "
                );
-        fprintf(stderr, "\n");
-        print_conn_args();
+
+        fprintf(stderr,"\n%s\n",
+            "   -h             print this message and exit"
+            );
 
         fprintf(stderr, "\n");
         print_test_args();
+
+        fprintf(stderr, "\n");
+        print_conn_args();
 
         fprintf(stderr, "\n");
         print_output_args();
@@ -112,6 +122,10 @@ usage(const char *progname, const char *msg)
                 progname, "[arguments] sessionfile",
                 "[arguments] are as follows: "
                );
+        fprintf(stderr,"\n%s\n",
+            "   -h             print this message and exit"
+            );
+
         fprintf(stderr, "\n");
         print_output_args();
     } else if (!strcmp(progname, "owfetch")) {
@@ -120,6 +134,10 @@ usage(const char *progname, const char *msg)
                 progname, "[arguments] servaddr [SID savefile]+",
                 "[arguments] are as follows: "
                );
+        fprintf(stderr,"\n%s\n",
+            "   -h             print this message and exit"
+            );
+
         fprintf(stderr, "\n");
         print_conn_args();
         fprintf(stderr, "\n");

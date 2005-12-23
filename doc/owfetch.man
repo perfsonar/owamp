@@ -27,7 +27,7 @@
 owfetch \- Client application to fetch buffered \fBOWAMP\fR session data.
 .SH SYNOPSIS
 .B owfetch
-[\fIoptions\fR] peerhost [SID savefile]+
+[\fIoptions\fR] servhost [SID savefile]+
 .SH DESCRIPTION
 \fBowfetch\fR is a command line client application used to
 fetch buffered \fBOWAMP\fR session data.
@@ -37,29 +37,101 @@ to a receiving host. The receiving host is the only entity that ends up
 with the results of the test. When
 the \fBowampd\fR daemon is used to setup a receiving endpoint, the daemon
 buffers that data. The owfetch application can be used to \fIfetch\fR the
-buffered data.
+buffered data. (\fBowping\fR typically retrieves this information immediately
+upon completion of the test making this unnecessary in most cases.)
 .PP
 \fBowfetch\fR is a simple application that can be used to fetch this
-buffered data from a \fBowampd\fR process running on \fIpeerhost\fR
+buffered data from a \fBowampd\fR process running on \fIservhost\fR
 if it was not saved as part of the \fBowping\fR execution.
-The data will be saved in a file. Additionally, \fBowfetch\fR can print raw or
-summary statistics.
+.PP
+.I servhost
+can be specified using rfc2396 and rfc2732 syntax for both host and
+port specification:
+.TP
+.I node:port
+.br
+IPv4 syntax where node is either a DNS name or a numeric host address string
+consisting of a dotted decimal IPv4 address. The \fI\:port\fR is an optional
+port specifier to contact servers running on a non-default port and
+can be left off in most cases.
+This syntax also works for IPv6 addresses specified using DNS names.
+.TP
+.I [node]:port
+IPv6 syntax where node is specified using a numeric IPv6 host address
+string. The []'s are required only if the optional \fI\:port\fR port
+specifier is used.
 .PP
 The \fISID\fR (Session Identifier) is a hex number that uniquely identifies
 a single test session. \fIsavefile\fR is the file in which the data from
-that test
-session will be saved. Any number of \fISID\fR \fIsavefile\fR pairs can be
-specified on the command-line to download more than one session per
-command execution. The
-\fISID\fR is printed out when a test session is requested by \fBowping\fR,
-unless output is suppressed with the \fI\-Q\fR option.
+that test session will be saved. Any number of \fISID\fR \fIsavefile\fR pairs
+can be specified on the command-line to download more than one session per
+command execution. The \fISID\fR is printed out when a test session is
+requested by \fBowping\fR, unless output is suppressed with the \fI\-Q\fR
+option.
 .PP
 \fIsavefile\fR can be specified as /dev/null on UNIX if there is no desire
 to actually save the session data.
 .PP
 If no options are specified, \fBowfetch\fR retrieves the buffered session
-data from \fIpeerhost\fR, saves the data to the \fIsavefile\fR,
+data from \fIservhost\fR, saves the data to the \fIsavefile\fR,
 and prints summary statistics.
+.PP
+\fBowfetch\fR supports three reporting formats. A textual summary that was
+designed to be as similar to the results that \fBping\fR produces as
+possible. A machine readable summary format (\fI\-M\fR). And finally
+a raw format that prints out the data from each and every packet in as
+compact of a format as possible (\fI\-R\fR).
+The textual summary also allows the information from each packet to be
+reported using the \fI\-v\fR option. The default textual summary will
+be used if neither the \fI\-M\fR or the \fI\-R\fR options are specified.
+It includes:
+.TP
+SID
+.br
+Session Identifier. This value is unique for every test session.
+.TP
+Sent, Lost, Duplicates
+.br
+Number of packets that were sent, lost, and duplicated as seen by \fBOWAMP\fR.
+.TP
+Min Delay, Median Delay, Error Estimate
+.br
+Minimum and Median delay seen for sample. Maximum error estimate for
+the sample.
+.TP
+Jitter
+.br
+An estimate of how "stable" the delay samples are. \fBowfetch\fR reports
+the interquartile range for this. (The 95th percentile of delay - 50th
+percentile of delay).
+.TP
+Additional percentiles
+.br
+If the \fI\-a\fR option is used, those additional percentiles from the
+sample are displayed.
+.TP
+TTL (hops) information
+.br
+As a packet traverses the network, the IP TTL field is decremented each
+time the packet crosses a router. \fBOWAMP\fR has been designed to
+collect the TTL information from the packets. The \fBOWAMP\fR
+sender sets the TTL of all outgoing packets to 255. The \fBOWAMP\fR
+receiver retrieves the TTL from the packet. The normal textual
+report uses this information to report the number of hops (number of
+routers) the packet traversed. The number of distinct values is reported
+as well as the minimum and maximum number of hops seen in the given session.
+The other reporting formats just report raw TTL values as seen in the packets.
+(It should be noted that if the number of hops reported seems unusually
+large, it probably means the \fBOWAMP\fR sender was not able to set the
+TTL value correctly. The \fBtraceroute(1)\fR program can be used to
+verify what \fBOWAMP\fR is reporting.)
+.TP
+Reordering
+.br
+Finally \fBOWAMP\fR reports the amount of re-ordering it observed. A
+description of the metric used to report this can be found at:
+.br
+\%http://www.internet2.edu/~shalunov/ippm/draft-shalunov-reordering-definition-01.txt.
 .SH OPTIONS
 .TP
 \fB\-h\fR
@@ -79,7 +151,7 @@ any or all of the characters "AEO". The modes are:
 .RS
 .IP \fBA\fR
 [\fBA\fR]uthenticated. This mode encrypts the control connection and
-encrypts part of each test packet.
+digitally signs part of each test packet.
 .IP \fBE\fR
 [\fBE\fR]ncrypted. This mode encrypts the control connection and
 encrypts each test packet in full. This mode forces an encryption step
@@ -90,7 +162,8 @@ packet.
 [\fBO\fR]pen. No encryption of any kind is done.
 .PP
 The client can specify all the modes with which it is willing to communicate.
-The most strict mode that both the server and the client are willing to use
+The most strict mode that both the \fBOWAMP\fR server and the \fBOWAMP\fR
+client are willing to use
 will be selected. Authenticated and Encrypted modes require a "shared secret"
 in the form of an AES key.
 .IP Default:
@@ -99,10 +172,10 @@ in the form of an AES key.
 .TP
 \fB\-k\fR \fIkeyfile\fR
 .br
-Indicates that \fBowfetch\fR should use the AES key in \fIkeyfile\fR for
+Indicates that \fBowping\fR should use the AES key in \fIkeyfile\fR for
 \fIusername\fB. \fIusername\fR must have a valid key in \fIkeyfile\fR.
-\fIkeyfile\fR can be generated as described in the aespasswd(1)
-manual page.
+\fIkeyfile\fR can be generated as described in the aespasswd(1) manual
+page.
 .RS
 .IP Default:
 Unset. (If the \fB\-U\fR option was specified, user will be prompted for a
@@ -123,7 +196,7 @@ Unspecified (wild-card address selection).
 .br
 Specify the username that is used to identify the AES key for
 authenticated or encrypted modes. If the \fB\-k\fR option is specified,
-the key is retrieved from the \fIkeyfile\fR, otherwise \fBowfetch\fR prompts
+the key is retrieved from the \fIkeyfile\fR, otherwise \fBowping\fR prompts
 the user for a \fIpassphrase\fR. The \fIpassphrase\fR is used to generate
 the AES key.
 .RS
@@ -132,11 +205,66 @@ Unset.
 .RE
 .SS Output Options:
 .TP
-\fB\-a\fR \fIpercentile\fR
+\fB\-a\fR \fIpercentile_list\fR
 .br
-Specify an additional \fIpercentile\fR to print out in addition to the 
-minimum and the median when printing summary statistics.
+.I percentile_list
+indicates the list of quantiles to be reported out in addition to
+median. This is done by specifying a list of \fIpercentiles\fR in
+a comma separated string (spaces are not allowed). Each \fIpercentile\fR
+is indicated by a floating point value between 0.0 and 100.0.
+
+This value is only used if \fBowping\fR is reporting summary statistics.
 .RS
+.IP Default:
+Unset.
+.RE
+.TP
+\fB\-b\fR \fIbucket_width\fR
+.br
+To reasonably compute the delay summary statistics, \fBowping\fR creates
+a histogram of the delays. (This is used to compute percentiles of
+delay such as median.) The
+.I bucket_width
+indicates the resolution of the bins in the histogram. This value
+is specified using a floating point value and the units are seconds.
+
+This value is only used if \fBowping\fR is reporting summary statistics.
+.RS
+.IP Default:
+0.0001 (100 usecs)
+.RE
+.TP
+\fB\-M\fR
+.br
+Print summary information in a more computer parsable format. Specifically,
+values are printed out in a key/value style. Units are seconds for all values.
+
+The \fI\-M\fR option implies \fI\-Q\fR.
+.RS
+.IP Default:
+Unset.
+.RE
+.TP
+\fB\-n\fR \fIunits\fR
+.br
+.I units
+indicates what units time values should be reported in. \fIunits\fR is
+specified using a single character specifying the units wanted.
+.RS
+.PP
+The available units are:
+.br
+.TS
+li l .
+\'n\'	nanoseconds (ns)
+\'u\'	microseconds (us)
+\'m\'	milliseconds (ms)
+\'s\'	seconds (s)
+.TE
+.PP
+This is only used for the summary statistics and the \fB\-v\fR mode of
+reporting individual records. In particular, it is not used for the
+\fB\-R\fR or \fB\-m\fR output modes.
 .IP Default:
 Unset.
 .RE
@@ -152,10 +280,10 @@ Unset.
 .TP
 \fB\-R\fR
 .br
-Print individual packet records, one per line, in the raw format:
+Print individual packet records one per line in the raw format:
 .RS
 .PP
-\fISEQNO SENDTIME SSYNC SERR RECVTIME RSYNC RERR\fR
+\fISEQNO SENDTIME SSYNC SERR RECVTIME RSYNC RERR TTL\fR
 .br
 .TS
 li l .
@@ -166,6 +294,7 @@ SERR	Estimate of SENDTIME error.
 RECVTIME	Receive timestamp.
 RSYNC	Receiving system synchronized (0 or 1).
 RERR	Estimate of RECVTIME error.
+TTL	TTL IP field.
 .TE
 .PP
 The timestamps are ASCII representation of 64 bit integers with the
@@ -173,7 +302,11 @@ high-order 32 bits representing the number of seconds since Jan 1, 1900
 and the low-order 32 bits representing fractional seconds.
 The sequence
 number is simply an integer. The error estimates are printed as floating-point
-numbers using scientific notation.
+numbers using scientific notation. TTL is the IP field from the packet.
+The TTL in sending packets should be initialized to 255, so the number of
+hops the packet traversed can be computed. If the receiving host is not
+able to determine the TTL field, this will be reported as 255. (Some
+socket API's do not expose the TTL field.)
 .PP
 The \fI\-R\fR option implies \fI\-Q\fR.
 .IP Default:
@@ -201,6 +334,12 @@ file and save the data in save.owp.
 Contact host somehost.com. Fetch the test session identified by
 the SID abcdef0123456789abcdef0123456789. Print the raw decoding of the
 data in that file and save the session data in save.owp.
+.LP
+\fBowfetch -M somehost.com abcdef0123456789abcdef0123456789 save.owp\fR
+.IP
+Contact host somehost.com. Fetch the test session identified by
+the SID abcdef0123456789abcdef0123456789. Print the machine parsable
+summary statistics for that session and save the session data in save.owp.
 .LP
 \fBowfetch -v somehost.com abcdef0123456789abcdef0123456789 save.owp\fR
 .IP

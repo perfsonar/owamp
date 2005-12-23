@@ -31,7 +31,7 @@
 
 <center>
 <h1>
-OWAMP Version 1.6f <font color="#FF0000">(beta)</font></h1></center>
+OWAMP Version 2.0dev-b <font color="#FF0000">(developers)</font></h1></center>
 
 <center>(An implementation of the <b>O</b>ne-<b>W</b>ay <b>A</b>ctive <b>M</b>easurement
 <b>P</b>rotocol)
@@ -144,6 +144,12 @@ Configurable send schedule and packet sizes as requested by the client.</li>
 
 <li>
 Resource protection as defined by the policy controls implemented in <b>owampd</b>.</li>
+<li>
+Port range specification for packet receivers for firewall friendliness.
+</li>
+<li>
+Wide range of statistical output formats and information.
+</li>
 </ul>
 
 <h3>
@@ -152,20 +158,24 @@ Resource protection as defined by the policy controls implemented in <b>owampd</
 
 <ul>
 <li>
-OWAMP requires a synchronized clock for measurements to be meaningful.
+OWAMP prefers a synchronized clock for measurements to be meaningful.
 But, more importantly, the clock needs to be stable. If the system clock
 is stepped during an OWAMP session, the results can be misleading. OWAMP
-requires that NTP (ntpd) be running to synchronize the system clock. NTP must
+prefers that NTP (ntpd) be running to synchronize the system clock. NTP must
 be setup correctly on the system for NTP to calculate a reasonable estimate
 of the time error and for it to stabilize the clock. NTP<b> <font color="#FF0000">MUST</font></b><font color="#000000">
 be configured with no fewer than 4 clocks for this purpose. (See <a href="details.html#NTP">details.html</a>
-for more specific information on configuring NTP.)</font></li>
-
+for more specific information on configuring NTP.)</font>
+Some measurements will still be meaningful if the clocks are not synchronized.
+For example, jitter measurements are still valid.
+</li>
 <li>
-Additionally,
 <i>OWAMP</i> uses NTP-specific system calls to fetch time
-and time error estimates from the system kernel, so the kernel must support
-these interfaces. (All modern UNIX systems support them.)</li>
+and time error estimates from the system kernel if they are available.
+It will report the time as unsynchronized if it is unable to access the
+NTP information this way. (It is still possible that the system clock
+is synchronized, <i>OWAMP</i> is just unable to verify that.
+</li>
 
 <li>
 <b>gnumake</b> may be required for the build process (see
@@ -176,7 +186,7 @@ the Application</a>).</li>
 <h3>
 
 <hr WIDTH="100%">Supported Systems</h3>
-OWAMP has been tested most extensively on FreeBSD 4.7 and Linux 2.4.20,
+OWAMP has been tested most extensively on FreeBSD 5.4 and Linux 2.4.21,
 but most recent versions of UNIX should work.
 <h3>
 

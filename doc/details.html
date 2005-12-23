@@ -113,8 +113,9 @@ a way to provide very stable offset estimates, the timestamp jitter can
 be even worse. (See the next section.)
 <h3>
 <a NAME="NTP"></a>NTP Configuration</h3>
-NTP is required by OWAMP to train the system clock. It does this by determining
-the local clock offsets from other NTP trained clocks (or locally connected
+To have the most meaningful data, NTP is required train the system clock.
+NTP does this by determining the local clock offsets from other NTP trained
+clocks (or locally connected
 hardware clocks). NTP continually modifies the clock rate on the local
 system in an attempt to bound the local clock offset from UTC. UTC is estimated
 by the peer clocks. (There are sanity checks, and only "true tickers" are
@@ -124,8 +125,8 @@ important to understand some of the limitations of this model.
 <ol>
 <li>
 NTP will be constantly changing the clock rate on both the sending system
-and the receiving system. Therefore you are likely to see skew in the measurements
-if you look at them at very fine resolutions.</li>
+and the receiving system. Therefore you are likely to see skew in the
+measurements if you look at them at very fine resolutions.</li>
 
 <li>
 NTP peer clocks sometime become unavailable. When this happens, the current

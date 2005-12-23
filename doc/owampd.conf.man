@@ -12,7 +12,7 @@
 ."#									#
 ."######################################################################
 ."
-."	File:		owampd.8
+."	File:		owampd.conf.man
 ."
 ."	Author:		Jeff Boote
 ."			Internet2
@@ -158,7 +158,7 @@ address can be wildcarded by only specifying the \fIport\fR portion.
 .IP Default:
 \fInodename\fR is wildcarded as any currently available address
 .br
-\fIport\fR is 4823.
+\fIport\fR is 4824.
 .RE
 .TP
 .BI testports " 0 | lowport-highport"
@@ -175,6 +175,14 @@ and both numbers must be valid port values. (16 bit unsigned integer values)
 .IP Default:
 0
 .RE
+.TP
+.B rootfolly
+If present, this disables the requirement that \fBowampd\fR run with
+non-root permissions. There are legitimate reasons to run \fBowampd\fR
+as root, but it is more risky. (For example, some operating systems
+require root permissions to set the TOS bits used by the \fI\-D\fR and
+\fI\-H\fR options of \fBowping\fR.) This additional option was added
+to ensure root permissions are only used when explicitly intended.
 .TP
 .BI user " user"
 Specifies the uid the \fBowampd\fR process should run as. \fIuser\fR

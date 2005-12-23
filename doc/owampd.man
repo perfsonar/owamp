@@ -42,7 +42,7 @@ Aside from actually running the tests, the main function of \fBowampd\fR
 is to determine which tests are allowed, based upon the policy restrictions
 configured by the system administrator.
 .PP
-\fBowampd\fR was designed to be run as a standalone daemon process. It
+\fBowampd\fR was designed to be run as a stand-alone daemon process. It
 uses the classic accept/fork model of handling new requests.
 .PP
 Most of the command line options for \fBowampd\fR have analogous options

@@ -1558,11 +1558,11 @@ OWPStatsPrintSummary(
         fprintf(output,"TTL not reported\n");
     }
     else if(nttl == 1){
-        fprintf(output,"TTL is %d (consistently)\n",minttl);
+        fprintf(output,"Hops = %d (consistently)\n",255-minttl);
     }
     else{
-        fprintf(output,"TTL takes %d values; min=%d, max=%d\n",
-                nttl,minttl,maxttl);
+        fprintf(output,"Hops takes %d values; Min Hops = %d, Max Hops = %d\n",
+                nttl,255-maxttl,255-minttl);
     }
 
     /*

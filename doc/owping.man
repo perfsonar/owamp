@@ -27,7 +27,7 @@
 owping \- Client application to request one-way latency tests.
 .SH SYNOPSIS
 .B owping 
-[\fIoptions\fR] peerhost [server[:server_port]]
+[\fIoptions\fR] testpeer [server]
 .SH DESCRIPTION
 \fBowping\fR is a command line client application that is used to
 initiate one-way latency tests.
@@ -46,6 +46,31 @@ works by
 contacting an \fBowampd\fR daemon on the remote peer host.
 \fBowampd\fR manages the resources of the host on which it runs.
 .PP
+.I testpeer
+can be specified using rfc2396 and rfc2732 syntax for both host and
+port specification:
+.TP
+.I node:port
+.br
+IPv4 syntax where node is either a DNS name or a numeric host address string
+consisting of a dotted decimal IPv4 address. The \fI\:port\fR is an optional
+port specifier to contact servers running on a non-default port and
+can be left off in most cases.
+This syntax also works for IPv6 addresses specified using DNS names.
+.TP
+.I [node]:port
+IPv6 syntax where node is specified using a numeric IPv6 host address
+string. The []'s are required only if the optional \fI\:port\fR port
+specifier is used.
+.PP
+.I server
+is an optional argument that indicates the \fBOWAMP\fR server address
+if it is different from the \fItestpeer\fR. This is mostly useful in
+the case of hosts with more than one network interface where the
+\fBOWAMP\fR server is not listening on the interface that you want to test.
+The \fIserver\fR can be specified using the same syntax as the \fItestpeer\fR.
+\.
+.PP
 The \fBowping\fR client is used to request the type of
 test wanted. The parameters allow the user to select the full send schedule,
 direction of test (send, receive, or both) as well as packet size.
@@ -55,40 +80,67 @@ scheduled to be sent.
 .PP
 With no options specified, \fBowping\fR will perform concurrent bidirectional
 tests of 100 packets each at a rate of approximately 1 packet every 0.1
-seconds to and from the \fIpeerhost\fR. Then, the receivers on each host
+seconds to and from the \fItestpeer\fR. Then, the receivers on each host
 will wait a reasonable period after that to count possible duplicate packets.
 (See the \fI\-L\fR option.) Upon completion of the sessions, summary statistics
 are printed to STDOUT.
 .PP
-The normal texual summary information was designed to be similar to the
-results from \fBping\fR as possible. It includes:
-.IP SID
+\fBowping\fR supports three reporting formats. A textual summary that was
+designed to be as similar to the results that \fBping\fR produces as
+possible. A machine readable summary format (\fI\-M\fR). And finally
+a raw format that prints out the data from each and every packet in as
+compact of a format as possible (\fI\-R\fR).
+The textual summary also allows the information from each packet to be
+reported using the \fI\-v\fR option. The default textual summary will
+be used if neither the \fI\-M\fR or the \fI\-R\fR options are specified.
+It includes:
+.TP
+SID
+.br
 Session Identifier. This value is unique for every test session.
-.IP sent, lost, duplicates
+.TP
+Sent, Lost, Duplicates
+.br
 Number of packets that were sent, lost, and duplicated as seen by \fBOWAMP\fR.
-.IP min delay, median delay, error estimate
+.TP
+Min Delay, Median Delay, Error Estimate
+.br
 Minimum and Median delay seen for sample. Maximum error estimate for
 the sample.
-.IP Jitter
+.TP
+Jitter
+.br
 An estimate of how "stable" the delay samples are. \fBowping\fR reports
 the interquartile range for this. (The 95th percentile of delay - 50th
 percentile of delay).
-.IP Additional percentiles
-If the \fI\-a\fR option is used, percentiles from the sample are
-displayed.
-.IP TTL information
-\fBOWAMP\fR collects TTL information from the packets. The minimum and maximum
-TTL value seen is reported. The number of distinct TTL values that have been
-seen is also reported.
-.IP reordering
+.TP
+Additional percentiles
+.br
+If the \fI\-a\fR option is used, those additional percentiles from the
+sample are displayed.
+.TP
+TTL (hops) information
+.br
+As a packet traverses the network, the IP TTL field is decremented each
+time the packet crosses a router. \fBOWAMP\fR has been designed to
+collect the TTL information from the packets. The \fBOWAMP\fR
+sender sets the TTL of all outgoing packets to 255. The \fBOWAMP\fR
+receiver retrieves the TTL from the packet. The normal textual
+report uses this information to report the number of hops (number of
+routers) the packet traversed. The number of distinct values is reported
+as well as the minimum and maximum number of hops seen in the given session.
+The other reporting formats just report raw TTL values as seen in the packets.
+(It should be noted that if the number of hops reported seems unusually
+large, it probably means the \fBOWAMP\fR sender was not able to set the
+TTL value correctly. The \fBtraceroute(1)\fR program can be used to
+verify what \fBOWAMP\fR is reporting.)
+.TP
+Reordering
+.br
 Finally \fBOWAMP\fR reports the amount of re-ordering it observed. A
 description of the metric used to report this can be found at:
 .br
 \%http://www.internet2.edu/~shalunov/ippm/draft-shalunov-reordering-definition-01.txt.
-.PP
-The \fI\-v\fR option can be used to print out information about each
-individual packet record. Additionally, the \fI\-R\fR and \fI\-M\fR options
-can be used to output the data in more programmer friendly formats.
 .SH OPTIONS
 .TP
 \fB\-h\fR
@@ -120,7 +172,7 @@ Unset.
 .TP
 \fB\-f\fR | \fB\-F\fR \fIfromfile\fR
 .br
-Perform a One-way test \fBf\fRrom the target \fIpeerhost\fR. The \fI\-F\fR
+Perform a One-way test \fBf\fRrom the target \fItestpeer\fR. The \fI\-F\fR
 form is used to save the results in \fIfromfile\fR. If no directional
 options (\fI\-f, \-F, \-t, \-T\fR) are specified, \fBowping\fR requests
 concurrent bidirectional tests, otherwise only the explicit directions are
@@ -213,7 +265,7 @@ for a test packet in \fIauthenticated\fR or \fIencrypted\fR mode is 32 bytes.
 .TP
 \fB\-t\fR | \fB\-T\fR \fItofile\fR
 .br
-Perform a one-way test \fBt\fRoward the target \fIpeerhost\fR. The \fI\-T\fR
+Perform a one-way test \fBt\fRoward the target \fItestpeer\fR. The \fI\-T\fR
 form is used to save the results in \fItofile\fR. If no directional
 options (\fI\-f, \-F, \-t, \-T\fR) are specified, \fBowping\fR requests
 concurrent bidirectional tests, otherwise only the explicit directions are
@@ -255,7 +307,8 @@ packet.
 [\fBO\fR]pen. No encryption of any kind is done.
 .PP
 The client can specify all the modes with which it is willing to communicate.
-The most strict mode that both the server and the client are willing to use
+The most strict mode that both the \fBOWAMP\fR server and the \fBOWAMP\fR
+client are willing to use
 will be selected. Authenticated and Encrypted modes require a "shared secret"
 in the form of an AES key.
 .IP Default:
@@ -341,7 +394,7 @@ Unset.
 .br
 .I units
 indicates what units time values should be reported in. \fIunits\fR is
-specified using a single charactor specifying the units wanted.
+specified using a single character specifying the units wanted.
 .RS
 .PP
 The available units are:
@@ -422,6 +475,11 @@ seconds. One session sending packets from the local host to somehost.com,
 the other session receiving packets from somehost.com.) Print summary
 statistics of the results only.
 .LP
+\fBowping somehost.com:98765
+.IP
+Run the same two concurrent test sessions to a server running on somehost.com
+but on a non-default port.
+.LP
 \fBowping -U someuser somehost.com\fR
 .IP
 Run the default test as in the first example. Authenticate using
@@ -449,18 +507,21 @@ statistics of the results and save the resulting data saved in from.owp and
 to.owp.
 .LP
 \fBowping -i 1e -c 10 somehost.com\fR
+.IP
 Run two concurrent ~10-second test sessions at an average rate of 1 packet
 every second. One session sending packets from the local host to
 somehost.com, the other session receiving packets from somehost.com.)
 Print summary statistics of the results only.
 .LP
 \fBowping -i 1f -c 10 somehost.com\fR
+.IP
 Run two concurrent ~10-second test sessions at a rate of 1 packet
 every second. One session sending packets from the local host to
 somehost.com, the other session receiving packets from somehost.com.)
 Print summary statistics of the results only.
 .LP
 \fBowping -i 1.0e,0f -c 20 somehost.com\fR
+.IP
 Run two concurrent ~10-second test sessions. Send back-to-back packet
 pairs at an average rate of a packet pair every 1 seconds.
 One session sending packets from the local host to

@@ -31,7 +31,64 @@ owstats \- Command line application used to parse \fBOWAMP\fR data files.
 .SH DESCRIPTION
 \fBowstats\fR is a command line application that is used to parse \fBOWAMP\fR
 data files. It is used to display the results in a number of different
-textual formats. The default output is summary statistics.
+textual formats.
+.PP
+\fBowstats\fR supports three reporting formats. A textual summary that was
+designed to be as similar to the results that \fBping\fR produces as
+possible. A machine readable summary format (\fI\-M\fR). And finally
+a raw format that prints out the data from each and every packet in as
+compact of a format as possible (\fI\-R\fR).
+The textual summary also allows the information from each packet to be
+reported using the \fI\-v\fR option. The default textual summary will
+be used if neither the \fI\-M\fR or the \fI\-R\fR options are specified.
+It includes:
+.TP
+SID
+.br
+Session Identifier. This value is unique for every test session.
+.TP
+Sent, Lost, Duplicates
+.br
+Number of packets that were sent, lost, and duplicated as seen by \fBOWAMP\fR.
+.TP
+Min Delay, Median Delay, Error Estimate
+.br
+Minimum and Median delay seen for sample. Maximum error estimate for
+the sample.
+.TP
+Jitter
+.br
+An estimate of how "stable" the delay samples are. \fBowstats\fR reports
+the interquartile range for this. (The 95th percentile of delay - 50th
+percentile of delay).
+.TP
+Additional percentiles
+.br
+If the \fI\-a\fR option is used, those additional percentiles from the
+sample are displayed.
+.TP
+TTL (hops) information
+.br
+As a packet traverses the network, the IP TTL field is decremented each
+time the packet crosses a router. \fBOWAMP\fR has been designed to
+collect the TTL information from the packets. The \fBOWAMP\fR
+sender sets the TTL of all outgoing packets to 255. The \fBOWAMP\fR
+receiver retrieves the TTL from the packet. The normal textual
+report uses this information to report the number of hops (number of
+routers) the packet traversed. The number of distinct values is reported
+as well as the minimum and maximum number of hops seen in the given session.
+The other reporting formats just report raw TTL values as seen in the packets.
+(It should be noted that if the number of hops reported seems unusually
+large, it probably means the \fBOWAMP\fR sender was not able to set the
+TTL value correctly. The \fBtraceroute(1)\fR program can be used to
+verify what \fBOWAMP\fR is reporting.)
+.TP
+Reordering
+.br
+Finally \fBOWAMP\fR reports the amount of re-ordering it observed. A
+description of the metric used to report this can be found at:
+.br
+\%http://www.internet2.edu/~shalunov/ippm/draft-shalunov-reordering-definition-01.txt.
 .SH OPTIONS
 .TP
 \fB\-h\fR
@@ -43,11 +100,66 @@ Unset.
 .RE
 .SS Output Options:
 .TP
-\fB\-a\fR \fIpercentile\fR
+\fB\-a\fR \fIpercentile_list\fR
 .br
-Specify an additional \fIpercentile\fR to print out in addition to the 
-minimum and the median when printing summary statistics.
+.I percentile_list
+indicates the list of quantiles to be reported out in addition to
+median. This is done by specifying a list of \fIpercentiles\fR in
+a comma separated string (spaces are not allowed). Each \fIpercentile\fR
+is indicated by a floating point value between 0.0 and 100.0.
+
+This value is only used if \fBowstats\fR is reporting summary statistics.
 .RS
+.IP Default:
+Unset.
+.RE
+.TP
+\fB\-b\fR \fIbucket_width\fR
+.br
+To reasonably compute the delay summary statistics, \fBowstats\fR creates
+a histogram of the delays. (This is used to compute percentiles of
+delay such as median.) The
+.I bucket_width
+indicates the resolution of the bins in the histogram. This value
+is specified using a floating point value and the units are seconds.
+
+This value is only used if \fBowstats\fR is reporting summary statistics.
+.RS
+.IP Default:
+0.0001 (100 usecs)
+.RE
+.TP
+\fB\-M\fR
+.br
+Print summary information in a more computer parsable format. Specifically,
+values are printed out in a key/value style. Units are seconds for all values.
+
+The \fI\-M\fR option implies \fI\-Q\fR.
+.RS
+.IP Default:
+Unset.
+.RE
+.TP
+\fB\-n\fR \fIunits\fR
+.br
+.I units
+indicates what units time values should be reported in. \fIunits\fR is
+specified using a single character specifying the units wanted.
+.RS
+.PP
+The available units are:
+.br
+.TS
+li l .
+\'n\'	nanoseconds (ns)
+\'u\'	microseconds (us)
+\'m\'	milliseconds (ms)
+\'s\'	seconds (s)
+.TE
+.PP
+This is only used for the summary statistics and the \fB\-v\fR mode of
+reporting individual records. In particular, it is not used for the
+\fB\-R\fR or \fB\-m\fR output modes.
 .IP Default:
 Unset.
 .RE
@@ -55,8 +167,7 @@ Unset.
 \fB\-Q\fR
 .br
 Suppress the printing of summary statistics and human readable individual
-delays (\fI\-v\fR). This is not very useful in the context of
-\fBowstats\fR but documented here for consistency.
+delays (\fI\-v\fR).
 .RS
 .IP Default:
 Unset.
@@ -78,7 +189,7 @@ SERR	Estimate of SENDTIME error.
 RECVTIME	Receive timestamp.
 RSYNC	Receiving system synchronized (0 or 1).
 RERR	Estimate of RECVTIME error.
-TTL     TTL IP field.
+TTL	TTL IP field.
 .TE
 .PP
 The timestamps are ASCII representation of 64 bit integers with the
@@ -87,10 +198,10 @@ and the low-order 32 bits representing fractional seconds.
 The sequence
 number is simply an integer. The error estimates are printed as floating-point
 numbers using scientific notation. TTL is the IP field from the packet.
-The TTL in sending packets should be initialized to 255, so the number of hops
-the packet traversed can be computed. If the receiving host is not able
-to determine the TTL field, this will be reported as 255. (Some socket
-API's do not expose the TTL field.)
+The TTL in sending packets should be initialized to 255, so the number of
+hops the packet traversed can be computed. If the receiving host is not
+able to determine the TTL field, this will be reported as 255. (Some
+socket API's do not expose the TTL field.)
 .PP
 The \fI\-R\fR option implies \fI\-Q\fR.
 .IP Default:
@@ -111,10 +222,10 @@ Unset.
 .IP
 Report the summary statistics from the file datafile.owp.
 .LP
-\fBowstats -a 95 datafile.owp\fR
+\fBowstats -a 5,95 datafile.owp\fR
 .IP
 Report the summary statistics from the file datafile.owp. Also,
-report the 95th percentile of delay as an extra statistic.
+report the 5th and 95th percentile of delay as an extra statistics.
 .LP
 \fBowstats -R datafile.owp\fR
 .IP
@@ -125,6 +236,10 @@ statistics computed at all.
 .IP
 Show individual delays for each packet with summary statistics
 printed at the end.
+.LP
+\fBowstats -M datafile.owp\fR
+.IP
+Print out summary statistics in a more computer parsable format.
 .SH SEE ALSO
 owampd(8), owping(1), owfetch(1) and the \fBOWAMP\fR web site
 \%(http://e2epi.internet2.edu/owamp/).

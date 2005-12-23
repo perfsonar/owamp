@@ -297,7 +297,7 @@ OWPControlAccept(
     }
 
     OWPError(ctx,OWPErrINFO,OWPErrPOLICY,
-            "Connection to (%s:%s) from (%s:%s)",
+            "Connection to ([%s]:%s) from ([%s]:%s)",
             localnode,localserv,remotenode,remoteserv);
 
     /* generate 16 random bytes of challenge and save them away. */
@@ -323,7 +323,7 @@ OWPControlAccept(
      */
     if(!mode_offered){
         OWPError(cntrl->ctx,OWPErrWARNING,OWPErrPOLICY,
-                "Control request to (%s:%s) denied from (%s:%s): mode == 0",
+                "Control request to ([%s]:%s) denied from ([%s]:%s): mode == 0",
                 localnode,localserv,remotenode,remoteserv);
         goto error;
     }
@@ -351,7 +351,7 @@ OWPControlAccept(
 
     if(!(cntrl->mode | mode_offered)){ /* can't provide requested mode */
         OWPError(cntrl->ctx,OWPErrWARNING,OWPErrPOLICY,
-                "Control request to (%s:%s) denied from (%s:%s):mode not offered (%u)",
+                "Control request to ([%s]:%s) denied from ([%s]:%s):mode not offered (%u)",
                 localnode,localserv,remotenode,remoteserv,cntrl->mode);
         if( (rc = _OWPWriteServerOK(cntrl,OWP_CNTRL_REJECT,0,intr)) <
                 OWPErrOK){
@@ -391,12 +391,12 @@ OWPControlAccept(
         if((memcmp(challenge,token,16) != 0) || !getkey_success){
             if(!getkey_success){
                 OWPError(cntrl->ctx,OWPErrWARNING,OWPErrPOLICY,
-                        "Unknown userid (%s) from (%s:%s)",
+                        "Unknown userid (%s) from ([%s]:%s)",
                         cntrl->userid_buffer,remotenode,remoteserv);
             }
             else{
                 OWPError(cntrl->ctx,OWPErrWARNING,OWPErrPOLICY,
-                        "Control request to (%s:%s) denied from (%s:%s):Invalid challenge encryption",
+                        "Control request to ([%s]:%s) denied from ([%s]:%s):Invalid challenge encryption",
                         localnode,localserv,remotenode,remoteserv);
             }
             (void)_OWPWriteServerOK(cntrl,OWP_CNTRL_REJECT,0,intr);
@@ -420,7 +420,7 @@ OWPControlAccept(
                 I2AddrSAddr(cntrl->remote_addr,NULL),err_ret)){
         if(*err_ret > OWPErrWARNING){
             OWPError(ctx,OWPErrWARNING,OWPErrPOLICY,
-                    "ControlSession request to (%s:%s) denied from userid(%s):(%s:%s)",
+                    "ControlSession request to ([%s]:%s) denied from userid(%s):([%s]:%s)",
                     localnode,localserv,
                     (cntrl->userid)?cntrl->userid:(char*)"nil",
                     remotenode,remoteserv);
