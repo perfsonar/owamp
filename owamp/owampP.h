@@ -162,7 +162,6 @@
  * Data structures
  */
 typedef struct OWPContextRec OWPContextRec;
-typedef struct OWPAddrRec OWPAddrRec;
 typedef struct OWPControlRec OWPControlRec;
 
 #define _OWP_CONTEXT_TABLE_SIZE 64
@@ -174,27 +173,6 @@ struct OWPContextRec{
     I2Table         table;
     I2RandomSource  rand_src;
     OWPControlRec   *cntrl_list;
-};
-
-struct OWPAddrRec{
-    OWPContext      ctx;
-
-    OWPBoolean      node_set;
-    char            node[MAXHOSTNAMELEN+1];
-
-    OWPBoolean      port_set;
-    char            port[MAXHOSTNAMELEN+1];
-
-    OWPBoolean      ai_free;        /* free ai list directly...*/
-    struct addrinfo *ai;
-
-    struct sockaddr *saddr;
-    socklen_t       saddrlen;
-    int             so_type;        /* socktype saddr works with        */
-    int             so_protocol;    /* protocol saddr works with        */
-
-    OWPBoolean      fd_user;
-    int             fd;
 };
 
 typedef struct OWPTestSessionRec OWPTestSessionRec, *OWPTestSession;
@@ -238,8 +216,8 @@ struct OWPControlRec{
      * Address specification and "network" information.
      * (Control socket addr information)
      */
-    OWPAddr                 remote_addr;
-    OWPAddr                 local_addr;
+    I2Addr                  remote_addr;
+    I2Addr                  local_addr;
     int                     sockfd;
 
     /*
@@ -294,8 +272,8 @@ typedef struct OWPEndpointRec{
     int             sockfd;
     int             skiprecfd;
     off_t           skiprecsize;
-    OWPAddr         remoteaddr;
-    OWPAddr         localaddr;
+    I2Addr          remoteaddr;
+    I2Addr          localaddr;
 
     char            fname[PATH_MAX];
     FILE            *userfile;          /* from _OWPOpenFile */
@@ -330,8 +308,8 @@ typedef struct OWPEndpointRec{
 struct OWPTestSessionRec{
     OWPControl          cntrl;
     OWPSID              sid;
-    OWPAddr             sender;
-    OWPAddr             receiver;
+    I2Addr              sender;
+    I2Addr              receiver;
     OWPBoolean          conf_sender;
     OWPBoolean          conf_receiver;
     OWPTestSpec         test_spec;
@@ -354,22 +332,13 @@ struct OWPTestSessionRec{
 /*
  * Private api.c prototypes
  */
-extern OWPAddr
-_OWPAddrAlloc(
-        OWPContext      ctx
-        );
-
-extern OWPAddr
-_OWPAddrCopy(
-        OWPAddr                from
-        );
 
 extern OWPTestSession
 _OWPTestSessionAlloc(
         OWPControl      cntrl,
-        OWPAddr         sender,
+        I2Addr          sender,
         OWPBoolean      server_conf_sender,
-        OWPAddr         receiver,
+        I2Addr          receiver,
         OWPBoolean      server_conf_receiver,
         OWPTestSpec     *test_spec
         );
@@ -823,7 +792,7 @@ extern OWPBoolean
 _OWPEndpointInit(
         OWPControl      cntrl,
         OWPTestSession  tsession,
-        OWPAddr         localaddr,
+        I2Addr          localaddr,
         FILE            *fp,
         OWPAcceptType   *aval,
         OWPErrSeverity  *err_ret

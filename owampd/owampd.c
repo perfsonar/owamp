@@ -114,6 +114,7 @@ signal_catch(
             break;
         case SIGCHLD:
             owpd_chld = 1;
+            break;
         case SIGALRM:
             owpd_alrm = 1;
             break;
@@ -409,7 +410,7 @@ ClosePipes(
 static void
 NewConnection(
         OWPDPolicy  policy,
-        OWPAddr     listenaddr,
+        I2Addr      listenaddr,
         int         *maxfd,
         fd_set      *readfds
         )
@@ -420,7 +421,7 @@ NewConnection(
     int                     new_pipe[2];
     pid_t                   pid;
     OWPSessionMode          mode = opts.auth_mode;
-    int                     listenfd = OWPAddrFD(listenaddr);
+    int                     listenfd = I2AddrFD(listenaddr);
     OWPControl              cntrl=NULL;
     OWPErrSeverity          out;
     struct itimerval        itval;
@@ -1015,7 +1016,7 @@ main(int argc, char *argv[])
     int                 maxfd;    /* max fd in readfds */
     OWPContext          ctx;
     OWPDPolicy          policy;
-    OWPAddr             listenaddr = NULL;
+    I2Addr              listenaddr = NULL;
     int                 listenfd;
     int                 rc;
     I2Datum             data;
@@ -1525,7 +1526,7 @@ main(int argc, char *argv[])
      * If the local interface was specified, use it - otherwise use NULL
      * for wildcard.
      */
-    if(opts.srcnode && !(listenaddr = OWPAddrByNode(ctx,opts.srcnode))){
+    if(opts.srcnode && !(listenaddr = I2AddrByNode(ctx,opts.srcnode))){
         OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
                 "Invalid source address specified: %s",opts.srcnode);
         exit(1);
@@ -1573,7 +1574,7 @@ main(int argc, char *argv[])
         exit(1);
     }
 
-    listenfd = OWPAddrFD(listenaddr);
+    listenfd = I2AddrFD(listenaddr);
     FD_ZERO(&readfds);
     FD_SET(listenfd,&readfds);
     maxfd = listenfd;
@@ -1634,7 +1635,7 @@ main(int argc, char *argv[])
      * Close the server socket. reset the readfds/maxfd so they
      * can't confuse later ReapChildren calls.
      */
-    OWPAddrFree(listenaddr);
+    I2AddrFree(listenaddr);
     FD_ZERO(&readfds);
     maxfd = -1;
 

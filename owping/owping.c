@@ -1095,8 +1095,8 @@ main(
          */
 
         ping_ctx.cntrl = OWPControlOpen(ctx, 
-                OWPAddrByNode(ctx, ping_ctx.opt.srcaddr),
-                OWPAddrByNode(ctx, ping_ctx.remote_serv),
+                I2AddrByNode(eh, ping_ctx.opt.srcaddr),
+                I2AddrByNode(eh, ping_ctx.remote_serv),
                 ping_ctx.auth_mode,ping_ctx.opt.identity,
                 NULL,&err_ret);
         if (!ping_ctx.cntrl){
@@ -1183,7 +1183,7 @@ main(
          */
         if(ping_ctx.opt.to) {
             if (!OWPSessionRequest(ping_ctx.cntrl, NULL, False,
-                        OWPAddrByNode(ctx,ping_ctx.remote_test),
+                        I2AddrByNode(eh,ping_ctx.remote_test),
                         True,(OWPTestSpec*)&tspec,
                         NULL,tosid,&err_ret))
                 FailSession(ping_ctx.cntrl);
@@ -1204,7 +1204,7 @@ main(
             }
 
             if (!OWPSessionRequest(ping_ctx.cntrl,
-                        OWPAddrByNode(ctx,ping_ctx.remote_test),
+                        I2AddrByNode(eh,ping_ctx.remote_test),
                         True, NULL, False,(OWPTestSpec*)&tspec,
                         fromfp,fromsid,&err_ret))
                 FailSession(ping_ctx.cntrl);
@@ -1287,37 +1287,36 @@ main(
          */
         local = remote = NULL;
         if(!ping_ctx.opt.quiet){
-            OWPAddr    laddr;
+            I2Addr    laddr;
             size_t    lsize;
 
             /*
              * First determine local address.
              */
             if(ping_ctx.opt.srcaddr){
-                laddr = OWPAddrByNode(ctx,
-                        ping_ctx.opt.srcaddr);
+                laddr = I2AddrByNode(eh,ping_ctx.opt.srcaddr);
             }
             else{
-                laddr = OWPAddrByLocalControl(
-                        ping_ctx.cntrl);
+                laddr = I2AddrByLocalSockFD(eh,OWPControlFD(ping_ctx.cntrl),
+                        False);
             }
             lsize = sizeof(localbuf);
-            OWPAddrNodeName(laddr,localbuf,&lsize);
+            I2AddrNodeName(laddr,localbuf,&lsize);
             if(lsize > 0){
                 local = localbuf;
             }
-            OWPAddrFree(laddr);
+            I2AddrFree(laddr);
 
             /*
              * Now determine remote address.
              */
-            laddr = OWPAddrByNode(ctx,ping_ctx.remote_test);
+            laddr = I2AddrByNode(eh,ping_ctx.remote_test);
             lsize = sizeof(remotebuf);
-            OWPAddrNodeName(laddr,remotebuf,&lsize);
+            I2AddrNodeName(laddr,remotebuf,&lsize);
             if(lsize > 0){
                 remote = remotebuf;
             }
-            OWPAddrFree(laddr);
+            I2AddrFree(laddr);
         }
 
         if(ping_ctx.opt.to && (ping_ctx.opt.save_to_test ||
@@ -1387,8 +1386,8 @@ main(
          * Open connection to owampd.
          */
         ping_ctx.cntrl = OWPControlOpen(ctx, 
-                OWPAddrByNode(ctx, ping_ctx.opt.srcaddr),
-                OWPAddrByNode(ctx, ping_ctx.remote_serv),
+                I2AddrByNode(eh, ping_ctx.opt.srcaddr),
+                I2AddrByNode(eh, ping_ctx.remote_serv),
                 ping_ctx.auth_mode,ping_ctx.opt.identity,
                 NULL,&err_ret);
         if (!ping_ctx.cntrl){

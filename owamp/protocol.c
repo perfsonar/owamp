@@ -721,14 +721,14 @@ _OWPDecodeTestRequestPreamble(
 
     if(msg_len != 112){
         OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
-                "_OWPDecodeTestRequestPreamble:Invalid message size");
+                "_OWPDecodeTestRequestPreamble: Invalid message size");
         return OWPErrFATAL;
     }
 
     memset(zero,0,_OWP_RIJNDAEL_BLOCK_SIZE);
     if(memcmp(zero,&buf[96],_OWP_RIJNDAEL_BLOCK_SIZE)){
         OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
-                "_OWPDecodeTestRequestPreamble:Invalid zero padding");
+                "_OWPDecodeTestRequestPreamble: Invalid zero padding");
         return OWPErrFATAL;
     }
 
@@ -758,7 +758,7 @@ _OWPDecodeTestRequestPreamble(
 
     if(!*server_conf_sender && !*server_conf_receiver){
         OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
-                "_OWPDecodeTestRequestPreamble:Invalid null request");
+                "_OWPDecodeTestRequestPreamble: Invalid null request");
         return OWPErrWARNING;
     }
 
@@ -1162,86 +1162,6 @@ _OWPReadTestRequestSlots(
 }
 
 /*
- * Function:        AddrBySAddrRef
- *
- * Description:        
- *         Construct an OWPAddr record given a sockaddr struct.
- *
- * In Args:        
- *
- * Out Args:        
- *
- * Scope:        
- * Returns:        
- * Side Effect:        
- */
-static OWPAddr
-AddrBySAddrRef(
-        OWPContext      ctx,
-        struct sockaddr *saddr,
-        socklen_t       saddrlen
-        )
-{
-    OWPAddr         addr;
-    struct addrinfo *ai=NULL;
-    int             gai;
-
-    if(!saddr){
-        OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
-                "AddrBySAddrRef:Invalid saddr");
-        return NULL;
-    }
-
-    if(!(addr = _OWPAddrAlloc(ctx)))
-        return NULL;
-
-    if(!(ai = malloc(sizeof(struct addrinfo)))){
-        OWPError(addr->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                "malloc():%s",strerror(errno));
-        (void)OWPAddrFree(addr);
-        return NULL;
-    }
-
-    if(!(addr->saddr = malloc(saddrlen))){
-        OWPError(addr->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                "malloc():%s",strerror(errno));
-        (void)OWPAddrFree(addr);
-        (void)free(ai);
-        return NULL;
-    }
-    memcpy(addr->saddr,saddr,saddrlen);
-    ai->ai_addr = addr->saddr;
-    addr->saddrlen = saddrlen;
-    ai->ai_addrlen = saddrlen;
-
-    ai->ai_flags = 0;
-    ai->ai_family = saddr->sa_family;
-    ai->ai_socktype = SOCK_DGRAM;
-    ai->ai_protocol = IPPROTO_IP;        /* reasonable default.        */
-    ai->ai_canonname = NULL;
-    ai->ai_next = NULL;
-
-    addr->ai = ai;
-    addr->ai_free = True;
-    addr->so_type = SOCK_DGRAM;
-    addr->so_protocol = IPPROTO_IP;
-
-    if( (gai = getnameinfo(addr->saddr,addr->saddrlen,
-                    addr->node,sizeof(addr->node),
-                    addr->port,sizeof(addr->port),
-                    NI_NUMERICHOST | NI_NUMERICSERV)) != 0){
-        OWPError(addr->ctx,OWPErrWARNING,OWPErrUNKNOWN,
-                "getnameinfo(): %s",gai_strerror(gai));
-        strncpy(addr->node,"unknown",sizeof(addr->node));
-        strncpy(addr->port,"unknown",sizeof(addr->port));
-    }
-    addr->node_set = True;
-    addr->port_set = True;
-
-    return addr;
-}
-
-/*
  * Function:        _OWPReadTestRequest
  *
  * Description:        
@@ -1274,8 +1194,8 @@ _OWPReadTestRequest(
     struct sockaddr_storage sendaddr_rec;
     struct sockaddr_storage recvaddr_rec;
     socklen_t               addrlen = sizeof(sendaddr_rec);
-    OWPAddr                 SendAddr=NULL;
-    OWPAddr                 RecvAddr=NULL;
+    I2Addr                  SendAddr=NULL;
+    I2Addr                  RecvAddr=NULL;
     u_int8_t                ipvn;
     OWPBoolean              conf_sender;
     OWPBoolean              conf_receiver;
@@ -1378,10 +1298,10 @@ _OWPReadTestRequest(
      * (Don't bother checking for null return - it will be checked
      * by _OWPTestSessionAlloc.)
      */
-    SendAddr = AddrBySAddrRef(cntrl->ctx,(struct sockaddr*)&sendaddr_rec,
-            addrlen);
-    RecvAddr = AddrBySAddrRef(cntrl->ctx,(struct sockaddr*)&recvaddr_rec,
-            addrlen);
+    SendAddr = I2AddrBySAddr(OWPContextErrHandle(cntrl->ctx),
+            (struct sockaddr*)&sendaddr_rec,addrlen,SOCK_DGRAM,IPPROTO_UDP);
+    RecvAddr = I2AddrBySAddr(OWPContextErrHandle(cntrl->ctx),
+            (struct sockaddr*)&recvaddr_rec,addrlen,SOCK_DGRAM,IPPROTO_UDP);
 
     /*
      * Allocate a record for this test.
@@ -1458,8 +1378,8 @@ error:
     if(tsession){
         _OWPTestSessionFree(tsession,OWP_CNTRL_FAILURE);
     }else{
-        OWPAddrFree(SendAddr);
-        OWPAddrFree(RecvAddr);
+        I2AddrFree(SendAddr);
+        I2AddrFree(RecvAddr);
     }
 
     return err_ret;
@@ -1635,7 +1555,7 @@ _OWPReadStartSessions(
 
     if(!_OWPStateIs(_OWPStateStartSessions,cntrl)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                "_OWPReadStartSessions called in wrong state.");
+                "_OWPReadStartSessions: called in wrong state.");
         return OWPErrFATAL;
     }
 
@@ -1652,21 +1572,21 @@ _OWPReadStartSessions(
 
     if(n != (_OWP_STOP_SESSIONS_BLK_LEN-1)){
         OWPError(cntrl->ctx,OWPErrFATAL,errno,
-                "_OWPReadStartSessions:Unable to read from socket.");
+                "_OWPReadStartSessions: Unable to read from socket.");
         cntrl->state = _OWPStateInvalid;
         return OWPErrFATAL;
     }
 
     if(memcmp(cntrl->zero,&buf[16],16)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                "_OWPReadTestRequest:Invalid zero padding");
+                "_OWPReadStartSessions: Invalid zero padding");
         cntrl->state = _OWPStateInvalid;
         return OWPErrFATAL;
     }
 
     if(buf[0] != 2){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                "_OWPReadStartSessions:Not a StartSessions message...");
+                "_OWPReadStartSessions: Not a StartSessions message...");
         cntrl->state = _OWPStateInvalid;
         return OWPErrFATAL;
     }

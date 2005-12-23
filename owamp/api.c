@@ -32,318 +32,6 @@
 
 #include "./owampP.h"
 
-OWPAddr
-_OWPAddrAlloc(
-        OWPContext        ctx
-        )
-{
-    OWPAddr        addr = calloc(1,sizeof(struct OWPAddrRec));
-
-    if(!addr){
-        OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                ":calloc(1,%d):%M",sizeof(struct OWPAddrRec));
-        return NULL;
-    }
-
-    addr->ctx = ctx;
-
-    addr->node_set = 0;
-    strncpy(addr->node,"unknown",sizeof(addr->node));
-    addr->port_set = 0;
-    strncpy(addr->port,"unknown",sizeof(addr->port));
-    addr->ai_free = 0;
-    addr->ai = NULL;
-
-    addr->saddr = NULL;
-    addr->saddrlen = 0;
-
-    addr->fd_user = 0;
-    addr->fd= -1;
-
-    return addr;
-}
-
-OWPErrSeverity
-OWPAddrFree(
-        OWPAddr        addr
-        )
-{
-    OWPErrSeverity        err = OWPErrOK;
-
-    if(!addr)
-        return err;
-
-    if(addr->ai){
-        if(!addr->ai_free){
-            freeaddrinfo(addr->ai);
-        }else{
-            struct addrinfo *ai, *next;
-
-            ai = addr->ai;
-            while(ai){
-                next = ai->ai_next;
-
-                if(ai->ai_addr) free(ai->ai_addr);
-                if(ai->ai_canonname) free(ai->ai_canonname);
-                free(ai);
-
-                ai = next;
-            }
-        }
-        addr->ai = NULL;
-        addr->saddr = NULL;
-    }
-
-    if((addr->fd >= 0) && !addr->fd_user){
-        if(close(addr->fd) < 0){
-            OWPError(addr->ctx,OWPErrWARNING,
-                    errno,":close(%d)",addr->fd);
-            err = OWPErrWARNING;
-        }
-    }
-
-    free(addr);
-
-    return err;
-}
-
-OWPAddr
-OWPAddrByNode(
-        OWPContext        ctx,
-        const char        *node
-        )
-{
-    OWPAddr     addr;
-    char        buff[MAXHOSTNAMELEN+1];
-    const char  *nptr=node;
-    char        *pptr=NULL;
-    char        *s1,*s2;
-
-    if(!node)
-        return NULL;
-
-    if(!(addr=_OWPAddrAlloc(ctx)))
-        return NULL;
-
-    strncpy(buff,node,MAXHOSTNAMELEN);
-
-    /*
-     * Pull off port if specified. If syntax doesn't match URL like
-     * node:port - ipv6( [node]:port) - then just assume whole string
-     * is nodename and let getaddrinfo report problems later.
-     * (This service syntax is specified by rfc2396 and rfc2732.)
-     */
-
-    /*
-     * First try ipv6 syntax since it is more restrictive.
-     */
-    if( (s1 = strchr(buff,'['))){
-        s1++;
-        if(strchr(s1,'[')) goto NOPORT;
-        if(!(s2 = strchr(s1,']'))) goto NOPORT;
-        *s2++='\0';
-        if(strchr(s2,']')) goto NOPORT;
-        if(*s2++ != ':') goto NOPORT;
-        nptr = s1;
-        pptr = s2;
-    }
-    /*
-     * Now try ipv4 style.
-     */
-    else if( (s1 = strchr(buff,':'))){
-        *s1++='\0';
-        if(strchr(s1,':')) goto NOPORT;
-        nptr = buff;
-        pptr = s1;
-    }
-
-
-NOPORT:
-    strncpy(addr->node,nptr,MAXHOSTNAMELEN);
-    addr->node_set = 1;
-
-    if(pptr){
-        strncpy(addr->port,pptr,MAXHOSTNAMELEN);
-        addr->port_set = 1;
-    }
-
-    return addr;
-}
-
-static struct addrinfo*
-_OWPCopyAddrRec(
-        OWPContext              ctx,
-        const struct addrinfo   *src
-        )
-{
-    struct addrinfo *dst = calloc(1,sizeof(struct addrinfo));
-
-    if(!dst){
-        OWPError(ctx,OWPErrFATAL,errno,
-                ":calloc(1,sizeof(struct addrinfo))");
-        return NULL;
-    }
-
-    *dst = *src;
-
-    if(src->ai_addr){
-        dst->ai_addr = malloc(src->ai_addrlen);
-        if(!dst->ai_addr){
-            OWPError(ctx,OWPErrFATAL,errno,
-                    "malloc(%u):%s",src->ai_addrlen,
-                    strerror(errno));
-            free(dst);
-            return NULL;
-        }
-        memcpy(dst->ai_addr,src->ai_addr,src->ai_addrlen);
-        dst->ai_addrlen = src->ai_addrlen;
-    }
-    else
-        dst->ai_addrlen = 0;
-
-    if(src->ai_canonname){
-        int        len = strlen(src->ai_canonname);
-
-        if(len > MAXHOSTNAMELEN){
-            OWPError(ctx,OWPErrWARNING,
-                    OWPErrUNKNOWN,
-                    ":Invalid canonname!");
-            dst->ai_canonname = NULL;
-        }else{
-            dst->ai_canonname = malloc(sizeof(char)*(len+1));
-            if(!dst->ai_canonname){
-                OWPError(ctx,OWPErrWARNING,
-                        errno,":malloc(sizeof(%d)",len+1);
-                dst->ai_canonname = NULL;
-            }else
-                strcpy(dst->ai_canonname,src->ai_canonname);
-        }
-    }
-
-    dst->ai_next = NULL;
-
-    return dst;
-}
-
-OWPAddr
-OWPAddrByAddrInfo(
-        OWPContext              ctx,
-        const struct addrinfo   *ai
-        )
-{
-    OWPAddr         addr = _OWPAddrAlloc(ctx);
-    struct addrinfo **aip;
-
-    if(!addr)
-        return NULL;
-
-    addr->ai_free = 1;
-    aip = &addr->ai;
-
-    while(ai){
-        *aip = _OWPCopyAddrRec(ctx,ai);
-        if(!*aip){
-            OWPAddrFree(addr);
-            return NULL;
-        }
-        aip = &(*aip)->ai_next;
-        ai = ai->ai_next;
-    }
-
-    return addr;
-}
-
-OWPAddr
-OWPAddrBySockFD(
-        OWPContext  ctx,
-        int         fd
-        )
-{
-    OWPAddr addr = _OWPAddrAlloc(ctx);
-
-    if(!addr)
-        return NULL;
-
-    addr->fd_user = 1;
-    addr->fd = fd;
-
-    return addr;
-}
-
-OWPAddr
-_OWPAddrCopy(
-        OWPAddr from
-        )
-{
-    OWPAddr         to;
-    struct addrinfo **aip;
-    struct addrinfo *ai;
-
-    if(!from)
-        return NULL;
-
-    if( !(to = _OWPAddrAlloc(from->ctx)))
-        return NULL;
-
-    if(from->node_set){
-        strncpy(to->node,from->node,sizeof(to->node));
-        to->node_set = True;
-    }
-
-    if(from->port_set){
-        strncpy(to->port,from->port,sizeof(to->port));
-        to->port_set = True;
-    }
-
-    to->ai_free = 1;
-    aip = &to->ai;
-    ai = from->ai;
-
-    while(ai){
-        *aip = _OWPCopyAddrRec(from->ctx,ai);
-        if(!*aip){
-            OWPAddrFree(to);
-            return NULL;
-        }
-        if(ai->ai_addr == from->saddr){
-            to->saddr = (*aip)->ai_addr;
-            to->saddrlen = (*aip)->ai_addrlen;
-        }
-
-        aip = &(*aip)->ai_next;
-        ai = ai->ai_next;
-    }
-
-    to->fd = from->fd;
-
-    if(to->fd > -1)
-        to->fd_user = True;
-
-    return to;
-}
-
-int
-OWPAddrFD(
-        OWPAddr addr
-        )
-{
-    if(!addr || (addr->fd < 0))
-        return -1;
-
-    return addr->fd;
-}
-
-socklen_t
-OWPAddrSockLen(
-        OWPAddr addr
-        )
-{
-    if(!addr || !addr->saddr)
-        return 0;
-
-    return addr->saddrlen;
-}
-
 /*
  * Function:        OWPGetContext
  *
@@ -476,9 +164,9 @@ _OWPFailControlSession(
 OWPTestSession
 _OWPTestSessionAlloc(
         OWPControl  cntrl,
-        OWPAddr     sender,
+        I2Addr      sender,
         OWPBoolean  conf_sender,
-        OWPAddr     receiver,
+        I2Addr      receiver,
         OWPBoolean  conf_receiver,
         OWPTestSpec *test_spec
         )
@@ -586,8 +274,8 @@ _OWPTestSessionFree(
         _OWPCallTestComplete(tsession,aval);
     }
 
-    OWPAddrFree(tsession->sender);
-    OWPAddrFree(tsession->receiver);
+    I2AddrFree(tsession->sender);
+    I2AddrFree(tsession->receiver);
 
     if(tsession->sctx){
         OWPScheduleContextFree(tsession->sctx);
@@ -626,20 +314,27 @@ _OWPCreateSID(
 {
     OWPTimeStamp    tstamp;
     u_int8_t        *aptr;
+    struct sockaddr *saddr;
+
+    if( !(saddr = I2AddrSAddr(tsession->receiver,NULL))){
+            OWPError(tsession->cntrl->ctx,OWPErrFATAL,OWPErrUNSUPPORTED,
+                    "_OWPCreateSID: Invalid socket address");
+        return 1;
+    }
 
 #ifdef        AF_INET6
-    if(tsession->receiver->saddr->sa_family == AF_INET6){
+    if(saddr->sa_family == AF_INET6){
         struct sockaddr_in6        *s6;
 
-        s6 = (struct sockaddr_in6*)tsession->receiver->saddr;
+        s6 = (struct sockaddr_in6*)saddr;
         /* point at last 4 bytes of addr */
         aptr = &s6->sin6_addr.s6_addr[12];
     }else
 #endif
-        if(tsession->receiver->saddr->sa_family == AF_INET){
+        if(saddr->sa_family == AF_INET){
             struct sockaddr_in        *s4;
 
-            s4 = (struct sockaddr_in*)tsession->receiver->saddr;
+            s4 = (struct sockaddr_in*)saddr;
             aptr = (u_int8_t*)&s4->sin_addr;
         }
         else{
@@ -1422,155 +1117,6 @@ done:
 
     return 0;
 }
-
-/*
- * Function:        OWPAddrNodeName
- *
- * Description:        
- *         This function gets a char* node name for a given OWPAddr.
- *         The len parameter is an in/out parameter.
- *
- * In Args:        
- *
- * Out Args:        
- *
- * Scope:        
- * Returns:        
- * Side Effect:        
- */
-void
-OWPAddrNodeName(
-        OWPAddr addr,
-        char    *buf,
-        size_t  *len
-        )
-{
-    assert(buf);
-    assert(len);
-    assert(*len > 0);
-
-    if(!addr){
-        goto bail;
-    }
-
-    if(!addr->node_set && addr->saddr &&
-            (getnameinfo(addr->saddr,addr->saddrlen,
-                addr->node,sizeof(addr->node),
-                addr->port,sizeof(addr->port),
-                NI_NUMERICHOST|NI_NUMERICSERV) == 0)){
-        addr->node_set = 1;
-        addr->port_set = 1;
-    }
-
-    if(addr->node_set){
-        *len = MIN(*len,sizeof(addr->node));
-        strncpy(buf,addr->node,*len);
-        return;
-    }
-
-bail:
-    *len = 0;
-    buf[0] = '\0';
-    return;
-}
-
-/*
- * Function:        OWPAddrNodeService
- *
- * Description:        
- *         This function gets a char* service name for a given OWPAddr.
- *         The len parameter is an in/out parameter.
- *
- * In Args:        
- *
- * Out Args:        
- *
- * Scope:        
- * Returns:        
- * Side Effect:        
- */
-void
-OWPAddrNodeService(
-        OWPAddr addr,
-        char    *buf,
-        size_t  *len
-        )
-{
-    assert(buf);
-    assert(len);
-    assert(*len > 0);
-
-    if(!addr){
-        goto bail;
-    }
-
-    if(!addr->port_set){
-        char    t[NI_MAXHOST];
-        size_t  lent = NI_MAXHOST;
-
-        OWPAddrNodeName(addr,t,&lent);
-    }
-
-    if(addr->port_set){
-        *len = MIN(*len,sizeof(addr->port));
-        strncpy(buf,addr->port,*len);
-        return;
-    }
-
-bail:
-    *len = 0;
-    buf[0] = '\0';
-    return;
-}
-
-/*
- * Might throw these into I2Util sometime...
- */
-#ifndef htonll
-static u_int64_t
-htonll(
-        u_int64_t   h64
-      )
-{
-    u_int64_t   n64;
-    u_int8_t    *t8;
-
-    /* Use t8 to byte address the n64 */
-    t8 = (u_int8_t*)&n64;
-
-    /* set low-order bytes */
-    *(u_int32_t*)&t8[4] = htonl(h64 & 0xFFFFFFFFUL);
-
-    /* set high-order bytes */
-    h64 >>=32;
-    *(u_int32_t*)&t8[0] = htonl(h64 & 0xFFFFFFFFUL);
-
-    return n64;
-}
-#endif
-
-#ifndef ntohll
-static u_int64_t
-ntohll(
-        u_int64_t   n64
-      )
-{
-    u_int64_t   h64;
-    u_int8_t    *t8;
-
-    /* Use t8 to byte address the n64 */
-    t8 = (u_int8_t*)&n64;
-
-    /* High order bytes */
-    h64 = ntohl(*(u_int32_t*)&t8[0]);
-    h64 <<= 32;
-
-    /* Low order bytes */
-    h64 |= ntohl(*(u_int32_t*)&t8[4]);
-
-    return h64;
-}
-#endif
 
 static OWPSessionFinishedType
 GetSessionFinishedType(

@@ -771,7 +771,7 @@ OWPStatsCreate(
     /*
      * Packet buffer hash table
      */
-    if( !(stats->ptable = I2HashInit(OWPContextGetErrHandle(stats->ctx),
+    if( !(stats->ptable = I2HashInit(OWPContextErrHandle(stats->ctx),
                     stats->plistlen,NULL,NULL))){
         OWPError(stats->ctx,OWPErrFATAL,OWPErrUNKNOWN,
                 "%s: Unable to allocate PacketRec hash");
@@ -821,7 +821,7 @@ OWPStatsCreate(
     /*
      * Bucket hash table
      */
-    if( !(stats->btable = I2HashInit(OWPContextGetErrHandle(stats->ctx),
+    if( !(stats->btable = I2HashInit(OWPContextErrHandle(stats->ctx),
                     stats->blistlen,NULL,NULL))){
         OWPError(stats->ctx,OWPErrFATAL,OWPErrUNKNOWN,
                 "%s: Unable to allocate BucketRec hash");

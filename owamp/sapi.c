@@ -31,257 +31,33 @@
 
 #include <owamp/owampP.h>
 
-static OWPAddr
-AddrByWildcard(
-        OWPContext  ctx
-        )
-{
-    struct addrinfo *ai=NULL;
-    struct addrinfo hints;
-    OWPAddr         addr;
-    int             ai_err;
-
-
-    memset(&hints,0,sizeof(struct addrinfo));
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_flags = AI_PASSIVE;
-
-    if( (ai_err = getaddrinfo(NULL,OWP_CONTROL_SERVICE_NAME,&hints,&ai)!=0)
-            || !ai){
-        OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                "getaddrinfo(): %s",gai_strerror(ai_err));
-        return NULL;
-    }
-
-    if( !(addr = _OWPAddrAlloc(ctx))){
-        freeaddrinfo(ai);
-        return NULL;
-    }
-
-    addr->ai = ai;
-
-    return addr;
-}
-
-static OWPBoolean
-SetServerAddrInfo(
-        OWPContext      ctx,
-        OWPAddr         addr,
-        OWPErrSeverity  *err_ret
-        )
-{
-    struct addrinfo *ai=NULL;
-    struct addrinfo hints;
-    int             ai_err;
-    char            *port=NULL;
-
-    if(!addr || (addr->fd > -1)){
-        *err_ret = OWPErrFATAL;
-        OWPError(ctx,OWPErrFATAL,OWPErrINVALID,"Invalid address");
-        return False;
-    }
-
-    if(addr->ai)
-        return True;
-
-    if(!addr->node_set){
-        *err_ret = OWPErrFATAL;
-        OWPError(ctx,OWPErrFATAL,OWPErrINVALID,"Invalid address");
-        return False;
-    }
-
-    memset(&hints,0,sizeof(struct addrinfo));
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_flags = AI_PASSIVE;
-
-    if(addr->port_set)
-        port = addr->port;
-    else
-        port = OWP_CONTROL_SERVICE_NAME;
-
-    if( (ai_err = getaddrinfo(addr->node,port,&hints,&ai)!=0) || !ai){
-        *err_ret = OWPErrFATAL;
-        OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"getaddrinfo(): %s",
-                gai_strerror(ai_err));
-        return False;
-    }
-    addr->ai = ai;
-
-    return True;
-}
-
-/*
- * This function should only be called on an OWPAddr that already has
- * a fd associated with it.
- */
-static OWPBoolean
-AddrSetSAddr(
-        OWPAddr         addr,
-        struct sockaddr *fromaddr,
-        socklen_t       fromaddrlen,
-        OWPErrSeverity  *err_ret
-        )
-{
-    int                 so_type;
-    socklen_t           so_typesize = sizeof(so_type);
-    struct sockaddr     *saddr=NULL;
-    struct addrinfo     *ai=NULL;
-    struct sockaddr_in  v4addr;
-    int                 gai;
-
-    *err_ret = OWPErrOK;
-
-    if(!addr || (addr->fd < 0)){
-        OWPError(addr->ctx,OWPErrFATAL,OWPErrINVALID,"Invalid address");
-        goto error;
-    }
-
-    if(addr->saddr && addr->saddrlen)
-        return True;
-
-    if(getsockopt(addr->fd,SOL_SOCKET,SO_TYPE,
-                (void*)&so_type,&so_typesize) != 0){
-        OWPError(addr->ctx,OWPErrFATAL,errno,
-                "getsockopt():%s",strerror(errno));
-        goto error;
-    }
-
-    if( !(saddr = malloc(sizeof(struct sockaddr_storage))) ||
-            !(ai = malloc(sizeof(struct addrinfo)))){
-        OWPError(addr->ctx,OWPErrFATAL,errno,"malloc():%s",
-                strerror(errno));
-        goto error;
-    }
-
-    switch(fromaddr->sa_family){
-#ifdef        AF_INET6
-        struct sockaddr_in6 *v6addr;
-
-        case AF_INET6:
-        /*
-         * If this is a mapped addr - create a sockaddr_in
-         * for it instead. (This is so addr matching will
-         * work later - and make sense for users attempting
-         * to use v4.) Use this to reset fromaddr - then
-         * fall through to INET case to memcpy.
-         */
-        v6addr = (struct sockaddr_in6*)fromaddr;
-        if(IN6_IS_ADDR_V4MAPPED(&v6addr->sin6_addr)){
-            memset(&v4addr,0,sizeof(v4addr));
-#ifdef        HAVE_STRUCT_SOCKADDR_SA_LEN
-            v4addr.sin_len = sizeof(v4addr);
-#endif
-            v4addr.sin_family = AF_INET;
-            v4addr.sin_port = v6addr->sin6_port;
-            memcpy(&v4addr.sin_addr.s_addr,
-                    &v6addr->sin6_addr.s6_addr[12],4);
-            fromaddr = (struct sockaddr*)&v4addr;
-            fromaddrlen = sizeof(v4addr);
-
-        }
-#endif
-        /* fall through */
-        case AF_INET:
-        memcpy((void*)saddr,(void*)fromaddr,fromaddrlen);
-        break;
-        default:
-        OWPError(addr->ctx,OWPErrFATAL,OWPErrINVALID,
-                "Invalid addr family");
-        goto error;
-        break;
-    }
-
-    ai->ai_flags = 0;
-    ai->ai_family = saddr->sa_family;
-    ai->ai_socktype = so_type;
-    ai->ai_protocol = IPPROTO_IP;        /* reasonable default.        */
-    ai->ai_addrlen = fromaddrlen;
-    ai->ai_canonname = NULL;
-    ai->ai_addr = saddr;
-    ai->ai_next = NULL;
-
-    addr->ai = ai;
-    addr->ai_free = True;
-    addr->saddr = saddr;
-    addr->saddrlen = fromaddrlen;
-    addr->so_type = so_type;
-
-    if( (gai = getnameinfo(addr->saddr,addr->saddrlen,
-                    addr->node,sizeof(addr->node),
-                    addr->port,sizeof(addr->port),
-                    NI_NUMERICHOST | NI_NUMERICSERV)) != 0){
-        OWPError(addr->ctx,OWPErrWARNING,OWPErrUNKNOWN,
-                "getnameinfo(): %s",gai_strerror(gai));
-        strncpy(addr->node,"unknown",sizeof(addr->node));
-        strncpy(addr->port,"unknown",sizeof(addr->port));
-    }
-    addr->node_set = True;
-    addr->port_set = True;
-
-    return True;
-
-error:
-    if(saddr) free(saddr);
-    if(ai) free(ai);
-    *err_ret = OWPErrFATAL;
-    return False;
-}
-
-/*
- * This function should only be called on an OWPAddr that already has
- * a fd associated with it.
- */
-static OWPBoolean
-AddrSetSockName(
-        OWPAddr         addr,
-        OWPErrSeverity  *err_ret
-        )
-{
-    struct sockaddr_storage sbuff;
-    socklen_t               so_size = sizeof(sbuff);
-
-    if(!addr || (addr->fd < 0)){
-        OWPError(addr->ctx,OWPErrFATAL,OWPErrINVALID,"Invalid address");
-        goto error;
-    }
-
-    if(getsockname(addr->fd,(void*)&sbuff,&so_size) != 0){
-        OWPError(addr->ctx,OWPErrFATAL,errno,
-                "getsockname():%s",strerror(errno));
-        goto error;
-    }
-
-    return AddrSetSAddr(addr,(struct sockaddr *)&sbuff,so_size,err_ret);
-
-error:
-    *err_ret = OWPErrFATAL;
-    return False;
-}
-
 static int
 OpenSocket(
-        OWPContext  ctx     __attribute__((unused)),
+        OWPContext  ctx,
         int         family,
-        OWPAddr     addr
+        I2Addr      addr
         )
 {
+    struct addrinfo *fai;
     struct addrinfo *ai;
     int             on;
+    int             fd;
 
-    for(ai = addr->ai;ai;ai = ai->ai_next){
+    if( !(fai = I2AddrAddrInfo(addr,NULL,OWP_CONTROL_SERVICE_NAME))){
+        return -2;
+    }
+
+    for(ai = fai;ai;ai = ai->ai_next){
         if(ai->ai_family != family)
             continue;
 
-        addr->fd =socket(ai->ai_family,ai->ai_socktype,ai->ai_protocol);
+        fd =socket(ai->ai_family,ai->ai_socktype,ai->ai_protocol);
 
-        if(addr->fd < 0)
+        if(fd < 0)
             continue;
 
         on=1;
-        if(setsockopt(addr->fd,SOL_SOCKET,SO_REUSEADDR,&on,
-                    sizeof(on)) != 0){
+        if(setsockopt(fd,SOL_SOCKET,SO_REUSEADDR,&on,sizeof(on)) != 0){
             goto failsock;
         }
 
@@ -292,17 +68,21 @@ OpenSocket(
 #if        defined(AF_INET6) && defined(IPPROTO_IPV6) && defined(IPV6_V6ONLY)
         on=0;
         if((ai->ai_family == AF_INET6) &&
-                setsockopt(addr->fd,IPPROTO_IPV6,IPV6_V6ONLY,&on,
-                    sizeof(on)) != 0){
+                setsockopt(fd,IPPROTO_IPV6,IPV6_V6ONLY,&on,sizeof(on)) != 0){
             goto failsock;
         }
 #endif
 
-        if(bind(addr->fd,ai->ai_addr,ai->ai_addrlen) == 0){
+        if(bind(fd,ai->ai_addr,ai->ai_addrlen) == 0){
 
-            addr->saddr = ai->ai_addr;
-            addr->saddrlen = ai->ai_addrlen;
-            addr->so_type = ai->ai_socktype;
+            if( !I2AddrSetSAddr(addr,ai->ai_addr,ai->ai_addrlen) ||
+                    !I2AddrSetProtocol(addr,ai->ai_protocol) ||
+                    !I2AddrSetSocktype(addr,ai->ai_socktype) ||
+                    !I2AddrSetFD(addr,fd,True)){
+                OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                        "OpenSocket: Unable to set saddr in address record");
+                return -1;
+            }
 
             break;
         }
@@ -311,11 +91,10 @@ OpenSocket(
             return -2;
 
 failsock:
-        while((close(addr->fd) < 0) && (errno == EINTR));
-        addr->fd = -1;
+        while((close(fd) < 0) && (errno == EINTR));
     }
 
-    return addr->fd;
+    return fd;
 }
 
 /*
@@ -349,10 +128,10 @@ failsock:
  * Returns:        
  * Side Effect:        
  */
-OWPAddr
+I2Addr
 OWPServerSockCreate(
         OWPContext      ctx,
-        OWPAddr         addr,
+        I2Addr          addr,
         OWPErrSeverity  *err_ret
         )
 {
@@ -363,21 +142,24 @@ OWPServerSockCreate(
     /*
      * AddrByFD is invalid.
      */
-    if(addr && (addr->fd > -1)){
+    if(addr && (I2AddrFD(addr) > -1)){
         OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
-                "Invalid OWPAddr record - fd already specified.");
+                "Invalid I2Addr record - fd already specified.");
         goto error;
     }
 
     /*
      * If no addr specified, then use wildcard address.
      */
-    if((!addr) && !(addr = AddrByWildcard(ctx)))
+    if((!addr) &&
+            !(addr = I2AddrByWildcard(OWPContextErrHandle(ctx),SOCK_STREAM,
+                    OWP_CONTROL_SERVICE_NAME))){
         goto error;
+    }
 
-
-    if(!SetServerAddrInfo(ctx,addr,err_ret))
+    if( !I2AddrSetPassive(addr,True)){
         goto error;
+    }
 
 #ifdef        AF_INET6
     /*
@@ -404,16 +186,16 @@ OWPServerSockCreate(
     /*
      * We have a bound socket - set the listen backlog.
      */
-    if(listen(addr->fd,OWP_LISTEN_BACKLOG) < 0){
+    if(listen(fd,OWP_LISTEN_BACKLOG) < 0){
         OWPError(ctx,OWPErrFATAL,errno,"listen(%d,%d):%s",
-                addr->fd,OWP_LISTEN_BACKLOG,strerror(errno));
+                fd,OWP_LISTEN_BACKLOG,strerror(errno));
         goto error;
     }
 
     return addr;
 
 error:
-    OWPAddrFree(addr);
+    I2AddrFree(addr);
     *err_ret = OWPErrFATAL;
     return NULL;
 
@@ -458,6 +240,12 @@ OWPControlAccept(
     struct timeval  tvalstart,tvalend;
     int             ival=0;
     int             *intr = &ival;
+    char            remotenode[NI_MAXHOST],remoteserv[NI_MAXSERV];
+    size_t          remotenodelen = sizeof(remotenode);
+    size_t          remoteservlen = sizeof(remoteserv);
+    char            localnode[NI_MAXHOST],localserv[NI_MAXSERV];
+    size_t          localnodelen = sizeof(localnode);
+    size_t          localservlen = sizeof(localserv);
 
     if(retn_on_intr){
         intr = retn_on_intr;
@@ -474,28 +262,43 @@ OWPControlAccept(
     /*
      * set up remote_addr for policy decisions, and log reporting.
      *
-     * set fd_user false to make OWPAddrFree of remote_addr close the
-     * socket. (This will happen from OWPControlClose.)
+     * If connsaddr is non-existant, than create the I2Addr using
+     * the socket.
      */
-    if(!(cntrl->remote_addr = OWPAddrBySockFD(ctx,connfd)))
-        goto error;
-    cntrl->remote_addr->fd_user = False;
-    if(!AddrSetSAddr(cntrl->remote_addr,connsaddr,connsaddrlen,err_ret))
-        goto error;
+    if(!connsaddr || !connsaddrlen){
+        if( !(cntrl->remote_addr = I2AddrBySockFD(
+                    OWPContextErrHandle(ctx),connfd,True))){
+            goto error;
+        }
+    }
+    else{
+        if( !(cntrl->remote_addr = I2AddrBySAddr(
+                    OWPContextErrHandle(ctx),
+                    connsaddr,connsaddrlen,SOCK_STREAM,0)) ||
+                !I2AddrSetFD(cntrl->remote_addr,connfd,True)){
+            goto error;
+        }
+    }
+
     /*
      * set up local_addr for policy decisions, and log reporting.
      */
-    if( !(cntrl->local_addr = OWPAddrBySockFD(ctx,connfd))){
+    if( !(cntrl->local_addr = I2AddrByLocalSockFD(
+                    OWPContextErrHandle(ctx),connfd,False))){
         *err_ret = OWPErrFATAL;
         goto error;
     }
-    if(!AddrSetSockName(cntrl->local_addr,err_ret))
+
+    if( !I2AddrNodeName(cntrl->remote_addr,remotenode,&remotenodelen) ||
+            !I2AddrServName(cntrl->remote_addr,remoteserv,&remoteservlen) ||
+            !I2AddrNodeName(cntrl->local_addr,localnode,&localnodelen) ||
+            !I2AddrServName(cntrl->local_addr,localserv,&localservlen)){
         goto error;
+    }
 
     OWPError(ctx,OWPErrINFO,OWPErrPOLICY,
             "Connection to (%s:%s) from (%s:%s)",
-            cntrl->local_addr->node,cntrl->local_addr->port,
-            cntrl->remote_addr->node, cntrl->remote_addr->port);
+            localnode,localserv,remotenode,remoteserv);
 
     /* generate 16 random bytes of challenge and save them away. */
     if(I2RandomBytes(ctx->rand_src,challenge, 16) != 0){
@@ -521,8 +324,7 @@ OWPControlAccept(
     if(!mode_offered){
         OWPError(cntrl->ctx,OWPErrWARNING,OWPErrPOLICY,
                 "Control request to (%s:%s) denied from (%s:%s): mode == 0",
-                cntrl->local_addr->node,cntrl->local_addr->port,
-                cntrl->remote_addr->node,cntrl->remote_addr->port);
+                localnode,localserv,remotenode,remoteserv);
         goto error;
     }
 
@@ -550,9 +352,7 @@ OWPControlAccept(
     if(!(cntrl->mode | mode_offered)){ /* can't provide requested mode */
         OWPError(cntrl->ctx,OWPErrWARNING,OWPErrPOLICY,
                 "Control request to (%s:%s) denied from (%s:%s):mode not offered (%u)",
-                cntrl->local_addr->node,cntrl->local_addr->port,
-                cntrl->remote_addr->node,
-                cntrl->remote_addr->port,cntrl->mode);
+                localnode,localserv,remotenode,remoteserv,cntrl->mode);
         if( (rc = _OWPWriteServerOK(cntrl,OWP_CNTRL_REJECT,0,intr)) <
                 OWPErrOK){
             *err_ret = (OWPErrSeverity)rc;
@@ -592,17 +392,12 @@ OWPControlAccept(
             if(!getkey_success){
                 OWPError(cntrl->ctx,OWPErrWARNING,OWPErrPOLICY,
                         "Unknown userid (%s) from (%s:%s)",
-                        cntrl->userid_buffer,
-                        cntrl->remote_addr->node,
-                        cntrl->remote_addr->port);
+                        cntrl->userid_buffer,remotenode,remoteserv);
             }
             else{
                 OWPError(cntrl->ctx,OWPErrWARNING,OWPErrPOLICY,
                         "Control request to (%s:%s) denied from (%s:%s):Invalid challenge encryption",
-                        cntrl->local_addr->node,
-                        cntrl->local_addr->port,
-                        cntrl->remote_addr->node,
-                        cntrl->remote_addr->port);
+                        localnode,localserv,remotenode,remoteserv);
             }
             (void)_OWPWriteServerOK(cntrl,OWP_CNTRL_REJECT,0,intr);
             goto error;
@@ -621,14 +416,14 @@ OWPControlAccept(
     }
 
     if(!_OWPCallCheckControlPolicy(cntrl,cntrl->mode,cntrl->userid, 
-                cntrl->local_addr->saddr,cntrl->remote_addr->saddr,err_ret)){
+                I2AddrSAddr(cntrl->local_addr,NULL),
+                I2AddrSAddr(cntrl->remote_addr,NULL),err_ret)){
         if(*err_ret > OWPErrWARNING){
             OWPError(ctx,OWPErrWARNING,OWPErrPOLICY,
                     "ControlSession request to (%s:%s) denied from userid(%s):(%s:%s)",
-                    cntrl->local_addr->node,cntrl->local_addr->port,
+                    localnode,localserv,
                     (cntrl->userid)?cntrl->userid:(char*)"nil",
-                    cntrl->remote_addr->node,
-                    cntrl->remote_addr->port);
+                    remotenode,remoteserv);
             /*
              * send mode of 0 to client, and then close.
              */
@@ -652,10 +447,9 @@ OWPControlAccept(
     }
     OWPError(ctx,OWPErrWARNING,OWPErrPOLICY,
             "ControlSession([%s]:%s) accepted from userid(%s):([%s]:%s)",
-            cntrl->local_addr->node,cntrl->local_addr->port,
+            localnode,localserv,
             (cntrl->userid)?cntrl->userid:(char*)"nil",
-            cntrl->remote_addr->node,
-            cntrl->remote_addr->port);
+            remotenode,remoteserv);
 
     return cntrl;
 
@@ -672,12 +466,14 @@ OWPProcessTestRequest(
 {
     OWPTestSession  tsession = NULL;
     OWPErrSeverity  err_ret=OWPErrOK;
-    u_int32_t       offset;
     u_int16_t       port;
     int             rc;
     OWPAcceptType   acceptval = OWP_CNTRL_FAILURE;
     int             ival=0;
     int             *intr = &ival;
+    struct sockaddr *rsaddr;
+    struct sockaddr *ssaddr;
+    socklen_t       saddrlen;
 
     if(retn_on_intr){
         intr = retn_on_intr;
@@ -696,29 +492,15 @@ OWPProcessTestRequest(
     assert(tsession);
 
     /*
-     * Determine how to decode the socket addresses.
+     * Get local copies of saddr's.
      */
-    switch (tsession->sender->saddr->sa_family){
-#ifdef        AF_INET6
-        case AF_INET6:
-            /* compute offset of port field */
-            offset =
-                (((char*)&(((struct sockaddr_in6*)NULL)->sin6_port)) -
-                 ((char*)NULL));
-
-            break;
-#endif
-        case AF_INET:
-            /* compute offset of port field */
-            offset =
-                (((char*)&(((struct sockaddr_in*)NULL)->sin_port)) -
-                 ((char*)NULL));
-            break;
-        default:
-            /* shouldn't really happen... */
-            acceptval = OWP_CNTRL_UNSUPPORTED;
-            goto error;
-            break;
+    rsaddr = I2AddrSAddr(tsession->receiver,&saddrlen);
+    ssaddr = I2AddrSAddr(tsession->sender,&saddrlen);
+    if(!rsaddr || !ssaddr){
+        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                "Invalid addresses from ReadTestRequest");
+        err_ret = OWPErrFATAL;
+        goto error;
     }
 
     if(tsession->conf_receiver && (_OWPCreateSID(tsession) != 0)){
@@ -760,9 +542,7 @@ OWPProcessTestRequest(
         }
 
         if(!_OWPCallCheckTestPolicy(cntrl,False,
-                    tsession->receiver->saddr,
-                    tsession->sender->saddr,
-                    tsession->sender->saddrlen,
+                    rsaddr,ssaddr,saddrlen,
                     &tsession->test_spec,&tsession->closure,
                     &err_ret)){
             if(err_ret < OWPErrOK)
@@ -787,64 +567,62 @@ OWPProcessTestRequest(
          * spec.
          * (control-client MUST be receiver if openmode.)
          */
-        if(!(cntrl->mode & OWP_MODE_DOCIPHER) &&
-                (I2SockAddrEqual(cntrl->remote_addr->saddr,
-                                 cntrl->remote_addr->saddrlen,
-                                 tsession->receiver->saddr,
-                                 tsession->receiver->saddrlen,
-                                 I2SADDR_ADDR) <= 0)){
-            OWPError(cntrl->ctx,OWPErrWARNING,OWPErrPOLICY,
-                    "Test Denied: OpenMode recieve_addr(%s) != control_client(%s)",
-                    tsession->receiver->node,
-                    cntrl->remote_addr->node);
-            acceptval = OWP_CNTRL_REJECT;
-            err_ret = OWPErrWARNING;
-            goto error;
-        }
 
-        if(!_OWPCallCheckTestPolicy(cntrl,True,
-                    tsession->sender->saddr,
-                    tsession->receiver->saddr,
-                    tsession->receiver->saddrlen,
-                    &tsession->test_spec,
-                    &tsession->closure,&err_ret)){
-            if(err_ret < OWPErrOK)
+        if(!(cntrl->mode & OWP_MODE_DOCIPHER)){
+            struct sockaddr *csaddr;
+            socklen_t       csaddrlen;
+            char            remotenode[NI_MAXHOST];
+            size_t          remotenodelen = sizeof(remotenode);
+            char            recvnode[NI_MAXHOST];
+            size_t          recvnodelen = sizeof(recvnode);
+
+            if( !(csaddr = I2AddrSAddr(cntrl->remote_addr,&csaddrlen)) ||
+                    !I2AddrNodeName(cntrl->remote_addr,remotenode,
+                        &remotenodelen) ||
+                    !I2AddrNodeName(tsession->receiver,recvnode,&recvnodelen)){
+                OWPError(cntrl->ctx,OWPErrWARNING,OWPErrPOLICY,
+                        "Unable to determine sockaddr information");
+                err_ret = OWPErrFATAL;
                 goto error;
-            OWPError(cntrl->ctx, OWPErrWARNING, OWPErrPOLICY,
-                    "Test not allowed");
-            acceptval = OWP_CNTRL_REJECT;
-            err_ret = OWPErrWARNING;
-            goto error;
+            }
+            if(I2SockAddrEqual(csaddr,csaddrlen,rsaddr,saddrlen,
+                        I2SADDR_ADDR) <= 0){
+                OWPError(cntrl->ctx,OWPErrWARNING,OWPErrPOLICY,
+                        "Test Denied: OpenMode recieve_addr(%s) != control_client(%s)",
+                        recvnode,remotenode);
+                acceptval = OWP_CNTRL_REJECT;
+                err_ret = OWPErrWARNING;
+                goto error;
+            }
+
+            if(!_OWPCallCheckTestPolicy(cntrl,True,
+                        ssaddr,rsaddr,saddrlen,
+                        &tsession->test_spec,
+                        &tsession->closure,&err_ret)){
+                if(err_ret < OWPErrOK)
+                    goto error;
+                OWPError(cntrl->ctx, OWPErrWARNING, OWPErrPOLICY,
+                        "Test not allowed");
+                acceptval = OWP_CNTRL_REJECT;
+                err_ret = OWPErrWARNING;
+                goto error;
+            }
+            if(!_OWPEndpointInit(cntrl,tsession,tsession->sender,NULL,
+                        &acceptval,&err_ret)){
+                goto error;
+            }
+            if(!_OWPEndpointInitHook(cntrl,tsession,&acceptval,&err_ret)){
+                goto error;
+            }
+            port = I2AddrPort(tsession->sender);
         }
-        if(!_OWPEndpointInit(cntrl,tsession,tsession->sender,NULL,
-                    &acceptval,&err_ret)){
-            goto error;
-        }
-        if(!_OWPEndpointInitHook(cntrl,tsession,&acceptval,&err_ret)){
-            goto error;
-        }
-        /*
-         * set port to the port number fetched from the saddr.
-         * (This ugly code decodes the network ordered port number
-         * from the saddr using the port "offset" computed earlier.
-         */
-        port = ntohs(*(u_int16_t*)
-                ((u_int8_t*)tsession->sender->saddr+offset)
-                );
     }
 
     if(tsession->conf_receiver){
         if(!_OWPEndpointInitHook(cntrl,tsession,&acceptval,&err_ret)){
             goto error;
         }
-        /*
-         * set port to the port number fetched from the saddr.
-         * (This ugly code decodes the network ordered port number
-         * from the saddr using the port "offset" computed earlier.
-         */
-        port = ntohs(*(u_int16_t*)
-                ((u_int8_t*)tsession->receiver->saddr+offset)
-                );
+        port = I2AddrPort(tsession->receiver);
     }
 
     if( (rc = _OWPWriteTestAccept(cntrl,intr,OWP_CNTRL_ACCEPT,

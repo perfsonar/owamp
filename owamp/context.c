@@ -176,7 +176,7 @@ OWPContextCreate(
 }
 
 /*
- * Function:        OWPContextGetErrHandle
+ * Function:        OWPContextErrHandle
  *
  * Description:        
  *         Returns the ErrHandle that was set for this context upon creation.
@@ -190,7 +190,7 @@ OWPContextCreate(
  * Side Effect:        
  */
 extern I2ErrHandle
-OWPContextGetErrHandle(
+OWPContextErrHandle(
         OWPContext  ctx
         )
 {
@@ -309,10 +309,8 @@ OWPControlClose(
     /*
      * these functions will close the control socket if it is open.
      */
-    lerr = OWPAddrFree(cntrl->remote_addr);
-    err = MIN(err,lerr);
-    lerr = OWPAddrFree(cntrl->local_addr);
-    err = MIN(err,lerr);
+    I2AddrFree(cntrl->remote_addr);
+    I2AddrFree(cntrl->local_addr);
 
     free(cntrl);
 

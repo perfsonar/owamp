@@ -234,7 +234,6 @@ OWPUsecToNum64(
  */
 typedef struct OWPContextRec    *OWPContext;
 typedef struct OWPControlRec    *OWPControl;
-typedef struct OWPAddrRec       *OWPAddr;
 
 /*
  * Timestamp related types and structures needed throughout.
@@ -623,7 +622,7 @@ OWPContextFree(
         );
 
 extern I2ErrHandle
-OWPContextGetErrHandle(
+OWPContextErrHandle(
         OWPContext  ctx
         );
 
@@ -697,77 +696,6 @@ OWPControlConfigDelete(
         );
 
 /*
- * The OWPAddrBy* functions are used to allow the OWP API to more
- * adequately manage the memory associated with the many different ways
- * of specifying an address - and to provide a uniform way to specify an
- * address to the main API functions.
- * These functions return NULL on failure. (They call the error handler
- * to specify the reason.)
- */
-extern OWPAddr
-OWPAddrByNode(
-        OWPContext  ctx,
-        const char  *node   /* dns or valid char representation of addr */
-        );
-
-extern OWPAddr
-OWPAddrByAddrInfo(
-        OWPContext              ctx,
-        const struct addrinfo   *ai        /* valid addrinfo linked list        */
-        );
-
-extern OWPAddr
-OWPAddrBySockFD(
-        OWPContext  ctx,
-        int         fd        /* fd must be an already connected socket */
-        );
-
-/*
- * Return the address for the local side of the control connection.
- * (getsockname)
- */
-OWPAddr
-OWPAddrByLocalControl(
-        OWPControl  cntrl
-        );
-
-void
-OWPAddrNodeName(
-        OWPAddr     addr,
-        char        *buf,
-        size_t      *len        /* in/out parameter for buf len */
-        );
-
-void
-OWPAddrNodeService(
-        OWPAddr     addr,
-        char        *buf,
-        size_t      *len        /* in/out parameter for buf len */
-        );
-
-/*
- * return FD for given OWPAddr or -1 if it doesn't refer to a socket yet.
- */
-extern int
-OWPAddrFD(
-        OWPAddr     addr
-        );
-
-/*
- * return socket address length (for use in calling accept etc...)
- * or 0 if it doesn't refer to a socket yet.
- */
-extern socklen_t
-OWPAddrSockLen(
-        OWPAddr     addr
-        );
-
-extern OWPErrSeverity
-OWPAddrFree(
-        OWPAddr     addr
-        );
-
-/*
  * OWPControlOpen allocates an OWPclient structure, opens a connection to
  * the OWP server and goes through the initialization phase of the
  * connection. This includes AES/CBC negotiation. It returns after receiving
@@ -787,10 +715,7 @@ OWPAddrFree(
  *         If successful - even marginally - a valid OWPclient handle
  *         is returned. If unsuccessful, NULL is returned.
  *
- * local_addr can only be set using OWPAddrByNode or OWPAddrByAddrInfo
- * server_addr can use any of the OWPAddrBy* functions.
- *
- * Once an OWPAddr record is passed into this function - it is
+ * Once an I2Addr record is passed into this function - it is
  * automatically free'd and should not be referenced again in any way.
  *
  * Client
@@ -798,8 +723,8 @@ OWPAddrFree(
 extern OWPControl
 OWPControlOpen(
         OWPContext      ctx,
-        OWPAddr         local_addr,     /* src addr or NULL             */
-        OWPAddr         server_addr,    /* server addr or NULL          */
+        I2Addr          local_addr,     /* src addr or NULL             */
+        I2Addr          server_addr,    /* server addr or NULL          */
         u_int32_t       mode_mask,      /* OR of OWPSessionMode vals    */
         OWPUserID       userid,         /* null if unwanted             */
         OWPNum64        *uptime_ret,    /* server uptime - ret or NULL  */
@@ -830,7 +755,7 @@ OWPControlClose(
  * 3. Local resource problem (malloc/fork/fdopen): err_ret == ErrFATAL
  * 4. Bad addresses: err_ret == ErrWARNING
  *
- * Once an OWPAddr record has been passed into this function, it
+ * Once an I2Addr record has been passed into this function, it
  * is automatically free'd. It should not be referenced again in any way.
  *
  * Conversely, the test_spec is completely copied, and the caller continues
@@ -842,9 +767,9 @@ OWPControlClose(
 extern OWPBoolean
 OWPSessionRequest(
         OWPControl      control_handle,
-        OWPAddr         sender,
+        I2Addr          sender,
         OWPBoolean      server_conf_sender,
-        OWPAddr         receiver,
+        I2Addr          receiver,
         OWPBoolean      server_conf_receiver,
         OWPTestSpec     *test_spec,
         FILE            *fp,
@@ -985,10 +910,10 @@ OWPErrorFD(
         );
 
 extern
-OWPAddr
+I2Addr
 OWPServerSockCreate(
         OWPContext      ctx,
-        OWPAddr         addr,
+        I2Addr          addr,
         OWPErrSeverity  *err_ret
         );
 

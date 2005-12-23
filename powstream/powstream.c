@@ -373,6 +373,8 @@ GetMaxSend(
         }
     }
 
+    assert(rec->seq_no < sndrec->hdr->test_spec.npackets);
+    assert(sndrec->index < sndrec->hdr->test_spec.npackets);
     if(rec->seq_no > sndrec->index){
         sndrec->index = rec->seq_no;
         sndrec->sendtime = rec->send.owptime;
@@ -529,6 +531,7 @@ write_session(
          */
         (void)OWPScheduleContextReset(p->sctx,NULL,NULL);
         endnum = p->currentSessionStartNum;
+        assert(sndrec.index < hdr.test_spec.npackets);
         for(i=0;i<sndrec.index+1;i++){
             endnum = OWPNum64Add(endnum,
                     OWPScheduleContextGenerateNextDelta(p->sctx));
@@ -727,13 +730,13 @@ ResetSession(
         )
 {
     OWPAcceptType   aval = OWP_CNTRL_ACCEPT;
-    int             intr=1;
 
-    if(p->numPackets && p->call_stop && p->cntrl &&
-            (OWPStopSessions(p->cntrl,&intr,&aval)<OWPErrWARNING)){
-        OWPControlClose(p->cntrl);
-        p->cntrl = NULL;
+    if(p->numPackets && p->call_stop && p->cntrl && p->session_started){
+            (void)OWPStopSessions(p->cntrl,&pow_intr,&aval);
     }
+
+    OWPControlClose(p->cntrl);
+    p->cntrl = NULL;
 
     /*
      * Output "early-terminated" owp file
@@ -804,6 +807,11 @@ sig_check()
     }
 
     if(pow_exit || pow_reset){
+        /*
+         * reset pow_intr to allow file i/o to complete. If the user
+         * is impatient, a second signal will interrupt this.
+         */
+        pow_intr = 0;
         CloseSessions();
     }
     if(pow_exit){
@@ -872,8 +880,8 @@ SetupSession(
 
 
         if(!(p->cntrl = OWPControlOpen(ctx,
-                        OWPAddrByNode(ctx, appctx.opt.srcaddr),
-                        OWPAddrByNode(ctx, appctx.remote_serv),
+                        I2AddrByNode(eh, appctx.opt.srcaddr),
+                        I2AddrByNode(eh, appctx.remote_serv),
                         appctx.auth_mode,appctx.opt.identity,
                         NULL,&err))){
             if(sig_check()) return 1;
@@ -961,7 +969,7 @@ SetupSession(
      * to hold the results.
      */
     tspec.start_time = *p->nextSessionStart;
-    if(!OWPSessionRequest(p->cntrl,OWPAddrByNode(ctx,appctx.remote_test),
+    if(!OWPSessionRequest(p->cntrl,I2AddrByNode(eh,appctx.remote_test),
                 True, NULL, False,(OWPTestSpec*)&tspec,p->testfp,p->sid,&err)){
         I2ErrLog(eh,"OWPSessionRequest: Failed");
         if(err == OWPErrFATAL){
@@ -980,14 +988,15 @@ SetupSession(
         I2ErrLog(eh,"OWPStartSessions: Failed");
         goto cntrl_clean;
     }
-    if(sig_check())
-        return 1;
     /*
      * session_started will be set to true when the loop that parses this
      * session data begins.
      */
     p->call_stop = True;
     p->session_started = False;
+
+    if(sig_check())
+        return 1;
 
     /*
      * Assign new sid to schedule context for computing new schedule.
@@ -1586,7 +1595,8 @@ AGAIN:
              * Wait until this "sumsession" is complete.
              */
             if(p->call_stop){
-                rc = OWPStopSessionsWait(p->cntrl,&stopnum,NULL,&aval,&err_ret);
+                rc = OWPStopSessionsWait(p->cntrl,&stopnum,&pow_intr,
+                        &aval,&err_ret);
             }
             else{
                 rc=1; /* no more data coming */

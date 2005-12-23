@@ -352,7 +352,7 @@ OWPBoolean
 _OWPEndpointInit(
         OWPControl      cntrl,
         OWPTestSession  tsession,
-        OWPAddr         localaddr,
+        I2Addr          localaddr,
         FILE            *fp,
         OWPAcceptType   *aval,
         OWPErrSeverity  *err_ret
@@ -360,6 +360,8 @@ _OWPEndpointInit(
 {
     struct sockaddr_storage sbuff;
     socklen_t               sbuff_len=sizeof(sbuff);
+    struct sockaddr         *saddr;
+    socklen_t               saddrlen;
     OWPEndpoint             ep;
     OWPPacketSizeT          tpsize;
     int                     sbuf_size;
@@ -372,9 +374,17 @@ _OWPEndpointInit(
     u_int16_t               range;
     OWPPortRange            portrange=NULL;
     int                     saveerr=0;
+    char                    localnode[NI_MAXHOST];
+    size_t                  localnodelen = sizeof(localnode);
 
     *err_ret = OWPErrFATAL;
     *aval = OWP_CNTRL_UNAVAILABLE_TEMP;
+
+    if( !I2AddrNodeName(localaddr,localnode,&localnodelen)){
+        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                "I2AddrNodeName(): failed for localaddr");
+        return False;
+    }
 
     if( !(ep=EndpointAlloc(cntrl)))
         return False;
@@ -384,7 +394,13 @@ _OWPEndpointInit(
     ep->tsession = tsession;
     ep->cntrl = cntrl;
 
-    tpsize = OWPTestPacketSize(localaddr->saddr->sa_family,
+    if( !(saddr = I2AddrSAddr(localaddr,&saddrlen))){
+        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                "_EndpointInit: Unable to get saddr information");
+        goto error;
+    }
+
+    tpsize = OWPTestPacketSize(saddr->sa_family,
             ep->cntrl->mode,tsession->test_spec.packet_size_padding);
     tpsize += 128;        /* Add fuzz space for IP "options" */
     sbuf_size = tpsize;
@@ -413,8 +429,8 @@ _OWPEndpointInit(
     /*
      * Create the socket.
      */
-    ep->sockfd = socket(localaddr->saddr->sa_family,localaddr->so_type,
-            localaddr->so_protocol);
+    ep->sockfd = socket(saddr->sa_family,I2AddrSocktype(localaddr),
+            I2AddrProtocol(localaddr));
     if(ep->sockfd<0){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,"socket(): %M");
         goto error;
@@ -424,19 +440,19 @@ _OWPEndpointInit(
      * Determine what port to try:
      */
 
-    /* first - see if saddr specifs a port directly... */
-    switch(localaddr->saddr->sa_family){
+    /* first - see if saddr specifies a port directly... */
+    switch(saddr->sa_family){
         struct sockaddr_in  *s4;
 #ifdef        AF_INET6
         struct sockaddr_in6 *s6;
 
         case AF_INET6:
-        s6 = (struct sockaddr_in6*)localaddr->saddr;
+        s6 = (struct sockaddr_in6*)saddr;
         port = ntohs(s6->sin6_port);
         break;
 #endif
         case AF_INET:
-        s4 = (struct sockaddr_in*)localaddr->saddr;
+        s4 = (struct sockaddr_in*)saddr;
         port = ntohs(s4->sin_port);
         break;
         default:
@@ -479,18 +495,18 @@ _OWPEndpointInit(
 
     do{
         /* Specify the port number */
-        switch(localaddr->saddr->sa_family){
+        switch(saddr->sa_family){
             struct sockaddr_in  *s4;
 #ifdef        AF_INET6
             struct sockaddr_in6 *s6;
 
             case AF_INET6:
-            s6 = (struct sockaddr_in6*)localaddr->saddr;
+            s6 = (struct sockaddr_in6*)saddr;
             s6->sin6_port = htons(p);
             break;
 #endif
             case AF_INET:
-            s4 = (struct sockaddr_in*)localaddr->saddr;
+            s4 = (struct sockaddr_in*)saddr;
             s4->sin_port = htons(p);
             break;
             default:
@@ -503,7 +519,7 @@ _OWPEndpointInit(
         /*
          * Try binding.
          */
-        if(bind(ep->sockfd,localaddr->saddr,localaddr->saddrlen) == 0)
+        if(bind(ep->sockfd,saddr,saddrlen) == 0)
             goto success;
         /*
          * If it failed, and we are not using a "range" then exit
@@ -530,8 +546,7 @@ _OWPEndpointInit(
             "Full port range exhausted");
 bind_fail:
     if(!saveerr) saveerr = errno;
-    OWPError(cntrl->ctx,OWPErrFATAL,saveerr,
-            "bind([%s]:%d): %M",localaddr->node,p);
+    OWPError(cntrl->ctx,OWPErrFATAL,saveerr,"bind([%s]:%d): %M",localnode,p);
     goto error;
 
 success:
@@ -550,8 +565,18 @@ success:
      * set saddr to the sockaddr that was actually used.
      * (This sets the port in saddr as well.)
      */
-    assert(localaddr->saddrlen >= sbuff_len);
-    memcpy(localaddr->saddr,&sbuff,sbuff_len);
+    assert(saddrlen >= sbuff_len);
+    memcpy(saddr,&sbuff,sbuff_len);
+
+    /*
+     * Reset the saddr into the I2Addr so it reflects the new
+     * port number.
+     */
+    if( !I2AddrSetSAddr(localaddr,saddr,saddrlen)){
+        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                "I2AddrSetSAddr(): Resetting saddr");
+        goto error;
+    }
 
     /*
      * If we are receiver, sid is valid and we need to open file.
@@ -705,7 +730,7 @@ success:
          * interest in receiving TTL ancillary data.
          * TODO: Determine correct sockopt for IPV6!
          */
-        switch(localaddr->saddr->sa_family){
+        switch(saddr->sa_family){
 #ifdef        AF_INET6
             case AF_INET6:
 #ifdef IPV6_RECVHOPLIMIT
@@ -831,7 +856,7 @@ success:
          * to 255 to make this useful. (hoplimit is the field
          * name in IPv6.)
          */
-        switch(localaddr->saddr->sa_family){
+        switch(saddr->sa_family){
 #ifdef        AF_INET6
             case AF_INET6:
 #ifdef IPV6_UNICAST_HOPS
@@ -902,7 +927,7 @@ success:
              * of using IP_TOS for IPv6... I have seen IP_CLASS
              * as a possible replacement...)
              */
-            switch(localaddr->saddr->sa_family){
+            switch(saddr->sa_family){
                 case AF_INET:
                     optlevel = IPPROTO_IP;
                     optname = IP_TOS;
@@ -1075,6 +1100,12 @@ run_sender(
         OWPEndpoint ep
         )
 {
+    struct sockaddr *saddr;
+    socklen_t       saddrlen=0;
+    char            nodename[NI_MAXHOST];
+    size_t          nodenamelen = sizeof(nodename);
+    char            nodeserv[NI_MAXSERV];
+    size_t          nodeservlen = sizeof(nodeserv);
     u_int32_t       i;
     struct timespec currtime;
     struct timespec nexttime;
@@ -1095,6 +1126,14 @@ run_sender(
     OWPNum64        nextoffset;
     _OWPSkip        sr;
     u_int32_t       num_skiprecs;
+
+    if( !(saddr = I2AddrSAddr(ep->remoteaddr,&saddrlen)) ||
+                !I2AddrNodeName(ep->remoteaddr,nodename,&nodenamelen) ||
+                !I2AddrServName(ep->remoteaddr,nodeserv,&nodeservlen)){
+            OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                    "run_sender: Unable to extract saddr information");
+            exit(OWP_CNTRL_FAILURE);
+    }
 
     /*
      * Initialize pointers to various positions in the packet buffer,
@@ -1129,7 +1168,7 @@ run_sender(
              * compiler warnings...
              */
             OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                    "run_sender: Bogus \"mode\" bits!");
+                    "run_sender: Bogus \"mode\" bits");
             exit(OWP_CNTRL_FAILURE);
     }
 
@@ -1165,7 +1204,7 @@ run_sender(
      */
     if(OWPScheduleContextReset(ep->tsession->sctx,NULL,NULL) != OWPErrOK){
         OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                "ScheduleContextReset FAILED!");
+                "ScheduleContextReset: FAILED");
         exit(OWP_CNTRL_FAILURE);
     }
 
@@ -1263,8 +1302,7 @@ AGAIN:
             }
 
             if( (sent = sendto(ep->sockfd,ep->payload,
-                            ep->len_payload,0,ep->remoteaddr->saddr,
-                            ep->remoteaddr->saddrlen)) < 0){
+                            ep->len_payload,0,saddr,saddrlen)) < 0){
                 switch(errno){
                     /* retry errors */
                     case ENOBUFS:
@@ -1277,11 +1315,9 @@ AGAIN:
                     case EFAULT:
                     case EAGAIN:
                         OWPError(ep->cntrl->ctx,
-                                OWPErrFATAL,
-                                OWPErrUNKNOWN,
+                                OWPErrFATAL,OWPErrUNKNOWN,
                                 "Unable to send([%s]:%s:(#%d): %M",
-                                ep->remoteaddr->node,
-                                ep->remoteaddr->port,i);
+                                nodename,nodeserv,i);
                         exit(OWP_CNTRL_FAILURE);
                         break;
                         /* ignore everything else */
@@ -1290,11 +1326,9 @@ AGAIN:
                 }
 
                 /* but do note it as INFO for debugging */
-                OWPError(ep->cntrl->ctx,OWPErrDEBUG,
-                        OWPErrUNKNOWN,
+                OWPError(ep->cntrl->ctx,OWPErrDEBUG,OWPErrUNKNOWN,
                         "Unable to send([%s]:%s:(#%d): %M",
-                        ep->remoteaddr->node,
-                        ep->remoteaddr->port,i);
+                        nodename,nodeserv,i);
             }
 
 SKIP_SEND:
@@ -1351,7 +1385,7 @@ SKIP_SEND:
 
 finish_sender:
     if(owp_int){
-        OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+        OWPError(ep->cntrl->ctx,OWPErrINFO,OWPErrUNKNOWN,
                 "run_sender: Exiting from signal");
         exit(OWP_CNTRL_FAILURE);
     }
@@ -1698,6 +1732,10 @@ run_receiver(
     int                 owp_intr;
     u_int32_t           finished = OWP_SESSION_FINISHED_INCOMPLETE;
     OWPDataRec          datarec;
+    struct sockaddr     *lsaddr;
+    socklen_t           lsaddrlen;
+    struct sockaddr     *rsaddr;
+    socklen_t           rsaddrlen;
 
     /*
      * Prepare the file header - had to wait until now to
@@ -1706,10 +1744,17 @@ run_receiver(
     memset(&hdr,0,sizeof(hdr));
     hdr.finished = OWP_SESSION_FINISHED_ERROR;
     memcpy(&hdr.sid,ep->tsession->sid,sizeof(hdr.sid));
-    memcpy(&hdr.addr_sender,ep->tsession->sender->saddr,
-            ep->tsession->sender->saddrlen);
-    memcpy(&hdr.addr_receiver,ep->tsession->receiver->saddr,
-            ep->tsession->receiver->saddrlen);
+
+    if( !(lsaddr = I2AddrSAddr(ep->tsession->sender,&lsaddrlen))){
+        exit(OWP_CNTRL_FAILURE);
+    }
+    memcpy(&hdr.addr_sender,lsaddr,lsaddrlen);
+
+    if( !(lsaddr = I2AddrSAddr(ep->tsession->receiver,&lsaddrlen))){
+        exit(OWP_CNTRL_FAILURE);
+    }
+    memcpy(&hdr.addr_receiver,lsaddr,lsaddrlen);
+
     hdr.conf_sender = ep->tsession->conf_sender;
     hdr.conf_receiver = ep->tsession->conf_receiver;
     hdr.test_spec = ep->tsession->test_spec;
@@ -1718,6 +1763,19 @@ run_receiver(
      * Write the file header.
      */
     if( !OWPWriteDataHeader(ep->cntrl->ctx,ep->datafile,&hdr)){
+        exit(OWP_CNTRL_FAILURE);
+    }
+
+    /*
+     * Get pointer to lsaddr used for listening.
+     */
+    if( !(lsaddr = I2AddrSAddr(ep->localaddr,&lsaddrlen))){
+        exit(OWP_CNTRL_FAILURE);
+    }
+    /*
+     * Get pointer to rsaddr used to verify peer.
+     */
+    if( !(rsaddr = I2AddrSAddr(ep->remoteaddr,&rsaddrlen))){
         exit(OWP_CNTRL_FAILURE);
     }
 
@@ -1856,8 +1914,7 @@ again:
         memset(&peer_addr,0,sizeof(peer_addr));
         if(!owp_usr2 &&
                 (recvfromttl(ep->cntrl->ctx,ep->sockfd,
-                    ep->payload,ep->len_payload,
-                    ep->localaddr->saddr,ep->localaddr->saddrlen,
+                    ep->payload,ep->len_payload,lsaddr,lsaddrlen,
                     (struct sockaddr*)&peer_addr,&peer_addr_len,
                     &datarec.ttl) != (ssize_t)ep->len_payload)){
             if(errno != EINTR){
@@ -2013,8 +2070,7 @@ again:
         /*
          * Verify peer before looking at packet.
          */
-        if(I2SockAddrEqual(        ep->remoteaddr->saddr,
-                    ep->remoteaddr->saddrlen,
+        if(I2SockAddrEqual(rsaddr,rsaddrlen,
                     (struct sockaddr*)&peer_addr,
                     peer_addr_len,I2SADDR_ALL) <= 0){
             goto again;
@@ -2139,7 +2195,7 @@ test_over:
     /*
      * Set the "finished" bit in the file to "incomplete". The parent
      * process will change this to "normal" after evaluating the
-     * data from the stop sessiosn message.
+     * data from the stop sessions message.
      */
     if( !_OWPWriteDataHeaderFinished(ep->cntrl->ctx,ep->datafile,finished,0)){
         goto error;
@@ -2147,15 +2203,24 @@ test_over:
     fclose(ep->datafile);
     ep->datafile = NULL;
 
-
     exit(OWP_CNTRL_ACCEPT);
 
 error:
+
+    if(ep->datafile){
+        (void)_OWPWriteDataHeaderFinished(ep->cntrl->ctx,ep->datafile,
+                                          OWP_SESSION_FINISHED_ERROR,0);
+        fclose(ep->datafile);
+    }
+
     if(ep->userfile && (strlen(ep->fname) > 0)){
         unlink(ep->fname);
     }
-    if(ep->datafile)
-        fclose(ep->datafile);
+
+    if(owp_int){
+        OWPError(ep->cntrl->ctx,OWPErrINFO,OWPErrUNKNOWN,
+                "run_receiver: Exiting from signal");
+    }
 
     exit(OWP_CNTRL_FAILURE);
 }

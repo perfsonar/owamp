@@ -61,7 +61,7 @@ parsekeys(
     OWPUserID   username;
     OWPKey      tkey;
     I2Datum     key,val;
-    I2ErrHandle eh = OWPContextGetErrHandle(policy->ctx);
+    I2ErrHandle eh = OWPContextErrHandle(policy->ctx);
 
     /*
      * TODO: Replace with an autoconf test
@@ -638,7 +638,7 @@ parselimits(
     size_t      i;
     size_t      maxlim = 0;
     char        *line;
-    I2ErrHandle eh = OWPContextGetErrHandle(policy->ctx);
+    I2ErrHandle eh = OWPContextErrHandle(policy->ctx);
 
     /*
      * Count number of possible limit parameters
@@ -1185,7 +1185,7 @@ OWPDPolicyInstall(
     OWPCloseFileFunc            closefilefunc = OWPDCloseFile;
 
 
-    eh = OWPContextGetErrHandle(ctx);
+    eh = OWPContextErrHandle(ctx);
 
     /*
      * Alloc main policy record
