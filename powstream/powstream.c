@@ -735,8 +735,10 @@ ResetSession(
             (void)OWPStopSessions(p->cntrl,&pow_intr,&aval);
     }
 
-    OWPControlClose(p->cntrl);
-    p->cntrl = NULL;
+    if(p->cntrl){
+        OWPControlClose(p->cntrl);
+        p->cntrl = NULL;
+    }
 
     /*
      * Output "early-terminated" owp file

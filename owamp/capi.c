@@ -698,7 +698,7 @@ OWPSessionRequest(
             goto error;
         }
         else{
-            rsaddr = I2AddrSAddr(cntrl->remote_addr,&saddrlen);
+            rsaddr = I2AddrSAddr(cntrl->local_addr,&saddrlen);
             if( !(receiver = I2AddrBySAddr(OWPContextErrHandle(cntrl->ctx),
                             rsaddr,saddrlen,SOCK_DGRAM,IPPROTO_UDP))){
                 goto error;
@@ -721,7 +721,7 @@ OWPSessionRequest(
             goto error;
         }
         else{
-            ssaddr = I2AddrSAddr(cntrl->remote_addr,&saddrlen);
+            ssaddr = I2AddrSAddr(cntrl->local_addr,&saddrlen);
             if( !(sender = I2AddrBySAddr(OWPContextErrHandle(cntrl->ctx),
                             ssaddr,saddrlen,SOCK_DGRAM,IPPROTO_UDP))){
                 goto error;
