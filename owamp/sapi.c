@@ -41,7 +41,7 @@ OpenSocket(
     struct addrinfo *fai;
     struct addrinfo *ai;
     int             on;
-    int             fd;
+    int             fd=-1;
 
     if( !(fai = I2AddrAddrInfo(addr,NULL,OWP_CONTROL_SERVICE_NAME))){
         return -2;
