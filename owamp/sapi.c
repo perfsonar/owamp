@@ -594,28 +594,28 @@ OWPProcessTestRequest(
                 err_ret = OWPErrWARNING;
                 goto error;
             }
-
-            if(!_OWPCallCheckTestPolicy(cntrl,True,
-                        ssaddr,rsaddr,saddrlen,
-                        &tsession->test_spec,
-                        &tsession->closure,&err_ret)){
-                if(err_ret < OWPErrOK)
-                    goto error;
-                OWPError(cntrl->ctx, OWPErrWARNING, OWPErrPOLICY,
-                        "Test not allowed");
-                acceptval = OWP_CNTRL_REJECT;
-                err_ret = OWPErrWARNING;
-                goto error;
-            }
-            if(!_OWPEndpointInit(cntrl,tsession,tsession->sender,NULL,
-                        &acceptval,&err_ret)){
-                goto error;
-            }
-            if(!_OWPEndpointInitHook(cntrl,tsession,&acceptval,&err_ret)){
-                goto error;
-            }
-            port = I2AddrPort(tsession->sender);
         }
+
+        if(!_OWPCallCheckTestPolicy(cntrl,True,
+                    ssaddr,rsaddr,saddrlen,
+                    &tsession->test_spec,
+                    &tsession->closure,&err_ret)){
+            if(err_ret < OWPErrOK)
+                goto error;
+            OWPError(cntrl->ctx, OWPErrWARNING, OWPErrPOLICY,
+                    "Test not allowed");
+            acceptval = OWP_CNTRL_REJECT;
+            err_ret = OWPErrWARNING;
+            goto error;
+        }
+        if(!_OWPEndpointInit(cntrl,tsession,tsession->sender,NULL,
+                    &acceptval,&err_ret)){
+            goto error;
+        }
+        if(!_OWPEndpointInitHook(cntrl,tsession,&acceptval,&err_ret)){
+            goto error;
+        }
+        port = I2AddrPort(tsession->sender);
     }
 
     if(tsession->conf_receiver){

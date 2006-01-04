@@ -1851,6 +1851,15 @@ _OWPWriteStopSessions(
         off_t       sd_size;
 
         /*
+         * Check for invalid sessions
+         */
+        if(!sptr->endpoint){
+            OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+                    "_OWPWriteStopSessions: invalid session information.");
+            continue;
+        }
+
+        /*
          * Receive sessions don't need more work here.
          */
         if(!sptr->endpoint->send) continue;
