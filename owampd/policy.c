@@ -1302,15 +1302,6 @@ OWPDPolicyInstall(
         return NULL;
     }
 
-
-    /*
-     * Now that the "user class" hierarchy is loaded - take a look
-     * at datadir and initialize disk usage.
-     */
-    if(!InitializeDiskUsage(policy)){
-        return NULL;
-    }
-
     /*
      * Policy files were parsed and loaded ok. Now, install policy
      * hook functions that will use it.
@@ -1345,6 +1336,22 @@ OWPDPolicyInstall(
     }
 
     return policy;
+}
+
+OWPBoolean
+OWPDPolicyPostInstall(
+    OWPDPolicy  policy
+        )
+{
+    /*
+     * Now that the "user class" hierarchy is loaded - take a look
+     * at datadir and initialize disk usage.
+     */
+    if(!InitializeDiskUsage(policy)){
+        return False;
+    }
+
+    return True;
 }
 
 /*

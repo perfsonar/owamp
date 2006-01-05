@@ -371,4 +371,9 @@ OWPDPolicyInstall(
         size_t          *lbuf_max
         );
 
+extern OWPBoolean
+OWPDPolicyPostInstall(
+        OWPDPolicy  policy
+        );
+
 #endif        /*        _OWP_DEFAULTS_H        */

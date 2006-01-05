@@ -1274,6 +1274,24 @@ main(int argc, char *argv[])
     }
 
     /*
+     * Install policy for "ctx" - and return policy record.
+     */
+    if(!(policy = OWPDPolicyInstall(ctx,opts.datadir,opts.confdir,
+                    opts.diskfudge,&lbuf,&lbuf_max))){
+        I2ErrLog(errhand, "PolicyInit failed. Exiting...");
+        exit(1);
+    };
+
+    /*
+     * Done with the line buffer. (reset to 0 for consistancy.)
+     */
+    if(lbuf){
+        free(lbuf);
+    }
+    lbuf = NULL;
+    lbuf_max = 0;
+
+    /*
      * If running as root warn if the -U/-G flags not set.
      */
     if(!geteuid()){
@@ -1343,22 +1361,13 @@ main(int argc, char *argv[])
     }
 
     /*
-     * Install policy for "ctx" - and return policy record.
+     * Finish policy - this part needs to be done after loosing
+     * "root" permissions.
      */
-    if(!(policy = OWPDPolicyInstall(ctx,opts.datadir,opts.confdir,
-                    opts.diskfudge,&lbuf,&lbuf_max))){
+    if( !OWPDPolicyPostInstall(policy)){
         I2ErrLog(errhand, "PolicyInit failed. Exiting...");
         exit(1);
     };
-
-    /*
-     * Done with the line buffer. (reset to 0 for consistancy.)
-     */
-    if(lbuf){
-        free(lbuf);
-    }
-    lbuf = NULL;
-    lbuf_max = 0;
 
     /*
      * Setup the "default_mode".
