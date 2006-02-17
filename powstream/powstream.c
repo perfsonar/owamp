@@ -1096,8 +1096,8 @@ main(
     memset(&appctx,0,sizeof(appctx));
     appctx.opt.numPackets = 300;
     appctx.opt.lossThreshold = 10.0;
-    appctx.opt.meanWait = (float)0.1;
-    appctx.opt.bucketWidth = (float)0.0001; /* 100 usecs */
+    appctx.opt.meanWait = 0.1;
+    appctx.opt.bucketWidth = 0.0001; /* 100 usecs */
 
     /*
      * Fix getopt if the brain-dead GNU version is being used.
@@ -1335,7 +1335,6 @@ main(
      */
     if(!appctx.opt.numBucketPackets){
         appctx.opt.numBucketPackets = appctx.opt.numPackets;
-        appctx.opt.bucketWidth = 0.0;
         numSummaries = 0;
     }
     else{

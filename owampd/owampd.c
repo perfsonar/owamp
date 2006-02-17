@@ -1301,19 +1301,17 @@ main(int argc, char *argv[])
         /*
          * Validate user option.
          */
-        if(!opts.user){
-            /* no-op */
-            ;
-        }
-        if((pw = getpwnam(opts.user))){
-            setuser = pw->pw_uid;
-        }
-        else if(opts.user[0] == '-'){
-            setuser = strtoul(&opts.user[1],NULL,10);
-            if(errno || !getpwuid(setuser)){
-                I2ErrLog(errhand,"Invalid user/-U option: %s",
-                        opts.user);
-                exit(1);
+        if(opts.user){
+            if((pw = getpwnam(opts.user))){
+                setuser = pw->pw_uid;
+            }
+            else if(opts.user[0] == '-'){
+                setuser = strtoul(&opts.user[1],NULL,10);
+                if(errno || !getpwuid(setuser)){
+                    I2ErrLog(errhand,"Invalid user/-U option: %s",
+                            opts.user);
+                    exit(1);
+                }
             }
         }
 
