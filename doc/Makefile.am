@@ -18,7 +18,7 @@
 #
 #	Description:
 
-dist_man1_MANS = owping.man
+dist_man1_MANS = owping.man owstats.man owfetch.man
 dist_man5_MANS = owampd.conf.man owampd.limits.man owampd.keys.man
 dist_man8_MANS = owampd.man
 
