@@ -29,10 +29,10 @@
 #include <unistd.h>
 #include <netinet/in.h>
 #include <assert.h>
-#include <fts.h>
 
 #include <owamp/owamp.h>
 #include "policy.h"
+#include "fts.h"
 
 /*
  * Function:        parsekeys
