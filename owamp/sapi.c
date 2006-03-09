@@ -22,7 +22,6 @@
  *        This file contains the api functions typically called from an
  *        owamp server application.
  */
-#define        _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
