@@ -95,8 +95,7 @@ _OWPInitNTP(
     {
         struct timex        ntp_conf;
 
-        ntp_conf.modes = 0;
-
+	memset(&ntp_conf,0,sizeof(ntp_conf));
         if(ntp_adjtime(&ntp_conf) < 0){
             OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"ntp_adjtime(): %M");
             return 1;
