@@ -55,7 +55,7 @@ static char rcsid[] = "$FreeBSD: src/lib/libc/gen/fts.c,v 1.14.2.4 2001/06/01 22
 #include <string.h>
 #include <unistd.h>
 
-#ifndef	HAVE_DIRFD
+#if !defined(HAVE_DIRFD) && !defined(dirfd)
 #ifdef	HAVE_DIR_D_FD
 #define dirfd(dp) (dp->d_fd)
 #else
