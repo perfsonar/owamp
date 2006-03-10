@@ -1,0 +1,5 @@
+This directory holds the owtvec application. This application uses the
+AES based Exponential Deviates functions from the owamp library and
+verifies the implementation successfully produces the expected
+results from Appendix B of the OWAMP specification.
+
