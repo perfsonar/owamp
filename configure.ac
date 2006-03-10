@@ -145,6 +145,16 @@ AC_SUBST(OWPLIBDEPS)
 
 AC_SUBST(TOP_BUILD_DIRS)
 
+AC_CANONICAL_HOST
+
+case $host in
+    *-*-solaris* ) 
+	AC_DEFINE(_GNU_SOURCE, 1, "Use glibc features.")
+        AC_DEFINE(__EXTENSIONS__, 1, "get decl for sockaddr_storage on Solaris")
+        AC_DEFINE(_XOPEN_SOURCE, 500, "get decl for msg_control on Solaris")
+        ;;
+esac
+
 # Checks for programs.
 AC_PROG_CC
 AC_PROG_RANLIB
@@ -158,7 +168,7 @@ AC_SUBST(OWP_PREFIX_CFLAGS)
 
 # Checks for header files.
 AC_HEADER_STDC
-AC_CHECK_HEADERS([errno.h netdb.h stdlib.h sys/param.h sys/socket.h sys/time.h sys/types.h sys/mman.h sys/timex.h])
+AC_CHECK_HEADERS([errno.h netdb.h stdlib.h sys/param.h sys/socket.h sys/time.h sys/types.h sys/mman.h sys/timex.h ieeefp.h])
 
 # Checks for typedefs, structures, and compiler characteristics.
 I2_C___ATTRIBUTE__
@@ -168,13 +178,26 @@ AC_CHECK_MEMBERS([struct sockaddr.sa_len], , ,
 	[#include <sys/types.h>
 	#include <sys/socket.h>])
 
+# This is used for systems that don't provide dirfd()
+AC_CHECK_MEMBERS([DIR.d_fd], , ,
+	[#include <sys/types.h>
+	#include <dirent.h>])
+
+# This is used for systems that don't provide full dirent structure
+AC_CHECK_MEMBERS([DIR.d_namlen], , ,
+	[#include <sys/types.h>
+	#include <dirent.h>])
+
 # Checks for library functions.
 AC_FUNC_MALLOC
-AC_CHECK_FUNCS([memset socket getaddrinfo mergesort])
+AC_SEARCH_LIBS(getaddrinfo, [socket nsl])
 AC_SEARCH_LIBS(gethostbyname, nsl)
 AC_SEARCH_LIBS(socketpair, socket)
+AC_SEARCH_LIBS(nanosleep, rt)
 AC_SEARCH_LIBS(finite,m)
 AC_SEARCH_LIBS(ceil,m)
+
+AC_CHECK_FUNCS([memset socket getaddrinfo mergesort dirfd])
 
 # Checks for variable/function declarations.
 AC_CHECK_DECLS([optreset])

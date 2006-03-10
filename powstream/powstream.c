@@ -24,7 +24,6 @@
  *        set up perpetual tests and keep them going until this application
  *        is killed.
  */
-#define _GNU_SOURCE
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
@@ -68,9 +67,9 @@ static I2ErrHandle      eh;
 static pow_cntrl_rec    pcntrl[2];
 static OWPTestSpec      tspec;
 static OWPSlot          slot;
-static u_int32_t        sessionTime;
+static uint32_t        sessionTime;
 static double           inf_delay;
-static u_int8_t         aesbuff[16];
+static uint8_t         aesbuff[16];
 
 /*
  * signal catching vars
@@ -94,7 +93,7 @@ static int              pow_error = SIGCONT;
  * |__ dirpath
  */
 static char             dirpath[PATH_MAX];
-static u_int32_t        file_offset,tstamp_offset,ext_offset;
+static uint32_t        file_offset,tstamp_offset,ext_offset;
 
 static void
 print_conn_args(){
@@ -177,7 +176,7 @@ owp_set_auth(
         )
 {
     if(pctx->opt.identity){
-        u_int8_t        *aes = NULL;
+        uint8_t        *aes = NULL;
 
         /*
          * If keyfile specified, attempt to get key from there.
@@ -316,11 +315,11 @@ mmap_copy_file(
         return rc;
     }
 
-    if(!(fptr = mmap(NULL,sbuf.st_size,PROT_READ|PROT_WRITE,MAP_FILE|MAP_SHARED,fromfd,0))){
+    if(!(fptr = mmap(NULL,sbuf.st_size,PROT_READ|PROT_WRITE,MAP_SHARED,fromfd,0))){
         I2ErrLog(eh,"mmap(FROM session file): %M");
         return -1;
     }
-    if(!(tptr = mmap(NULL,sbuf.st_size,PROT_READ|PROT_WRITE,MAP_FILE|MAP_SHARED,tofd,0))){
+    if(!(tptr = mmap(NULL,sbuf.st_size,PROT_READ|PROT_WRITE,MAP_SHARED,tofd,0))){
         I2ErrLog(eh,"mmap(TO session file): %M");
         return -1;
     }
@@ -341,7 +340,7 @@ mmap_copy_file(
 
 typedef struct pow_maxsend_rec{
     OWPSessionHeader    hdr;
-    u_int32_t           index;
+    uint32_t           index;
     OWPNum64            sendtime;
     OWPSkip             skips;
 } pow_maxsend_rec;
@@ -353,7 +352,7 @@ GetMaxSend(
         )
 {
     pow_maxsend_rec     *sndrec = (pow_maxsend_rec *)data;
-    u_int32_t           iskip =0;
+    uint32_t           iskip =0;
 
     if(sndrec->skips){
         /*
@@ -436,7 +435,7 @@ write_session(
     if(newend){
         struct flock        flk;
         pow_maxsend_rec     sndrec;
-        u_int32_t           i;
+        uint32_t           i;
 
         /*
          * This section reads the packet records
@@ -842,7 +841,7 @@ SetupSession(
     OWPTimeStamp    currtime;
     unsigned int    stime;
     int             fd;
-    u_int64_t       i;
+    uint64_t       i;
     char            fname[PATH_MAX];
 
     if(p->numPackets)
@@ -1071,8 +1070,8 @@ main(
     static char             *posixly_correct="POSIXLY_CORRECT=True";
 
     int                     which=0;        /* which cntrl connect used */
-    u_int32_t               numSummaries;
-    u_int32_t               iotime;
+    uint32_t               numSummaries;
+    uint32_t               iotime;
     struct flock            flk;
     struct sigaction        act;
     OWPStats                stats = NULL;
@@ -1454,7 +1453,7 @@ main(
     while(1){
         pow_cntrl       p,q;
         OWPAcceptType   aval;
-        u_int32_t       sum;
+        uint32_t       sum;
         OWPNum64        stopnum;
         OWPNum64        startnum,lastnum;
         char            tfname[PATH_MAX];
@@ -1543,7 +1542,7 @@ wait_again:
         }
 
         for(sum=0;sum<numSummaries;sum++){
-            u_int32_t           nrecs;
+            uint32_t           nrecs;
             OWPSessionHeaderRec hdr;
             OWPNum64            localstop;
             FILE                *fp=NULL;

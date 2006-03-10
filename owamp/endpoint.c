@@ -34,6 +34,18 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 
+/*
+ * Some systems (Solaris ahem...) don't define the CMSG_SPACE macro.
+ * It does define related macros - I will attempt to do the "right thing".
+ */
+#ifndef CMSG_SPACE
+#if defined(_CMSG_DATA_ALIGN) && defined(_CMSG_HDR_ALIGN)
+#define CMSG_SPACE(len) \
+    (_CMSG_DATA_ALIGN(len) + _CMSG_DATA_ALIGN(sizeof(struct cmsghdr)))
+#else
+#error "CMSG_SPACE macro undefined for this OS - work to do..."
+#endif
+#endif
 
 /*
  * Function:        EndpointAlloc
@@ -260,8 +272,8 @@ CmpLostPacket(
         I2Datum y
         )
 {
-    u_int32_t   *xn = (u_int32_t*)x.dptr;
-    u_int32_t   *yn = (u_int32_t*)y.dptr;
+    uint32_t   *xn = (uint32_t*)x.dptr;
+    uint32_t   *yn = (uint32_t*)y.dptr;
 
     return !(*xn == *yn);
 }
@@ -279,12 +291,12 @@ CmpLostPacket(
  * Returns:        
  * Side Effect:        
  */
-u_int32_t
+uint32_t
 HashLostPacket(
         I2Datum k
         )
 {
-    u_int32_t   *kn = (u_int32_t*)k.dptr;
+    uint32_t   *kn = (uint32_t*)k.dptr;
 
     return *kn & 0xFFFFUL;
 }
@@ -367,11 +379,11 @@ _OWPEndpointInit(
     int                     sbuf_size;
     int                     sopt;
     socklen_t               opt_size;
-    u_int32_t               i;
+    uint32_t               i;
     OWPTimeStamp            tstamp;
-    u_int16_t               port=0;
-    u_int16_t               p;
-    u_int16_t               range;
+    uint16_t               port=0;
+    uint16_t               p;
+    uint16_t               range;
     OWPPortRange            portrange=NULL;
     int                     saveerr=0;
     char                    localnode[NI_MAXHOST];
@@ -473,13 +485,13 @@ _OWPEndpointInit(
                     OWPTestPortRange))){
         p = port = 0;
     }else{
-        u_int32_t   r;
+        uint32_t   r;
 
         /*
          * Get a random 32 bit number to aid in selecting first
          * port to try.
          */
-        if(I2RandomBytes(cntrl->ctx->rand_src,(u_int8_t*)&r,4) != 0)
+        if(I2RandomBytes(cntrl->ctx->rand_src,(uint8_t*)&r,4) != 0)
             goto error;
 
         if(portrange->high < portrange->low){
@@ -944,7 +956,7 @@ success:
             }
 
             /* Copy high-order byte (minus first two bits) */
-            sopt = (u_int8_t)(ep->tsession->test_spec.typeP >> 24);
+            sopt = (uint8_t)(ep->tsession->test_spec.typeP >> 24);
             sopt &= 0x3F; /* this should be a no-op until PHB... */
 
             /* shift for setting TOS */
@@ -1024,7 +1036,7 @@ sig_catch(
 static void
 skip(
         OWPEndpoint ep,
-        u_int32_t   seq
+        uint32_t   seq
     )
 {
     _OWPSkip    node;
@@ -1039,7 +1051,7 @@ skip(
     }
 
     if(!ep->free_skiplist){
-        u_int32_t   i;
+        uint32_t   i;
 
         if(!(node = calloc(ep->num_allocskip,sizeof(_OWPSkipRec)))){
             OWPError(ep->cntrl->ctx,OWPErrFATAL,errno,
@@ -1106,26 +1118,26 @@ run_sender(
     size_t          nodenamelen = sizeof(nodename);
     char            nodeserv[NI_MAXSERV];
     size_t          nodeservlen = sizeof(nodeserv);
-    u_int32_t       i;
+    uint32_t       i;
     struct timespec currtime;
     struct timespec nexttime;
     struct timespec timeout;
     struct timespec latetime;
     struct timespec sleeptime;
-    u_int32_t       esterror;
-    u_int32_t       lasterror=0;
-    u_int8_t        sync;
+    uint32_t       esterror;
+    uint32_t       lasterror=0;
+    uint8_t        sync;
     ssize_t         sent;
-    u_int32_t       *seq;
-    u_int8_t        clr_buffer[32];
-    u_int8_t        zeroiv[16];
-    u_int8_t        *payload;
-    u_int8_t        *tstamp;
-    u_int8_t        *tstamperr;
+    uint32_t       *seq;
+    uint8_t        clr_buffer[32];
+    uint8_t        zeroiv[16];
+    uint8_t        *payload;
+    uint8_t        *tstamp;
+    uint8_t        *tstamperr;
     OWPTimeStamp    owptstamp;
     OWPNum64        nextoffset;
     _OWPSkip        sr;
-    u_int32_t       num_skiprecs;
+    uint32_t       num_skiprecs;
 
     if( !(saddr = I2AddrSAddr(ep->remoteaddr,&saddrlen)) ||
                 !I2AddrNodeName(ep->remoteaddr,nodename,&nodenamelen) ||
@@ -1141,20 +1153,20 @@ run_sender(
      */
     switch(ep->cntrl->mode){
         case OWP_MODE_OPEN:
-            seq = (u_int32_t*)&ep->payload[0];
+            seq = (uint32_t*)&ep->payload[0];
             tstamp = &ep->payload[4];
             tstamperr = &ep->payload[12];
             payload = &ep->payload[14];
             break;
         case OWP_MODE_AUTHENTICATED:
-            seq = (u_int32_t*)&clr_buffer[0];
+            seq = (uint32_t*)&clr_buffer[0];
             tstamp = &ep->payload[16];
             tstamperr = &ep->payload[24];
             payload = &ep->payload[32];
             memset(clr_buffer,0,32);
             break;
         case OWP_MODE_ENCRYPTED:
-            seq = (u_int32_t*)&clr_buffer[0];
+            seq = (uint32_t*)&clr_buffer[0];
             tstamp = &clr_buffer[16];
             tstamperr = &clr_buffer[24];
             payload = &ep->payload[32];
@@ -1292,10 +1304,10 @@ AGAIN:
                  * becomes easier. (OWPSendBlocks becomes more
                  * involved...)
                  */
-                ((u_int32_t*)clr_buffer)[4] ^= ((u_int32_t*)ep->payload)[0];
-                ((u_int32_t*)clr_buffer)[5] ^= ((u_int32_t*)ep->payload)[1];
-                ((u_int32_t*)clr_buffer)[6] ^= ((u_int32_t*)ep->payload)[2];
-                ((u_int32_t*)clr_buffer)[7] ^= ((u_int32_t*)ep->payload)[3];
+                ((uint32_t*)clr_buffer)[4] ^= ((uint32_t*)ep->payload)[0];
+                ((uint32_t*)clr_buffer)[5] ^= ((uint32_t*)ep->payload)[1];
+                ((uint32_t*)clr_buffer)[6] ^= ((uint32_t*)ep->payload)[2];
+                ((uint32_t*)clr_buffer)[7] ^= ((uint32_t*)ep->payload)[3];
                 rijndaelEncrypt(ep->cntrl->encrypt_key.rk,
                         ep->cntrl->encrypt_key.Nr,
                         &clr_buffer[16],&ep->payload[16]);
@@ -1440,9 +1452,9 @@ finish_sender:
      * Now save the skip records.
      */
     for(sr = ep->head_skip; sr; sr = sr->next){
-        u_int8_t   skipmsg[_OWP_SKIPREC_SIZE];
+        uint8_t   skipmsg[_OWP_SKIPREC_SIZE];
 
-        _OWPEncodeSkipRecord((u_int8_t *)skipmsg,&sr->sr);
+        _OWPEncodeSkipRecord((uint8_t *)skipmsg,&sr->sr);
         if(I2Writeni(ep->skiprecfd,skipmsg,_OWP_SKIPREC_SIZE,&owp_int) !=
                 _OWP_SKIPREC_SIZE){
             OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
@@ -1458,7 +1470,7 @@ finish_sender:
 static OWPLostPacket
 alloc_node(
         OWPEndpoint ep,
-        u_int32_t   seq
+        uint32_t   seq
         )
 {
     OWPLostPacket   node;
@@ -1472,7 +1484,7 @@ alloc_node(
     }
 
     if(!ep->freelist){
-        u_int32_t   i;
+        uint32_t   i;
 
         OWPError(ep->cntrl->ctx,OWPErrWARNING,OWPErrUNKNOWN,
                 "alloc_node: Allocating nodes for lost-packet-buffer!");
@@ -1535,7 +1547,7 @@ free_node(
 static OWPLostPacket
 get_node(
         OWPEndpoint ep,
-        u_int32_t   seq
+        uint32_t   seq
         )
 {
     OWPLostPacket   node;
@@ -1609,7 +1621,7 @@ recvfromttl(
         socklen_t       local_len __attribute__((unused)),
         struct sockaddr *peer,
         socklen_t       *peer_len,
-        u_int8_t        *ttl
+        uint8_t        *ttl
         )
 {
     struct msghdr       msg;
@@ -1618,7 +1630,7 @@ recvfromttl(
     struct cmsghdr      *cmdmsgptr;
     union {
         struct cmsghdr  cm;
-        char            control[CMSG_SPACE(sizeof(u_int8_t))];
+        char            control[CMSG_SPACE(sizeof(uint8_t))];
     } cmdmsgdata;
 
     *ttl = 255;        /* initialize to default value */
@@ -1657,7 +1669,7 @@ recvfromttl(
                         cmdmsgptr->cmsg_type == IPV6_HOPLIMIT){
                     /*
                      * IPV6_HOPLIMIT is defined as an int, type coercion
-                     * will convert it to a u_int8_t.
+                     * will convert it to a uint8_t.
                      */
                     *ttl = *(int *)CMSG_DATA(cmdmsgptr);
                     goto NEXTCMSG;
@@ -1676,14 +1688,14 @@ recvfromttl(
 #ifdef  IP_RECVTTL
                 if(cmdmsgptr->cmsg_level == IPPROTO_IP &&
                         cmdmsgptr->cmsg_type == IP_RECVTTL){
-                    *ttl = *(u_int8_t *)CMSG_DATA(cmdmsgptr);
+                    *ttl = *(uint8_t *)CMSG_DATA(cmdmsgptr);
                     goto NEXTCMSG;
                 }
                 else
 #endif
                 if(cmdmsgptr->cmsg_level == IPPROTO_IP &&
                         cmdmsgptr->cmsg_type == IP_TTL){
-                    *ttl = *(u_int8_t *)CMSG_DATA(cmdmsgptr);
+                    *ttl = *(uint8_t *)CMSG_DATA(cmdmsgptr);
                     goto NEXTCMSG;
                 }
                 break;
@@ -1716,21 +1728,21 @@ run_receiver(
     struct timespec     lostspec;
     struct timespec     expectspec;
     struct itimerval    wake;
-    u_int32_t           *seq;
-    u_int32_t           maxseq=0;
-    u_int8_t            *tstamp;
-    u_int8_t            *tstamperr;
-    u_int8_t            *z1,*z2;
-    u_int8_t            zero[12];
-    u_int8_t            iv[16];
-    u_int32_t           esterror,lasterror=0;
-    u_int8_t            sync;
+    uint32_t           *seq;
+    uint32_t           maxseq=0;
+    uint8_t            *tstamp;
+    uint8_t            *tstamperr;
+    uint8_t            *z1,*z2;
+    uint8_t            zero[12];
+    uint8_t            iv[16];
+    uint32_t           esterror,lasterror=0;
+    uint8_t            sync;
     OWPTimeStamp        expecttime;
     OWPSessionHeaderRec hdr;
-    u_int8_t            lostrec[_OWP_DATAREC_SIZE];
+    uint8_t            lostrec[_OWP_DATAREC_SIZE];
     OWPLostPacket       node;
     int                 owp_intr;
-    u_int32_t           finished = OWP_SESSION_FINISHED_INCOMPLETE;
+    uint32_t           finished = OWP_SESSION_FINISHED_INCOMPLETE;
     OWPDataRec          datarec;
     struct sockaddr     *lsaddr;
     socklen_t           lsaddrlen;
@@ -1783,7 +1795,7 @@ run_receiver(
      * Initialize pointers to various positions in the packet buffer.
      * (useful for the different "modes".)
      */
-    seq = (u_int32_t*)&ep->payload[0];
+    seq = (uint32_t*)&ep->payload[0];
     switch(ep->cntrl->mode){
         case OWP_MODE_OPEN:
             tstamp = &ep->payload[4];
@@ -2100,14 +2112,14 @@ again:
                 rijndaelDecrypt(ep->cntrl->decrypt_key.rk,
                         ep->cntrl->decrypt_key.Nr,
                         &ep->payload[16],&ep->payload[16]);
-                ((u_int32_t*)ep->payload)[4] ^=
-                    ((u_int32_t*)iv)[0];
-                ((u_int32_t*)ep->payload)[5] ^=
-                    ((u_int32_t*)iv)[1];
-                ((u_int32_t*)ep->payload)[6] ^=
-                    ((u_int32_t*)iv)[2];
-                ((u_int32_t*)ep->payload)[7] ^=
-                    ((u_int32_t*)iv)[3];
+                ((uint32_t*)ep->payload)[4] ^=
+                    ((uint32_t*)iv)[0];
+                ((uint32_t*)ep->payload)[5] ^=
+                    ((uint32_t*)iv)[1];
+                ((uint32_t*)ep->payload)[6] ^=
+                    ((uint32_t*)iv)[2];
+                ((uint32_t*)ep->payload)[7] ^=
+                    ((uint32_t*)iv)[3];
                 /*
                  * Check zero bits to ensure valid encryption.
                  */

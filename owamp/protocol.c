@@ -65,17 +65,17 @@
 OWPErrSeverity
 _OWPWriteServerGreeting(
         OWPControl  cntrl,
-        u_int32_t   avail_modes,
-        u_int8_t    *challenge,        /* [16] */
+        uint32_t   avail_modes,
+        uint8_t    *challenge,        /* [16] */
         int         *retn_on_err
         )
 {
     /*
-     * buf_aligned it to ensure u_int32_t alignment, but I use
+     * buf_aligned it to ensure uint32_t alignment, but I use
      * buf for actuall assignments to make the array offsets agree with
      * the byte offsets shown above.
      */
-    u_int8_t    *buf = (u_int8_t*)cntrl->msg;
+    uint8_t    *buf = (uint8_t*)cntrl->msg;
 
     if(!_OWPStateIsInitial(cntrl)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
@@ -88,7 +88,7 @@ _OWPWriteServerGreeting(
      */
     memset(buf,0,12);
 
-    *((u_int32_t *)&buf[12]) = htonl(avail_modes);
+    *((uint32_t *)&buf[12]) = htonl(avail_modes);
     memcpy(&buf[16],challenge,16);
     if(I2Writeni(cntrl->sockfd,buf,32,retn_on_err) != 32){
         return OWPErrFATAL;
@@ -102,11 +102,11 @@ _OWPWriteServerGreeting(
 OWPErrSeverity
 _OWPReadServerGreeting(
         OWPControl  cntrl,
-        u_int32_t   *mode,      /* modes available - returned   */
-        u_int8_t    *challenge  /* [16] : challenge - returned  */
+        uint32_t   *mode,      /* modes available - returned   */
+        uint8_t    *challenge  /* [16] : challenge - returned  */
         )
 {
-    u_int8_t    *buf = (u_int8_t*)cntrl->msg;
+    uint8_t    *buf = (uint8_t*)cntrl->msg;
 
     if(!_OWPStateIsInitial(cntrl)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
@@ -120,7 +120,7 @@ _OWPReadServerGreeting(
         return (int)OWPErrFATAL;
     }
 
-    *mode = ntohl(*((u_int32_t *)&buf[12]));
+    *mode = ntohl(*((uint32_t *)&buf[12]));
     memcpy(challenge,&buf[16],16);
 
     cntrl->state = _OWPStateSetup;
@@ -164,10 +164,10 @@ _OWPReadServerGreeting(
 OWPErrSeverity
 _OWPWriteClientGreeting(
         OWPControl  cntrl,
-        u_int8_t    *token        /* [32]        */
+        uint8_t    *token        /* [32]        */
         )
 {
-    u_int8_t    *buf = (u_int8_t*)cntrl->msg;
+    uint8_t    *buf = (uint8_t*)cntrl->msg;
 
     if(!_OWPStateIsSetup(cntrl)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
@@ -175,7 +175,7 @@ _OWPWriteClientGreeting(
         return OWPErrFATAL;
     }
 
-    *(u_int32_t *)&buf[0] = htonl(cntrl->mode);
+    *(uint32_t *)&buf[0] = htonl(cntrl->mode);
 
     if(cntrl->mode & OWP_MODE_DOCIPHER){
         memcpy(&buf[4],cntrl->userid,16);
@@ -194,14 +194,14 @@ _OWPWriteClientGreeting(
 OWPErrSeverity
 _OWPReadClientGreeting(
         OWPControl  cntrl,
-        u_int32_t   *mode,
-        u_int8_t    *token,         /* [32] - return        */
-        u_int8_t    *clientIV,      /* [16] - return        */
+        uint32_t   *mode,
+        uint8_t    *token,         /* [32] - return        */
+        uint8_t    *clientIV,      /* [16] - return        */
         int         *retn_on_intr
         )
 {
     ssize_t     len;
-    u_int8_t    *buf = (u_int8_t*)cntrl->msg;
+    uint8_t    *buf = (uint8_t*)cntrl->msg;
 
     if(!_OWPStateIsSetup(cntrl)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
@@ -223,7 +223,7 @@ _OWPReadClientGreeting(
         return OWPErrFATAL;
     }
 
-    *mode = ntohl(*(u_int32_t *)&buf[0]);
+    *mode = ntohl(*(uint32_t *)&buf[0]);
     memcpy(cntrl->userid_buffer,&buf[4],16);
     memcpy(token,&buf[20],32);
     memcpy(clientIV,&buf[52],16);
@@ -234,7 +234,7 @@ _OWPReadClientGreeting(
 static OWPAcceptType
 GetAcceptType(
         OWPControl  cntrl,
-        u_int8_t    val
+        uint8_t    val
         )
 {
     switch(val){
@@ -294,7 +294,7 @@ _OWPWriteServerOK(
 {
     ssize_t         len;
     OWPTimeStamp    tstamp;
-    u_int8_t        *buf = (u_int8_t*)cntrl->msg;
+    uint8_t        *buf = (uint8_t*)cntrl->msg;
     int             ival=0;
     int             *intr=&ival;
 
@@ -309,7 +309,7 @@ _OWPWriteServerOK(
     }
 
     memset(&buf[0],0,15);
-    *(u_int8_t *)&buf[15] = code & 0xff;
+    *(uint8_t *)&buf[15] = code & 0xff;
     memcpy(&buf[16],cntrl->writeIV,16);
     if((len = I2Writeni(cntrl->sockfd,buf,32,intr)) != 32){
         if((len < 0) && *intr && (errno == EINTR)){
@@ -354,7 +354,7 @@ _OWPReadServerOK(
         OWPAcceptType   *acceptval        /* ret        */
         )
 {
-    u_int8_t    *buf = (u_int8_t*)cntrl->msg;
+    uint8_t    *buf = (uint8_t*)cntrl->msg;
 
     if(!_OWPStateIsSetup(cntrl)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
@@ -388,7 +388,7 @@ _OWPReadServerUptime(
         OWPNum64    *uptime        /* ret        */
         )
 {
-    u_int8_t        *buf = (u_int8_t*)cntrl->msg;
+    uint8_t        *buf = (uint8_t*)cntrl->msg;
     OWPTimeStamp    tstamp;
 
     if(!_OWPStateIs(_OWPStateUptime,cntrl)){
@@ -431,7 +431,7 @@ OWPReadRequestType(
         int         *retn_on_intr
         )
 {
-    u_int8_t    msgtype;
+    uint8_t    msgtype;
     int         n;
     int         ival=0;
     int         *intr = &ival;
@@ -447,7 +447,7 @@ OWPReadRequestType(
     }
 
     /* Read one block so we can peek at the message type */
-    n = _OWPReceiveBlocksIntr(cntrl,(u_int8_t*)cntrl->msg,1,intr);
+    n = _OWPReceiveBlocksIntr(cntrl,(uint8_t*)cntrl->msg,1,intr);
     if(n != 1){
         cntrl->state = _OWPStateInvalid;
         if((n < 0) && *intr && (errno == EINTR)){
@@ -456,7 +456,7 @@ OWPReadRequestType(
         return OWPReqSockClose;
     }
 
-    msgtype = *(u_int8_t*)cntrl->msg;
+    msgtype = *(uint8_t*)cntrl->msg;
 
     /*
      * StopSessions(3) message is only allowed during active tests,
@@ -551,8 +551,8 @@ OWPReadRequestType(
 int
 _OWPEncodeTestRequestPreamble(
         OWPContext      ctx,
-        u_int32_t       *msg,
-        u_int32_t       *len_ret,
+        uint32_t       *msg,
+        uint32_t       *len_ret,
         struct sockaddr *sender,
         struct sockaddr *receiver,
         OWPBoolean      server_conf_sender, 
@@ -561,8 +561,8 @@ _OWPEncodeTestRequestPreamble(
         OWPTestSpec     *tspec
         )
 {
-    u_int8_t        *buf = (u_int8_t*)msg;
-    u_int8_t        version;
+    uint8_t        *buf = (uint8_t*)msg;
+    uint8_t        version;
     OWPTimeStamp    tstamp;
 
     if(*len_ret < 112){
@@ -630,8 +630,8 @@ _OWPEncodeTestRequestPreamble(
     /*
      * slots and npackets... convert to network byte order.
      */
-    *(u_int32_t*)&buf[4] = htonl(tspec->nslots);
-    *(u_int32_t*)&buf[8] = htonl(tspec->npackets);
+    *(uint32_t*)&buf[4] = htonl(tspec->nslots);
+    *(uint32_t*)&buf[8] = htonl(tspec->npackets);
 
     /*
      * Now set addr values. (sockaddr vars should already have
@@ -645,25 +645,25 @@ _OWPEncodeTestRequestPreamble(
         /* sender address  and port */
         saddr6 = (struct sockaddr_in6*)sender;
         memcpy(&buf[16],saddr6->sin6_addr.s6_addr,16);
-        *(u_int16_t*)&buf[12] = saddr6->sin6_port;
+        *(uint16_t*)&buf[12] = saddr6->sin6_port;
 
         /* receiver address and port  */
         saddr6 = (struct sockaddr_in6*)receiver;
         memcpy(&buf[32],saddr6->sin6_addr.s6_addr,16);
-        *(u_int16_t*)&buf[14] = saddr6->sin6_port;
+        *(uint16_t*)&buf[14] = saddr6->sin6_port;
 
         break;
 #endif
         case 4:
         /* sender address and port  */
         saddr4 = (struct sockaddr_in*)sender;
-        *(u_int32_t*)&buf[16] = saddr4->sin_addr.s_addr;
-        *(u_int16_t*)&buf[12] = saddr4->sin_port;
+        *(uint32_t*)&buf[16] = saddr4->sin_addr.s_addr;
+        *(uint16_t*)&buf[12] = saddr4->sin_port;
 
         /* receiver address and port  */
         saddr4 = (struct sockaddr_in*)receiver;
-        *(u_int32_t*)&buf[32] = saddr4->sin_addr.s_addr;
-        *(u_int16_t*)&buf[14] = saddr4->sin_port;
+        *(uint32_t*)&buf[32] = saddr4->sin_addr.s_addr;
+        *(uint16_t*)&buf[14] = saddr4->sin_port;
 
         break;
         default:
@@ -678,7 +678,7 @@ _OWPEncodeTestRequestPreamble(
     if(sid)
         memcpy(&buf[48],sid,16);
 
-    *(u_int32_t*)&buf[64] = htonl(tspec->packet_size_padding);
+    *(uint32_t*)&buf[64] = htonl(tspec->packet_size_padding);
 
     /*
      * timestamps...
@@ -688,7 +688,7 @@ _OWPEncodeTestRequestPreamble(
     tstamp.owptime = tspec->loss_timeout;
     _OWPEncodeTimeStamp(&buf[76],&tstamp);
 
-    *(u_int32_t*)&buf[84] = htonl(tspec->typeP);
+    *(uint32_t*)&buf[84] = htonl(tspec->typeP);
 
     /*
      * Set MBZ and Integrity Zero Padding
@@ -703,20 +703,20 @@ OWPErrSeverity
 _OWPDecodeTestRequestPreamble(
         OWPContext      ctx,
         OWPBoolean      request,
-        u_int32_t       *msg,
-        u_int32_t       msg_len,
+        uint32_t       *msg,
+        uint32_t       msg_len,
         struct sockaddr *sender,
         struct sockaddr *receiver,
         socklen_t       *socklen,
-        u_int8_t        *ipvn,
+        uint8_t        *ipvn,
         OWPBoolean      *server_conf_sender,
         OWPBoolean      *server_conf_receiver,
         OWPSID          sid,
         OWPTestSpec     *tspec
         )
 {
-    u_int8_t        *buf = (u_int8_t*)msg;
-    u_int8_t        zero[_OWP_RIJNDAEL_BLOCK_SIZE];
+    uint8_t        *buf = (uint8_t*)msg;
+    uint8_t        zero[_OWP_RIJNDAEL_BLOCK_SIZE];
     OWPTimeStamp    tstamp;
 
     if(msg_len != 112){
@@ -734,8 +734,8 @@ _OWPDecodeTestRequestPreamble(
 
 
     *ipvn = buf[1] & 0xF;
-    tspec->nslots = ntohl(*(u_int32_t*)&buf[4]);
-    tspec->npackets = ntohl(*(u_int32_t*)&buf[8]);
+    tspec->nslots = ntohl(*(uint32_t*)&buf[4]);
+    tspec->npackets = ntohl(*(uint32_t*)&buf[8]);
 
     switch(buf[2]){
         case 0:
@@ -783,7 +783,7 @@ _OWPDecodeTestRequestPreamble(
         if(request && *server_conf_sender)
             saddr6->sin6_port = 0;
         else
-            saddr6->sin6_port = *(u_int16_t*)&buf[12];
+            saddr6->sin6_port = *(uint16_t*)&buf[12];
 
         /* receiver address and port  */
         saddr6 = (struct sockaddr_in6*)receiver;
@@ -792,7 +792,7 @@ _OWPDecodeTestRequestPreamble(
         if(request && *server_conf_receiver)
             saddr6->sin6_port = 0;
         else
-            saddr6->sin6_port = *(u_int16_t*)&buf[14];
+            saddr6->sin6_port = *(uint16_t*)&buf[14];
 
         break;
 #endif
@@ -809,20 +809,20 @@ _OWPDecodeTestRequestPreamble(
         /* sender address and port  */
         saddr4 = (struct sockaddr_in*)sender;
         saddr4->sin_family = AF_INET;
-        saddr4->sin_addr.s_addr = *(u_int32_t*)&buf[16];
+        saddr4->sin_addr.s_addr = *(uint32_t*)&buf[16];
         if(request && *server_conf_sender)
             saddr4->sin_port = 0;
         else
-            saddr4->sin_port = *(u_int16_t*)&buf[12];
+            saddr4->sin_port = *(uint16_t*)&buf[12];
 
         /* receiver address and port  */
         saddr4 = (struct sockaddr_in*)receiver;
         saddr4->sin_family = AF_INET;
-        saddr4->sin_addr.s_addr = *(u_int32_t*)&buf[32];
+        saddr4->sin_addr.s_addr = *(uint32_t*)&buf[32];
         if(request && *server_conf_receiver)
             saddr4->sin_port = 0;
         else
-            saddr4->sin_port = *(u_int16_t*)&buf[14];
+            saddr4->sin_port = *(uint16_t*)&buf[14];
 
         break;
         default:
@@ -838,7 +838,7 @@ _OWPDecodeTestRequestPreamble(
 
     memcpy(sid,&buf[48],16);
 
-    tspec->packet_size_padding = ntohl(*(u_int32_t*)&buf[64]);
+    tspec->packet_size_padding = ntohl(*(uint32_t*)&buf[64]);
 
     _OWPDecodeTimeStamp(&tstamp,&buf[68]);
     tspec->start_time = tstamp.owptime;
@@ -850,7 +850,7 @@ _OWPDecodeTestRequestPreamble(
      * (This allows typeP to be expanded in the future for
      * implementations that understand it.)
      */
-    tspec->typeP = ntohl(*(u_int32_t*)&buf[84]);
+    tspec->typeP = ntohl(*(uint32_t*)&buf[84]);
 
     return OWPErrOK;
 }
@@ -887,11 +887,11 @@ _OWPDecodeTestRequestPreamble(
  */
 OWPErrSeverity
 _OWPEncodeSlot(
-        u_int32_t   msg[4], /* 1 block 32bit aligned */
+        uint32_t   msg[4], /* 1 block 32bit aligned */
         OWPSlot     *slot
         )
 {
-    u_int8_t        *buf = (u_int8_t*)msg;
+    uint8_t        *buf = (uint8_t*)msg;
     OWPTimeStamp    tstamp;
 
     /*
@@ -933,10 +933,10 @@ _OWPEncodeSlot(
 OWPErrSeverity
 _OWPDecodeSlot(
         OWPSlot     *slot,
-        u_int32_t   msg[4] /* 1 block 32bit aligned */
+        uint32_t   msg[4] /* 1 block 32bit aligned */
         )
 {
-    u_int8_t        *buf = (u_int8_t*)msg;
+    uint8_t        *buf = (uint8_t*)msg;
     OWPTimeStamp    tstamp;
 
     _OWPDecodeTimeStamp(&tstamp,&buf[8]);
@@ -967,9 +967,9 @@ _OWPWriteTestRequest(
         OWPTestSpec     *test_spec
         )
 {
-    u_int8_t    *buf = (u_int8_t*)cntrl->msg;
-    u_int32_t   buf_len = sizeof(cntrl->msg);
-    u_int32_t   i;
+    uint8_t    *buf = (uint8_t*)cntrl->msg;
+    uint32_t   buf_len = sizeof(cntrl->msg);
+    uint32_t   i;
 
     /*
      * Ensure cntrl is in correct state.
@@ -1080,12 +1080,12 @@ static OWPErrSeverity
 _OWPReadTestRequestSlots(
         OWPControl  cntrl,
         int         *intr,
-        u_int32_t   nslots,
+        uint32_t   nslots,
         OWPSlot     *slots
         )
 {
-    u_int8_t    *buf = (u_int8_t*)cntrl->msg;
-    u_int32_t   i;
+    uint8_t    *buf = (uint8_t*)cntrl->msg;
+    uint32_t   i;
     int         len;
 
     if(!_OWPStateIs(_OWPStateTestRequestSlots,cntrl)){
@@ -1189,14 +1189,14 @@ _OWPReadTestRequest(
         OWPAcceptType   *accept_ret
         )
 {
-    u_int8_t                *buf = (u_int8_t*)cntrl->msg;
+    uint8_t                *buf = (uint8_t*)cntrl->msg;
     OWPErrSeverity          err_ret=OWPErrOK;
     struct sockaddr_storage sendaddr_rec;
     struct sockaddr_storage recvaddr_rec;
     socklen_t               addrlen = sizeof(sendaddr_rec);
     I2Addr                  SendAddr=NULL;
     I2Addr                  RecvAddr=NULL;
-    u_int8_t                ipvn;
+    uint8_t                ipvn;
     OWPBoolean              conf_sender;
     OWPBoolean              conf_receiver;
     OWPSID                  sid;
@@ -1412,11 +1412,11 @@ _OWPWriteTestAccept(
         OWPControl      cntrl,
         int             *intr,
         OWPAcceptType   acceptval,
-        u_int16_t       port,
+        uint16_t       port,
         OWPSID          sid
         )
 {
-    u_int8_t    *buf = (u_int8_t*)cntrl->msg;
+    uint8_t    *buf = (uint8_t*)cntrl->msg;
 
     if(!_OWPStateIs(_OWPStateTestAccept,cntrl)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
@@ -1425,7 +1425,7 @@ _OWPWriteTestAccept(
     }
 
     buf[0] = acceptval & 0xff;
-    *(u_int16_t *)&buf[2] = htons(port);
+    *(uint16_t *)&buf[2] = htons(port);
     if(sid)
         memcpy(&buf[4],sid,16);
     memset(&buf[20],0,12);
@@ -1444,11 +1444,11 @@ OWPErrSeverity
 _OWPReadTestAccept(
         OWPControl      cntrl,
         OWPAcceptType   *acceptval,
-        u_int16_t       *port,
+        uint16_t       *port,
         OWPSID          sid
         )
 {
-    u_int8_t    *buf = (u_int8_t*)cntrl->msg;
+    uint8_t    *buf = (uint8_t*)cntrl->msg;
 
     if(!_OWPStateIs(_OWPStateTestAccept,cntrl)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
@@ -1483,7 +1483,7 @@ _OWPReadTestAccept(
     }
 
     if(port)
-        *port = ntohs(*(u_int16_t*)&buf[2]);
+        *port = ntohs(*(uint16_t*)&buf[2]);
 
     if(sid)
         memcpy(sid,&buf[4],16);
@@ -1520,7 +1520,7 @@ _OWPWriteStartSessions(
         OWPControl  cntrl
         )
 {
-    u_int8_t    *buf = (u_int8_t*)cntrl->msg;
+    uint8_t    *buf = (uint8_t*)cntrl->msg;
 
     if(!_OWPStateIsRequest(cntrl) || _OWPStateIsPending(cntrl)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
@@ -1551,7 +1551,7 @@ _OWPReadStartSessions(
         )
 {
     int         n;
-    u_int8_t    *buf = (u_int8_t*)cntrl->msg;
+    uint8_t    *buf = (uint8_t*)cntrl->msg;
 
     if(!_OWPStateIs(_OWPStateStartSessions,cntrl)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
@@ -1631,7 +1631,7 @@ _OWPWriteStartAck(
         )
 {
     int         n;
-    u_int8_t    *buf = (u_int8_t*)cntrl->msg;
+    uint8_t    *buf = (uint8_t*)cntrl->msg;
 
     if(!_OWPStateIs(_OWPStateStartAck,cntrl)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
@@ -1677,7 +1677,7 @@ _OWPReadStartAck(
         OWPAcceptType   *acceptval
         )
 {
-    u_int8_t    *buf = (u_int8_t*)cntrl->msg;
+    uint8_t    *buf = (uint8_t*)cntrl->msg;
 
     *acceptval = OWP_CNTRL_INVALID;
 
@@ -1817,11 +1817,11 @@ _OWPWriteStopSessions(
         OWPControl      cntrl,
         int             *retn_on_intr,
         OWPAcceptType   acceptval,
-        u_int32_t       num_sessions
+        uint32_t       num_sessions
         )
 {
     OWPTestSession  sptr;
-    u_int8_t        *buf = (u_int8_t*)cntrl->msg;
+    uint8_t        *buf = (uint8_t*)cntrl->msg;
 
     if(!(_OWPStateIs(_OWPStateRequest,cntrl) &&
                 _OWPStateIs(_OWPStateTest,cntrl))){
@@ -1837,7 +1837,7 @@ _OWPWriteStopSessions(
 
     buf[0] = 3;
     buf[1] = acceptval & 0xff;
-    *(u_int32_t*)&buf[4] = htonl(num_sessions);
+    *(uint32_t*)&buf[4] = htonl(num_sessions);
 
     if(_OWPSendBlocksIntr(cntrl,buf,1,retn_on_intr) != 1){
         return _OWPFailControlSession(cntrl,OWPErrFATAL);
@@ -1950,11 +1950,11 @@ _OWPWriteStopSessions(
  */
 void
 _OWPEncodeSkipRecord(
-        u_int8_t    buf[_OWP_SKIPREC_SIZE],
+        uint8_t    buf[_OWP_SKIPREC_SIZE],
         OWPSkip    skip
         )
 {
-    u_int32_t        nlbuf;
+    uint32_t        nlbuf;
 
     /* begin seq */
     nlbuf = htonl(skip->begin);
@@ -1986,7 +1986,7 @@ _OWPEncodeSkipRecord(
 void
 _OWPDecodeSkipRecord(
         OWPSkip    skip,
-        u_int8_t    buf[_OWP_SKIPREC_SIZE]
+        uint8_t    buf[_OWP_SKIPREC_SIZE]
         )
 {
     /*
@@ -2044,9 +2044,9 @@ _OWPReadStopSessions(
         )
 {
     int             n;
-    u_int8_t        *buf = (u_int8_t*)cntrl->msg;
+    uint8_t        *buf = (uint8_t*)cntrl->msg;
     OWPAcceptType   aval;
-    u_int32_t       i,j,num_sessions;
+    uint32_t       i,j,num_sessions;
     OWPTestSession  *sptr,tptr;
     OWPTestSession  receivers = NULL;
     off_t           toff;
@@ -2075,7 +2075,7 @@ _OWPReadStopSessions(
         goto err;
     }
 
-    num_sessions = ntohl(*(u_int32_t*)&buf[4]);
+    num_sessions = ntohl(*(uint32_t*)&buf[4]);
 
     /*
      * Parse test session list and pull recv sessions into the receivers
@@ -2117,12 +2117,12 @@ _OWPReadStopSessions(
         _OWPSessionHeaderInitialRec fhdr;
         struct flock                flk;
         OWPNum64                    lowR,highR,threshR;
-        u_int32_t                   lowI,midI,highI,num_recs;
-        u_int8_t                    rbuf[_OWP_MAXDATAREC_SIZE];
+        uint32_t                   lowI,midI,highI,num_recs;
+        uint8_t                    rbuf[_OWP_MAXDATAREC_SIZE];
         OWPDataRec                  rec;
         OWPSkipRec                  prev_skip, curr_skip;
-        u_int32_t                   next_seqno;
-        u_int32_t                   num_skips;
+        uint32_t                   next_seqno;
+        uint32_t                   num_skips;
 
         /*
          * Read sid from session description record
@@ -2478,8 +2478,8 @@ clean_data:
                     i);
             goto err;
         }
-        next_seqno = ntohl(*(u_int32_t*)&buf[0]);
-        num_skips = ntohl(*(u_int32_t*)&buf[4]);
+        next_seqno = ntohl(*(uint32_t*)&buf[0]);
+        num_skips = ntohl(*(uint32_t*)&buf[4]);
 
         if(!num_skips) goto done_skips;
 
@@ -2496,7 +2496,7 @@ clean_data:
 
         prev_skip.begin = prev_skip.end = 0;
         for(j=0; j < num_skips; j++){
-            u_int8_t    bufi;
+            uint8_t    bufi;
 
             /*
              * Index into buffer for this skip record. (Either 0 or 8)
@@ -2657,12 +2657,12 @@ err:
 OWPErrSeverity
 _OWPWriteFetchSession(
         OWPControl  cntrl,
-        u_int32_t   begin,
-        u_int32_t   end,
+        uint32_t   begin,
+        uint32_t   end,
         OWPSID      sid
         )
 {
-    u_int8_t    *buf = (u_int8_t*)cntrl->msg;
+    uint8_t    *buf = (uint8_t*)cntrl->msg;
 
     if(!_OWPStateIs(_OWPStateRequest,cntrl) || _OWPStateIsTest(cntrl)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
@@ -2674,8 +2674,8 @@ _OWPWriteFetchSession(
 #ifndef        NDEBUG
     memset(&buf[1],0,7);        /* Unused        */
 #endif
-    *(u_int32_t*)&buf[8] = htonl(begin);
-    *(u_int32_t*)&buf[12] = htonl(end);
+    *(uint32_t*)&buf[8] = htonl(begin);
+    *(uint32_t*)&buf[12] = htonl(end);
     memcpy(&buf[16],sid,16);
     memset(&buf[32],0,16);        /* Zero padding */
 
@@ -2691,13 +2691,13 @@ OWPErrSeverity
 _OWPReadFetchSession(
         OWPControl  cntrl,
         int         *retn_on_intr,
-        u_int32_t   *begin,
-        u_int32_t   *end,
+        uint32_t   *begin,
+        uint32_t   *end,
         OWPSID      sid
         )
 {
     int         n;
-    u_int8_t    *buf = (u_int8_t*)cntrl->msg;
+    uint8_t    *buf = (uint8_t*)cntrl->msg;
 
     if(!_OWPStateIs(_OWPStateFetchSession,cntrl)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
@@ -2736,8 +2736,8 @@ _OWPReadFetchSession(
         return OWPErrFATAL;
     }
 
-    *begin = ntohl(*(u_int32_t*)&buf[8]);
-    *end = ntohl(*(u_int32_t*)&buf[12]);
+    *begin = ntohl(*(uint32_t*)&buf[8]);
+    *end = ntohl(*(uint32_t*)&buf[12]);
     memcpy(sid,&buf[16],16);
 
     /*
@@ -2780,14 +2780,14 @@ _OWPWriteFetchAck(
         OWPControl      cntrl,
         int             *retn_on_intr,
         OWPAcceptType   acceptval,
-        u_int8_t        finished,
-        u_int32_t       next_seqno,
-        u_int32_t       num_skiprecs,
-        u_int32_t       num_datarecs
+        uint8_t        finished,
+        uint32_t       next_seqno,
+        uint32_t       num_skiprecs,
+        uint32_t       num_datarecs
         )
 {
     int         n;
-    u_int8_t    *buf = (u_int8_t*)cntrl->msg;
+    uint8_t    *buf = (uint8_t*)cntrl->msg;
 
     if(!_OWPStateIs(_OWPStateFetchAck,cntrl)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
@@ -2802,9 +2802,9 @@ _OWPWriteFetchAck(
     memset(&buf[1],0,2);        /* Unused        */
 #endif
 
-    *(u_int32_t*)&buf[4] = htonl(next_seqno);
-    *(u_int32_t*)&buf[8] = htonl(num_skiprecs);
-    *(u_int32_t*)&buf[12] = htonl(num_datarecs);
+    *(uint32_t*)&buf[4] = htonl(next_seqno);
+    *(uint32_t*)&buf[8] = htonl(num_skiprecs);
+    *(uint32_t*)&buf[12] = htonl(num_datarecs);
 
     memset(&buf[16],0,16);        /* IZP */
 
@@ -2844,13 +2844,13 @@ OWPErrSeverity
 _OWPReadFetchAck(
         OWPControl      cntrl,
         OWPAcceptType   *acceptval,
-        u_int8_t        *finished,
-        u_int32_t       *next_seqno,
-        u_int32_t       *num_skiprecs,
-        u_int32_t       *num_datarecs
+        uint8_t        *finished,
+        uint32_t       *next_seqno,
+        uint32_t       *num_skiprecs,
+        uint32_t       *num_datarecs
         )
 {
-    u_int8_t    *buf = (u_int8_t*)cntrl->msg;
+    uint8_t    *buf = (uint8_t*)cntrl->msg;
 
     *acceptval = OWP_CNTRL_INVALID;
 
@@ -2882,9 +2882,9 @@ _OWPReadFetchAck(
     }
 
     *finished = buf[1];
-    *next_seqno = ntohl(*(u_int32_t*)&buf[4]);
-    *num_skiprecs = ntohl(*(u_int32_t*)&buf[8]);
-    *num_datarecs = ntohl(*(u_int32_t*)&buf[12]);
+    *next_seqno = ntohl(*(uint32_t*)&buf[4]);
+    *num_skiprecs = ntohl(*(uint32_t*)&buf[8]);
+    *num_datarecs = ntohl(*(uint32_t*)&buf[12]);
 
     /*
      * received FetchAck - leave that state.
@@ -2965,11 +2965,11 @@ _OWPReadFetchAck(
  */
 OWPBoolean
 _OWPEncodeDataRecord(
-        u_int8_t    buf[25],
+        uint8_t    buf[25],
         OWPDataRec  *rec
         )
 {
-    u_int32_t   nlbuf;
+    uint32_t   nlbuf;
 
     memset(buf,0,25);
     nlbuf = htonl(rec->seq_no);
@@ -3016,9 +3016,9 @@ _OWPEncodeDataRecord(
  */
 OWPBoolean
 _OWPDecodeDataRecord(
-        u_int32_t   file_version,
+        uint32_t   file_version,
         OWPDataRec  *rec,
-        u_int8_t    *buf
+        uint8_t    *buf
         )
 {
     /*

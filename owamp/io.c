@@ -24,7 +24,7 @@
 int
 _OWPSendBlocksIntr(
         OWPControl  cntrl,
-        u_int8_t    *buf,
+        uint8_t    *buf,
         int         num_blocks,
         int         *retn_on_intr
         )
@@ -50,7 +50,7 @@ _OWPSendBlocksIntr(
 int
 _OWPReceiveBlocksIntr(
         OWPControl  cntrl,
-        u_int8_t    *buf,
+        uint8_t    *buf,
         int         num_blocks,
         int         *retn_on_intr
         )
@@ -81,7 +81,7 @@ _OWPReceiveBlocksIntr(
 int
 _OWPSendBlocks(
         OWPControl  cntrl,
-        u_int8_t    *buf,
+        uint8_t    *buf,
         int         num_blocks
         )
 {
@@ -98,7 +98,7 @@ _OWPSendBlocks(
 int
 _OWPReceiveBlocks(
         OWPControl  cntrl,
-        u_int8_t    *buf,
+        uint8_t    *buf,
         int         num_blocks
         )
 {
@@ -120,9 +120,9 @@ _OWPReceiveBlocks(
 int
 _OWPEncryptBlocks(
         OWPControl  cntrl,
-        u_int8_t    *buf,
+        uint8_t    *buf,
         int         num_blocks,
-        u_int8_t    *out
+        uint8_t    *out
         )
 {
     int r;
@@ -137,9 +137,9 @@ _OWPEncryptBlocks(
 int
 _OWPDecryptBlocks(
         OWPControl  cntrl,
-        u_int8_t    *buf,
+        uint8_t    *buf,
         int         num_blocks,
-        u_int8_t    *out
+        uint8_t    *out
         )
 {
     int r;
@@ -158,7 +158,7 @@ _OWPDecryptBlocks(
 void
 _OWPMakeKey(
         OWPControl  cntrl,
-        u_int8_t    *binKey
+        uint8_t    *binKey
         )
 {
     cntrl->encrypt_key.Nr
@@ -183,7 +183,7 @@ OWPEncryptToken(
         )
 {
     int         r;
-    u_int8_t    IV[16];
+    uint8_t    IV[16];
     keyInstance key;
 
     memset(IV, 0, 16);
@@ -205,7 +205,7 @@ OWPDecryptToken(
         )
 {
     int         r;
-    u_int8_t    IV[16];
+    uint8_t    IV[16];
     keyInstance key;
 
     memset(IV, 0, 16);

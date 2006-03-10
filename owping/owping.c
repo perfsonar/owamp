@@ -45,7 +45,7 @@
 static  ow_ping_trec    ping_ctx;
 static  I2ErrHandle     eh;
 static  char            tmpdir[PATH_MAX+1];
-static  u_int8_t        aesbuff[16];
+static  uint8_t        aesbuff[16];
 
     static void
 print_conn_args()
@@ -212,7 +212,7 @@ do_stats(
         char        *to
         )
 {
-    u_int32_t           num_rec;
+    uint32_t           num_rec;
     OWPSessionHeaderRec hdr;
     OWPStats            stats;
 
@@ -314,7 +314,7 @@ owp_fetch_sid(
 {
     char        *path;
     FILE        *fp;
-    u_int32_t    num_rec;
+    uint32_t    num_rec;
     OWPErrSeverity    rc=OWPErrOK;
 
     /*
@@ -334,7 +334,7 @@ owp_fetch_sid(
     /*
      * Ask for complete session 
      */
-    num_rec = OWPFetchSession(cntrl,fp,0,(u_int32_t)0xFFFFFFFF,sid,&rc);
+    num_rec = OWPFetchSession(cntrl,fp,0,(uint32_t)0xFFFFFFFF,sid,&rc);
     if(!num_rec){
         if(path)
             (void)unlink(path);
@@ -377,7 +377,7 @@ owp_set_auth(
         )
 {
     if(pctx->opt.identity){
-        u_int8_t    *aes = NULL;
+        uint8_t    *aes = NULL;
 
         /*
          * If keyfile specified, attempt to get key from there.
@@ -501,10 +501,10 @@ static OWPBoolean
 parse_percentile(
         char        *str,
         float       **alpha_ret,
-        u_int32_t   *nalpha_ret
+        uint32_t   *nalpha_ret
         )
 {
-    u_int32_t    i,nalpha;
+    uint32_t    i,nalpha;
     char        *tstr;
     float       *alpha;
 
@@ -572,10 +572,10 @@ static OWPBoolean
 parse_slots(
         char        *sched,
         OWPSlot        **slots_ret,
-        u_int32_t    *nslots_ret
+        uint32_t    *nslots_ret
         )
 {
-    u_int32_t    i,nslots;
+    uint32_t    i,nslots;
     char        *tstr;
     OWPSlot        *slots = NULL;
 
@@ -670,14 +670,14 @@ parse_ports(
 
     tstr = pspec;
     endptr = NULL;
-    while(isspace(*tstr)) tstr++;
+    while(isspace((int)*tstr)) tstr++;
     tint = strtol(tstr,&endptr,10);
     if(!endptr || (tstr == endptr) || (tint < 0) || (tint > (int)0xffff)){
         goto FAILED;
     }
-    ping_ctx.portrec.low = (u_int16_t)tint;
+    ping_ctx.portrec.low = (uint16_t)tint;
 
-    while(isspace(*endptr)) endptr++;
+    while(isspace((int)*endptr)) endptr++;
 
     switch(*endptr){
         case '\0':
@@ -697,12 +697,12 @@ parse_ports(
 
     tstr = endptr;
     endptr = NULL;
-    while(isspace(*tstr)) tstr++;
+    while(isspace((int)*tstr)) tstr++;
     tint = strtol(tstr,&endptr,10);
     if(!endptr || (tstr == endptr) || (tint < 0) || (tint > (int)0xffff)){
         goto FAILED;
     }
-    ping_ctx.portrec.high = (u_int16_t)tint;
+    ping_ctx.portrec.high = (uint16_t)tint;
 
     if(ping_ctx.portrec.high < ping_ctx.portrec.low){
         goto FAILED;
@@ -839,7 +839,7 @@ main(
 
     while((ch = getopt(argc, argv, optstring)) != -1){
         switch (ch) {
-            u_int32_t   tlng;
+            uint32_t   tlng;
 
             /* Connection options. */
 

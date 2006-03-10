@@ -247,9 +247,9 @@ parselimitline(
         /*
          * Grab the keyname off the front.
          */
-        while(isspace(*line)){line++;}
+        while(isspace((int)*line)){line++;}
         limname = line;
-        while(!isspace(*line) && (*line != '=')){
+        while(!isspace((int)*line) && (*line != '=')){
             line++;
         }
         *line++ = '\0';
@@ -257,11 +257,11 @@ parselimitline(
         /*
          * Grab the valname
          */
-        while(isspace(*line) || (*line == '=')){
+        while(isspace((int)*line) || (*line == '=')){
             line++;
         }
         limval = line;
-        while(!isspace(*line) && (*line != '\0')){
+        while(!isspace((int)*line) && (*line != '\0')){
             line++;
         }
         *line = '\0';
@@ -451,7 +451,7 @@ parseassignline(
         int                tint;
         char                *mask, *end;
         struct addrinfo        hints, *res;
-        u_int8_t        nbytes,nbits,*ptr;
+        uint8_t        nbytes,nbits,*ptr;
 
         tpid.id_type = OWPDPidNetmaskType;
         /*
@@ -662,7 +662,7 @@ parselimits(
          */
         if(!strncasecmp(line,"limit",5)){
             line += 5;
-            while(isspace(*line)){
+            while(isspace((int)*line)){
                 line++;
             }
 
@@ -677,7 +677,7 @@ parselimits(
          */
         else if(!strncasecmp(line,"assign",6)){
             line += 6;
-            while(isspace(*line)){
+            while(isspace((int)*line)){
                 line++;
             }
 
@@ -1457,7 +1457,7 @@ GetNodeFromAddr(
         )
 {
     OWPDPidRec  pid;
-    u_int8_t    nbytes,nbits,*ptr;
+    uint8_t    nbytes,nbits,*ptr;
     I2Datum     key,val;
 
     memset(&pid,0,sizeof(pid));
@@ -1922,7 +1922,7 @@ OWPDReadClass(
     ssize_t         i;
     const OWPDMesgT mark=OWPDMESGMARK;
     const OWPDMesgT mclass=OWPDMESGCLASS;
-    u_int8_t        buf[OWPDMAXCLASSLEN+1 + sizeof(OWPDMesgT)*3];
+    uint8_t        buf[OWPDMAXCLASSLEN+1 + sizeof(OWPDMesgT)*3];
     I2Datum         key,val;
     int             fail_on_intr=1;
 
@@ -1990,7 +1990,7 @@ OWPDSendClass(
         OWPDPolicyNode  node
         )
 {
-    u_int8_t    buf[OWPDMAXCLASSLEN+1 + sizeof(OWPDMesgT)*3];
+    uint8_t    buf[OWPDMAXCLASSLEN+1 + sizeof(OWPDMesgT)*3];
     OWPDMesgT   mesg;
     ssize_t     len;
     int         fail_on_intr=1;

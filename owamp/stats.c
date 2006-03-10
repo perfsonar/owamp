@@ -37,6 +37,11 @@
 #include <math.h>
 #include <ctype.h>
 
+/* to get finite() on some systems... */
+#ifdef	HAVE_IEEEFP_H
+#include <ieeefp.h>
+#endif
+
 /*
  * PacketBuffer utility functions:
  *
@@ -139,7 +144,7 @@ PacketBufferClean(
 static OWPPacket
 PacketAlloc(
     OWPStats    stats,
-    u_int32_t   seq
+    uint32_t   seq
     )
 {
     OWPPacket   node;
@@ -219,7 +224,7 @@ PacketAlloc(
 static OWPPacket
 PacketGet(
         OWPStats    stats,
-        u_int32_t   seq
+        uint32_t   seq
         )
 {
     OWPPacket   node;
@@ -609,7 +614,7 @@ OWPStatsCreate(
      * Verify args
      */
     if(!hdr->header || (hdr->version < 2)){
-        u_int32_t   version = 0;
+        uint32_t   version = 0;
         if(hdr->header){
             version = hdr->version;
         }
@@ -843,14 +848,14 @@ OWPStatsCreate(
      * reordering buffers
      */
     stats->rlistlen = stats->plistlen;
-    if( !(stats->rseqno = calloc(stats->rlistlen,sizeof(u_int32_t)))){
+    if( !(stats->rseqno = calloc(stats->rlistlen,sizeof(uint32_t)))){
             OWPError(stats->ctx,OWPErrFATAL,errno,
-                    "%s: calloc(%lu,u_int32_t): %M",func,stats->rlistlen);
+                    "%s: calloc(%lu,uint32_t): %M",func,stats->rlistlen);
             goto error;
     }
-    if( !(stats->rn = calloc(stats->rlistlen,sizeof(u_int32_t)))){
+    if( !(stats->rn = calloc(stats->rlistlen,sizeof(uint32_t)))){
             OWPError(stats->ctx,OWPErrFATAL,errno,
-                    "%s: calloc(%lu,u_int32_t): %M",func,stats->rlistlen);
+                    "%s: calloc(%lu,uint32_t): %M",func,stats->rlistlen);
             goto error;
     }
 
@@ -1197,15 +1202,15 @@ OWPStatsParse(
         OWPStats    stats,
         FILE        *output,
         off_t       begin_oset,
-        u_int32_t   first,
-        u_int32_t   last
+        uint32_t   first,
+        uint32_t   last
         )
 {
     off_t       fileend;
-    u_int32_t   nrecs;
+    uint32_t   nrecs;
     long int    i;
 
-    if(last == (u_int32_t)~0){
+    if(last == (uint32_t)~0){
         last = stats->hdr->test_spec.npackets;
     }
     if((first > last) || (last > stats->hdr->test_spec.npackets)){
@@ -1438,14 +1443,14 @@ OWPStatsPrintSummary(
         OWPStats    stats,
         FILE        *output,
         float       *percentiles,
-        u_int32_t   npercentiles
+        uint32_t   npercentiles
         )
 {
     long int    i;
     uint32_t    ui;
-    u_int8_t    nttl=0;
-    u_int8_t    minttl=255;
-    u_int8_t    maxttl=0;
+    uint8_t    nttl=0;
+    uint8_t    minttl=255;
+    uint8_t    maxttl=0;
     char        minval[80];
     char        maxval[80];
     char        n1val[80];

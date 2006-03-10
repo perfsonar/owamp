@@ -675,7 +675,7 @@ OWPBoolean
 _OWPCallGetAESKey(
         OWPContext      ctx,        /* library context  */
         const OWPUserID userid,     /* identifies key   */
-        u_int8_t        *key_ret,   /* key - return     */
+        uint8_t        *key_ret,   /* key - return     */
         OWPErrSeverity  *err_ret    /* error - return   */
         )
 {

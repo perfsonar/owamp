@@ -322,7 +322,7 @@ OWPControlOpen(
         OWPContext      ctx,            /* control context      */
         I2Addr          local_addr,     /* local addr or null   */
         I2Addr          server_addr,    /* server addr          */
-        u_int32_t       mode_req_mask,  /* requested modes      */
+        uint32_t       mode_req_mask,  /* requested modes      */
         OWPUserID       userid,         /* userid or NULL       */
         OWPNum64        *uptime_ret,    /* server uptime - ret  */
         OWPErrSeverity  *err_ret        /* err - return         */
@@ -330,11 +330,11 @@ OWPControlOpen(
 {
     int             rc;
     OWPControl      cntrl;
-    u_int32_t       mode_avail;
-    u_int8_t        key_value[16];
-    u_int8_t        challenge[16];
-    u_int8_t        token[32];
-    u_int8_t        *key=NULL;
+    uint32_t       mode_avail;
+    uint8_t        key_value[16];
+    uint8_t        challenge[16];
+    uint8_t        token[32];
+    uint8_t        *key=NULL;
     OWPAcceptType   acceptval;
     struct timeval  tvalstart,tvalend;
     OWPNum64        uptime;
@@ -584,8 +584,8 @@ _OWPClientRequestTestReadResponse(
 {
     int             rc;
     OWPAcceptType   acceptval;
-    u_int16_t       port_ret=0;
-    u_int8_t        *sid_ret=NULL;
+    uint16_t       port_ret=0;
+    uint8_t        *sid_ret=NULL;
 
     if( (rc = _OWPWriteTestRequest(cntrl,
                     I2AddrSAddr(sender,NULL),
@@ -1149,23 +1149,23 @@ OWPDelay(
  *        still valid.
  * Side Effect:        
  */
-u_int32_t
+uint32_t
 OWPFetchSession(
         OWPControl      cntrl,
         FILE            *fp,
-        u_int32_t       begin,
-        u_int32_t       end,
+        uint32_t       begin,
+        uint32_t       end,
         OWPSID          sid,
         OWPErrSeverity  *err_ret
         )
 {
     OWPAcceptType       acceptval;
-    u_int8_t            finished;
-    u_int32_t           n;
+    uint8_t            finished;
+    uint32_t           n;
     OWPTestSession      tsession = NULL;
     OWPSessionHeaderRec hdr;
     off_t               toff;
-    u_int8_t            buf[_OWP_FETCH_BUFFSIZE];
+    uint8_t            buf[_OWP_FETCH_BUFFSIZE];
     OWPBoolean          dowrite = True;
     struct sockaddr     *saddr;
     socklen_t           saddrlen;

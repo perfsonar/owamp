@@ -55,16 +55,30 @@ static char rcsid[] = "$FreeBSD: src/lib/libc/gen/fts.c,v 1.14.2.4 2001/06/01 22
 #include <string.h>
 #include <unistd.h>
 
-static FTSENT	*fts_alloc __P((FTS *, char *, int));
-static FTSENT	*fts_build __P((FTS *, int));
-static void	 fts_lfree __P((FTSENT *));
-static void	 fts_load __P((FTS *, FTSENT *));
-static size_t	 fts_maxarglen __P((char * const *));
-static void	 fts_padjust __P((FTS *, FTSENT *));
-static int	 fts_palloc __P((FTS *, size_t));
-static FTSENT	*fts_sort __P((FTS *, FTSENT *, int));
-static u_short	 fts_stat __P((FTS *, FTSENT *, int));
-static int	 fts_safe_changedir __P((FTS *, FTSENT *, int, char *));
+#ifndef	HAVE_DIRFD
+#ifdef	HAVE_DIR_D_FD
+#define dirfd(dp) (dp->d_fd)
+#else
+#error "Have to figure out how to dirfd for this system!"
+#endif
+#endif
+
+#ifdef HAVE_DIR_D_NAMLEN
+#define DIRNAMELEN(dp) ((int)dp->d_namlen)
+#else
+#define DIRNAMELEN(dp) (strlen((char *)dp->d_name))
+#endif
+
+static FTSENT	*fts_alloc (FTS *, char *, int);
+static FTSENT	*fts_build (FTS *, int);
+static void	 fts_lfree (FTSENT *);
+static void	 fts_load (FTS *, FTSENT *);
+static size_t	 fts_maxarglen (char * const *);
+static void	 fts_padjust (FTS *, FTSENT *);
+static int	 fts_palloc (FTS *, size_t);
+static FTSENT	*fts_sort (FTS *, FTSENT *, int);
+static u_short	 fts_stat (FTS *, FTSENT *, int);
+static int	 fts_safe_changedir (FTS *, FTSENT *, int, char *);
 
 #define	ISDOT(a)	(a[0] == '.' && (!a[1] || (a[1] == '.' && !a[2])))
 
@@ -83,7 +97,7 @@ FTS *
 fts_open(argv, options, compar)
 	char * const *argv;
 	register int options;
-	int (*compar) __P((const FTSENT **, const FTSENT **));
+	int (*compar) (const FTSENT **, const FTSENT **);
 {
 	register FTS *sp;
 	register FTSENT *p, *root;
@@ -574,8 +588,9 @@ fts_build(sp, type)
 	FTSENT *cur, *tail;
 	DIR *dirp;
 	void *oldaddr;
-	int cderrno, descend, len, level, maxlen, nlinks, oflag, saved_errno,
+	int cderrno, descend, len, level, nlinks, saved_errno,
 	    nostat, doadjust;
+	size_t maxlen;
 	char *cp;
 
 	/* Set current node pointer. */
@@ -585,15 +600,8 @@ fts_build(sp, type)
 	 * Open the directory for reading.  If this fails, we're done.
 	 * If being called from fts_read, set the fts_info field.
 	 */
-#ifdef FTS_WHITEOUT
-	if (ISSET(FTS_WHITEOUT))
-		oflag = DTF_NODUP|DTF_REWIND;
-	else
-		oflag = DTF_HIDEW|DTF_NODUP|DTF_REWIND;
-#else
-#define __opendir2(path, flag) opendir(path)
-#endif
-	if ((dirp = __opendir2(cur->fts_accpath, oflag)) == NULL) {
+
+	if ((dirp = opendir(cur->fts_accpath)) == NULL) {
 		if (type == BREAD) {
 			cur->fts_info = FTS_DNR;
 			cur->fts_errno = errno;
@@ -682,11 +690,11 @@ fts_build(sp, type)
 		if (!ISSET(FTS_SEEDOT) && ISDOT(dp->d_name))
 			continue;
 
-		if ((p = fts_alloc(sp, dp->d_name, (int)dp->d_namlen)) == NULL)
+		if ((p = fts_alloc(sp, dp->d_name, DIRNAMELEN(dp))) == NULL)
 			goto mem1;
-		if (dp->d_namlen >= maxlen) {	/* include space for NUL */
+		if (DIRNAMELEN(dp) >= maxlen) {	/* include space for NUL */
 			oldaddr = sp->fts_path;
-			if (fts_palloc(sp, dp->d_namlen + len + 1)) {
+			if (fts_palloc(sp, DIRNAMELEN(dp) + len + 1)) {
 				/*
 				 * No more memory for path or structures.  Save
 				 * errno, free up the current structure and the
@@ -711,7 +719,7 @@ mem1:				saved_errno = errno;
 			maxlen = sp->fts_pathlen - len;
 		}
 
-		if (len + dp->d_namlen >= USHRT_MAX) {
+		if (len + DIRNAMELEN(dp) >= USHRT_MAX) {
 			/*
 			 * In an FTSENT, fts_pathlen is a u_short so it is
 			 * possible to wraparound here.  If we do, free up
@@ -728,12 +736,7 @@ mem1:				saved_errno = errno;
 		}
 		p->fts_level = level;
 		p->fts_parent = sp->fts_cur;
-		p->fts_pathlen = len + dp->d_namlen;
-
-#ifdef FTS_WHITEOUT
-		if (dp->d_type == DT_WHT)
-			p->fts_flags |= FTS_ISW;
-#endif
+		p->fts_pathlen = len + DIRNAMELEN(dp);
 
 		if (cderrno) {
 			if (nlinks) {
@@ -841,17 +844,6 @@ fts_stat(sp, p, follow)
 	/* If user needs stat info, stat buffer already allocated. */
 	sbp = ISSET(FTS_NOSTAT) ? &sb : p->fts_statp;
 
-#ifdef FTS_WHITEOUT
-	/* check for whiteout */
-	if (p->fts_flags & FTS_ISW) {
-		if (sbp != &sb) {
-			memset(sbp, '\0', sizeof (*sbp));
-			sbp->st_mode = S_IFWHT;
-		}
-		return (FTS_W);
-	}
-#endif
-
 	/*
 	 * If doing a logical walk, or application requested FTS_FOLLOW, do
 	 * a stat(2).  If that fails, check for a non-existent symlink.  If
@@ -931,8 +923,10 @@ fts_sort(sp, head, nitems)
 	 */
 	if (nitems > sp->fts_nitems) {
 		sp->fts_nitems = nitems + 40;
-		if ((sp->fts_array = reallocf(sp->fts_array,
+		ap = sp->fts_array;
+		if ((sp->fts_array = realloc(sp->fts_array,
 		    sp->fts_nitems * sizeof(FTSENT *))) == NULL) {
+			if(ap) free(ap);
 			sp->fts_nitems = 0;
 			return (head);
 		}
@@ -955,6 +949,11 @@ fts_alloc(sp, name, namelen)
 	register FTSENT *p;
 	size_t len;
 
+	struct ftsent_withstat {
+		FTSENT	ent;
+		struct stat statbuf;
+	};
+
 	/*
 	 * The file name is a variable length array and no stat structure is
 	 * necessary if the user has set the nostat bit.  Allocate the FTSENT
@@ -963,18 +962,26 @@ fts_alloc(sp, name, namelen)
 	 * fts_name field is declared to be of size 1, the fts_name pointer is
 	 * namelen + 2 before the first possible address of the stat structure.
 	 */
-	len = sizeof(FTSENT) + namelen;
-	if (!ISSET(FTS_NOSTAT))
-		len += sizeof(struct stat) + ALIGNBYTES;
+	if(ISSET(FTS_NOSTAT))
+		len = sizeof(FTSENT) + namelen + 1;
+	else
+		len = sizeof(struct ftsent_withstat) + namelen + 1;
+
 	if ((p = malloc(len)) == NULL)
 		return (NULL);
 
-	/* Copy the name and guarantee NUL termination. */
-	memmove(p->fts_name, name, namelen);
-	p->fts_name[namelen] = '\0';
+	if(ISSET(FTS_NOSTAT)){
+		p->fts_name = (char *)(p + 1);
+		p->fts_statp = NULL;
+	}
+	else{
+		p->fts_name = (char *)((struct ftsent_withstat *)p + 1);
+		p->fts_statp = &((struct ftsent_withstat *)p)->statbuf;
+	}
 
-	if (!ISSET(FTS_NOSTAT))
-		p->fts_statp = (struct stat *)ALIGN(p->fts_name + namelen + 2);
+	/* Copy the name and guarantee NUL termination. */
+	memcpy(p->fts_name, name, namelen);
+	p->fts_name[namelen] = '\0';
 	p->fts_namelen = namelen;
 	p->fts_path = sp->fts_path;
 	p->fts_errno = 0;
@@ -1009,6 +1016,7 @@ fts_palloc(sp, more)
 	FTS *sp;
 	size_t more;
 {
+	register char *tch;
 
 	sp->fts_pathlen += more + 256;
 	/*
@@ -1023,7 +1031,11 @@ fts_palloc(sp, more)
 		errno = ENAMETOOLONG;
 		return (1);
 	}
-	sp->fts_path = reallocf(sp->fts_path, sp->fts_pathlen);
+	tch = sp->fts_path;
+	sp->fts_path = realloc(sp->fts_path, sp->fts_pathlen);
+	if(!sp->fts_path && tch){
+		free(tch);
+	}
 	return (sp->fts_path == NULL);
 }
 

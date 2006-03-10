@@ -37,7 +37,15 @@
 #ifndef	_FTS_H_
 #define	_FTS_H_
 
-typedef struct {
+typedef struct _ftss FTS;
+typedef struct _ftsent FTSENT;
+
+typedef int (*ftsqsfunc)(
+        const FTSENT **a,
+        const FTSENT **b
+        );
+
+struct _ftss {
 	struct _ftsent *fts_cur;	/* current node */
 	struct _ftsent *fts_child;	/* linked list of children */
 	struct _ftsent **fts_array;	/* sort array */
@@ -46,8 +54,7 @@ typedef struct {
 	int fts_rfd;			/* fd for root */
 	int fts_pathlen;		/* sizeof(path) */
 	int fts_nitems;			/* elements in the sort array */
-	int (*fts_compar)		/* compare function */
-	    __P((const struct _ftsent **, const struct _ftsent **));
+	ftsqsfunc fts_compar;		/* compare function */
 
 #define	FTS_COMFOLLOW	0x001		/* follow command line symlinks */
 #define	FTS_LOGICAL	0x002		/* logical walk */
@@ -56,15 +63,14 @@ typedef struct {
 #define	FTS_PHYSICAL	0x010		/* physical walk */
 #define	FTS_SEEDOT	0x020		/* return dot and dot-dot */
 #define	FTS_XDEV	0x040		/* don't cross devices */
-#define	FTS_WHITEOUT	0x080		/* return whiteout information */
 #define	FTS_OPTIONMASK	0x0ff		/* valid user option mask */
 
 #define	FTS_NAMEONLY	0x100		/* (private) child names only */
 #define	FTS_STOP	0x200		/* (private) unrecoverable error */
 	int fts_options;		/* fts_open options, global flags */
-} FTS;
+};
 
-typedef struct _ftsent {
+struct _ftsent {
 	struct _ftsent *fts_cycle;	/* cycle node */
 	struct _ftsent *fts_parent;	/* parent directory */
 	struct _ftsent *fts_link;	/* next file in directory */
@@ -113,18 +119,13 @@ typedef struct _ftsent {
 	u_short fts_instr;		/* fts_set() instructions */
 
 	struct stat *fts_statp;		/* stat(2) information */
-	char fts_name[1];		/* file name */
-} FTSENT;
+	char *fts_name;		/* file name */
+};
 
-#include <sys/cdefs.h>
-
-__BEGIN_DECLS
-FTSENT	*fts_children __P((FTS *, int));
-int	 fts_close __P((FTS *));
-FTS	*fts_open __P((char * const *, int,
-	    int (*)(const FTSENT **, const FTSENT **)));
-FTSENT	*fts_read __P((FTS *));
-int	 fts_set __P((FTS *, FTSENT *, int));
-__END_DECLS
+FTSENT	*fts_children(FTS *, int);
+int	 fts_close(FTS *);
+FTS	*fts_open(char * const *, int, ftsqsfunc);
+FTSENT	*fts_read(FTS *);
+int	 fts_set(FTS *, FTSENT *, int);
 
 #endif /* !_FTS_H_ */

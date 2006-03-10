@@ -225,16 +225,16 @@ OWPControlAccept(
         int             connfd,         /* connected socket             */
         struct sockaddr *connsaddr,     /* connected socket addr        */
         socklen_t       connsaddrlen,   /* connected socket addr len    */
-        u_int32_t       mode_offered,   /* advertised server mode       */
+        uint32_t       mode_offered,   /* advertised server mode       */
         OWPNum64        uptime,         /* uptime for server            */
         int             *retn_on_intr,  /* if *retn_on_intr return      */
         OWPErrSeverity  *err_ret        /* err - return                 */
         )
 {
     OWPControl      cntrl;
-    u_int8_t        challenge[16];
-    u_int8_t        rawtoken[32];
-    u_int8_t        token[32];
+    uint8_t        challenge[16];
+    uint8_t        rawtoken[32];
+    uint8_t        token[32];
     int             rc;
     struct timeval  tvalstart,tvalend;
     int             ival=0;
@@ -360,7 +360,7 @@ OWPControlAccept(
     }
 
     if(cntrl->mode & (OWP_MODE_AUTHENTICATED|OWP_MODE_ENCRYPTED)){
-        u_int8_t        binKey[16];
+        uint8_t        binKey[16];
         OWPBoolean        getkey_success;
 
         /* Fetch the encryption key into binKey */
@@ -465,7 +465,7 @@ OWPProcessTestRequest(
 {
     OWPTestSession  tsession = NULL;
     OWPErrSeverity  err_ret=OWPErrOK;
-    u_int16_t       port;
+    uint16_t       port;
     int             rc;
     OWPAcceptType   acceptval = OWP_CNTRL_FAILURE;
     int             ival=0;
@@ -693,13 +693,13 @@ OWPProcessStartSessions(
 struct DoDataState{
     OWPControl      cntrl;
     OWPErrSeverity  err;
-    u_int32_t       rec_size;
+    uint32_t       rec_size;
     OWPBoolean      send;
-    u_int32_t       begin;
-    u_int32_t       end;
-    u_int32_t       inbuf;
-    u_int64_t       count;
-    u_int32_t       maxiseen;
+    uint32_t       begin;
+    uint32_t       end;
+    uint32_t       inbuf;
+    uint64_t       count;
+    uint32_t       maxiseen;
     int             *intr;
 };
 
@@ -711,7 +711,7 @@ DoDataRecords(
 {
     struct DoDataState  *dstate = (struct DoDataState *)udata;
     OWPControl          cntrl = dstate->cntrl;
-    u_int8_t            *buf = (u_int8_t*)cntrl->msg;
+    uint8_t            *buf = (uint8_t*)cntrl->msg;
 
     /*
      * Save largest index seen that is not lost.
@@ -771,11 +771,11 @@ OWPProcessFetchSession(
         int         *retn_on_intr
         )
 {
-    u_int8_t                    *buf = (u_int8_t*)cntrl->msg;
+    uint8_t                    *buf = (uint8_t*)cntrl->msg;
     OWPErrSeverity              err;
     OWPAcceptType               acceptval = OWP_CNTRL_REJECT;
-    u_int32_t                   begin;
-    u_int32_t                   end;
+    uint32_t                   begin;
+    uint32_t                   end;
     OWPSID                      sid;
 
     FILE                        *fp;
@@ -785,9 +785,9 @@ OWPProcessFetchSession(
     struct flock                flk;
     int                         lock_tries=0;
 
-    u_int32_t                   sendrecs;
-    u_int32_t                   next_seqno = 0;
-    u_int32_t                   num_skiprecs = 0;
+    uint32_t                   sendrecs;
+    uint32_t                   next_seqno = 0;
+    uint32_t                   num_skiprecs = 0;
     off_t                       tr_size;
 
     struct DoDataState          dodata;

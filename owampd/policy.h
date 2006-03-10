@@ -104,15 +104,15 @@ struct OWPDPolicyRec{
     I2Table         idents;
 
     /* keys:
-     *         key = u_int8_t[16]        (username from owamp protocol)
+     *         key = uint8_t[16]        (username from owamp protocol)
      *         val = OWPKey
      */
     I2Table         keys;
 
 };
 
-typedef u_int64_t   OWPDLimitT;                /* values */
-typedef u_int32_t   OWPDMesgT;
+typedef uint64_t   OWPDLimitT;                /* values */
+typedef uint32_t   OWPDMesgT;
 
 typedef struct OWPDLimRec{
     OWPDMesgT   limit;
@@ -150,9 +150,9 @@ typedef enum{
 
 typedef struct{
     OWPDPidType     id_type;
-    u_int8_t        mask_len;
+    uint8_t        mask_len;
     size_t          addrsize;
-    u_int8_t        addrval[16];
+    uint8_t        addrval[16];
 } OWPDPidNetmask;
 
 typedef struct{
@@ -312,7 +312,7 @@ extern OWPBoolean
 OWPDGetAESKey(
         OWPContext      ctx,
         const OWPUserID userid,
-        u_int8_t        *key_ret,
+        uint8_t        *key_ret,
         OWPErrSeverity  *err_ret
         );
 

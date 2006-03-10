@@ -156,7 +156,7 @@
  * the value can just be right shifted until it fits into an 8 bit integer,
  * and the number of shifts would indicate the "Scale" value.
  */
-typedef u_int64_t OWPNum64;
+typedef uint64_t OWPNum64;
 
 /*
  * Arithmetic/Conversion functions on OWPNum64 numbers.
@@ -165,7 +165,7 @@ typedef u_int64_t OWPNum64;
 /*
  * These macros should be used instead of directly using
  * arithmetic on these types in the event that the underlying
- * type is changed from an u_int64_t to some kind of structure.
+ * type is changed from an uint64_t to some kind of structure.
  *
  */
 #define OWPNum64Add(x,y)    (x+y)
@@ -185,7 +185,7 @@ OWPNum64Mult(
 
 extern OWPNum64
 OWPULongToNum64(
-        u_int32_t   from
+        uint32_t   from
         );
 
 
@@ -225,7 +225,7 @@ OWPDoubleToNum64(
 
 extern OWPNum64
 OWPUsecToNum64(
-        u_int32_t   usec
+        uint32_t   usec
         );
 
 /*
@@ -241,9 +241,9 @@ typedef struct OWPControlRec    *OWPControl;
 
 typedef struct OWPTimeStampRec{
     OWPNum64    owptime;
-    u_int8_t    sync;
-    u_int8_t    multiplier;
-    u_int8_t    scale;
+    uint8_t    sync;
+    uint8_t    multiplier;
+    uint8_t    scale;
 } OWPTimeStamp;
 
 
@@ -280,17 +280,17 @@ typedef enum{
     OWP_CNTRL_UNAVAILABLE_TEMP=5    /* Temporary resource limitation    */
 } OWPAcceptType;
 
-typedef u_int32_t   OWPBoolean;
-typedef u_int8_t    OWPSID[16];
-typedef u_int8_t    OWPSequence[4];
+typedef uint32_t   OWPBoolean;
+typedef uint8_t    OWPSID[16];
+typedef uint8_t    OWPSequence[4];
 
 /*
- * technically the username in the client greeting message can have u_int8_t
+ * technically the username in the client greeting message can have uint8_t
  * but this implementation limits it to a valid "char" type.
  */
 #define OWP_USERID_LEN        16
 typedef char        OWPUserID[OWP_USERID_LEN+1];        /* add 1 for '\0' */
-typedef u_int8_t    OWPKey[16];
+typedef uint8_t    OWPKey[16];
 
 
 #define OWP_MODE_UNDEFINED      (0)
@@ -299,7 +299,7 @@ typedef u_int8_t    OWPKey[16];
 #define OWP_MODE_ENCRYPTED      (04)
 #define OWP_MODE_DOCIPHER       (OWP_MODE_AUTHENTICATED|OWP_MODE_ENCRYPTED)
 
-typedef u_int32_t        OWPSessionMode;
+typedef uint32_t        OWPSessionMode;
 
 typedef enum {
     OWPSlotUnspecifiedType = -1,        /* invalid value        */
@@ -340,14 +340,14 @@ typedef union OWPSlotUnion{
 typedef struct{
     OWPNum64        start_time;
     OWPNum64        loss_timeout;
-    u_int32_t       typeP;
-    u_int32_t       packet_size_padding;
-    u_int32_t       npackets;
-    u_int32_t       nslots;
+    uint32_t       typeP;
+    uint32_t       packet_size_padding;
+    uint32_t       npackets;
+    uint32_t       nslots;
     OWPSlot         *slots;
 } OWPTestSpec;
 
-typedef u_int32_t OWPPacketSizeT;
+typedef uint32_t OWPPacketSizeT;
 
 /*
  * an OWPScheduleContextRec is used to maintain state for the schedule
@@ -393,7 +393,7 @@ typedef struct OWPExpContextRec *OWPExpContext;
 OWPExpContext
 OWPExpContextCreate(
         OWPContext      ctx,
-        u_int8_t        seed[16]
+        uint8_t        seed[16]
         );
 OWPNum64
 OWPExpContextNext(
@@ -478,8 +478,8 @@ typedef void (*OWPFunc)(void);
  */
 #define        OWPTestPortRange        "OWPTestPortRange"
 typedef        struct OWPPortRangeRec{
-    u_int16_t       low;
-    u_int16_t       high;
+    uint16_t       low;
+    uint16_t       high;
 } OWPPortRangeRec, *OWPPortRange;
 
 /*
@@ -725,7 +725,7 @@ OWPControlOpen(
         OWPContext      ctx,
         I2Addr          local_addr,     /* src addr or NULL             */
         I2Addr          server_addr,    /* server addr or NULL          */
-        u_int32_t       mode_mask,      /* OR of OWPSessionMode vals    */
+        uint32_t       mode_mask,      /* OR of OWPSessionMode vals    */
         OWPUserID       userid,         /* null if unwanted             */
         OWPNum64        *uptime_ret,    /* server uptime - ret or NULL  */
         OWPErrSeverity  *err_ret
@@ -947,7 +947,7 @@ OWPControlAccept(
         int             connfd,         /* conencted socket             */
         struct sockaddr *connsaddr,     /* connected socket addr        */
         socklen_t       connsaddrlen,   /* connected socket addr len    */
-        u_int32_t       mode_offered,   /* advertised server mode       */
+        uint32_t       mode_offered,   /* advertised server mode       */
         OWPNum64        uptime,         /* uptime report                */
         int             *retn_on_intr,  /* return on i/o interrupt      */
         OWPErrSeverity  *err_ret        /* err - return                 */
@@ -1015,7 +1015,7 @@ OWPGetMode(
 extern OWPPacketSizeT
 OWPTestPayloadSize(
         OWPSessionMode  mode,
-        u_int32_t       padding
+        uint32_t       padding
         );
 /*
  * PacketSize is used to compute the full packet size - this is used to
@@ -1025,7 +1025,7 @@ extern OWPPacketSizeT
 OWPTestPacketSize(
         int             af,
         OWPSessionMode  mode,
-        u_int32_t       padding
+        uint32_t       padding
         );
 
 /*
@@ -1048,12 +1048,12 @@ OWPTestPacketBandwidth(
         OWPTestSpec     *tspec
         );
 
-extern u_int32_t
+extern uint32_t
 OWPFetchSession(
         OWPControl      cntrl,
         FILE            *fp,
-        u_int32_t       begin,
-        u_int32_t       end,
+        uint32_t       begin,
+        uint32_t       end,
         OWPSID          sid,
         OWPErrSeverity  *err_ret
         );
@@ -1075,20 +1075,20 @@ typedef enum{
  */
 typedef struct OWPSessionHeaderRec{
     OWPBoolean              header;         /* RO: TestSession header?  */
-    u_int32_t               version;        /* RO: File version         */
-    u_int32_t               rec_size;       /* RO: data record size     */
+    uint32_t               version;        /* RO: File version         */
+    uint32_t               rec_size;       /* RO: data record size     */
     OWPSessionFinishedType  finished;       /* RW: is session finished?
                                                0:no,1:yes,2:unknown     */
 
-    u_int32_t               next_seqno;     /* RW: next seq for sender  */
-    u_int32_t               num_skiprecs;   /* RW: nskips               */
-    u_int32_t               num_datarecs;   /* RW: nrecs                */
+    uint32_t               next_seqno;     /* RW: next seq for sender  */
+    uint32_t               num_skiprecs;   /* RW: nskips               */
+    uint32_t               num_datarecs;   /* RW: nrecs                */
 
     off_t                   oset_skiprecs;  /* RO: file offset to skips */
     off_t                   oset_datarecs;  /* RO: file offset to data  */
     struct stat             sbuf;           /* RO: sbuf of file         */
 
-    u_int8_t                ipvn;           /* RO: ipvn of addrs        */
+    uint8_t                ipvn;           /* RO: ipvn of addrs        */
     socklen_t               addr_len;       /* RO: saddr_len of saddrs  */
     struct sockaddr_storage addr_sender;    /* RW                       */
     struct sockaddr_storage addr_receiver;  /* RW                       */
@@ -1124,7 +1124,7 @@ extern OWPBoolean
 OWPWriteDataHeaderNumSkipRecs(
         OWPContext  ctx,
         FILE        *fp,
-        u_int32_t   num_skiprecs
+        uint32_t   num_skiprecs
         );
 
 /*
@@ -1136,7 +1136,7 @@ extern OWPBoolean
 OWPWriteDataHeaderNumDataRecs(
         OWPContext  ctx,
         FILE        *fp,
-        u_int32_t   num_datarecs
+        uint32_t   num_datarecs
         );
 
 /*
@@ -1144,7 +1144,7 @@ OWPWriteDataHeaderNumDataRecs(
  * number of records in the file. 0 on error. (errno will be set.)
  * fp is moved to beginning of data records.
  */
-extern u_int32_t
+extern uint32_t
 OWPReadDataHeader(
         OWPContext          ctx,
         FILE                *fp,
@@ -1168,7 +1168,7 @@ extern OWPBoolean
 OWPReadDataHeaderSlots(
         OWPContext  ctx,
         FILE        *fp,
-        u_int32_t   nslots,
+        uint32_t   nslots,
         OWPSlot     *slots
         );
 
@@ -1176,10 +1176,10 @@ OWPReadDataHeaderSlots(
  * Applications use this type to manipulate individual timestamp data records.
  */
 typedef struct OWPDataRec {
-    u_int32_t       seq_no;
+    uint32_t       seq_no;
     OWPTimeStamp    send;
     OWPTimeStamp    recv;
-    u_int8_t        ttl;
+    uint8_t        ttl;
 } OWPDataRec;
 
 /*
@@ -1225,8 +1225,8 @@ extern OWPErrSeverity
 OWPParseRecords(
         OWPContext      ctx,
         FILE            *fp,
-        u_int32_t       num_rec, 
-        u_int32_t       file_version,   /* from OWPReadDataHeader   */
+        uint32_t       num_rec, 
+        uint32_t       file_version,   /* from OWPReadDataHeader   */
         OWPDoDataRecord proc_rec,
         void            *udata          /* passed into proc_rec     */
         );
@@ -1249,15 +1249,15 @@ OWPParseRecords(
  */
 typedef struct OWPSkipRec OWPSkipRec, *OWPSkip;
 struct OWPSkipRec{
-    u_int32_t   begin;
-    u_int32_t   end;
+    uint32_t   begin;
+    uint32_t   end;
 };
 
 extern OWPBoolean
 OWPReadDataSkips(
         OWPContext          ctx,
         FILE                *fp,
-        u_int32_t           nskips,
+        uint32_t           nskips,
         OWPSkip             skips
         );
 
@@ -1283,9 +1283,9 @@ OWPIsLostRecord(
 typedef struct OWPPacketRec OWPPacketRec, *OWPPacket;
 struct OWPPacketRec{
     OWPPacket       next;
-    u_int32_t       seq;        /* packet seq no */
+    uint32_t       seq;        /* packet seq no */
     OWPNum64        schedtime;   /* scheduled send time */
-    u_int32_t       seen;       /* how many times seen? */
+    uint32_t       seen;       /* how many times seen? */
     OWPBoolean      lost;
 };
 
@@ -1293,7 +1293,7 @@ typedef struct OWPBucketRec OWPBucketRec, *OWPBucket;
 struct OWPBucketRec{
     OWPBucket   next;
     int         b;      /* bucket index */
-    u_int32_t   n;      /* samples in this bucket */
+    uint32_t   n;      /* samples in this bucket */
 };
 
 typedef struct OWPStatsRec{
@@ -1332,23 +1332,23 @@ typedef struct OWPStatsRec{
      * TestSession information
      */
     OWPScheduleContext  sctx;
-    u_int32_t           isctx;  /* index for next seq_no */
+    uint32_t           isctx;  /* index for next seq_no */
     OWPNum64            endnum; /* current sched time for (isctx-1) */
 
     /*
      * Parsing information
      */
-    u_int32_t           i;      /* keeps track of current record index  */
+    uint32_t           i;      /* keeps track of current record index  */
 
-    u_int32_t           first;  /* first seqno of interest (inclusive)  */
-    u_int32_t           last;   /* last seqno of interest (non-inclusive)   */
+    uint32_t           first;  /* first seqno of interest (inclusive)  */
+    uint32_t           last;   /* last seqno of interest (non-inclusive)   */
 
     off_t               begin_oset; /* starting file offset                 */
     off_t               next_oset;  /* upon completing, this will have either
                                      * null, or the offset of the first seqno
                                      * greater than or equal to "last".
                                      */
-    u_int32_t           sent;   /* actual number sent */
+    uint32_t           sent;   /* actual number sent */
 
     /*
      * Packet records (used to count dups/lost)
@@ -1376,7 +1376,7 @@ typedef struct OWPStatsRec{
     /*
      * TTL info - histogram of received TTL values.
      */
-    u_int8_t        ttl_count[256];
+    uint8_t        ttl_count[256];
 
     /*
      * Reordering buffers
@@ -1384,8 +1384,8 @@ typedef struct OWPStatsRec{
     long int        rlistlen;
     long int        rindex;
     long int        rnumseqno;
-    u_int32_t       *rseqno;    /* buffer of seqno's seen */
-    u_int32_t       *rn;        /* number of j-reordered packets */
+    uint32_t       *rseqno;    /* buffer of seqno's seen */
+    uint32_t       *rn;        /* number of j-reordered packets */
 
     /*
      * Summary Stats
@@ -1396,8 +1396,8 @@ typedef struct OWPStatsRec{
     OWPBoolean      sync;
     double          maxerr;
 
-    u_int32_t       dups;
-    u_int32_t       lost;
+    uint32_t       dups;
+    uint32_t       lost;
 
 } OWPStatsRec, *OWPStats;
 
@@ -1429,8 +1429,8 @@ OWPStatsParse(
         OWPStats    stats,
         FILE        *output,
         off_t       begin_oset,
-        u_int32_t   first,
-        u_int32_t   last
+        uint32_t   first,
+        uint32_t   last
         );
 
 extern OWPBoolean
@@ -1438,7 +1438,7 @@ OWPStatsPrintSummary(
         OWPStats    stats,
         FILE        *output,
         float       *percentiles,
-        u_int32_t   npercentiles
+        uint32_t   npercentiles
         );
 
 extern OWPBoolean
@@ -1458,7 +1458,7 @@ OWPStatsScaleFactor(
  * How much disk space will a given test require?
  * (This is only an estimate - duplicates/loss will change this.)
  */
-extern u_int64_t
+extern uint64_t
 OWPTestDiskspace(
         OWPTestSpec     *tspec
         );
@@ -1592,8 +1592,8 @@ extern OWPTimeStamp *
 OWPTimespecToTimestamp(
         OWPTimeStamp    *tstamp,
         struct timespec *tval,
-        u_int32_t       *errest,        /* usec's */
-        u_int32_t       *last_errest    /* usec's */
+        uint32_t       *errest,        /* usec's */
+        uint32_t       *last_errest    /* usec's */
         );
 
 extern struct timespec *

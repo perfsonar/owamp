@@ -720,12 +720,12 @@ intcmp(
     return(x.dsize != y.dsize);
 }
 
-static u_int32_t
+static uint32_t
 inthash(
         I2Datum key
        )
 {
-    return (u_int32_t)key.dsize;
+    return (uint32_t)key.dsize;
 }
 
 static I2Boolean
@@ -757,14 +757,14 @@ parse_ports(
     tstr = pspec;
     endptr = NULL;
 
-    while(isspace(*tstr)) tstr++;
+    while(isspace((int)*tstr)) tstr++;
     tint = strtol(tstr,&endptr,10);
     if(!endptr || (tstr == endptr) || (tint < 0) || (tint > (int)0xffff)){
         goto failed;
     }
-    portrec.low = (u_int16_t)tint;
+    portrec.low = (uint16_t)tint;
 
-    while(isspace(*endptr)) endptr++;
+    while(isspace((int)*endptr)) endptr++;
 
     switch(*endptr){
         case '\0':
@@ -784,12 +784,12 @@ parse_ports(
 
     tstr = endptr;
     endptr = NULL;
-    while(isspace(*tstr)) tstr++;
+    while(isspace((int)*tstr)) tstr++;
     tint = strtol(tstr,&endptr,10);
     if(!endptr || (tstr == endptr) || (tint < 0) || (tint > (int)0xffff)){
         goto failed;
     }
-    portrec.high = (u_int16_t)tint;
+    portrec.high = (uint16_t)tint;
 
     if(portrec.high < portrec.low){
         goto failed;
@@ -965,7 +965,7 @@ LoadConfig(
         }
         else if(!strncasecmp(key,"dieby",6)){
             char                *end=NULL;
-            u_int32_t        tlng;
+            uint32_t        tlng;
 
             errno = 0;
             tlng = strtoul(val,&end,10);
@@ -979,7 +979,7 @@ LoadConfig(
         }
         else if(!strncasecmp(key,"controltimeout",15)){
             char                *end=NULL;
-            u_int32_t        tlng;
+            uint32_t        tlng;
 
             errno = 0;
             tlng = strtoul(val,&end,10);

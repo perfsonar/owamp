@@ -70,10 +70,10 @@ typedef        struct {
         I2Boolean   childwait;          /* -w */
 #endif
 
-        u_int32_t   numPackets;         /* -c */
+        uint32_t   numPackets;         /* -c */
         double      lossThreshold;      /* -L (seconds) */
         double      meanWait;           /* -i  (seconds) */
-        u_int32_t   padding;            /* -s */
+        uint32_t   padding;            /* -s */
 
         char        *savedir;           /* -d */
         I2Boolean   printfiles;         /* -p */
@@ -81,14 +81,14 @@ typedef        struct {
                     /*                  no var  -r stderr too */
         int         verbose;            /* -v verbose */
         double      bucketWidth;        /* -b (seconds) */
-        u_int32_t   numBucketPackets;   /* -N */
+        uint32_t   numBucketPackets;   /* -N */
 
     } opt;
 
     char            *remote_test;
     char            *remote_serv;
 
-    u_int32_t       auth_mode;
+    uint32_t       auth_mode;
 
     OWPContext      lib_ctx;
 
@@ -107,7 +107,7 @@ typedef struct pow_cntrl_rec{
     FILE                *fp;
     FILE                *testfp;
     char                fname[PATH_MAX];
-    u_int32_t           numPackets;
+    uint32_t           numPackets;
     OWPBoolean          call_stop;
     OWPBoolean          session_started;
 } pow_cntrl_rec, *pow_cntrl;

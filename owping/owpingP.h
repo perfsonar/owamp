@@ -56,13 +56,13 @@ typedef    struct {
         char            *authmode;          /* -A */
         char            *identity;          /* -u */
         char            *keyfile;           /* -k */
-        u_int32_t       numPackets;         /* -c */
+        uint32_t       numPackets;         /* -c */
 
         double          lossThreshold;      /* -L */
         double          delayStart;         /* -z */
 
         float           *percentiles;       /* -a */
-        u_int32_t       npercentiles;
+        uint32_t       npercentiles;
         char            units;              /* -n */
         float           bucket_width;       /* -b */
 
@@ -74,21 +74,21 @@ typedef    struct {
         I2Boolean       childwait;          /* -w */
 #endif
 
-        u_int32_t       padding;            /* -s */
+        uint32_t       padding;            /* -s */
 
     } opt;
 
     char                *remote_test;
     char                *remote_serv;
 
-    u_int32_t           auth_mode;
-    u_int32_t           typeP;
+    uint32_t           auth_mode;
+    uint32_t           typeP;
 
     OWPContext          lib_ctx;
     OWPControl          cntrl;
 
     float               mean_wait;        /* default slot value */
-    u_int32_t           nslots;
+    uint32_t           nslots;
     OWPSlot             *slots;
 
     OWPPortRangeRec     portrec;

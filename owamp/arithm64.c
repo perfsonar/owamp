@@ -67,11 +67,11 @@ OWPNum64Mult(
         )
 {
     unsigned long   w[4];
-    u_int64_t       xdec[2];
-    u_int64_t       ydec[2];
+    uint64_t       xdec[2];
+    uint64_t       ydec[2];
 
     int             i, j;
-    u_int64_t       k, t;
+    uint64_t       k, t;
     OWPNum64        ret;
 
     xdec[0] = MASK32(x);
@@ -123,9 +123,9 @@ OWPNum64Mult(
  * Side Effect:        
  */
     OWPNum64
-OWPULongToNum64(u_int32_t a)
+OWPULongToNum64(uint32_t a)
 {
-    return ((u_int64_t)a << 32);
+    return ((uint64_t)a << 32);
 }
 
 
@@ -199,8 +199,8 @@ OWPTimespecToNum64(
         struct timespec *from
         )
 {
-    u_int32_t   sec = from->tv_sec;
-    u_int32_t   nsec = from->tv_nsec;
+    uint32_t   sec = from->tv_sec;
+    uint32_t   nsec = from->tv_nsec;
 
     *to = 0;
 
@@ -215,11 +215,11 @@ OWPTimespecToNum64(
     /*
      * Place seconds in MS 32 bits.
      */
-    *to = (u_int64_t)MASK32(sec) << 32;
+    *to = (uint64_t)MASK32(sec) << 32;
     /*
      * Normalize nsecs to 32bit fraction, then set that to LS 32 bits.
      */
-    *to |= MASK32(((u_int64_t)nsec << 32)/BILLION);
+    *to |= MASK32(((uint64_t)nsec << 32)/BILLION);
 
     return;
 }
@@ -293,8 +293,8 @@ OWPTimevalToNum64(
         struct timeval  *from
         )
 {
-    u_int32_t   sec = from->tv_sec;
-    u_int32_t   usec = from->tv_usec;
+    uint32_t   sec = from->tv_sec;
+    uint32_t   usec = from->tv_usec;
 
     *to = 0;
 
@@ -309,11 +309,11 @@ OWPTimevalToNum64(
     /*
      * Place seconds in MS 32 bits.
      */
-    *to = (u_int64_t)MASK32(sec) << 32;
+    *to = (uint64_t)MASK32(sec) << 32;
     /*
      * Normalize usecs to 32bit fraction, then set that to LS 32 bits.
      */
-    *to |= MASK32(((u_int64_t)usec << 32)/MILLION);
+    *to |= MASK32(((uint64_t)usec << 32)/MILLION);
 
     return;
 }
@@ -387,8 +387,8 @@ OWPDoubleToNum64(
  */
     OWPNum64
 OWPUsecToNum64(
-        u_int32_t usec
+        uint32_t usec
         )
 {
-    return ((u_int64_t)usec << 32)/MILLION;
+    return ((uint64_t)usec << 32)/MILLION;
 }

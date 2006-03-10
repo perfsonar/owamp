@@ -18,8 +18,6 @@
  **
  **        Description:        
  */
-/* define _GNU_SOURCE to get definition of ftello */
-#define        _GNU_SOURCE
 #include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -313,7 +311,7 @@ _OWPCreateSID(
         )
 {
     OWPTimeStamp    tstamp;
-    u_int8_t        *aptr;
+    uint8_t        *aptr;
     struct sockaddr *saddr;
 
     if( !(saddr = I2AddrSAddr(tsession->receiver,NULL))){
@@ -335,7 +333,7 @@ _OWPCreateSID(
             struct sockaddr_in        *s4;
 
             s4 = (struct sockaddr_in*)saddr;
-            aptr = (u_int8_t*)&s4->sin_addr;
+            aptr = (uint8_t*)&s4->sin_addr;
         }
         else{
             OWPError(tsession->cntrl->ctx,OWPErrFATAL,OWPErrUNSUPPORTED,
@@ -359,7 +357,7 @@ _OWPCreateSID(
 OWPPacketSizeT
 OWPTestPayloadSize(
         OWPSessionMode  mode, 
-        u_int32_t       padding
+        uint32_t       padding
         )
 {
     OWPPacketSizeT msg_size;
@@ -401,7 +399,7 @@ OWPTestPacketRate(
         )
 {
     OWPNum64    duration = OWPULongToNum64(0);
-    u_int32_t   i;
+    uint32_t   i;
 
     if(!tspec){
         OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
@@ -439,7 +437,7 @@ OWPPacketSizeT
 OWPTestPacketSize(
         int             af,    /* AF_INET, AF_INET6 */
         OWPSessionMode  mode, 
-        u_int32_t       padding
+        uint32_t       padding
         )
 {
     OWPPacketSizeT payload_size, header_size;
@@ -593,14 +591,14 @@ static OWPErrSeverity
 _OWPStopSendSessions(
         OWPControl      cntrl,
         OWPAcceptType   *acceptval_ret,  /* in/out */
-        u_int32_t       *num_sessions
+        uint32_t       *num_sessions
         )
 {
     OWPErrSeverity  err,err2=OWPErrOK;
     OWPAcceptType   aval=OWP_CNTRL_ACCEPT;
     OWPAcceptType   *acceptval = &aval;
     OWPTestSession  sptr;
-    u_int32_t       num_senders=0;
+    uint32_t       num_senders=0;
 
     if(acceptval_ret){
         acceptval = acceptval_ret;
@@ -612,8 +610,8 @@ _OWPStopSendSessions(
      * the "skip records" saved at each fd are at least a consistent size.
      */
     for(sptr=cntrl->tests; sptr; sptr = sptr->next){
-        u_int32_t   sdr[2];
-        u_int32_t   nskip;
+        uint32_t   sdr[2];
+        uint32_t   nskip;
         struct stat sbuf;
 
         /*
@@ -791,7 +789,7 @@ OWPStopSessions(
     OWPAcceptType   *acceptval=&aval;
     int             ival=0;
     int             *intr=&ival;
-    u_int32_t       num_sessions=0;
+    uint32_t       num_sessions=0;
     OWPTimeStamp    stoptime;
 
     if(acceptval_ret){
@@ -910,7 +908,7 @@ OWPStopSessionsWait(
     OWPAcceptType   *acceptval=&aval;
     int             ival=0;
     int             *intr=&ival;
-    u_int32_t       num_sessions=0;
+    uint32_t       num_sessions=0;
     OWPTimeStamp    stoptime;
 
     *err_ret = OWPErrOK;
@@ -1121,7 +1119,7 @@ done:
 static OWPSessionFinishedType
 GetSessionFinishedType(
         OWPContext  ctx,
-        u_int32_t   val
+        uint32_t   val
         )
 {
     switch(val){
@@ -1318,7 +1316,7 @@ GetSessionFinishedType(
   *      for version >= 2 files. For version <=1 files fp will be
   *      at the begining of data records.
   */
- static u_int8_t owp_magic[] = _OWP_MAGIC_FILETYPE;
+ static uint8_t owp_magic[] = _OWP_MAGIC_FILETYPE;
  OWPBoolean
  _OWPReadDataHeaderInitial(
          OWPContext                  ctx,
@@ -1326,10 +1324,10 @@ GetSessionFinishedType(
          _OWPSessionHeaderInitial    phdr
          )
 {
-    u_int8_t    read_magic[sizeof(owp_magic)];
+    uint8_t    read_magic[sizeof(owp_magic)];
     int         err;
-    u_int64_t   oset;
-    u_int32_t   finished=0;
+    uint64_t   oset;
+    uint32_t   finished=0;
 
     /*
      * Initialize private file header record.
@@ -1421,7 +1419,7 @@ GetSessionFinishedType(
             }
             oset = ntohll(oset);
             phdr->hdr_len = (off_t)oset;
-            if(oset != (u_int64_t)phdr->hdr_len){
+            if(oset != (uint64_t)phdr->hdr_len){
                 OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
                         "OWPReadDataHeaderInitial: Unable to represent file offset (%ull)",
                         oset);
@@ -1501,7 +1499,7 @@ GetSessionFinishedType(
     }
     oset = ntohll(oset);
     phdr->oset_skiprecs = (off_t)oset;
-    if(oset != (u_int64_t)phdr->oset_skiprecs){
+    if(oset != (uint64_t)phdr->oset_skiprecs){
         OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
                 "OWPReadDataHeaderInitial: Unable to represent file offset (%ull)",
                 oset);
@@ -1519,7 +1517,7 @@ GetSessionFinishedType(
     }
     oset = ntohll(oset);
     phdr->oset_datarecs = (off_t)oset;
-    if(oset != (u_int64_t)phdr->oset_datarecs){
+    if(oset != (uint64_t)phdr->oset_datarecs){
         OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
                 "OWPReadDataHeaderInitial: Unable to represent file offset (%ull)",
                 oset);
@@ -1550,11 +1548,11 @@ _OWPWriteDataHeaderFinished(
         OWPContext              ctx,
         FILE                    *fp,
         OWPSessionFinishedType  finished,
-        u_int32_t               next_seqno
+        uint32_t               next_seqno
         )
 {
     int err;
-    u_int32_t   finword;
+    uint32_t   finword;
 
     if(finished > 2){
         OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
@@ -1575,7 +1573,7 @@ _OWPWriteDataHeaderFinished(
     /*
      * Write
      */
-    finword = htonl((u_int32_t)finished);
+    finword = htonl((uint32_t)finished);
     if(fwrite(&finword,1,sizeof(finword),fp) != 4){
         err = errno;
         OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"fwrite(): %M");
@@ -1630,12 +1628,12 @@ OWPBoolean
 OWPWriteDataHeaderNumSkipRecs(
         OWPContext ctx,
         FILE       *fp,
-        u_int32_t  num_skiprecs
+        uint32_t  num_skiprecs
         )
 {
     _OWPSessionHeaderInitialRec phrec;
-    u_int32_t                   n32;
-    u_int64_t                   n64;
+    uint32_t                   n32;
+    uint64_t                   n64;
     int                         err;
 
     if(!_OWPReadDataHeaderInitial(ctx,fp,&phrec)){
@@ -1696,11 +1694,11 @@ OWPWriteDataHeaderNumSkipRecs(
     }
 
     /*
-     * Convert off_t oset_skiprecs to network ordered u_int64_t
+     * Convert off_t oset_skiprecs to network ordered uint64_t
      */
     phrec.oset_skiprecs = phrec.oset_datarecs +
         (phrec.rec_size * phrec.num_datarecs);
-    n64 = (u_int64_t)phrec.oset_skiprecs;
+    n64 = (uint64_t)phrec.oset_skiprecs;
     if(phrec.oset_skiprecs != (off_t)n64){
         OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
                 "_OWPWriteDataHeaderNumSkipRecs: Unable to represet file offset (%ull)",
@@ -1743,11 +1741,11 @@ OWPBoolean
 OWPWriteDataHeaderNumDataRecs(
         OWPContext ctx,
         FILE       *fp,
-        u_int32_t  num_datarecs
+        uint32_t  num_datarecs
         )
 {
     _OWPSessionHeaderInitialRec phrec;
-    u_int32_t                   n32;
+    uint32_t                   n32;
     int                         err;
 
     if(!_OWPReadDataHeaderInitial(ctx,fp,&phrec)){
@@ -1840,19 +1838,19 @@ OWPWriteDataHeader(
         OWPSessionHeader   hdr
         )
 {
-    u_int32_t   ver;
-    u_int32_t   finished = OWP_SESSION_FINISHED_INCOMPLETE;
-    u_int64_t   oset;
-    u_int64_t   skip_oset = 0;
-    u_int64_t   data_oset;
+    uint32_t   ver;
+    uint32_t   finished = OWP_SESSION_FINISHED_INCOMPLETE;
+    uint64_t   oset;
+    uint64_t   skip_oset = 0;
+    uint64_t   data_oset;
     off_t       oset_off;
 
-    /* use u_int32_t for proper alignment */
-    u_int32_t   msg[_OWP_TEST_REQUEST_PREAMBLE_SIZE/sizeof(u_int32_t)];
-    u_int32_t   len = sizeof(msg);
-    u_int32_t   i;
-    u_int32_t   net32;
-    u_int64_t   net64;
+    /* use uint32_t for proper alignment */
+    uint32_t   msg[_OWP_TEST_REQUEST_PREAMBLE_SIZE/sizeof(uint32_t)];
+    uint32_t   len = sizeof(msg);
+    uint32_t   i;
+    uint32_t   net32;
+    uint64_t   net64;
 
     if(!hdr){
         OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
@@ -1899,7 +1897,7 @@ OWPWriteDataHeader(
         16*(hdr->test_spec.nslots+1);
 
     oset_off = (off_t)oset;
-    if(oset != (u_int64_t)oset_off){
+    if(oset != (uint64_t)oset_off){
         OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
                 "OWPWriteDataHeader: Header too large for format representation (%llu)",
                 oset);
@@ -2040,12 +2038,12 @@ OWPWriteDataHeader(
  * Returns:        
  * Side Effect:        
  */
-u_int64_t
+uint64_t
 OWPTestDiskspace(
         OWPTestSpec        *tspec
         )
 {
-    u_int64_t   hdr_len;
+    uint64_t   hdr_len;
 
     /*
      * 56 == 40 for initial portion + 16 for ending IZP
@@ -2076,7 +2074,7 @@ OWPWriteDataRecord(
         OWPDataRec  *rec
         )
 {
-    u_int8_t    buf[_OWP_DATAREC_SIZE];
+    uint8_t    buf[_OWP_DATAREC_SIZE];
 
     if(!_OWPEncodeDataRecord(buf,rec)){
         OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
@@ -2122,7 +2120,7 @@ OWPWriteDataRecord(
  * Returns:        
  * Side Effect:        
  */
-u_int32_t
+uint32_t
 OWPReadDataHeader(
         OWPContext          ctx,
         FILE                *fp,
@@ -2133,8 +2131,8 @@ OWPReadDataHeader(
     int                         err;
 
     /* buffer for TestRequest 32 bit aligned */
-    u_int32_t                   msg[_OWP_TEST_REQUEST_PREAMBLE_SIZE /
-        sizeof(u_int32_t)];
+    uint32_t                   msg[_OWP_TEST_REQUEST_PREAMBLE_SIZE /
+        sizeof(uint32_t)];
 
     hdr_ret->header = 0;
 
@@ -2250,20 +2248,20 @@ OWPBoolean
 OWPReadDataHeaderSlots(
         OWPContext  ctx,
         FILE        *fp,
-        u_int32_t   nslots,
+        uint32_t   nslots,
         OWPSlot     *slots
         )
 {
     int                         err;
     _OWPSessionHeaderInitialRec phrec;
-    u_int32_t                   fileslots;
-    u_int32_t                   i;
+    uint32_t                   fileslots;
+    uint32_t                   i;
     off_t                       slot_off = 152; /* see above layout of bytes */
     off_t                       hdr_off;
 
     /* buffer for Slots 32 bit aligned */
-    u_int32_t                   msg[16/sizeof(u_int32_t)];
-    u_int32_t                   zero[16/sizeof(u_int32_t)];
+    uint32_t                   msg[16/sizeof(uint32_t)];
+    uint32_t                   zero[16/sizeof(uint32_t)];
 
     /*
      * validate array.
@@ -2409,15 +2407,15 @@ OWPErrSeverity
 OWPParseRecords(
         OWPContext      ctx,
         FILE            *fp,
-        u_int32_t       num_rec,
-        u_int32_t       file_version,
+        uint32_t       num_rec,
+        uint32_t       file_version,
         OWPDoDataRecord proc_rec,
         void            *app_data
         )
 {
     size_t      len_rec;
-    u_int8_t    rbuf[_OWP_MAXDATAREC_SIZE];
-    u_int32_t   i;
+    uint8_t    rbuf[_OWP_MAXDATAREC_SIZE];
+    uint32_t   i;
     OWPDataRec  rec;
     int         rc;
 
@@ -2492,16 +2490,16 @@ OWPBoolean
 OWPReadDataSkips(
         OWPContext  ctx,
         FILE        *fp,
-        u_int32_t   nskips,
+        uint32_t   nskips,
         OWPSkip     skips
         )
 {
     int                         err;
     _OWPSessionHeaderInitialRec phrec;
-    u_int32_t                   i;
+    uint32_t                   i;
 
     /* buffer for Skips 32 bit aligned */
-    u_int8_t                    msg[_OWP_SKIPREC_SIZE];
+    uint8_t                    msg[_OWP_SKIPREC_SIZE];
 
     /*
      * validate array.

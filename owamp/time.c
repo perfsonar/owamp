@@ -127,8 +127,8 @@ struct timespec *
 _OWPGetTimespec(
         OWPContext      ctx         __attribute__((unused)),
         struct timespec *ts,
-        u_int32_t       *esterr,
-        u_int8_t        *sync
+        uint32_t       *esterr,
+        uint8_t        *sync
         )
 {
     struct timeval  tod;
@@ -248,7 +248,7 @@ OWPGetTimeOfDay(
         )
 {
     struct timespec ts;
-    u_int32_t       esterr;
+    uint32_t       esterr;
 
     if(!tstamp)
         return NULL;
@@ -278,11 +278,11 @@ OWPGetTimeOfDay(
  */
 void
 _OWPEncodeTimeStamp(
-        u_int8_t        buf[8],
+        uint8_t        buf[8],
         OWPTimeStamp    *tstamp
         )
 {
-    u_int32_t   t32;
+    uint32_t   t32;
 
     assert(tstamp);
     assert(buf);
@@ -325,7 +325,7 @@ _OWPEncodeTimeStamp(
  */
 OWPBoolean
 _OWPEncodeTimeStampErrEstimate(
-        u_int8_t        buf[2],
+        uint8_t        buf[2],
         OWPTimeStamp    *tstamp
         )
 {
@@ -377,10 +377,10 @@ _OWPEncodeTimeStampErrEstimate(
 void
 _OWPDecodeTimeStamp(
         OWPTimeStamp    *tstamp,
-        u_int8_t        buf[8]
+        uint8_t        buf[8]
         )
 {
-    u_int32_t   t32;
+    uint32_t   t32;
 
     assert(tstamp);
     assert(buf);
@@ -431,7 +431,7 @@ _OWPDecodeTimeStamp(
 OWPBoolean
 _OWPDecodeTimeStampErrEstimate(
         OWPTimeStamp    *tstamp,
-        u_int8_t        buf[2]
+        uint8_t        buf[2]
         )
 {
     assert(tstamp);
@@ -577,8 +577,8 @@ OWPTimeStamp *
 OWPTimespecToTimestamp(
         OWPTimeStamp    *tstamp,
         struct timespec *tval,
-        u_int32_t       *errest,        /* usec's */
-        u_int32_t       *last_errest
+        uint32_t       *errest,        /* usec's */
+        uint32_t       *last_errest
         )
 {
     /*
@@ -623,7 +623,7 @@ OWPTimespecToTimestamp(
              * (This ensures that scale will not overflow the
              * 6 bits available to it.)
              */
-            err &= (u_int64_t)0xFFFFFFFFFFFFFFFFULL;
+            err &= (uint64_t)0xFFFFFFFFFFFFFFFFULL;
 
             /*
              * Now shift err until it will fit in an 8 bit
@@ -711,7 +711,7 @@ OWPGetTimeStampError(
         )
 {
     OWPNum64    err;
-    u_int8_t    scale;
+    uint8_t    scale;
 
     if(!tstamp)
         return 0.0;

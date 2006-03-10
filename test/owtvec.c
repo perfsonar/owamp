@@ -36,7 +36,7 @@ main(
     I2LogImmediateAttr  ia;
     I2ErrHandle         eh;
     OWPContext          ctx;
-    u_int8_t            seed[16];
+    uint8_t            seed[16];
     char                *seedvals[4] = {
         "2872979303ab47eeac028dab3829dab2",
         "0102030405060708090a0b0c0d0e0f00",
@@ -88,8 +88,8 @@ main(
                 /* local copies of eval and sum */
                 OWPNum64        te,ts;
                 /* big-endian versions of eval and sum */
-                u_int8_t        e[8];
-                u_int8_t        s[8];
+                uint8_t        e[8];
+                uint8_t        s[8];
                 /* hex encoded big-endian ov eval and sum */
                 char                ve[17];
                 char                vs[17];
@@ -100,15 +100,15 @@ main(
                 /*
                  * Copy low-order 32 bits
                  */
-                *(u_int32_t*)&e[4] = htonl((te&0xffffffffUL));
-                *(u_int32_t*)&s[4] = htonl((ts&0xffffffffUL));
+                *(uint32_t*)&e[4] = htonl((te&0xffffffffUL));
+                *(uint32_t*)&s[4] = htonl((ts&0xffffffffUL));
                 /*
                  * Copy high-order 32 bits
                  */
                 te >>= 32;
                 ts >>= 32;
-                *(u_int32_t*)&e[0] = htonl((te&0xffffffffUL));
-                *(u_int32_t*)&s[0] = htonl((ts&0xffffffffUL));
+                *(uint32_t*)&e[0] = htonl((te&0xffffffffUL));
+                *(uint32_t*)&s[0] = htonl((ts&0xffffffffUL));
 
                 I2HexEncode(ve,e,8);
                 I2HexEncode(vs,s,8);

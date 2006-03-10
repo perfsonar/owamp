@@ -26,8 +26,8 @@
 struct OWPExpContextRec{
     /* AES random number generator fields */
     keyInstance key;            /* key used to encrypt the counter */
-    u_int8_t    counter[16];    /* 128-bit counter (network order) */
-    u_int8_t    out[16];        /* encrypted block buffer.         */
+    uint8_t    counter[16];    /* 128-bit counter (network order) */
+    uint8_t    out[16];        /* encrypted block buffer.         */
 };
 
 
@@ -36,9 +36,9 @@ struct OWPScheduleContextRec {
 
     struct OWPExpContextRec exp;
 
-    u_int64_t               i;        /* current index for generation */
-    u_int64_t               maxi;
-    u_int32_t               nslots;
+    uint64_t               i;        /* current index for generation */
+    uint64_t               maxi;
+    uint32_t               nslots;
     OWPSlot                 *slots;
 };
 
@@ -62,8 +62,8 @@ OWPUnifRand64(
         OWPExpContext   ectx
         )
 {
-    u_int8_t    forth = ectx->counter[15] & (u_int8_t)3;
-    u_int8_t    *buf;
+    uint8_t    forth = ectx->counter[15] & (uint8_t)3;
+    uint8_t    *buf;
     int         j;
     OWPNum64    ret = 0;
 
@@ -97,7 +97,7 @@ OWPUnifRand64(
      * (i.e. The last 4 bytes of ret will contain the random
      * integer in network byte order after this loop.)
      *
-     * (If OWPNum64 changes from a 32.32 format u_int64_t, this will
+     * (If OWPNum64 changes from a 32.32 format uint64_t, this will
      * need to be modified. It is expecting to set the .32 portion.)
      */
     for(j=0;j<4;j++){
@@ -191,7 +191,7 @@ OWPExpContextNext(
         OWPExpContext   ectx
         )
 {
-    u_int32_t   i, k, j = 0;
+    uint32_t   i, k, j = 0;
     OWPNum64    U, V, tmp; 
 
     /*
@@ -270,7 +270,7 @@ int CheckSlots(
         OWPTestSpec *tspec
         )
 {
-    u_int32_t   i;
+    uint32_t   i;
 
     for(i=0;i<tspec->nslots;i++){
 
@@ -506,7 +506,7 @@ OWPExpContextFree(
 OWPExpContext
 OWPExpContextCreate(
         OWPContext  ctx,
-        u_int8_t    seed[16]
+        uint8_t    seed[16]
         )
 {
     OWPExpContext   ectx;
