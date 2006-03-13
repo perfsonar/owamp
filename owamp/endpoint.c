@@ -661,11 +661,8 @@ success:
         }
 
         /*
-         * This function dup's the fd/fp so that any seeks on
-         * the fd in the parent do not effect the child reference.
-         * (It also ensures that no file i/o have happened on the
-         * ep->datafile which makes it much more likely that the
-         * call to setvbuf will work...)
+         * This function dup's the fd/fp so that file buffering
+         * can be reset.
          */
         if( !(ep->datafile = reopen_datafile(cntrl->ctx,fp))){
             OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,

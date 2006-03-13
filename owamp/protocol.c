@@ -38,6 +38,7 @@
  */
 
 #include <I2util/util.h>
+#include <libgen.h>
 
 #include <owampP.h>
 
@@ -2415,15 +2416,73 @@ thresh_pos:
                  * it at the current record so it will be written over.
                  */
                 if(wfp == rfp){
-                    int newfd;
+                    int     newfd;
+                    char    tmpfname[PATH_MAX];
+                    char    *dname;
+                    char    *tmpl = "owamp.XXXXXXXX";
 
-                    if( (newfd = dup(fileno(rfp))) < 0){
-                        OWPError(cntrl->ctx,OWPErrFATAL,errno,"dup(%d): %M",
-                                fileno(wfp));
+                    /*
+                     * Need another file for bookkeeping... First determine
+                     * what dir to put it in.
+                     */
+                    dname = NULL;
+                    memset(tmpfname,'\0',sizeof(tmpfname));
+
+                    /* put it in the same dir as session data if possible */
+                    if( strlen(tptr->endpoint->fname) > 0){
+                        strncpy(tmpfname,tptr->endpoint->fname,PATH_MAX);
+                        dname = dirname(tmpfname);
+                    }
+
+                    /* otherwise use tmpdir */
+                    if( !dname){
+                        dname = getenv("TMPDIR");
+                    }
+                    if( !dname){
+                        dname = "/tmp";
+                    }
+
+                    /* Make sure pathname will not over-run memory. */
+                    if(strlen(tmpl) + OWP_PATH_SEPARATOR_LEN + strlen(dname) >
+                            PATH_MAX){
+                        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+            "_OWPReadStopSessions: Unable to create temp file: Path Too Long");
                         goto err;
                     }
 
-                    if( !(wfp = fdopen(newfd,"wb"))){
+                    /* create template (fname) string for mkstemp */
+                    strcpy(tmpfname,dname);
+                    strcat(tmpfname,OWP_PATH_SEPARATOR);
+                    strcat(tmpfname,tmpl);
+                    if( (newfd = mkstemp(tmpfname)) < 0){
+                        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                                "_OWPReadStopSessions: mkstemp(%s): %M",
+                                tmpfname);
+                        goto err;
+                    }
+
+                    /* immediately unlink - no need for a directory entry */
+                    if(unlink(tmpfname) != 0){
+                        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                                "unlink(%s): %M",tmpfname);
+                        close(newfd);
+                        goto err;
+                    }
+
+                    /*
+                     * Copy original file into tmpfile from the beginning
+                     * until just before the current record.
+                     */
+                    toff = fhdr.oset_datarecs + (j * fhdr.rec_size);
+                    if(I2CopyFile(OWPContextErrHandle(cntrl->ctx),
+                                newfd,fileno(rfp),toff) != 0){
+                        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+        "_OWPReadStopSessions: Unable to copy session data: I2CopyFile(): %M");
+                        close(newfd);
+                        goto err;
+                    }
+
+                    if( !(wfp = fdopen(newfd,"r+b"))){
                         OWPError(cntrl->ctx,OWPErrFATAL,errno,"fdopen(%d): %M",
                                 newfd);
                         close(newfd);
@@ -2431,11 +2490,9 @@ thresh_pos:
                     }
 
                     /*
-                     * Seek new wfp to beginning of record that is not
-                     * valid. It will be written over.
+                     * Seek new wfp to end of tmpfile.
                      */
-                    toff = fhdr.oset_datarecs + (j * fhdr.rec_size);
-                    if(fseeko(wfp,toff,SEEK_SET) != 0){
+                    if(fseeko(wfp,0,SEEK_END) != 0){
                         OWPError(cntrl->ctx,OWPErrFATAL,errno,"fseeko(): %M");
                         goto loop_err;
                     }
@@ -2452,9 +2509,17 @@ loop_err:
 clean_data:
 
         /*
-         * No longer need two fp's.
+         * If two fp's were used, then the tmpfile needs to be copied
+         * back to the original file.
          */
         if(wfp != rfp){
+            if(I2CopyFile(OWPContextErrHandle(cntrl->ctx),
+                        fileno(rfp),fileno(wfp),0) != 0){
+                OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+        "_OWPReadStopSessions: Unable to copy session data: I2CopyFile(): %M");
+                fclose(wfp);
+                goto err;
+            }
             fclose(wfp);
         }
 

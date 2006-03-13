@@ -31,7 +31,6 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <sys/mman.h>
 #include <string.h>
 #include <ctype.h>
 #include <netdb.h>
@@ -295,49 +294,6 @@ DONE:
     }
 }
 
-static int
-mmap_copy_file(
-        int tofd,
-        int fromfd
-        )
-{
-    struct stat sbuf;
-    int         rc;
-    void        *fptr,*tptr;
-
-    if((rc = fstat(fromfd,&sbuf)) != 0){
-        I2ErrLog(eh,"fstat: %M, copying session file");
-        return rc;
-    }
-
-    if((rc = ftruncate(tofd,sbuf.st_size)) != 0){
-        I2ErrLog(eh,"ftruncate(%llu): %M, creating session file",sbuf.st_size);
-        return rc;
-    }
-
-    if(!(fptr = mmap(NULL,sbuf.st_size,PROT_READ|PROT_WRITE,MAP_SHARED,fromfd,0))){
-        I2ErrLog(eh,"mmap(FROM session file): %M");
-        return -1;
-    }
-    if(!(tptr = mmap(NULL,sbuf.st_size,PROT_READ|PROT_WRITE,MAP_SHARED,tofd,0))){
-        I2ErrLog(eh,"mmap(TO session file): %M");
-        return -1;
-    }
-
-    memcpy(tptr,fptr,sbuf.st_size);
-
-    if((rc = munmap(fptr,sbuf.st_size)) != 0){
-        I2ErrLog(eh,"munmap(FROM session file): %M");
-        return -1;
-    }
-    if((rc = munmap(tptr,sbuf.st_size)) != 0){
-        I2ErrLog(eh,"munmap(TO session file): %M");
-        return -1;
-    }
-
-    return 0;
-}
-
 typedef struct pow_maxsend_rec{
     OWPSessionHeader    hdr;
     uint32_t           index;
@@ -591,7 +547,7 @@ write_session(
      * stat the "from" file, ftruncate the to file,
      * mmap both of them, then do a memcpy between them.
      */
-    if(mmap_copy_file(tofd,fileno(p->fp)) == 0){
+    if(I2CopyFile(eh,tofd,fileno(p->fp),0) == 0){
         /*
          * Relink the incomplete file as a complete one.
          */
@@ -854,7 +810,7 @@ SetupSession(
 
         if(stop){
             if(!OWPGetTimeOfDay(ctx,&currtime)){
-                I2ErrLog(eh,"OWPGetTimeOfDay:%M");
+                I2ErrLog(eh,"OWPGetTimeOfDay: %M");
                 exit(1);
             }
 
@@ -887,7 +843,7 @@ SetupSession(
                         NULL,&err))){
             if(sig_check()) return 1;
             stime = MIN(sessionTime,SETUP_ESTIMATE);
-            I2ErrLog(eh,"OWPControlOpen():%M:Retry in-%d seconds",
+            I2ErrLog(eh,"OWPControlOpen(): %M:Retry in-%d seconds",
                     stime);
             while((stime = sleep(stime))){
                 if(sig_check()) return 1;
@@ -899,7 +855,7 @@ SetupSession(
         return 1;
 
     if(!OWPGetTimeOfDay(ctx,&currtime)){
-        I2ErrLogP(eh,errno,"OWPGetTimeOfDay:%M");
+        I2ErrLogP(eh,errno,"OWPGetTimeOfDay: %M");
         exit(1);
     }
     currtime.owptime = OWPNum64Add(currtime.owptime,
@@ -927,7 +883,7 @@ SetupSession(
      * use mkstemp to avoid race condition (downside, fd - not fp)
      */
     if((fd = mkstemp(fname)) < 0){
-        I2ErrLog(eh,"mkstemp(%s):%M",fname);
+        I2ErrLog(eh,"mkstemp(%s): %M",fname);
         return 0;
     }
 
@@ -935,7 +891,7 @@ SetupSession(
      * Wrap the fd in a file pointer.
      */
     if(!(p->fp = fdopen(fd,"wb+"))){
-        I2ErrLog(eh,"fdopen(%s:(%d)):%M",fname,fd);
+        I2ErrLog(eh,"fdopen(%s:(%d)): %M",fname,fd);
         while((close(fd) != 0) && errno==EINTR);
         return 0;
     }
@@ -959,7 +915,7 @@ SetupSession(
      * test.)
      */
     if(unlink(fname) != 0){
-        I2ErrLog(eh,"unlink():%M");
+        I2ErrLog(eh,"unlink(): %M");
         goto file_clean;
     }
 
@@ -1150,25 +1106,25 @@ main(
             /* Connection options. */
             case 'A':
                 if (!(appctx.opt.authmode = strdup(optarg))) {
-                    I2ErrLog(eh,"malloc:%M");
+                    I2ErrLog(eh,"malloc: %M");
                     exit(1);
                 }
                 break;
             case 'S':
                 if (!(appctx.opt.srcaddr = strdup(optarg))) {
-                    I2ErrLog(eh,"malloc:%M");
+                    I2ErrLog(eh,"malloc: %M");
                     exit(1);
                 }
                 break;
             case 'u':
                 if (!(appctx.opt.identity = strdup(optarg))) {
-                    I2ErrLog(eh,"malloc:%M");
+                    I2ErrLog(eh,"malloc: %M");
                     exit(1);
                 }
                 break;
             case 'k':
                 if (!(appctx.opt.keyfile = strdup(optarg))) {
-                    I2ErrLog(eh,"malloc:%M");
+                    I2ErrLog(eh,"malloc: %M");
                     exit(1);
                 }
                 break;
@@ -1211,7 +1167,7 @@ main(
 #endif
             case 'd':
                 if (!(appctx.opt.savedir = strdup(optarg))) {
-                    I2ErrLog(eh,"malloc:%M");
+                    I2ErrLog(eh,"malloc: %M");
                     exit(1);
                 }
                 break;
@@ -1304,7 +1260,7 @@ main(
     strcat(lockpath,POWLOCK);
     lockfd = open(lockpath,O_RDWR|O_CREAT,S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
     if(lockfd < 0){
-        I2ErrLog(eh,"open(%s):%M",lockpath);
+        I2ErrLog(eh,"open(%s): %M",lockpath);
         exit(1);
     }
 
@@ -1314,7 +1270,7 @@ main(
     flk.l_whence = SEEK_SET;
     while((rc = fcntl(lockfd,F_SETLK,&flk)) < 0 && errno == EINTR);
     if(rc < 0){
-        I2ErrLog(eh,"Unable to lock file %s:%M",lockpath);
+        I2ErrLog(eh,"Unable to lock file %s: %M",lockpath);
         if(I2Readn(lockfd,&ch,sizeof(ch)) == sizeof(ch)){
             I2ErrLog(eh,"Possibly locked by pid(%d)",ch);
         }
@@ -1323,7 +1279,7 @@ main(
 
     ch = getpid();
     if(I2Writen(lockfd,&ch,sizeof(ch)) != sizeof(ch)){
-        I2ErrLog(eh,"Unable to write to lockfile:%M");
+        I2ErrLog(eh,"Unable to write to lockfile: %M");
         exit(1);
     }
 
@@ -1423,7 +1379,7 @@ main(
     act.sa_flags = 0;
     if((sigaction(SIGUSR1,&act,NULL) != 0) ||
             (sigaction(SIGUSR2,&act,NULL) != 0)){
-        I2ErrLog(eh,"sigaction():%M");
+        I2ErrLog(eh,"sigaction(): %M");
         exit(1);
     }
 
@@ -1432,7 +1388,7 @@ main(
     if((sigaction(SIGTERM,&act,NULL) != 0) ||
             (sigaction(SIGINT,&act,NULL) != 0) ||
             (sigaction(SIGHUP,&act,NULL) != 0)){
-        I2ErrLog(eh,"sigaction():%M");
+        I2ErrLog(eh,"sigaction(): %M");
         exit(1);
     }
 
