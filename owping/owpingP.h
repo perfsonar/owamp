@@ -71,7 +71,7 @@ typedef    struct {
         OWPPortRange    portspec;           /* -P */
 
 #ifndef    NDEBUG
-        I2Boolean       childwait;          /* -w */
+        void            *childwait;          /* -w */
 #endif
 
         uint32_t       padding;            /* -s */

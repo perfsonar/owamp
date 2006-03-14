@@ -801,9 +801,9 @@ main(
     ctx = ping_ctx.lib_ctx;
 
     /* Set default options. */
-    ping_ctx.opt.records = ping_ctx.opt.childwait 
-        = ping_ctx.opt.from = ping_ctx.opt.to = ping_ctx.opt.quiet
-        = ping_ctx.opt.raw = ping_ctx.opt.machine = False;
+    ping_ctx.opt.records = ping_ctx.opt.from = ping_ctx.opt.to =
+    ping_ctx.opt.quiet = ping_ctx.opt.raw = ping_ctx.opt.machine = False;
+    ping_ctx.opt.childwait = NULL;
     ping_ctx.opt.save_from_test = ping_ctx.opt.save_to_test 
         = ping_ctx.opt.identity = ping_ctx.opt.keyfile 
         = ping_ctx.opt.srcaddr = ping_ctx.opt.authmode = NULL;
@@ -1015,7 +1015,7 @@ main(
                 break;
 #ifndef    NDEBUG
             case 'w':
-                ping_ctx.opt.childwait = True;
+                ping_ctx.opt.childwait = (void*)True;
                 break;
 #endif
 
@@ -1102,7 +1102,7 @@ main(
         if(ping_ctx.opt.childwait &&
                 !OWPContextConfigSetV(ctx,
                     OWPChildWait,
-                    (void*)ping_ctx.opt.childwait)){
+                    ping_ctx.opt.childwait)){
             I2ErrLog(eh,
                     "OWPContextConfigSetV(): Unable to set OWPChildWait?!");
         }

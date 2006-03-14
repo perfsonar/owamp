@@ -55,7 +55,7 @@ typedef struct {
     uint32_t       dieby;
     uint32_t       controltimeout;
 #ifndef        NDEBUG
-    I2Boolean       childwait;
+    void            *childwait;
 #endif
     I2Boolean       daemon;
 } owampd_opts;

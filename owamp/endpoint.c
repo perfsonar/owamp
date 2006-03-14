@@ -805,7 +805,7 @@ success:
         /*
          * pre-allocate nodes for skipped packet buffer.
          *
-         * Will initially allocate MIN(100,(.10*npackets)).
+         * Will initially allocate MAX(100,(.10*npackets)).
          * The worst case is .5*npackets (if every other
          * packet needed to be skipped) but in most cases
          * this list of holes will be much smaller. This
@@ -818,7 +818,7 @@ success:
 
         ep->free_skiplist=NULL;
         ep->num_allocskip = .10 * ep->tsession->test_spec.npackets;
-        ep->num_allocskip = MIN(ep->num_allocskip,100);
+        ep->num_allocskip = MAX(ep->num_allocskip,100);
 
         if(!(askip = calloc(ep->num_allocskip,sizeof(_OWPSkipRec)))){
             OWPError(cntrl->ctx,OWPErrFATAL,errno,"calloc(): %M");
@@ -2423,7 +2423,7 @@ parenterr:
      */
 #ifndef        NDEBUG
     {
-        int waitfor = (int)OWPContextConfigGetV(ctx,OWPChildWait);
+        void *waitfor = OWPContextConfigGetV(ctx,OWPChildWait);
 
         if(waitfor){
             OWPError(ctx,OWPErrWARNING,OWPErrUNKNOWN,

@@ -508,7 +508,7 @@ ACCEPT:
 
 #ifndef        NDEBUG
     {
-        int childwait;
+        void *childwait;
 
         if((childwait = opts.childwait)){
             OWPError(policy->ctx,OWPErrWARNING,OWPErrUNKNOWN,
@@ -520,7 +520,7 @@ ACCEPT:
              * to them... (by resetting childwait back to non-zero)
              */
             if(childwait && !OWPContextConfigSetV(policy->ctx,OWPChildWait,
-                        (void*)childwait)){
+                        childwait)){
                 OWPError(policy->ctx,OWPErrWARNING,OWPErrUNKNOWN,
                         "OWPContextConfigSetV(): Unable to set OWPChildWait?!");
             }
@@ -1212,7 +1212,7 @@ main(int argc, char *argv[])
                 break;
 #ifndef NDEBUG
             case 'w':
-                opts.childwait = True;
+                opts.childwait = (void*)True;
                 break;
 #endif
             case 'h':

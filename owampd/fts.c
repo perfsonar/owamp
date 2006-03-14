@@ -1024,7 +1024,7 @@ fts_palloc(sp, more)
 	 * a signed int but in an FTSENT it is an unsigned short.
 	 * We limit fts_pathlen to USHRT_MAX to be safe in both cases.
 	 */
-	if (sp->fts_pathlen < 0 || sp->fts_pathlen >= USHRT_MAX) {
+	if (sp->fts_pathlen < 0 || sp->fts_pathlen >= (int)USHRT_MAX) {
 		if (sp->fts_path)
 			free(sp->fts_path);
 		sp->fts_path = NULL;
