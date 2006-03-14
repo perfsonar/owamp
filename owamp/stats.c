@@ -1457,8 +1457,18 @@ OWPStatsPrintSummary(
     double      d1, d2;
 
     PrintStatsHeader(stats,output);
+
+    /*
+     * lost % is 0 if sent == 0.
+     */
+    if(stats->sent > 0){
+        d1 = stats->lost/stats->sent;
+    }
+    else{
+        d1 = 0.0;
+    }
     fprintf(output,"%u sent, %u lost (%.1f%%), %u duplicates\n",
-            stats->sent,stats->lost,100.0*stats->lost/stats->sent,stats->dups);
+            stats->sent,stats->lost,100.0*d1,stats->dups);
 
     /*
      * Min, Median

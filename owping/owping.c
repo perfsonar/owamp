@@ -216,8 +216,8 @@ do_stats(
     OWPSessionHeaderRec hdr;
     OWPStats            stats;
 
-    if(!(num_rec = OWPReadDataHeader(ctx,fp,&hdr))){
-        I2ErrLog(eh, "OWPReadDataHeader:Empty file?");
+    if(!(num_rec = OWPReadDataHeader(ctx,fp,&hdr)) && !hdr.header){
+        I2ErrLog(eh, "OWPReadDataHeader: Invalid file?");
         return -1;
     }
 
