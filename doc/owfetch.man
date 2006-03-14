@@ -94,10 +94,14 @@ Sent, Lost, Duplicates
 .br
 Number of packets that were sent, lost, and duplicated as seen by \fBOWAMP\fR.
 .TP
-Min Delay, Median Delay, Error Estimate
+Min Delay, Median Delay, Max Delay, Error Estimate
 .br
-Minimum and Median delay seen for sample. Maximum error estimate for
-the sample.
+Minimum, median and maximum delay seen for sample. Maximum error estimate for
+the sample. (The median is determined using a histogram, so the resolution
+of this value is bounded by the \fI\-b\fR parameter. This can lead to misleading
+results, for example, for very small values of latency it is possible to
+see a value for the median that is greater than the maximum, but this is
+simply due to the resolution of the median measurement.)
 .TP
 Jitter
 .br
@@ -172,7 +176,7 @@ in the form of an AES key.
 .TP
 \fB\-k\fR \fIkeyfile\fR
 .br
-Indicates that \fBowping\fR should use the AES key in \fIkeyfile\fR for
+Indicates that \fBowfetch\fR should use the AES key in \fIkeyfile\fR for
 \fIusername\fB. \fIusername\fR must have a valid key in \fIkeyfile\fR.
 \fIkeyfile\fR can be generated as described in the aespasswd(1) manual
 page.
@@ -196,7 +200,7 @@ Unspecified (wild-card address selection).
 .br
 Specify the username that is used to identify the AES key for
 authenticated or encrypted modes. If the \fB\-k\fR option is specified,
-the key is retrieved from the \fIkeyfile\fR, otherwise \fBowping\fR prompts
+the key is retrieved from the \fIkeyfile\fR, otherwise \fBowfetch\fR prompts
 the user for a \fIpassphrase\fR. The \fIpassphrase\fR is used to generate
 the AES key.
 .RS
@@ -213,7 +217,7 @@ median. This is done by specifying a list of \fIpercentiles\fR in
 a comma separated string (spaces are not allowed). Each \fIpercentile\fR
 is indicated by a floating point value between 0.0 and 100.0.
 
-This value is only used if \fBowping\fR is reporting summary statistics.
+This value is only used if \fBowfetch\fR is reporting summary statistics.
 .RS
 .IP Default:
 Unset.
@@ -221,14 +225,28 @@ Unset.
 .TP
 \fB\-b\fR \fIbucket_width\fR
 .br
-To reasonably compute the delay summary statistics, \fBowping\fR creates
+To reasonably compute the delay summary statistics, \fBowfetch\fR creates
 a histogram of the delays. (This is used to compute percentiles of
 delay such as median.) The
 .I bucket_width
 indicates the resolution of the bins in the histogram. This value
 is specified using a floating point value and the units are seconds.
 
-This value is only used if \fBowping\fR is reporting summary statistics.
+Because \fBowfetch\fR is using a histogram to compute the median (and
+other percentiles of delay) the results can be misleading if the
+.I bucket_width
+is not appropriate. For example, if all of the delays in the sample are
+greater than the value of
+.I bucket_width
+then the median will be reported as
+.I bucket_width,
+a value that is greater than the maximum delay in the sample. To avoid this,
+.I bucket_width
+should be picked to be smaller than (max - min). The default value
+was selected to be reasonable for most real network paths, it is not
+appropriate for tests to the localhost however.
+
+This value is only used if \fBowfetch\fR is reporting summary statistics.
 .RS
 .IP Default:
 0.0001 (100 usecs)
@@ -236,7 +254,7 @@ This value is only used if \fBowping\fR is reporting summary statistics.
 .TP
 \fB\-M\fR
 .br
-Print summary information in a more computer parsable format. Specifically,
+Print summary information in a more computer pars-able format. Specifically,
 values are printed out in a key/value style. Units are seconds for all values.
 
 The \fI\-M\fR option implies \fI\-Q\fR.
