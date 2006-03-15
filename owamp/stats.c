@@ -712,13 +712,6 @@ OWPStatsCreate(
      * Copy skiprecs
      */
     if(stats->hdr->num_skiprecs){
-        if(stats->hdr->num_skiprecs > 0xffffffffL){
-            OWPError(stats->ctx,OWPErrFATAL,ENOSYS,
-                    "Data contains %lu skiprec's, %ld supported: %M",
-                    stats->hdr->num_skiprecs,0xffffffffL);
-            goto error;
-        }
-
         if( !(stats->skips = calloc(stats->hdr->num_skiprecs,
                         sizeof(OWPSkipRec)))){
             OWPError(stats->ctx,OWPErrFATAL,errno,
