@@ -67,6 +67,13 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/socket.h>
+/* sys/param.h defines MIN/MAX on some systems... */
+#ifdef MIN
+#undef MIN
+#endif
+#ifdef MAX
+#undef MAX
+#endif
 #include <sys/param.h>
 #include <netdb.h>
 #include <time.h>
