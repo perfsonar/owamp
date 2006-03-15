@@ -174,15 +174,15 @@ static void
  * "SEQ STIME SS SERR RTIME RS RERR\n"
  * name     desc                type
  * SEQ      sequence number     unsigned long
- * STIME    sendtime            owptimestamp (%020llu)
+ * STIME    sendtime            owptimestamp (%020 PRIu64)
  * SS       send synchronized   boolean unsigned
  * SERR     send err estimate   float (%g)
- * RTIME    recvtime            owptimestamp (%020llu)
+ * RTIME    recvtime            owptimestamp (%020 PRIu64)
  * RS       recv synchronized   boolean unsigned
  * RERR     recv err estimate   float (%g)
  * TTL      ttl                 unsigned short
  */
-#define RAWFMT "%lu %020llu %u %g %020llu %u %g %u\n"
+#define RAWFMT "%lu " OWP_TSTAMPFMT " %u %g " OWP_TSTAMPFMT " %u %g %u\n"
 static int
 printraw(
         OWPDataRec    *rec,

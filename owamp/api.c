@@ -1899,8 +1899,8 @@ OWPWriteDataHeader(
     oset_off = (off_t)oset;
     if(oset != (uint64_t)oset_off){
         OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                "OWPWriteDataHeader: Header too large for format representation (%llu)",
-                oset);
+            "OWPWriteDataHeader: Header too large for format representation (%"
+            PRIu64 ")", oset);
         return False;
     }
 
@@ -2306,7 +2306,7 @@ OWPReadDataHeaderSlots(
      */
     if(fileslots%16){
         OWPError(ctx,OWPErrFATAL,EFTYPE,
-                "OWPReadDataHeaderSlots: Invalid hdr_offset (%llu)",
+                "OWPReadDataHeaderSlots: Invalid hdr_offset (%" PRIu64 ")",
                 hdr_off);
         /*
          * TODO: Check validity of this errno... May need to
@@ -2444,12 +2444,12 @@ OWPParseRecords(
         if(fread(rbuf,len_rec,1,fp) < 1){
             if(ferror(fp)){
                 OWPError(ctx,OWPErrFATAL,errno,
-                        "fread(): STREAM ERROR: offset=%llu,i=%lu",
+                        "fread(): STREAM ERROR: offset=%" PRIu64 ",i=%" PRIu32,
                         ftello(fp),i);
             }
             else if(feof(fp)){
                 OWPError(ctx,OWPErrFATAL,errno,
-                        "fread(): EOF: offset=%llu",ftello(fp));
+                        "fread(): EOF: offset=%" PRIu64,ftello(fp));
             }
             return OWPErrFATAL;
         }

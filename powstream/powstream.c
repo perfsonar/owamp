@@ -382,7 +382,7 @@ write_session(
 
     (void)OWPReadDataHeader(p->ctx,p->fp,&hdr);
     if( !hdr.header){
-        I2ErrLog(eh,"OWPReadDataHeader(session data [%llu,%llu])",
+        I2ErrLog(eh,"OWPReadDataHeader(session data [%" PRIu64 ",%" PRIu64 ")",
                 p->currentSessionStartNum,p->currentSessionEndNum);
         return;
     }
@@ -422,7 +422,9 @@ write_session(
              */
             (void)OWPReadDataHeader(p->ctx,p->fp,&hdr);
             if( !hdr.header){
-                I2ErrLog(eh,"OWPReadDataHeader(session data [%llu,%llu])",
+                I2ErrLog(eh,
+                        "OWPReadDataHeader(session data [%" PRIu64
+                        ",%" PRIu64 ")",
                         p->currentSessionStartNum,p->currentSessionEndNum);
                 return;
             }
@@ -439,7 +441,8 @@ write_session(
 
         if(!hdr.num_datarecs){
             if(appctx.opt.verbose > 1){
-                I2ErrLog(eh,"No data - skip writing session (%llu,%llu)",
+                I2ErrLog(eh,"No data - skip writing session (%" PRIu64
+                        ",%" PRIu64 ")",
                         p->currentSessionStartNum,p->currentSessionEndNum);
             }
             return;

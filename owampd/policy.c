@@ -1614,7 +1614,7 @@ found:
     if(node->used[i].value > node->limits[i].value){
         OWPError(node->policy->ctx,OWPErrWARNING,OWPErrPOLICY,
                 "Resource usage exceeds limits %s:%s "
-                "(used = %llu, limit = %llu)",node->nodename,
+                "(used = %" PRIu64 ", limit = %" PRIu64 ")",node->nodename,
                 GetLimName(lim.limit),node->used[i].value,
                 node->limits[i].value);
     }
@@ -1644,7 +1644,7 @@ OWPDResourceUsage(
     }
 
     OWPError(node->policy->ctx,OWPErrDEBUG,OWPErrPOLICY,
-            "ResInit %s:%s = %llu",node->nodename,
+            "ResInit %s:%s = %" PRIu64,node->nodename,
             GetLimName(lim.limit),lim.value);
     IntegerResourceUsage(node,lim);
 
@@ -1804,7 +1804,8 @@ OWPDResourceDemand(
      * as non-interesting.
      */
     OWPError(node->policy->ctx,OWPErrDEBUG,OWPErrPOLICY,
-            "ResReq %s: %s:%s:%s = %llu (result = %llu, limit = %llu)",
+            "ResReq %s: %s:%s:%s = %" PRIu64 " (result = %" PRIu64
+            ", limit = %" PRIu64 ")",
             (ret)?"ALLOWED":"DENIED",
             node->nodename,
             (query == OWPDMESGRELEASE)?"release":"request",
@@ -1814,7 +1815,8 @@ OWPDResourceDemand(
             GetLimit(node,lim.limit));
     for(node = node->parent;!ret && node;node = node->parent){
         OWPError(node->policy->ctx,OWPErrDEBUG,OWPErrPOLICY,
-                "ResReq %s: %s:%s:%s = %llu (result = %llu, limit = %llu)",
+                "ResReq %s: %s:%s:%s = %" PRIu64
+                " (result = %" PRIu64 ", limit = %" PRIu64")",
                 (ret)?"ALLOWED":"DENIED",
                 node->nodename,
                 (query == OWPDMESGRELEASE)?"release":"request",

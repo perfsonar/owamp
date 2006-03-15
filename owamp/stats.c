@@ -712,10 +712,10 @@ OWPStatsCreate(
      * Copy skiprecs
      */
     if(stats->hdr->num_skiprecs){
-        if(stats->hdr->num_skiprecs > LONG_MAX){
+        if(stats->hdr->num_skiprecs > 0xffffffffL){
             OWPError(stats->ctx,OWPErrFATAL,ENOSYS,
                     "Data contains %lu skiprec's, %ld supported: %M",
-                    stats->hdr->num_skiprecs,LONG_MAX);
+                    stats->hdr->num_skiprecs,0xffffffffL);
             goto error;
         }
 
@@ -757,10 +757,10 @@ OWPStatsCreate(
     d = OWPTestPacketRate(stats->ctx,&stats->hdr->test_spec) *
             OWPNum64ToDouble(stats->hdr->test_spec.loss_timeout) *
             PACKETBUFFERALLOCFACTOR;
-    if(d > LONG_MAX){
+    if(d > 0xffffffffL){
         OWPError(stats->ctx,OWPErrDEBUG,OWPErrUNKNOWN,
                 "%s: Extreme packet rate (%g) requires excess memory usage",d);
-        stats->plistlen = LONG_MAX;
+        stats->plistlen = 0xffffffffL;
     }
     else{
         stats->plistlen = d;
@@ -809,8 +809,8 @@ OWPStatsCreate(
     assert(bucketwidth > 0.0);
     stats->bucketwidth = bucketwidth;
     d = stats->hdr->test_spec.loss_timeout / stats->bucketwidth;
-    if(d > LONG_MAX){
-        stats->blistlen = LONG_MAX;
+    if(d > 0xffffffffL){
+        stats->blistlen = 0xffffffffL;
     }
     else{
         stats->blistlen = d;

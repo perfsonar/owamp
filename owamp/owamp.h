@@ -102,7 +102,7 @@
  * fmt indicates 0 padding, 20 significant digits.
  */
 #ifndef OWP_TSTAMPFMT 
-#define OWP_TSTAMPFMT  "%020llu"
+#define OWP_TSTAMPFMT  "%020" PRIu64
 #endif
 
 #ifndef OWP_TSTAMPCHARS
