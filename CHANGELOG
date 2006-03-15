@@ -1,4 +1,179 @@
+2006-03-15  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* doc/index.html: Adding supported systems to the documentation.
+
+	jeff
+
+	* owamp/owamp.h:
+	mod for 4.X version FreeBSD... (This one is trivial - if there are difficult
+	mods later, I will just remove 4.X from the supported systems list. It
+	is dated now...)
+
+	jeff
+
+	* owamp/stats.c:
+	Accidentily used unsigned constants to init signed values - -1 is not a very
+	big number...
+
+	jeff
+
+	* configure.ac, owamp/owamp.h:
+	Adding autoconf magic to create PRIu64 and PRIuPTR if they do not
+	exist. (Needed for old solaris...)
+
+	jeff
+
+	* owamp/owamp.h:
+	Fix for Solaris 8 (since it does not define inttypes.h format macros...).
+
+	jeff
+
+	* owamp/arithm64.c, owamp/context.c, owamp/error.c, owamp/protocol.c, owamp/rijndael-alg-fst.c, owamp/rijndael-alg-fst.h, owamp/rijndael-api-fst.c, owamp/rijndael-api-fst.h, owamp/rijndael-test-fst.c, owamp/schedule.c, owamp/stats.c, owamp/time.c, owampd/fts.c, owampd/owampd.c, owampd/policy.c, owping/owping.c, powstream/powstream.c:
+	Corrected header-file inclusion order for the rest of the package.
+
+	jeff
+
+	* I2util/I2util/ErrLog.c, I2util/I2util/ErrLogImmediate.c, I2util/I2util/ErrLogSyslog.c, I2util/I2util/Options.c, I2util/I2util/addr.c, I2util/I2util/addr.h, I2util/I2util/conf.c, I2util/I2util/conf.h, I2util/I2util/errlog.h, I2util/I2util/hex.c, I2util/I2util/hex.h, I2util/I2util/io.c, I2util/I2util/io.h, I2util/I2util/mach_dep.c, I2util/I2util/md5.c, I2util/I2util/options.h, I2util/I2util/random.c, I2util/I2util/random.h, I2util/I2util/readpassphrase.c, I2util/I2util/saddr.c, I2util/I2util/saddr.h, I2util/I2util/table.c, I2util/I2util/util.h, I2util/configure.ac, configure.ac, owamp/api.c, owamp/sapi.c:
+	Corrected header-file ordering so that the conf.h file gets included
+	before system header files. This allows _LARGEFILE_SOURCE and other
+	posix/STDC flags to be set more easily from autoconf macros.
+
+	jeff
+
+	* owamp/stats.c: Removed unneeded test.
+
+	jeff
+
+	* owamp/api.c, owamp/owamp.h, owamp/stats.c, owampd/policy.c, owping/owping.c, powstream/powstream.c:
+	Modified all %llu format specification strings to use the inttypes.h
+	fmt specifiers for uint64_t (PRIu64) instead.
+
+	Needed for 64bit systems where long long can actually be 128 bits...
+
+	jeff
+
+2006-03-14  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* I2util/I2util/io.c, owamp/endpoint.c, owampd/fts.c, owampd/owampd.c, owampd/owampdP.h, owping/owping.c, owping/owpingP.h:
+	Mostly corrections for 64-bit FreeBSD. (plus one bug fix in endpoint.c)
+
+	io.c
+	    adding include of <string.h>
+
+	endpoint.c
+	    Fixing buf for skip record allocation. (had MIN where I should have had MAX)
+	    Changing type for 'waitfor' variable. - needed for 64-bit.
+
+	fts.c
+	    casting to remove warning on 64-bit
+
+	owampd.c,owampdP.h,owping.c,owpingP.h
+	    change type for 'waitfor'
+
+	jeff
+
+	* doc/owfetch.man, doc/owping.man, doc/owstats.man:
+	Better documentation for the bucket_width. Explained how this determines
+	the resolution of the histogram and therefore the resolution of the
+	median that is reported. (And explained that for very small maximum delays,
+	a bucket_width that is too small will cause the median to be reported as
+	a larger number than the maximum.)
+
+	jeff
+
+	* owamp/stats.c, owping/owping.c:
+	Modified stats output to work if 'sent == 0'. This can happen if skip
+	records end up throwing out all received packets.
+
+	jeff
+
+2006-03-13  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* I2util/I2util/addr.c, I2util/I2util/io.c, I2util/I2util/io.h, I2util/I2util/util.h, owamp/endpoint.c, owamp/protocol.c, powstream/powstream.c:
+	I2util:
+	    Created utility function to copy files by fd. (Uses mmap/memcpy so
+	    entire copy is in kernel space.)
+
+	owamp/*:
+	    changed post-session processing to use two files if needed to
+	    remove records from the datafile. (section 3.8 of owamp draft-14)
+
+	powstream:
+	    Modified to use mmap utility function. (used to use a local function
+	    here - bascially moved it to I2util.)
+
+	jeff
+
+2006-03-10  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* LICENSE, README: changes for 2.0 release.
+
+	jeff
+
+	* test/README:
+	Adding text explaining the Test Vector generation application.
+
+	jeff
+
+	* owamp/time.c:
+	Small change to ntp initialization - and now simple owamp tests seem to
+	be working now on solaris 8.
+
+	Local tests and tests between packrat(Linux) have been successful.
+
+	jeff
+
+	* owampd/fts.c:
+	OS X defined dirfd as a Macro so the test needs to be slightly different...
+
+	jeff
+
+	* owamp/stats.c, owamp/time.c, owampd/fts.c, owampd/fts.h, owampd/owampd.c, owampd/owampdP.h, owampd/policy.c, owampd/policy.h, owping/owping.c, owping/owpingP.h, powstream/powstream.c, powstream/powstreamP.h, test/owtvec.c, I2util/configure.ac, configure.ac, owamp/api.c, owamp/arithm64.c, owamp/capi.c, owamp/context.c, owamp/endpoint.c, owamp/io.c, owamp/owamp.h, owamp/owampP.h, owamp/protocol.c, owamp/sapi.c, owamp/schedule.c:
+	Changes to make owamp compile on solaris. (This was much more of
+	a pain than I realized. Solaris does not support quite the same directory
+	API (fts/dirent) as the other systems owamp has been ported to.)
+
+	Thank goodness FreeBSD has reasonable licensing.
+
+	(I'm going to go back to FreeBSD/Linux/OS X and make sure I didn't
+	break anything compile-wise before I do any tests of the running code...)
+
+	jeff
+
+2006-03-09  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* owamp/sapi.c:
+	Removing #define of _GNU_SOURCE. I am moving that into the autoconf
+	definitions.
+
+	jeff
+
+	* owampd/Makefile.am, owampd/fts.c, owampd/fts.h, owampd/policy.c:
+	Pulling source for fts(3) into owampd (from FreeBSD).
+
+	fts(3) does not live in Solaris land...
+
+	This version will be used on all architectures. I would rather use this one
+	version for all arch's than do the ugly autoconf conditional include thing...
+
+	If at some point in the future, all supported arch's have fts - then this
+	can be removed.
+
+	jeff
+
+2006-03-08  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* doc/Makefile.am: Forgot owstats.man and owfetch.man in man targets.
+
+	jeff
+
 2006-03-07  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* doc/Makefile.am: Want to actually install documentation...
+
+	jeff
+
+	* CHANGELOG: Prepare for 2.0...
 
 	* configure.ac: Preparing for 2.0 release...
 
@@ -1687,7 +1862,7 @@
 
 	jeff
 
-	* Makefile.am, configure.ac, owdigest/Makefile.am, owdigest/buckets.pl, owdigest/buckets.py, owdigest/cookbuckets.pl, owdigest/owdigest.c, scripts/Makefile.am, scripts/OWP.pm, scripts/OWP/Archive.pm, scripts/OWP/Conf.pm, scripts/OWP/Digest.pm, scripts/OWP/Makefile.am, scripts/OWP/RawIO.pm, scripts/OWP/Syslog.pm, scripts/OWP/Utils.pm, scripts/buckets2stats.pl, scripts/centralmaster.pl, scripts/collector.pl, scripts/make_top_html.pl, scripts/makecron.pl, scripts/owampd.sh.in, scripts/owdrive1.pl, scripts/owmesh.conf, scripts/pairs_pages_init.pl, scripts/powcollector, scripts/powmaster.pl, scripts/print_owd_header.pl, scripts/testconf.pl, scripts/uptimewatch.pl:
+	* Makefile.am, configure.ac:
 	remove digest/script stuff that is no longer used.
 
 	jeff
@@ -1816,7 +1991,7 @@
 
 2003-03-28  Jeff W. Boote  <boote@packrat.internet2.edu>
 
-	* conf/owampd.conf, conf/owampd.limits, owamp/api.c, owamp/capi.c, owamp/endpoint.c, owping/owping.c, owping/owpingP.h, scripts/owmesh.conf, scripts/testconf.pl:
+	* conf/owampd.conf, conf/owampd.limits, owamp/api.c, owamp/capi.c, owamp/endpoint.c, owping/owping.c, owping/owpingP.h:
 	owping:
 		Added a -R "raw" output option. It just dumps records out.
 		Absolutely no processing what-so-ever.
@@ -1869,7 +2044,7 @@
 
 	jeff
 
-	* I2util/I2util/Makefile.am, I2util/I2util/io.c, I2util/I2util/io.h, I2util/I2util/random.c, I2util/I2util/saddr.c, I2util/I2util/saddr.h, I2util/I2util/table.c, I2util/I2util/table.h, conf/Makefile.am, conf/owampd.conf, conf/owampd.limits, conf/owampd.passwd, etc/class2limits.conf, etc/ip2class.conf, etc/owampd.conf, etc/owampd.passwd, etc/passwd.conf, owamp/Makefile.am, owamp/access.h, owamp/access2.c, owamp/api.c, owamp/arithm64.c, owamp/arithm64.h, owamp/capi.c, owamp/conndata.h, owamp/context.c, owamp/defaults.c, owamp/endpoint.c, owamp/endpoint.h, owamp/error.c, owamp/io.c, owamp/owamp.h, owamp/owampP.h, owamp/print.c, owamp/protocol.c, owamp/read_class2limits.c, owamp/sapi.c, owamp/schedule.c, owamp/time.c, owamp/unixtime.c, owamp/util.c, owampd/Makefile.am, owampd/conf.c, owampd/conf.h, owampd/owampd.c, owampd/owampdP.h, owampd/policy.c, owampd/policy.h, owdigest/Makefile.am, owdigest/owdigest.c, owping/Makefile.am, owping/owping.c, owping/owpingP.h, powstream/Makefile.am, powstream/powstream.c, powstream/powstreamP.h, scripts/Makefile.am, scripts/OWP.pm, scripts/OWP/Digest.pm, scripts/OWP/Makefile.am, scripts/buckets2stats.pl, I2util/Makefile.am, INSTALL, LICENSE, Makefile.am, README, bootstrap, configure.ac:
+	* I2util/I2util/Makefile.am, I2util/I2util/io.c, I2util/I2util/io.h, I2util/I2util/random.c, I2util/I2util/saddr.c, I2util/I2util/saddr.h, I2util/I2util/table.c, I2util/I2util/table.h, conf/Makefile.am, conf/owampd.conf, conf/owampd.limits, conf/owampd.passwd, owamp/Makefile.am, owamp/access.h, owamp/access2.c, owamp/api.c, owamp/arithm64.c, owamp/arithm64.h, owamp/capi.c, owamp/conndata.h, owamp/context.c, owamp/defaults.c, owamp/endpoint.c, owamp/endpoint.h, owamp/error.c, owamp/io.c, owamp/owamp.h, owamp/owampP.h, owamp/print.c, owamp/protocol.c, owamp/read_class2limits.c, owamp/sapi.c, owamp/schedule.c, owamp/time.c, owamp/unixtime.c, owamp/util.c, owampd/Makefile.am, owampd/conf.c, owampd/conf.h, owampd/owampd.c, owampd/owampdP.h, owampd/policy.c, owampd/policy.h, owping/Makefile.am, owping/owping.c, owping/owpingP.h, powstream/Makefile.am, powstream/powstream.c, powstream/powstreamP.h, I2util/Makefile.am, INSTALL, LICENSE, Makefile.am, README, bootstrap, configure.ac:
 	Merging VERS5 into head. Wahoo!!!
 
 	jeff
@@ -2044,8 +2219,7 @@
 
 	jeff
 
-	* LICENSE, scripts/Makefile.am:
-	Adding license file. minor fix for scripts Makefile.
+	* LICENSE: Adding license file. minor fix for scripts Makefile.
 
 	jeff
 
@@ -2072,15 +2246,10 @@
 
 	jeff
 
-	* etc/class2limits.conf, etc/ip2class.conf, etc/owampd.conf, etc/owampd.passwd, etc/passwd.conf:
-	preparing for release.
-
-	jeff
-
 	* conf/class2limits.conf, conf/ip2class.conf, conf/owampd.conf, conf/owampd.passwd, conf/passwd.conf:
 	New file.
 
-	* I2util/I2util/Makefile.am, I2util/Makefile.am, Makefile.am, README, bootstrap, conf/class2limits.conf, conf/ip2class.conf, conf/owampd.conf, conf/owampd.passwd, conf/passwd.conf, configure.ac, owampd/Makefile.am, scripts/Makefile.am, scripts/OWP/Makefile.am:
+	* I2util/I2util/Makefile.am, I2util/Makefile.am, Makefile.am, README, bootstrap, conf/class2limits.conf, conf/ip2class.conf, conf/owampd.conf, conf/owampd.passwd, conf/passwd.conf, configure.ac, owampd/Makefile.am:
 	Preparing for Alpha release.
 
 	jeff
@@ -2091,18 +2260,11 @@
 
 	jeff
 
-2003-02-03  Jeff W. Boote  <boote@packrat.internet2.edu>
-
-	* scripts/OWP.pm: Corrected umask decimal/octal - quote bug.
-
-	jeff
-
 2003-01-29  Jeff W. Boote  <boote@packrat.internet2.edu>
 
 	* owamp/api.c, owamp/context.c: Linux fixes...
 
-	* owping/owping.c, scripts/OWP/Digest.pm, scripts/buckets2stats.pl, owamp/endpoint.c:
-	endpoint.c:
+	* owping/owping.c, owamp/endpoint.c: endpoint.c:
 		comment the "fudge" factor a bit better.
 
 	owping.c:
@@ -2117,7 +2279,7 @@
 
 	jeff
 
-	* I2util/I2util/table.c, I2util/I2util/table.h, owamp/api.c, owamp/endpoint.c, owamp/owamp.h, owamp/owampP.h, owamp/time.c, owamp/unixtime.c, owdigest/owdigest.c, owping/owping.c, powstream/powstream.c, scripts/OWP/Digest.pm, scripts/buckets2stats.pl, Makefile.am:
+	* I2util/I2util/table.c, I2util/I2util/table.h, owamp/api.c, owamp/endpoint.c, owamp/owamp.h, owamp/owampP.h, owamp/time.c, owamp/unixtime.c, owping/owping.c, powstream/powstream.c, Makefile.am:
 	table.[ch]:
 		Modified so hash datarecords (I2Binding) are pre-allocated for the
 		most part. This was needed to more efficiently implement the lost packet
@@ -2158,7 +2320,7 @@
 
 2003-01-24  Jeff W. Boote  <boote@packrat.internet2.edu>
 
-	* owamp/schedule.c, owamp/time.c, owampd/owampd.c, owping/owping.c, I2util/I2util/table.c, configure.ac, etc/owampd.conf, owamp/access.h, owamp/api.c, owamp/capi.c, owamp/endpoint.c, owamp/owamp.h, owamp/policy.c, owamp/policy.h, owamp/protocol.c, owamp/sapi.c:
+	* owamp/schedule.c, owamp/time.c, owampd/owampd.c, owping/owping.c, I2util/I2util/table.c, configure.ac, owamp/access.h, owamp/api.c, owamp/capi.c, owamp/endpoint.c, owamp/owamp.h, owamp/policy.c, owamp/policy.h, owamp/protocol.c, owamp/sapi.c:
 	I2util/table.c:
 		corrected memory error. (was still free'ing something I intended
 		only to mark as ready to be deleted.)
@@ -2178,7 +2340,7 @@
 
 2003-01-22  Jeff W. Boote  <boote@packrat.internet2.edu>
 
-	* Makefile.am, configure.ac, etc/owampd.conf, owamp/arithm64.c, owamp/endpoint.c, owamp/protocol.c, owamp/sapi.c, owampd/Makefile.am, owampd/owampd.c, owdigest/Makefile.am, owdigest/owdigest.c, owping/Makefile.am, owping/owping.c, powstream/Makefile.am:
+	* Makefile.am, configure.ac, owamp/arithm64.c, owamp/endpoint.c, owamp/protocol.c, owamp/sapi.c, owampd/Makefile.am, owampd/owampd.c, owping/Makefile.am, owping/owping.c, powstream/Makefile.am:
 	Ok - all apps now compile with the exception of owdigest. (Not sure what to
 	do about "prec" in that one yet so I'm going to think on it before going
 	after that one.)
@@ -2304,26 +2466,6 @@
 
 	jeff
 
-2003-01-02  owamp  <owamp@packrat.internet2.edu>
-
-	* scripts/print_owd_header.pl: Initial import.
-
-2002-12-23  karp  <karp@packrat.internet2.edu>
-
-	* owdigest/owdigest.c:
-	In last check in I accidentally removed code which was skipping
-	records with bad precision. This resulted in these records ruining
-	declared precsion of the plots. Putting the deleted code back in now.
-
-2002-12-20  karp  <karp@packrat.internet2.edu>
-
-	* scripts/collector.pl: Call owdigest with syslog reporting.
-
-	* owdigest/owdigest.c:
-	Added syslog support. Issue a warning if the count of 'sent'
-	records in a session is 0, and provide the highest number
-	of precision bits in a session for diagnostics.
-
 2002-12-09  karp  <karp@packrat.internet2.edu>
 
 	* exp-spec.txt: First cut at the exponential RNG part of the spec.
@@ -2334,45 +2476,12 @@
 	the last one.  It can be used by future implementors of
 	OWAMP to verify correctness of the exponential RNG.
 
-2002-11-27  Jeff W. Boote  <boote@packrat.internet2.edu>
-
-	* scripts/powmaster.pl:
-	copying ugly but effective hack from collector that removes the dependence on
-	a working sigsuspend function.
-
-	jeff
-
-	* scripts/collector.pl:
-	kill's don't seem to be reliably delivered. This change will ensure delivery.
-
-	jeff
-
-	* scripts/collector.pl, scripts/powmaster.pl:
-	improve error detection in perl evals of "kill".
-
-	jeff
-
-	* scripts/collector.pl:
-	kill's now happen inside eval to ensure they are "caught" in the perl way...
-
-	jeff
-
 2002-11-27  owamp  <owamp@packrat.internet2.edu>
 
 	* owamp/sapi.c:
 	Oops - accidentily checked in a debugging error message yesterday.
 
 	jeff
-
-2002-11-27  Jeff W. Boote  <boote@packrat.internet2.edu>
-
-	* scripts/collector.pl: Fix -T error.
-
-	jeff
-
-2002-11-27  karp  <karp@packrat.internet2.edu>
-
-	* scripts/OWP/Digest.pm: Added debug checks for merge.
 
 2002-11-26  Jeff W. Boote  <boote@packrat.internet2.edu>
 
@@ -2403,77 +2512,6 @@
 
 	jeff
 
-2002-11-19  karp  <karp@packrat.internet2.edu>
-
-	* scripts/Makefile.am: Undo the last change.
-
-	* scripts/Makefile.am: Fix to have owmesh.conf installed.
-
-2002-11-18  karp  <karp@packrat.internet2.edu>
-
-	* scripts/buckets2stats.pl: Fixed warnings due to use strict
-
-2002-11-17  karp  <karp@packrat.internet2.edu>
-
-	* scripts/buckets2stats.pl, scripts/owmesh.conf:
-	Added timeout value of 10 sec for flock
-
-	* scripts/buckets2stats.pl: Fixed a bug in computing summary period.
-
-2002-11-15  karp  <karp@packrat.internet2.edu>
-
-	* scripts/buckets2stats.pl:
-	Eliminated bulky Math::BigInt ops from time calculations.
-
-2002-11-12  karp  <karp@packrat.internet2.edu>
-
-	* owdigest/owdigest.c, scripts/OWP/Digest.pm, scripts/buckets2stats.pl:
-	Switch to double float to represent min delay in seconds
-	rather than play cast games with signed int's.
-
-2002-11-11  karp  <karp@packrat.internet2.edu>
-
-	* scripts/OWP/Digest.pm:
-	Fixed the bucket scheme (scary stuff - I am going to make sure
-	that the scheme is consistent across varios scripts/modules
-	to prevent this from happening again)
-
-2002-11-10  karp  <karp@packrat.internet2.edu>
-
-	* scripts/OWP/Digest.pm, scripts/buckets2stats.pl: More little fixes.
-
-2002-11-09  karp  <karp@packrat.internet2.edu>
-
-	* scripts/buckets2stats.pl: Another negative-realated bug fixed.
-
-	* scripts/buckets2stats.pl, scripts/OWP/Digest.pm:
-	Fixed bug with negative min.
-
-	* owdigest/owdigest.c: Fixed bug with negative min delays.
-
-2002-11-08  karp  <karp@packrat.internet2.edu>
-
-	* scripts/buckets2stats.pl:
-	Added archiving png files, and error bounds for plot legends.
-
-	* owdigest/owdigest.c: Added proper error values into digest files.
-
-2002-11-08  owamp  <owamp@packrat.internet2.edu>
-
-	* scripts/powcollector:
-	need to put this somewhere else - but I'm putting it here for now.
-
-	jeff
-
-	* scripts/OWP.pm: pid files need to be opened "trunc".
-
-	jeff
-
-	* scripts/collector.pl, scripts/powmaster.pl:
-	scripts should exit with 0 exit status if they succeeded in sending sigs.
-
-	jeff
-
 2002-11-08  Jeff W. Boote  <boote@packrat.internet2.edu>
 
 	* owamp/access2.c, owamp/sapi.c:
@@ -2485,7 +2523,7 @@
 
 	jeff
 
-	* configure.ac, owamp/access.h, owamp/access.h.in, owamp/access2.c, owamp/api.c, owamp/arithm64.c, owamp/defaults.c, owamp/endpoint.c, owamp/owamp.h, owamp/print.c, owamp/read_class2limits.c, owamp/time.c, owampd/owampd.c, owdigest/config.h.in, owping/owping.c, powstream/powstream.c:
+	* configure.ac, owamp/access.h, owamp/access.h.in, owamp/access2.c, owamp/api.c, owamp/arithm64.c, owamp/defaults.c, owamp/endpoint.c, owamp/owamp.h, owamp/print.c, owamp/read_class2limits.c, owamp/time.c, owampd/owampd.c, owping/owping.c, powstream/powstream.c:
 	Port back to linux again... Ugh, you wouldn't think you would have to touch
 	so many files.
 
@@ -2498,41 +2536,7 @@
 
 	jeff
 
-	* scripts/powmaster.pl: Corrected print->warn statement.
-
-	jeff
-
-2002-11-07  karp  <karp@packrat.internet2.edu>
-
-	* scripts/make_top_html.pl: Fixed a typo
-
 2002-11-07  Jeff W. Boote  <boote@packrat.internet2.edu>
-
-	* scripts/OWP.pm, scripts/collector.pl, scripts/powmaster.pl:
-	Added setuid capabilities. The scripts will refuse to run as root. They
-	will set their permissions to another uid if UserName is set in the config
-	file.
-
-	Also added the -h/-k flags. -h will send HUP to an existing powmaster/collector
-	and -k will send TERM. This will make rc scripts trivial. The only things
-	needed in the rc script are the config file and the path to the executable.
-
-	jeff
-
-	* scripts/owmesh.conf, scripts/powmaster.pl: owmesh.conf:
-		Adding UserName/GroupName. I'm using these to setuid the
-		powmaster/collector scripts. Although that didn't make this check-in.
-
-	powmaster.pl:
-		Adding -e option to call of powstream to set syslog facility.
-
-	jeff
-
-	* etc/owampd.conf: Example owampd.conf.
-
-	Don't expect this to work for you... You will need to edit it.
-
-	jeff
 
 	* powstream/powstream.c, powstream/powstreamP.h:
 	Added syslog facility option.
@@ -2582,167 +2586,10 @@
 
 	jeff
 
-2002-11-05  karp  <karp@packrat.internet2.edu>
-
-	* scripts/owmesh.conf: Added conf var:
-
-	# Multiplier to represent "infinite delay" relative to the largest
-	# non-infinite value
-	INF_DELAY_MULT  1.1
-
-	* scripts/buckets2stats.pl: Added proper plotting of "infinities".
-
 2002-11-05  Jeff W. Boote  <boote@packrat.internet2.edu>
 
 	* I2util/I2util/ErrLogSyslog.c, I2util/I2util/errlogsyslog.h, I2util/config/c-syslog-names.m4, I2util/configure.ac:
 	Added functionality to specify syslog facilities/priorities by name.
-
-	jeff
-
-2002-11-05  karp  <karp@packrat.internet2.edu>
-
-	* scripts/buckets2stats.pl:
-	Keep significant digits in min for plotting.
-
-	* scripts/buckets2stats.pl, owdigest/owdigest.c:
-	Changed fine region bucket width down to 0.01ms
-
-2002-11-04  karp  <karp@packrat.internet2.edu>
-
-	* scripts/buckets2stats.pl: Fixed 24-hour plots.
-
-	* scripts/buckets2stats.pl:
-	Treat lost packets as having "infinite" delay for percentile
-	calculations.
-
-2002-11-02  karp  <karp@packrat.internet2.edu>
-
-	* scripts/owmesh.conf: Changed tick labels on 30-sce res
-
-	* scripts/buckets2stats.pl: Added locking to datafile being plotted.
-
-2002-11-01  karp  <karp@packrat.internet2.edu>
-
-	* scripts/buckets2stats.pl: Fixed use of syslog.
-
-	* scripts/make_top_html.pl: Fixed tiny bug
-
-	* scripts/OWP.pm, scripts/OWP/Conf.pm, scripts/buckets2stats.pl, scripts/make_top_html.pl, scripts/pairs_pages_init.pl:
-	Misc fixes and improvements.
-
-	* scripts/makecron.pl: Incorporate make_top_html.pl into crontab
-
-	* scripts/buckets2stats.pl: Optimized percentile calculation.
-
-	* scripts/make_top_html.pl: Added vertical space betweeb tables.
-
-2002-10-31  karp  <karp@packrat.internet2.edu>
-
-	* scripts/make_top_html.pl:
-	Fixed to properly interact with buckets2stats
-
-	* scripts/buckets2stats.pl: Cleaned up debugging remains
-
-	* scripts/owmesh.conf: Add SUMMARY_PERIOD var (currently at 300)
-
-	* scripts/buckets2stats.pl:
-	Prepare the summary file by computing medians and loss over the last
-	SUMMARY_PERIOD (new conf var) and choosing the worst.
-
-2002-10-31  owamp  <owamp@packrat.internet2.edu>
-
-	* scripts/buckets2stats.pl, scripts/collector.pl:
-	buckets2stats.pl: oops syntax error in my print->warn change.
-
-	collector.pl: modified verbose output.
-
-	* scripts/OWP/Conf.pm, scripts/buckets2stats.pl, scripts/collector.pl:
-	buckets2stats.pl: just changed some print messages to warn's so they go to
-	syslog.
-
-	collector.pl: added a verbose warn message.
-
-	Conf.pm: added an Achive var.
-
-	jeff
-
-	* scripts/collector.pl: Adding verbose message for VALIDTIMES update.
-
-	jeff
-
-2002-10-30  karp  <karp@packrat.internet2.edu>
-
-	* scripts/buckets2stats.pl:
-	Cosmetic clean-up before substantial changes.
-
-	* scripts/buckets2stats.pl: Forgot OWP::Syslog
-
-	* scripts/buckets2stats.pl: Added syslog reporting.
-
-	* scripts/OWP/Utils.pm, scripts/OWP/Conf.pm: Remove use Posix
-
-2002-10-30  owamp  <owamp@packrat.internet2.edu>
-
-	* scripts/powmaster.pl:
-	Added better error messages for a closed socket.
-
-	jeff
-
-	* scripts/powmaster.pl: Added $verbose messages.
-
-	jeff
-
-2002-10-30  karp  <karp@packrat.internet2.edu>
-
-	* scripts/makecron.pl: Redirect stdout and stderr to /dev/null
-
-2002-10-30  owamp  <owamp@packrat.internet2.edu>
-
-	* scripts/powmaster.pl:
-	Added missing address for udp uptime sends to central host.
-
-	jeff
-
-2002-10-30  karp  <karp@packrat.internet2.edu>
-
-	* scripts/buckets2stats.pl:
-	Fixed perl path and closed GNUPLOT handle explicitly.
-
-2002-10-29  owamp  <owamp@packrat.internet2.edu>
-
-	* scripts/collector.pl, scripts/makecron.pl, scripts/powmaster.pl:
-	modified collector/powmaster to use node names for dir names.
-
-	jeff
-
-2002-10-29  karp  <karp@packrat.internet2.edu>
-
-	* scripts/buckets2stats.pl: Corrected some timing bugs.
-
-2002-10-29  owamp  <owamp@packrat.internet2.edu>
-
-	* scripts/collector.pl:
-	remove extra dirs from building - send/recv identical should not happen.
-
-	jeff
-
-	* scripts/powmaster.pl: fix syntax error. ugh.
-
-	* scripts/collector.pl: Removed commented out code.
-
-	jeff
-
-	* scripts/powmaster.pl:
-	fix uninitialized var - only happened if you DON't set -n...
-
-	jeff
-
-2002-10-29  Jeff W. Boote  <boote@packrat.internet2.edu>
-
-	* scripts/OWP.pm, scripts/collector.pl, scripts/powmaster.pl:
-	I have had the distinct misfortoune if discovering that SIGCHLD can
-	be received during a kill call for that child, even if sigprocmask
-	has SIGCHLD blocked...
 
 	jeff
 
@@ -2752,47 +2599,9 @@
 
 	jeff
 
-2002-10-28  owamp  <owamp@packrat.internet2.edu>
-
-	* scripts/OWP/Conf.pm: Fix DEFS and removed ref to CentralUploadDir.
-
-	jeff
-
-	* scripts/OWP/Makefile.am, scripts/collector.pl:
-	Linux/upgraded perl fixes.
-
-	jeff
-
-2002-10-27  Jeff W. Boote  <boote@packrat.internet2.edu>
-
-	* scripts/OWP.pm, scripts/OWP/Conf.pm, scripts/OWP/Syslog.pm, scripts/collector.pl, scripts/powmaster.pl:
-	Modified collector/powmaster to be daemons unless Debug is set in the
-	config file, or -f is passed on the command line. (-f: foreground)
-
-	Modified the reentrant fix from before so that it is fixed in
-	Syslog.pm itself. This is better since it is more self-containted,
-	and it actually works. The other fix didn't. Ugh.
-
-	jeff
-
-2002-10-26  Jeff W. Boote  <boote@packrat.internet2.edu>
-
-	* scripts/collector.pl:
-	forget to protect one of the sub-proc sig handlers.
-
-	jeff
-
-	* scripts/collector.pl, scripts/powmaster.pl:
-	FINALLY FIGURED OUT THE DAMN SIGNAL PROBLEM!!!!!
-
-	Because "die" is tied to syslog - die has become nonreentrant. I have added
-	a semaphore to the signal handlers to compensate.
-
-	jeff
-
 2002-10-25  Jeff W. Boote  <boote@packrat.internet2.edu>
 
-	* powstream/powstream.c, scripts/OWP/Digest.pm, scripts/collector.pl, scripts/powmaster.pl:
+	* powstream/powstream.c:
 	Reworked the sig stuff yet again... It is "a little" more simple now.
 
 	powmaster now sends a HUP to powstream's that need to reinitialize their test
@@ -2805,20 +2614,7 @@
 
 2002-10-25  karp  <karp@packrat.internet2.edu>
 
-	* scripts/OWP/Conf.pm: Minor fix
-
-	* scripts/OWP/Conf.pm, scripts/Makefile.am, scripts/owampd.sh.in:
-	Updated change to OwampdVarDir
-
-	* scripts/OWP/Makefile.am: Added missing OWP/\*.pm files
-
-	* scripts/Makefile.am, scripts/OWP/Makefile.am:
-	Added OWP/Makefile support
-
 	* configure.ac: Added scripts/OWP/Makefile
-
-	* scripts/Makefile.am:
-	Set up scripts to be install along with owamp binaries.
 
 2002-10-24  Jeff W. Boote  <boote@packrat.internet2.edu>
 
@@ -2827,69 +2623,7 @@
 
 	jeff
 
-	* scripts/OWP.pm, scripts/collector.pl, scripts/owmesh.conf, scripts/powmaster.pl:
-	Full functionality seems to be working now. valid_time files are being
-	updated and everything.
-
-	The only thing I think might be useful to add now would be to make these
-	scripts be daemons, and write to a pid file so rc scripts can access them
-	more easily.
-
-	(I'm going to sleep in tomorrow, but then I would like to try and install
-	using the owamp user-id, and see how it goes.)
-
-	jeff
-
-	OWP.pm:
-		corrected bug in validsessions function - 0 length array was
-		messing things up.
-	collector.pl:
-		Removed GDBM_File and replaced with DB_File. This allows
-		locking to work correctly. GDBM_File was giving me fits - this
-		may have actually been part of my signal problems before.
-	owmesh.conf:
-		replace gdbm with db in file extensions.
-	powmaster.pl:
-		Removed GDBM_File.
-
-	* scripts/OWP/RawIO.pm, scripts/OWP/Syslog.pm, scripts/OWP.pm, scripts/collector.pl, scripts/nodemaster.pl, scripts/owmesh.conf, scripts/powmaster.pl:
-	OWP.pm:
-		fixed logic of valid_session to not delete the last "uptime" pair.
-
-	collector.pl:
-		LOTS of additions for uptimewatch capability.
-		(doesn't yet delete files - but it does update per/dir database.)
-		LOTS of changes to enhance signal support.
-
-	owmesh.conf:
-		addition of udpmessage length.
-
-	powmaster.pl:
-		added syslog support
-		enhanced signal support
-
-	RawIO.pm:
-		simplified signal support.
-
-	Syslog.pm:
-		removed duplicate printing to stderr.
-		added initial syslog opened message...
-
-	jeff
-
-2002-10-22  karp  <karp@packrat.internet2.edu>
-
-	* scripts/buckets2stats.pl, scripts/make_top_html.pl, scripts/owmesh.conf, scripts/pairs_pages_init.pl:
-	Clean-up of html and gnuplot code
-
 2002-10-22  Jeff W. Boote  <boote@packrat.internet2.edu>
-
-	* scripts/OWP.pm, scripts/OWP/Archive.pm, scripts/OWP/Conf.pm, scripts/collector.pl, scripts/livenotify.pl, scripts/owmesh.conf, scripts/powmaster.pl:
-	I moved the live_update functionality into the powmaster script. I think it
-	will make things much easier if there is just the two applications to run
-	directly on the node... owampd and powmaster.
-
-	jeff
 
 	* owampd/owampd.c:
 	Modified format of owampd.info file to contain both the pid and the
@@ -2900,73 +2634,10 @@
 
 	jeff
 
-2002-10-21  Jeff W. Boote  <boote@packrat.internet2.edu>
-
-	* scripts/collector.pl: Better error message for closed socket.
-
-	jeff
-
 2002-10-18  karp  <karp@packrat.internet2.edu>
 
 	* Makefile.am, configure.ac:
 	Added support for scripts directory Makefile
-
-	* scripts/Makefile.am, scripts/owampd.sh.in: Initial import.
-
-	owampd.sh.in is used as a template for owampd.sh script - to
-	be placed in /usr/local/etc/rc.d
-
-2002-10-18  Jeff W. Boote  <boote@packrat.internet2.edu>
-
-	* scripts/collector.pl:
-	Oops. Forgot to delete the session file after archiving and digesting.
-
-	(My filesystem was getting very large... I've been running this most of
-	the day.)
-
-	jeff
-
-	* scripts/OWP.pm, scripts/OWP/Archive.pm, scripts/OWP/RawIO.pm, scripts/OWP/Utils.pm, scripts/collector.pl, scripts/livenotify.pl, scripts/owmesh.conf, scripts/powmaster.pl:
-	powmaster -> collector file transfers seem to be working.
-	collector digesting also seems to be working.
-
-	Still need to add "validation" to data using uptimewatch. (uptimewatch doesn't currently use the same setup as
-	collector, so it needs to be modified.)
-
-	jeff
-
-2002-10-17  karp  <karp@packrat.internet2.edu>
-
-	* scripts/uptimewatch.pl:
-	Check-point - still need to work out how to initialize $conf
-	(specify NODE).
-
-	* scripts/OWP/Conf.pm: Added SEPARATOR conf var.
-
-	* scripts/livenotify.pl:
-	Improved robustness. Factored out repeated code (fetching starttime/pid).
-
-2002-10-17  Jeff W. Boote  <boote@packrat.internet2.edu>
-
-	* scripts/powmaster.pl:
-	Only checking in for the example on setting the "NODE" - doesn't work right
-	 now...
-
-	jeff
-
-2002-10-17  karp  <karp@packrat.internet2.edu>
-
-	* scripts/buckets2stats.pl: Minor cosmetic fixes.
-
-	* scripts/uptimewatch.pl: Fix split to parse messages properly.
-
-	* scripts/OWP/Digest.pm: Initial import.
-
-	# This sub merges digest files @files into a new digest file $newname.
-	sub merge {
-		my ($newname, @files) = @_;
-	...
-	}
 
 2002-10-16  karp  <karp@packrat.internet2.edu>
 
@@ -2975,37 +2646,9 @@
 	* owampd/owampd.c:
 	Converted command-line options to match the style of owping.
 
-	* scripts/makecron.pl: Initial commit.
-
-	# This script creates crontab file to run buckets2stats.pl at the right
-	# frequencies. Default name for the output file is "crontab".
-
-	# usage: makecron.pl [crontab_out_file]
-
-	* scripts/OWP/Utils.pm, scripts/buckets2stats.pl:
-	Fixed inconsistent sub names.
-
-2002-10-15  karp  <karp@packrat.internet2.edu>
-
-	* scripts/buckets2stats.pl: Removed autoscaling of x-axis
-
-	* scripts/make_top_html.pl:
-	Changed code so as to make it easy to color links as needed.
-
-	* scripts/OWP.pm, scripts/OWP/Conf.pm, scripts/buckets2stats.pl, scripts/make_top_html.pl, scripts/owmesh.conf, scripts/pairs_pages_init.pl:
-	Revamped the whole graph-plotting part. Added PLOT_FMT variable
-	to owmesh.conf to control time units in plot titles.
-
-2002-10-11  Jeff W. Boote  <boote@packrat.internet2.edu>
-
-	* scripts/collector.pl: check-point of collector script.
-
-
-	jeff
-
 2002-10-10  Jeff W. Boote  <boote@packrat.internet2.edu>
 
-	* owamp/endpoint.c, owamp/owamp.h, scripts/OWP/Conf.pm, scripts/OWP/RawIO.pm, scripts/OWP/Syslog.pm, scripts/owmesh.conf, scripts/powmaster.pl:
+	* owamp/endpoint.c, owamp/owamp.h:
 	checkpointing mostly... long weekend.
 
 	endpoint.c:	removed some debugging print statements to fix some
@@ -3018,62 +2661,9 @@
 
 	jeff
 
-2002-10-09  karp  <karp@packrat.internet2.edu>
-
-	* scripts/OWP/Conf.pm, scripts/buckets2stats.pl, scripts/make_top_html.pl, scripts/pairs_pages_init.pl:
-	Constructing plots of (min, median, 90th percentile) and
-	basic web-pages for every link in the mesh.
-
-	* scripts/owmesh.conf:
-	Added PLOT_PERIOD_NAME attribute to be used in graph titles.
-
-2002-10-09  Jeff W. Boote  <boote@packrat.internet2.edu>
-
-	* scripts/OWP/Syslog.pm:
-	Fixed small bug in the __DIE__ handler... Need to call die instead of
-	returning from it.
-
-	jeff
-
-	* scripts/OWP/Syslog.pm:
-	Added a module to allow you to tie a fh to syslog. Also allows you to send
-	die/warn messages to syslog as well. It is based upon Tie::Syslog but
-	there were a few changes I needed to make to use it. (The die/warn
-	handle mechanism only worked for STDERR.)  I also modified the arg parsing
-	to use named args.)
-
-	jeff
-
-2002-10-08  karp  <karp@packrat.internet2.edu>
-
-	* scripts/owmesh.conf: Added CentralWWWDir attribute
-
-	* scripts/buckets2stats.pl:
-	Cleaned up to make use of the new path functions.
-
-	* scripts/OWP/Conf.pm, scripts/pairs_pages_init.pl:
-	Add auxiliary functions for quick construction of key paths
-	from conf variables.
-
-	* scripts/pairs_pages_init.pl: Tiny - forgot to add usage.
-
-	* scripts/pairs_pages_init.pl:
-	Initial import. Builds directories and constructs some small
-	pages (these are already properly linked in from the top page)
-
-	* scripts/make_top_html.pl:
-	Construct tables with proper relative links (currently using
-	just median, will add more stats)
-
-2002-10-07  karp  <karp@packrat.internet2.edu>
-
-	* scripts/make_top_html.pl:
-	Got working template for contruction of the top level html page.
-
 2002-10-05  Jeff W. Boote  <boote@packrat.internet2.edu>
 
-	* owamp/capi.c, powstream/powstream.c, scripts/OWP/Conf.pm, scripts/powmaster.pl:
-	owamp/capi.c:
+	* owamp/capi.c, powstream/powstream.c: owamp/capi.c:
 		Fixed a bug. Error condition was reported fatal, when it should
 		have been able to continue. (It wasn't looping through all possible
 		addrinfo structs to find a match because of this. It was failing
@@ -3091,21 +2681,9 @@
 
 	jeff
 
-	* scripts/OWP/Utils.pm, scripts/powmaster.pl: powmaster.pl:
-		manages powstream ok now - has a send_data process that is event
-		driven. (It wakes up whenever there is more data to be sent to
-		the central-server.)
-
-	jeff
-
-2002-10-04  karp  <karp@packrat.internet2.edu>
-
-	* scripts/livenotify.pl: Cleaned up and plugged in all conf variables.
-
 2002-10-04  Jeff W. Boote  <boote@packrat.internet2.edu>
 
-	* powstream/powstream.c, powstream/powstreamP.h, scripts/OWP/Conf.pm, scripts/owmesh.conf, scripts/powmaster.pl:
-	powstream:
+	* powstream/powstream.c, powstream/powstreamP.h: powstream:
 		Added -p option: causes it to print the filenames it creates
 		on stdout.
 	owmesh.conf:
@@ -3117,42 +2695,9 @@
 
 	jeff
 
-2002-10-04  karp  <karp@packrat.internet2.edu>
-
-	* scripts/OWP.pm: Added OWP::Utils.pm
-
-	* scripts/buckets2stats.pl:
-	At this point the script is geared towards being called
-	from crontab still (this may change).
-
-	# This script accepts a resolution, fetches look-back period,
-	# and constructs plots for all node pairs. The resolution itself
-	# and its associated attributes MUST be defined in the config
-	# file so that they can be fetched. Resulting plots are placed
-	# under $conf->{'CENTRALWWWDIR'}
-
-	# usage: buckets2stats.pl <resolution>
-
 2002-10-03  Jeff W. Boote  <boote@packrat.internet2.edu>
 
-	* scripts/OWP/Conf.pm:
-	Added env var and homedir parsing for the "path" config options.
-
-	jeff
-
-	* scripts/OWP/Conf.pm, scripts/owmesh.conf, scripts/testconf.pl:
-	owmesh.conf:
-		Added vars needed by powmaster.pl
-
-	testconf.pl:
-		Added test of must_get_val method.
-	Conf.pm:
-		Changed how values are returned. More use of perl references to
-		avoid copying data until needed.
-
-	jeff
-
-	* powstream/powstream.c, scripts/owmesh.conf:
+	* powstream/powstream.c:
 	powsteam: added powstream specific cmdline args to usage().
 
 	owmesh.conf: Oops - I had commented something out in the pervious version
@@ -3160,7 +2705,7 @@
 
 	jeff
 
-	* powstream/powstream.c, powstream/powstreamP.h, scripts/OWP/Conf.pm, scripts/owmesh.conf:
+	* powstream/powstream.c, powstream/powstreamP.h:
 	Tolya - I reset a bunch of the parameters to more "global" defaults. If
 	you want them to keep their current values for you, you need to start
 	using the OWPCONF env var to set another config file that will be read
@@ -3188,84 +2733,6 @@
 
 	jeff
 
-2002-10-02  karp  <karp@packrat.internet2.edu>
-
-	* scripts/buckets2stats.pl:
-	Minor fix - will figure out proper sub exporting from OWP::Utils later
-	but this works for now (explicitly calling a sub by full name)
-
-	* scripts/OWP/Utils.pm: Initial import.
-
-	Separated out some common code using Math::BigInt.
-
-	* scripts/buckets2stats.pl: Graphing is basically done. Usage now is:
-
-	buckets2stats.pl <dirname> <age_in_hours>
-
-	so calling the script on the right directory should do the trick
-	(assuming we do keep different resolutions in separate directories).
-
-	Little details may still need some ironing out but main
-	functionality seems to be there.
-
-	* scripts/buckets2stats.pl: Initial import.
-
-	# Read bucket count files, construct time series stats and plot them.
-	# usage: buckets2stats.pl <dirname> <age_in_hours>
-
-	Currently constructs gnuplot data file but doesn't plot it yet -
-	need to figure out a decent way to do x-axis ticks.
-
-2002-10-02  Jeff W. Boote  <boote@packrat.internet2.edu>
-
-	* scripts/OWP/Conf.pm, scripts/owmesh.conf:
-	fixed get_val to tr/a-z/A-Z all ATTR values.
-
-	jeff
-
-	* scripts/OWP/Conf.pm, scripts/testconf.pl: added $conf->dump.
-
-	jeff
-
-2002-10-02  karp  <karp@packrat.internet2.edu>
-
-	* owdigest/owdigest.c: Include min delay into digest files.
-
-2002-10-01  karp  <karp@packrat.internet2.edu>
-
-	* owdigest/cookbuckets.pl: Initial import.
-
-	# Create a histogram of bucket counts from a digest file.
-	# usage: cookbuckets.pl <filename>
-
-	May or may not end up using it but I thought I'd check it in
-	before I forget about its existence.
-
-	* owdigest/owdigest.c: Use u_int32_t for bucket counts.
-
-2002-10-01  Jeff W. Boote  <boote@packrat.internet2.edu>
-
-	* scripts/OWP/Conf.pm, scripts/owmesh.conf: Added DIGESTRES stuff.
-
-	Tolya, take a look at the owmesh.conf file for an example. (I added a
-	commonname attribute to make it easier to make sense of those resolutions. I
-	also differentiated the period for the plotting from the period of "saving"
-	digest files.)
-
-	jeff
-
-	* scripts/OWP/Conf.pm, scripts/owmesh.conf, scripts/testconf.pl:
-	owmesh.conf:
-		Added testing of variable reset, array append.
-
-	testconf.pl:
-		Corrected full mesh test - next, not last in the loop.
-
-	Conf.pm:
-		Added variable reset.
-
-	jeff
-
 2002-09-30  Jeff W. Boote  <boote@packrat.internet2.edu>
 
 	* owamp/endpoint.c, powstream/powstream.c: endpoint.c:
@@ -3284,125 +2751,6 @@
 
 	jeff
 
-	* etc/owampd.info, etc/owampd.pid:
-	These files are automatically created and should not be part of the
-	distribution.
-
-	jeff
-
-2002-09-28  Jeff W. Boote  <boote@packrat.internet2.edu>
-
-	* scripts/OWP/Conf.pm, scripts/owmesh.conf, scripts/testconf.pl:
-	owmesh.conf:
-		Has an example showing 3 nodes:
-			CHIN,ATLA,IPLS
-	testconf.pl:
-		Has a two full examples of using the node addresses.
-		One is similar to the weathermap - it only deals with adj nodes.
-		The other is does a full mesh of each "meshtype".
-
-	Conf.pm:
-		Huge changes - believe it or not, I believe I managed to add
-		functionality, while making the code more simple, and shorter.
-		(Ok - some of it is pretty criptic, but it is perl after all...)
-
-	jeff
-
-2002-09-28  karp  <karp@packrat.internet2.edu>
-
-	* scripts/livenotify.pl: Initial import.
-
-	# This script sends time updates to a designated port on the central
-	# host and manages a persistent piece of data describing a fixed
-	# number of the last reboots.
-
-2002-09-27  karp  <karp@packrat.internet2.edu>
-
-	* scripts/uptimewatch.pl: Initial import.
-
-	# This script runs on the central host. It receives updates,
-	# removes discovered invalid data, and updates database of
-	# liveness intervals.
-
-2002-09-26  Jeff W. Boote  <boote@packrat.internet2.edu>
-
-	* scripts/OWP/Conf.pm, scripts/testconf.pl: Fix arrays.
-
-	jeff
-
-	* scripts/nodemaster.pl:
-	Modified to use the conf module, and to use the datadir/recv_addr/send_addr
-	dir structure on the node side as well.
-
-	jeff
-
-	* scripts/OWP/Conf.pm, scripts/owmesh.conf:
-	Added karp specific defaults to the conf file for an example.
-
-	(They mimic what you had hard-coded in the nodemaster.pl script.)
-
-	BTW - the secret stuff is broken... You will need to comment them out of
-	the conf file, and just deal with the "default" one in the .pl script until
-	I can fix it tomorrow. Sorry.
-
-	jeff
-
-2002-09-25  karp  <karp@packrat.internet2.edu>
-
-	* scripts/centralmaster.pl:
-	Added more robustness..no reason to die if datadir not found
-
-	* scripts/centralmaster.pl:
-	Another typo..sorry, didn't get around to test
-
-2002-09-25  Jeff W. Boote  <boote@packrat.internet2.edu>
-
-	* scripts/OWP/Conf.pm, scripts/testconf.pl:
-	testconf.pl:	fbsd perl path.
-	Conf.pm:
-		Added error check for undefined $addr,
-		Added documentation to header.
-
-	jeff
-
-	* scripts/OWP/Conf.pm:
-	Removed a large section that I had commented out during development, but forgot
-	to remove.
-
-	jeff
-
-	* scripts/OWP.pm, scripts/OWP/Conf.pm, scripts/owmesh.conf, scripts/testconf.pl:
-	initial OWP::Conf module. See the testconf.pl to see how it works.
-
-	It should pass in an Addr and optionally a configuration directory path.
-
-	(The testconf script uses the same directory as the testconf.pl for this.)
-
-	I have not modified nodemaster or anything to use this...
-
-	jeff
-
-2002-09-25  karp  <karp@packrat.internet2.edu>
-
-	* scripts/centralmaster.pl: Fixed typo.
-
-	* scripts/centralmaster.pl:
-	Removed hard-coded list of receiver directories - now
-	the script looks for them under the top_dir as appropriate.
-
-	Remove the use of 'ls' and replace it by opendir/readdir/closedir
-
-	* owdigest/owdigest.c:
-	Cleaned up owdigest, added 'verbose' option for debugging
-	(not set by default).. overall looks in good shape now.
-
-	* scripts/nodemaster.pl: Fixed the script and made it more robust.
-
-2002-09-24  karp  <karp@packrat.internet2.edu>
-
-	* etc/owampd.info, etc/owampd.passwd, etc/owampd.pid:
-	Quick check-in for easier distribution between nodes
-
 2002-09-23  Jeff W. Boote  <boote@packrat.internet2.edu>
 
 	* powstream/powstream.c:
@@ -3411,21 +2759,11 @@
 
 	jeff
 
-2002-09-23  karp  <karp@packrat.internet2.edu>
-
-	* scripts/nodemaster.pl: Clean-up and better diagnostics
-
-2002-09-23  Jeff W. Boote  <boote@packrat.internet2.edu>
-
 	* README: Added comments to test cvs.
 
 	jeff
 
 2002-09-23  karp  <karp@packrat.internet2.edu>
-
-	* scripts/centralmaster.pl:
-	Added logging liveness reports to a database. The script
-	also reads in the database contents on start-up.
 
 	* owamp/defaults.c, owamp/sapi.c, owamp/util.c, I2util/I2util/Options.c, I2util/I2util/table.c:
 	Cosmetic changes (tiny).
@@ -3462,27 +2800,11 @@
 
 	jeff
 
-2002-09-20  karp  <karp@packrat.internet2.edu>
-
-	* scripts/centralmaster.pl:
-	File validation and archiving are complete now.
-
-	--Tolya
-
-2002-09-20  Jeff W. Boote  <boote@packrat.internet2.edu>
-
 	* powstream/powstream.c: new powstream basically works.
 
 	I need to add event handling. (cleanup on SIGINT,HUP,TERM)
 
 	jeff
-
-2002-09-19  karp  <karp@packrat.internet2.edu>
-
-	* scripts/centralmaster.pl, scripts/nodemaster.pl:
-	Introduce reading of the start_time from owampd.info file
-	and sending/receving pairs <start, current>. Managing the
-	intervals gets a whole lot easier..
 
 2002-09-19  Jeff W. Boote  <boote@packrat.internet2.edu>
 
@@ -3507,8 +2829,7 @@
 
 2002-09-19  Jeff W. Boote  <boote@packrat.internet2.edu>
 
-	* owdigest/owdigest.c, owping/owping.c:
-	Changed to use new ParseRecords interface.
+	* owping/owping.c: Changed to use new ParseRecords interface.
 
 	jeff
 
@@ -3531,30 +2852,16 @@
 
 2002-09-18  Jeff W. Boote  <boote@packrat.internet2.edu>
 
-	* owdigest/owdigest.c, owping/owping.c, owamp/capi.c, owamp/endpoint.c, owamp/owamp.h, owamp/owampP.h, owamp/protocol.c, owamp/sapi.c, owamp/api.c:
+	* owping/owping.c, owamp/capi.c, owamp/endpoint.c, owamp/owamp.h, owamp/owampP.h, owamp/protocol.c, owamp/sapi.c, owamp/api.c:
 	Modified owp file read/write functions to actually do something useful.
 
 	jeff
 
-2002-09-18  karp  <karp@packrat.internet2.edu>
-
-	* scripts/nodemaster.pl:
-	The script correctly notifies the central host about
-	current time now. Still need to add authentication.
-
-	* scripts/centralmaster.pl:
-	Improved main loop. Script looks for .owp files and digests
-	them now. Added data structures to implemement validation
-	but some more work is needed.
-
 2002-09-17  karp  <karp@packrat.internet2.edu>
 
-	* configure.ac, owdigest/config.h.in, owdigest/owdigest.c:
-	Added mergesort/qsort work-around
+	* configure.ac: Added mergesort/qsort work-around
 
-	* owdigest/Makefile: Removing - added by mistake.
-
-	* owamp/owamp.h, owamp/time.c, owdigest/owdigest.c, owping/owping.c:
+	* owamp/owamp.h, owamp/time.c, owping/owping.c:
 	Moved owp_bits2prec(), and added
 
 	double
@@ -3570,24 +2877,6 @@
 	Added precision handling to owdigest.
 
 	* Makefile.am, configure.ac: Add owdigest to source list.
-
-	* scripts/centralmaster.pl:
-	Initial commit. Skeleton of the script to run on the central host.
-
-	* scripts/nodemaster.pl:
-	Periodically send current time (20-char ASCII string) to the central host.
-
-2002-09-16  karp  <karp@packrat.internet2.edu>
-
-	* owdigest/Makefile.am, owdigest/owdigest.c:
-	Massive changes - for all purposes, a full rewrite.
-
-	Usage: owdigest datafile out_file
-
-2002-09-13  karp  <karp@packrat.internet2.edu>
-
-	* scripts/nodemaster.pl:
-	Transfer whole dir hierarchy instead of a single dir
 
 2002-09-12  Jeff W. Boote  <boote@packrat.internet2.edu>
 
@@ -3616,22 +2905,6 @@
 		kinda works.
 
 	jeff
-
-2002-09-12  karp  <karp@packrat.internet2.edu>
-
-	* owdigest/Makefile, owdigest/buckets.pl, owdigest/buckets.py, owdigest/owdigest.c:
-	Initial import - a suite of tools to take owamp data files
-	and transform them into bucket counts. Then take files of bucket
-	counts and process them further.
-
-	owdigest.c takes on input any number of owamp data files and constructs
-	           a digest of bin counts (records of the form <index, count>)
-
-	buckets.pl is a simple exercise in reading bucket file, I am rather
-	     leaning to use Python for constructing histograms - Python has
-	     much better numerical support and excellent interface to gnuplot.
-
-	buckets.py does just that - makes a histogram plot from bucket counts
 
 2002-09-11  Jeff W. Boote  <boote@packrat.internet2.edu>
 
@@ -3720,26 +2993,6 @@
 		- interface changes for above.
 
 	jeff
-
-2002-09-06  karp  <karp@packrat.internet2.edu>
-
-	* scripts/nodemaster.pl:
-	The script now takes in a dirname and loops forever - matching
-	'*.owp' files and trying to send them off (round-robin so as not
-	to inflict starvation). Successfully transferred files are deleted
-	(after md5 check, of course)
-
-	Usage: nodemaster.pl [dirname]
-
-	--Tolya
-
-	* scripts/nodemaster.pl:
-	Initial import - this script manages uploading of new datafiles
-	to the central server.
-
-	Usage: nodemaster.pl <filename>
-
-	--Tolya
 
 2002-09-04  karp  <karp@packrat.internet2.edu>
 
@@ -4124,7 +3377,7 @@
 
 2002-08-16  Jeff W. Boote  <boote@packrat.internet2.edu>
 
-	* etc/class2limits.conf, owamp/api.c, owamp/capi.c, owamp/context.c, owamp/endpoint.c, owamp/endpoint.h, owamp/owamp.h, owamp/owampP.h, owamp/sapi.c, owampd/owampd.c:
+	* owamp/api.c, owamp/capi.c, owamp/context.c, owamp/endpoint.c, owamp/endpoint.h, owamp/owamp.h, owamp/owampP.h, owamp/sapi.c, owampd/owampd.c:
 	Fixed memory problem with endpoint functions.
 
 	removed select returned message from server.
@@ -4186,7 +3439,7 @@
 
 2002-08-15  Jeff W. Boote  <boote@packrat.internet2.edu>
 
-	* owping/owping.c, etc/owamp_secrets.conf, etc/policy.conf, owamp/access.h.in, owamp/access2.c, owamp/conndata.h, owamp/defaults.c, owamp/owamp.h, owamp/read_class2limits.c, owamp/sapi.c, owampd/owampd.c:
+	* owping/owping.c, owamp/access.h.in, owamp/access2.c, owamp/conndata.h, owamp/defaults.c, owamp/owamp.h, owamp/read_class2limits.c, owamp/sapi.c, owampd/owampd.c:
 	policy changes for client. (There is a problem with the endpoint now - it can't
 	write to the directory...) I'll look at it when I get back.
 
@@ -4580,7 +3833,7 @@
 
 2002-08-01  Jeff W. Boote  <boote@packrat.internet2.edu>
 
-	* etc/ip2class.conf, owamp/access2.c, owamp/conndata.h, owamp/endpoint.c, owamp/io.c, owamp/read_class2limits.c, owamp/unixtime.c, owamp/unixtime.h, owampd/owampd.c, owampd/owampdP.h, owping/owping.c, owping/owpingP.h:
+	* owamp/access2.c, owamp/conndata.h, owamp/endpoint.c, owamp/io.c, owamp/read_class2limits.c, owamp/unixtime.c, owamp/unixtime.h, owampd/owampd.c, owampd/owampdP.h, owping/owping.c, owping/owpingP.h:
 	First cut at the recv/send functionality. There are definitely some problems
 	still -but sessions to actually happen. (Data files don't seem to have
 	everything in them I would expect yet...)
@@ -4588,10 +3841,6 @@
 	But - I wanted to get this all checked in before I leave for my flight.
 
 	jeff
-
-2002-07-31  karp  <karp@packrat.internet2.edu>
-
-	* etc/passwd.conf: Initial import.
 
 2002-07-30  karp  <karp@packrat.internet2.edu>
 
@@ -4627,9 +3876,6 @@
 	* owamp/access2.c:
 	Fixed memory leaks and corrected line-counting in read_ip2class()
 
-	* etc/ip2class.conf:
-	Make a valid config file so server can start without aborting
-
 	* owamp/access2.c: Minor bug fix.
 
 2002-07-29  karp  <karp@packrat.internet2.edu>
@@ -4641,7 +3887,7 @@
 
 	Minor fixes elsewhere.
 
-	* etc/class2limits.conf, etc/ip2class.conf, owamp/access.h.in, owamp/access2.c, owamp/defaults.c, owamp/read_class2limits.c:
+	* owamp/access.h.in, owamp/access2.c, owamp/defaults.c, owamp/read_class2limits.c:
 	access2.c
 
 2002-07-27  Jeff W. Boote  <boote@packrat.internet2.edu>
@@ -4808,8 +4054,6 @@
 	* owamp/defaults.c:
 	Added application-provided owp_check_control() function.
 
-	* etc/class2limits.conf: Slightly more interesting config.
-
 	* owamp/access2.c: Added owp_sockaddr2class() function.
 
 	* owamp/access.h.in:
@@ -4836,8 +4080,6 @@
 	* owamp/read_class2limits.c:
 	Initial import of read_class2limits.c - read the tree structure of classes,
 	and their associated usage limits.
-
-	* etc/class2limits.conf: Example of a new class2limits format.
 
 	* owamp/access2.c:
 	Fixed lower level function to pass errors upwards instead
@@ -5020,7 +4262,7 @@
 	* owamp/access2.c, owamp/print.c:
 	Added print-out for Ipv4 and IPv6 cases in read_id2class
 
-	* etc/ip2class.conf, owamp/access.h.in, owamp/access2.c, owamp/print.c:
+	* owamp/access.h.in, owamp/access2.c, owamp/print.c:
 	Parser reads and prints KID part of id2class mapping (IPv4 is easy
 	and I just need to add hex-encoding or reverse numeric-to-ASCII mapping
 	to be able to print IPv6 part). Saving data in a hash is finished
@@ -6030,8 +5272,7 @@
 
 2002-04-15  karp  <karp@packrat.internet2.edu>
 
-	* owamp/table.128, etc/class2limits.conf, etc/ip2class.conf, etc/owamp_secrets.conf, etc/policy.conf:
-	Initial import.
+	* owamp/table.128: Initial import.
 
 	* owamp/rijndael-alg-fst.c, owamp/rijndael-alg-fst.h, owamp/rijndael-api-fst.c, owamp/rijndael-api-fst.h:
 	Initial import for rijndael.
