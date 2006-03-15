@@ -61,12 +61,30 @@
 
 #include <limits.h>
 #include <sys/types.h>
+#ifdef  HAVE_INTTYPES_H
+#include <inttypes.h>
+#endif
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/socket.h>
 #include <sys/param.h>
 #include <netdb.h>
 #include <time.h>
+
+/* Deal with needed inttypes.h - hopefully these were already defined... */
+#ifndef PRIuPTR
+#if (sizeof(void *) != sizeof(long))
+#error "Need real PRIuPTR defined by inttypes.h on this system"
+#endif
+#define PRIuPTR "lu"
+#endif  /* PRIuPTR */
+
+#ifndef PRIu64
+#if (sizeof(uint64_t) != sizeof(unsigned long long))
+#error "Need real PRIu64 defined by inttypes.h on this system"
+#endif
+#define PRIu64  "llu"
+#endif
 
 #ifndef        False
 #define        False        (0)
