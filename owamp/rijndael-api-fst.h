@@ -38,6 +38,8 @@
 #ifndef __RIJNDAEL_API_FST_H
 #define __RIJNDAEL_API_FST_H
 
+#include <owamp/owamp.h>
+
 #include <stdio.h>
 #include <owamp/rijndael-alg-fst.h>
 

@@ -18,10 +18,11 @@
  *
  *        Description:        
  */
+#include <owamp/owamp.h>
+
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-#include <owamp/owamp.h>
 
 struct OWPExpContextRec{
     /* AES random number generator fields */

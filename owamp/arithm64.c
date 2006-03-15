@@ -28,11 +28,12 @@
  * seconds, 4 LSBytes are fractional. Each set of 4 Bytes is pulled out
  * via shifts/masks as a 32bit unsigned int when needed independently.
  */
+#include <owamp/owamp.h>
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
 #include <string.h>
-#include <owamp/owamp.h>
 
 #define MASK32(x) ((x) & 0xFFFFFFFFUL)
 #define BILLION 1000000000UL

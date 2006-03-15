@@ -18,6 +18,8 @@
  **        Description:        
  **      Default policy  functions used by OWAMP applications.
  */
+#include <owamp/owamp.h>
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <ctype.h>
@@ -30,7 +32,6 @@
 #include <netinet/in.h>
 #include <assert.h>
 
-#include <owamp/owamp.h>
 #include "policy.h"
 #include "fts.h"
 

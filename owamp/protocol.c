@@ -38,9 +38,9 @@
  */
 
 #include <I2util/util.h>
-#include <libgen.h>
-
 #include <owampP.h>
+
+#include <libgen.h>
 
 /*
  *         ServerGreeting message format:

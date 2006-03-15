@@ -34,6 +34,7 @@
  * Markus Friedl <markus.friedl@informatik.uni-erlangen.de>
  * John Skodon <skodonj@webquill.com>
  */
+#include <owamp/owamp.h>
 
 #include <assert.h>
 #include <stdlib.h>

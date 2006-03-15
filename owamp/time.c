@@ -39,10 +39,11 @@
  *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *
  */
+#include <owamp/owampP.h>
+
 #include <string.h>
 #include <assert.h>
 #include <sys/time.h>
-#include <owamp/owampP.h>
 #ifdef  HAVE_SYS_TIMEX_H
 #include <sys/timex.h>
 #endif

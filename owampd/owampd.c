@@ -20,6 +20,8 @@
  *
  *        Description:        
  */
+#include <owamp/owamp.h>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
@@ -38,8 +40,6 @@
 #include <pwd.h>
 #include <grp.h>
 #include <syslog.h>
-
-#include <owamp/owamp.h>
 
 #include "owampdP.h"
 #include "policy.h"

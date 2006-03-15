@@ -24,6 +24,8 @@
  *        set up perpetual tests and keep them going until this application
  *        is killed.
  */
+#include <owamp/owamp.h>
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
@@ -38,8 +40,6 @@
 #include <assert.h>
 #include <syslog.h>
 #include <math.h>
-
-#include <owamp/owamp.h>
 
 
 #if defined HAVE_DECL_OPTRESET && !HAVE_DECL_OPTRESET

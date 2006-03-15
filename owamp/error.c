@@ -18,9 +18,10 @@
  **
  **        Description:        
  */
+#include <owampP.h>
+
 #include <stdio.h>
 #include <stdarg.h>
-#include <owampP.h>
 
 void
 OWPError_(
