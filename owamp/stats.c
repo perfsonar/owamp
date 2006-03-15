@@ -751,10 +751,10 @@ OWPStatsCreate(
     d = OWPTestPacketRate(stats->ctx,&stats->hdr->test_spec) *
             OWPNum64ToDouble(stats->hdr->test_spec.loss_timeout) *
             PACKETBUFFERALLOCFACTOR;
-    if(d > 0xffffffffL){
+    if(d > 0x7fffffffL){
         OWPError(stats->ctx,OWPErrDEBUG,OWPErrUNKNOWN,
                 "%s: Extreme packet rate (%g) requires excess memory usage",d);
-        stats->plistlen = 0xffffffffL;
+        stats->plistlen = 0x7fffffffL;
     }
     else{
         stats->plistlen = d;
@@ -803,8 +803,8 @@ OWPStatsCreate(
     assert(bucketwidth > 0.0);
     stats->bucketwidth = bucketwidth;
     d = stats->hdr->test_spec.loss_timeout / stats->bucketwidth;
-    if(d > 0xffffffffL){
-        stats->blistlen = 0xffffffffL;
+    if(d > 0x7fffffffL){
+        stats->blistlen = 0x7fffffffL;
     }
     else{
         stats->blistlen = d;
