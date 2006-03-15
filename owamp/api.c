@@ -18,6 +18,8 @@
  **
  **        Description:        
  */
+#include "./owampP.h"
+
 #include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -28,7 +30,6 @@
 #include <string.h>
 #include <assert.h>
 
-#include "./owampP.h"
 
 /*
  * Function:        OWPGetContext
@@ -2444,7 +2445,7 @@ OWPParseRecords(
         if(fread(rbuf,len_rec,1,fp) < 1){
             if(ferror(fp)){
                 OWPError(ctx,OWPErrFATAL,errno,
-                        "fread(): STREAM ERROR: offset=%" PRIu64 ",i=%" PRIu32,
+                        "fread(): STREAM ERROR: offset=%" PRIuPTR ",i=%" PRIu32,
                         ftello(fp),i);
             }
             else if(feof(fp)){

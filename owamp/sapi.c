@@ -22,13 +22,14 @@
  *        This file contains the api functions typically called from an
  *        owamp server application.
  */
+#include <owamp/owampP.h>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 
-#include <owamp/owampP.h>
 
 static int
 OpenSocket(

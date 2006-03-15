@@ -146,10 +146,11 @@ AC_SUBST(OWPLIBDEPS)
 AC_SUBST(TOP_BUILD_DIRS)
 
 AC_CANONICAL_HOST
+AC_DEFINE(_GNU_SOURCE, 1, "Use glibc features.")
+AC_DEFINE(_LARGEFILE_SOURCE, 1, "Use large file API.")
 
 case $host in
     *-*-solaris* ) 
-	AC_DEFINE(_GNU_SOURCE, 1, "Use glibc features.")
         AC_DEFINE(__EXTENSIONS__, 1, "get decl for sockaddr_storage on Solaris")
         AC_DEFINE(_XOPEN_SOURCE, 500, "get decl for msg_control on Solaris")
         ;;
