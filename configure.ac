@@ -189,6 +189,11 @@ AC_CHECK_MEMBERS([DIR.d_namlen], , ,
 	[#include <sys/types.h>
 	#include <dirent.h>])
 
+AC_CHECK_SIZEOF(void *)
+AC_CHECK_SIZEOF(uint64_t)
+AC_CHECK_SIZEOF(unsigned long)
+AC_CHECK_SIZEOF(unsigned long long)
+
 # Checks for library functions.
 AC_FUNC_MALLOC
 AC_SEARCH_LIBS(getaddrinfo, [socket nsl])

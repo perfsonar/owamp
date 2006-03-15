@@ -73,18 +73,24 @@
 
 /* Deal with needed inttypes.h - hopefully these were already defined... */
 #ifndef PRIuPTR
-#if (sizeof(void *) != sizeof(long))
+#if SIZEOF_VOID_P == SIZEOF_UNSIGNED_LONG
+#define	PRIuPTR "lu"
+#elif SIZEOF_VOID_P == SIZEOF_UNSIGNED_LONG_LONG
+#define PRIuPTR "llu"
+#else
 #error "Need real PRIuPTR defined by inttypes.h on this system"
 #endif
-#define PRIuPTR "lu"
 #endif  /* PRIuPTR */
 
 #ifndef PRIu64
-#if (sizeof(uint64_t) != sizeof(unsigned long long))
+#if SIZEOF_UINT64_T == SIZEOF_UNSIGNED_LONG
+#define	PRIu64 "lu"
+#elif SIZEOF_UINT64_T == SIZEOF_UNSIGNED_LONG_LONG
+#define PRIu64 "llu"
+#else
 #error "Need real PRIu64 defined by inttypes.h on this system"
 #endif
-#define PRIu64  "llu"
-#endif
+#endif  /* PRIu64 */
 
 #ifndef        False
 #define        False        (0)
