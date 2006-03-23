@@ -1,0 +1,11 @@
+To make a new release of owamp:
+
+    1) Edit configure.ac and modify the version number in the macros.
+    2) Edit doc/index.html and modify the version number
+    3) check-in all changes
+    4) rcs2log > CHANGELOG
+    5) check-in CHANGELOG
+    6) tag release ex. "cvs tag OWAMP_2_0a"
+    7) make dist
+    8) copy tarball to dist area of website
+    9) update webpages
