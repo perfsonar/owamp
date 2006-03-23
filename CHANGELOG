@@ -1,4 +1,36 @@
+2006-03-23  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* configure.ac, doc/index.html: preparing for 2.0a release
+	    fix statistics bugs...
+
+	* configure.ac, owamp/stats.c, powstream/powstream.c: configure.ac:
+	    Removed dependence on ieeefp.h functions. (finite) It doesn't
+	    work enough places to make it worth using.
+
+	owamp/stats.c powstream/*:
+	    Fixed a border case where the last packet in a sub-session
+	    was lost. (I had a >, where I needed a >= to make the end
+	    of the session detection correctly. This was not being done
+	    correctly if the last packet in the sub-session was lost.)
+
+	    Modified the MAX/MIN detection to stop using 'finite' and
+	    use a different method to determine if MAX/MIN were valid.
+
+	jeff
+
+	* owamp/stats.c, owping/Makefile.am, owping/owping.c: stats.c:
+	    Fixed bug where maxdelay is reported as maxerr.
+
+	owping/*:
+	    Added owup command-line utility. Reports the 'start time' of a server.
+
+	jeff
+
 2006-03-15  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* CHANGELOG: Updating changelog for 2.0 release.
+
+	jeff
 
 	* doc/index.html: Adding supported systems to the documentation.
 
