@@ -1482,7 +1482,7 @@ main(
             exit(1);
         }
 
-        if( !strftime(buf,sizeof(buf),"Server Up Since: %FT%T.%%03d%z\n",tptr)){
+        if( !strftime(buf,sizeof(buf),"Server Up Since: %Y-%m-%dT%H:%M:%S.%%03d%Z\n",tptr)){
             I2ErrLog(eh, "Unable to convert time_t to struct tm.");
             exit(1);
         }

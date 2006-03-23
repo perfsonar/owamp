@@ -1417,6 +1417,16 @@ main(int argc, char *argv[])
     }
 
     /*
+     * Get start-time for server greeting report.
+     */
+    if(!OWPGetTimeOfDay(ctx,&currtime)){
+        I2ErrLogP(errhand, errno, "OWPGetTimeOfDay: %M");
+        kill(mypid,SIGTERM);
+        exit(1);
+    }
+    uptime = currtime.owptime;
+
+    /*
      * daemonize here
      */
     mypid = 0;
@@ -1511,13 +1521,7 @@ main(int argc, char *argv[])
             exit(1);
         }
 
-        if(!OWPGetTimeOfDay(ctx,&currtime)){
-            I2ErrLogP(errhand, errno, "OWPGetTimeOfDay: %M");
-            kill(mypid,SIGTERM);
-            exit(1);
-        }
-        uptime = currtime.owptime;
-        fprintf(info_fp, "START="OWP_TSTAMPFMT"\n", currtime.owptime);
+        fprintf(info_fp, "START="OWP_TSTAMPFMT"\n", uptime);
         fprintf(info_fp, "PID=%lld\n", (long long)mypid);
         while ((rc = fclose(info_fp)) < 0 && errno == EINTR);
         if(rc < 0){
