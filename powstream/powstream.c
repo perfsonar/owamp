@@ -1621,7 +1621,7 @@ AGAIN:
              */
             if( !OWPStatsParse(stats,NULL,stats->next_oset,
                         appctx.opt.numBucketPackets*sum,
-                        (appctx.opt.numBucketPackets*(sum+1))-1)){
+                        (appctx.opt.numBucketPackets*(sum+1)))){
                 I2ErrLog(eh,"OWPStatsParse failed");
                 break;
             }

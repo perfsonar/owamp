@@ -169,7 +169,7 @@ AC_SUBST(OWP_PREFIX_CFLAGS)
 
 # Checks for header files.
 AC_HEADER_STDC
-AC_CHECK_HEADERS([errno.h netdb.h stdlib.h sys/param.h sys/socket.h sys/time.h sys/types.h sys/mman.h sys/timex.h ieeefp.h])
+AC_CHECK_HEADERS([errno.h netdb.h stdlib.h sys/param.h sys/socket.h sys/time.h sys/types.h sys/mman.h sys/timex.h])
 
 # Checks for typedefs, structures, and compiler characteristics.
 I2_C___ATTRIBUTE__
@@ -200,7 +200,6 @@ AC_SEARCH_LIBS(getaddrinfo, [socket nsl])
 AC_SEARCH_LIBS(gethostbyname, nsl)
 AC_SEARCH_LIBS(socketpair, socket)
 AC_SEARCH_LIBS(nanosleep, rt)
-AC_SEARCH_LIBS(finite,m)
 AC_SEARCH_LIBS(ceil,m)
 
 AC_CHECK_FUNCS([memset socket getaddrinfo mergesort dirfd])

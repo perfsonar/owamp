@@ -38,11 +38,6 @@
 #include <math.h>
 #include <ctype.h>
 
-/* to get finite() on some systems... */
-#ifdef	HAVE_IEEEFP_H
-#include <ieeefp.h>
-#endif
-
 /*
  * PacketBuffer utility functions:
  *
@@ -954,7 +949,7 @@ IterateSummarizeSession(
      * last packet of the "previous" session - should reordering be counted?
      *
      */ 
-    if((rec->seq_no < stats->first) || (rec->seq_no > stats->last)){
+    if((rec->seq_no < stats->first) || (rec->seq_no >= stats->last)){
         return 0;
     }
 
@@ -1633,10 +1628,10 @@ OWPStatsPrintMachine(
     fprintf(output,"DUPS\t%u\n",stats->dups);
     fprintf(output,"LOST\t%u\n",stats->lost);
 
-    if(finite(stats->min_delay)){
+    if(stats->min_delay < stats->inf_delay){
         fprintf(output,"MIN\t%g\n",stats->min_delay);
     }
-    if(finite(stats->max_delay)){
+    if(stats->max_delay > -stats->inf_delay){
         fprintf(output,"MAX\t%g\n",stats->max_delay);
     }
 
