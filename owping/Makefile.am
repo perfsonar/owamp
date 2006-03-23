@@ -27,13 +27,17 @@ owping_LDADD	= $(OWPLIBS) $(I2UTILLIBS) $(MALLOCDEBUGLIBS)
 owping_DEPENDENCIES = $(OWPLIBDEPS) $(I2UTILLIBDEPS)
 # Unfortunately, automake doesn't follow the BSD tradition here...
 RM = rm -f
-owping_LINKS	= owstats$(exeext) owfetch$(exeext)
+owping_LINKS	= owstats$(exeext) owfetch$(exeext) owup$(exeext)
 
 owstats$(exeext): owping$(exeext)
 	@if test -f $@; then $(RM) $@; fi; \
 	$(LN_S) owping $@;
 
 owfetch$(exeext): owping$(exeext)
+	@if test -f $@; then $(RM) $@; fi; \
+	$(LN_S) owping $@;
+	
+owup$(exeext): owping$(exeext)
 	@if test -f $@; then $(RM) $@; fi; \
 	$(LN_S) owping $@;
 	

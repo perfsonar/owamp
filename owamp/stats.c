@@ -1084,7 +1084,7 @@ IterateSummarizeSession(
      * compute total error from send/recv
      */
     derr = OWPGetTimeStampError(&rec->send) + OWPGetTimeStampError(&rec->recv);
-    stats->maxerr = MAX(stats->maxerr,d);
+    stats->maxerr = MAX(stats->maxerr,derr);
 
     /*
      * Print individual packet record

@@ -36,6 +36,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <assert.h>
+#include <time.h>
 
 #include "./owpingP.h"
 
@@ -826,6 +827,8 @@ main(
     } else if (!strcmp(progname, "owfetch")) {
         strcpy(optstring, conn_opts);
         strcat(optstring, out_opts);
+    } else if (!strcmp(progname, "owup")) {
+        strcpy(optstring, conn_opts);
     }
     else{
         usage(progname, "Invalid program name.");
@@ -1434,6 +1437,58 @@ main(
                 I2ErrLog(eh,"fclose(): %M");
             }
         }
+
+        exit(0);
+    }
+
+    if (!strcmp(progname, "owup")) {
+        struct timeval  tval;
+        OWPTimeStamp    tstamp;
+        struct tm       trec,*tptr;
+        char            buf[PATH_MAX];
+
+        if(argc != 1){
+            usage(progname, NULL);
+            exit(1);
+        }
+
+        ping_ctx.remote_serv = argv[0];
+
+        owp_set_auth(ctx, progname, &ping_ctx); 
+
+        /*
+         * Open connection to owampd.
+         */
+        ping_ctx.cntrl = OWPControlOpen(ctx, 
+                I2AddrByNode(eh, ping_ctx.opt.srcaddr),
+                I2AddrByNode(eh, ping_ctx.remote_serv),
+                ping_ctx.auth_mode,ping_ctx.opt.identity,
+                &tstamp.owptime,&err_ret);
+        if (!ping_ctx.cntrl){
+            I2ErrLog(eh, "Unable to open control connection.");
+            exit(1);
+        }
+        (void)OWPControlClose(ping_ctx.cntrl);
+
+        /* TODO: TimestampToTimeval, localtime, strftime */
+
+        if(!OWPTimestampToTimeval(&tval,&tstamp)){
+            I2ErrLog(eh, "Unable to convert timestamp to timeval.");
+            exit(1);
+        }
+        
+        if( !(tptr = localtime_r(&tval.tv_sec,&trec))){
+            I2ErrLog(eh, "Unable to convert time_t to struct tm.");
+            exit(1);
+        }
+
+        if( !strftime(buf,sizeof(buf),"Server Up Since: %FT%T.%%03d%z\n",tptr)){
+            I2ErrLog(eh, "Unable to convert time_t to struct tm.");
+            exit(1);
+        }
+
+        /* %03d format string used - need to convert usec's to msec's */
+        fprintf(stderr,buf,tval.tv_usec/1000);
 
         exit(0);
     }
