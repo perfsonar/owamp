@@ -207,6 +207,8 @@ typedef uint64_t OWPNum64;
 #define OWPNum64Diff(x,y)   ((x>y)?\
         (x-y):\
         (y-x))
+#define OWPNum64Min(x,y)    MIN(x,y)
+#define OWPNum64Max(x,y)    MAX(x,y)
 
 extern OWPNum64
 OWPNum64Mult(
@@ -471,7 +473,7 @@ OWPError_(
         );
 
 /*
- * The "context"  is used to basically initializes the library. There is no
+ * The "context"  is used to basically initialize the library. There is no
  * "global" state - so you can create more than one "context" if you like.
  * (Well... SIGPIPE is disabled... I suppose that is global.)
  *
@@ -641,6 +643,12 @@ typedef void (*OWPCloseFileFunc)(
  */
 #define OWPChildWait        "OWPChildWait"
 #endif
+
+/*
+ * This OWPBoolean type is used to determine if spawned off test processes
+ * should create their own process group.
+ */
+#define OWPDetachProcesses  "OWPDetachProcesses"
 
 extern OWPContext
 OWPContextCreate(

@@ -82,6 +82,7 @@ typedef        struct {
         int         verbose;            /* -v verbose */
         double      bucketWidth;        /* -b (seconds) */
         uint32_t   numBucketPackets;   /* -N */
+        uint32_t    delayStart;         /* -z */
 
     } opt;
 

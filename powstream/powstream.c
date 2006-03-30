@@ -9,13 +9,12 @@
 *                                                                        *
 ************************************************************************/
 /*
- *        File:                powstream.c
+ *        File:         powstream.c
  *
- *        Authors:        Jeff Boote
- *                      Anatoly Karp
- *                        Internet2
+ *        Authors:      Jeff Boote
+ *                      Internet2
  *
- *        Date:                Tue Sep  3 15:47:26 MDT 2002
+ *        Date:         Tue Sep  3 15:47:26 MDT 2002
  *
  *        Description:        
  *
@@ -111,7 +110,8 @@ print_test_args(){
 "   -c count       number of test packets (per file)\n"
 "   -i wait        mean average time between packets (seconds)\n"
 "   -L timeout     maximum time to wait for a packet (seconds)\n"
-"   -s padding     size of the padding added to each packet (bytes)\n");
+"   -s padding     size of the padding added to each packet (bytes)\n"
+"   -z delayStart  time to wait before starting first test (seconds)\n");
 }
 
 static void
@@ -689,7 +689,7 @@ ResetSession(
 {
     OWPAcceptType   aval = OWP_CNTRL_ACCEPT;
 
-    if(p->numPackets && p->call_stop && p->cntrl && p->session_started){
+    if(p->numPackets && p->call_stop && p->cntrl){
             (void)OWPStopSessions(p->cntrl,&pow_intr,&aval);
     }
 
@@ -802,6 +802,7 @@ SetupSession(
     int             fd;
     uint64_t       i;
     char            fname[PATH_MAX];
+    static int      first_time=1;
 
     if(p->numPackets)
         return 0;
@@ -863,6 +864,11 @@ SetupSession(
     }
     currtime.owptime = OWPNum64Add(currtime.owptime,
             OWPULongToNum64(SETUP_ESTIMATE));
+    if(first_time){
+        currtime.owptime = OWPNum64Add(currtime.owptime,
+                OWPULongToNum64(appctx.opt.delayStart));
+        first_time=0;
+    }
 
     if(p->nextSessionStart){
         if(OWPNum64Cmp(currtime.owptime,*p->nextSessionStart) > 0){
@@ -896,6 +902,7 @@ SetupSession(
     if(!(p->fp = fdopen(fd,"wb+"))){
         I2ErrLog(eh,"fdopen(%s:(%d)): %M",fname,fd);
         while((close(fd) != 0) && errno==EINTR);
+        (void)unlink(fname);
         return 0;
     }
 
@@ -908,11 +915,12 @@ SetupSession(
         I2ErrLog(eh,"fopen(%s): %M",fname);
         while((fclose(p->fp) != 0) && errno==EINTR);
         p->fp = NULL;
+        (void)unlink(fname);
         return 0;
     }
 
     /*
-     * Unlinke the filename so interrupt resets don't have
+     * Unlink the filename so interrupt resets don't have
      * as much work to do. (This does mean the data needs
      * to be copied into a new file upon completion of the
      * test.)
@@ -1023,7 +1031,7 @@ main(
     char                    *endptr = NULL;
     char                    optstring[128];
     static char             *conn_opts = "A:S:k:u:";
-    static char             *test_opts = "c:i:s:L:";
+    static char             *test_opts = "c:i:s:L:z:";
     static char             *out_opts = "d:N:pe:rb:v";
     static char             *gen_opts = "hw";
     static char             *posixly_correct="POSIXLY_CORRECT=True";
@@ -1189,7 +1197,16 @@ main(
                 appctx.opt.numBucketPackets =
                     strtoul(optarg, &endptr, 10);
                 if (*endptr != '\0') {
-                    usage(progname,"Invalid value. Positive integer expected");
+                    usage(progname,
+                            "Invalid (-N) value. Positive integer expected");
+                    exit(1);
+                }
+                break;
+            case 'z':
+                appctx.opt.delayStart = strtoul(optarg,&endptr,10);
+                if(*endptr != '\0'){
+                    usage(progname,
+                            "Invalid (-z) value. Positive integer expected");
                     exit(1);
                 }
                 break;
@@ -1402,6 +1419,26 @@ main(
         I2ErrLog(eh,"Unable to set Context var: %M");
         exit(1);
     }
+
+    /*
+     * Set the detach processes flag.
+     */
+    if(!OWPContextConfigSetV(ctx,OWPDetachProcesses,(void*)True)){
+        I2ErrLog(eh,"Unable to set Context var: %M");
+        exit(1);
+    }
+
+#ifndef NDEBUG
+    /*
+     * Setup debugging of child prcesses.
+     */
+    if(appctx.opt.childwait &&
+            !OWPContextConfigSetV(ctx,OWPChildWait,
+                (void*)appctx.opt.childwait)){
+        I2ErrLog(eh,"Unable to set Context var: %M");
+        exit(1);
+    }
+#endif
 
     /*
      * Main loop - loop over two connections collecting the data

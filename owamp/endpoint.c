@@ -2060,7 +2060,6 @@ again:
                 timespecadd(&currtime,&expectspec);
                 timespecadd(&currtime,&lostspec);
             }
-
         }
 
         /*
@@ -2415,6 +2414,17 @@ parenterr:
 
     /*
      * We are now in the child send/recv process.
+     */
+    if((OWPBoolean)OWPContextConfigGetV(ctx,OWPDetachProcesses)
+            && (setsid() == -1)){
+        OWPError(ctx,OWPErrFATAL,errno,"setsid(): %M");
+        exit(OWP_CNTRL_FAILURE);
+    }
+
+    /*
+     * Create new session - do not want signals sent to the parent
+     * process group to propogate to this process unless the parent
+     * explicitely does it.
      */
 
     /*

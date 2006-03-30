@@ -2117,7 +2117,7 @@ _OWPReadStopSessions(
         char                        sid_name[sizeof(OWPSID)*2+1];
         _OWPSessionHeaderInitialRec fhdr;
         struct flock                flk;
-        OWPNum64                    lowR,highR,threshR;
+        OWPNum64                    lowR,midR,highR,threshR;
         uint32_t                   lowI,midI,highI,num_recs;
         uint8_t                    rbuf[_OWP_MAXDATAREC_SIZE];
         OWPDataRec                  rec;
@@ -2171,6 +2171,18 @@ _OWPReadStopSessions(
             goto err;
         }
 
+        /*
+         * Read next_seqno, num_skips from SessionDescription record
+         */
+        n = _OWPReceiveBlocksIntr(cntrl,buf,1,intr);
+        if(n != 1){
+            OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+                    "_OWPReadStopSessions: Unable to read session record (%d)",
+                    i);
+            goto err;
+        }
+        next_seqno = ntohl(*(uint32_t*)&buf[0]);
+        num_skips = ntohl(*(uint32_t*)&buf[4]);
 
         I2HexEncode(sid_name,tptr->sid,sizeof(OWPSID));
 
@@ -2239,12 +2251,27 @@ _OWPReadStopSessions(
          * time is within "timeout" of the recv time. Therefore, this
          * algorithm starts by finding the first packet record in the
          * file with a recv time greater than (stoptime - (2 * timeout)).
-         * Then sequentially goes forward through the file deleting
-         * all packet records with (sendtime > (stoptime - timeout)).
+         * (recv time can be timeout less than send time if clocks are
+         * offset).
+         *
+         * Additionally, the next_seqno from the StopSessions message
+         * comes into play. Let the presumed sendtime of next_seqno be
+         * next_seqno_time. Then, the parsing may need to start
+         * as early as (next_seqno_time - (2 * timeout)).
+         *
+         * Therefore, the search algorithm actually looks for the minimum
+         * of those two values.
          *
          * lowI will be the index to the packet record with the
          * largest recv time less than the threshold (stoptime - (2 * timeout))
          * upon completion of the binary search. (If one exists.)
+         *
+         * After the binary search, the algorithm sequentially goes
+         * forward through the file deleting all packet records with
+         * (sendtime > (stoptime - timeout)).  During this pass, if any
+         * index is >= next_seqno, the entire session will be declared
+         * invalid. Additionally, any LostPacket records with
+         * index >= next_seqno will be removed.
          *
          */
 
@@ -2254,7 +2281,31 @@ _OWPReadStopSessions(
          */
 
         /* Initializing variables for search. */
-        threshR = OWPNum64Sub(stoptime.owptime,
+
+        /* find threshold time. MIN(stoptime,next_seqno_time) - (2 * timeout) */
+        if(OWPScheduleContextReset(tptr->sctx,NULL,NULL) != OWPErrOK){
+            OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                    "_OWPReadStopSessions: SchedulecontextReset(): FAILED");
+            goto err;
+        }
+
+        /* find next_seqno_time */
+        lowI = 0;
+        threshR = tptr->test_spec.start_time;
+        while(lowI <= next_seqno){
+            threshR = OWPNum64Add(threshR,
+                    OWPScheduleContextGenerateNextDelta(tptr->sctx));
+            lowI++;
+        }
+
+        /* find MIN(next_seqno_time,stoptime) */
+        threshR = OWPNum64Min(threshR,stoptime.owptime);
+
+        /*
+         * Set actual threshold to 2*timeout less than that to deal with
+         * offset clocks.
+         */
+        threshR = OWPNum64Sub(threshR,
                 OWPNum64Mult(tptr->test_spec.loss_timeout,OWPULongToNum64(2)));
         highI = fhdr.num_datarecs;
         highR = stoptime.owptime;
@@ -2276,7 +2327,12 @@ _OWPReadStopSessions(
             goto err;
         }
 
-        lowR = rec.recv.owptime;
+        if(OWPIsLostRecord(&rec)){
+            lowR = OWPNum64Add(rec.send.owptime,tptr->test_spec.loss_timeout);
+        }
+        else{
+            lowR = rec.recv.owptime;
+        }
 
         /*
          * If lowR is not less than threshR than we are done.
@@ -2346,13 +2402,20 @@ _OWPReadStopSessions(
              * If midR is less than thresh, update lowI. Otherwise,
              * update highI.
              */
-            if(OWPNum64Cmp(rec.recv.owptime,threshR) < 0){
+            if(OWPIsLostRecord(&rec)){
+                midR = OWPNum64Add(rec.send.owptime,
+                                            tptr->test_spec.loss_timeout);
+            }
+            else{
+                midR = rec.recv.owptime;
+            }
+            if(OWPNum64Cmp(midR,threshR) < 0){
                 lowI = midI;
-                lowR = rec.recv.owptime;
+                lowR = midR;
             }
             else{
                 highI = midI;
-                highR = rec.recv.owptime;
+                highR = midR;
             }
         }
 thresh_pos:
@@ -2360,7 +2423,11 @@ thresh_pos:
         /*
          * Now, step through all records lowI and after to examine the
          * sent time. The sent time must be less than (stop - timeout)
-         * for the record to be kept.
+         * and the index must be less than next_seqno for the record
+         * to be kept. (If index is greater than or equal to next_seqno,
+         * and it is not a lost packet record, the entire session
+         * MUST be deleted as per the spec.)
+         *
          */
         toff = fhdr.oset_datarecs + (lowI * fhdr.rec_size);
         threshR = OWPNum64Sub(stoptime.owptime,tptr->test_spec.loss_timeout);
@@ -2373,7 +2440,7 @@ thresh_pos:
             goto err;
         }
 
-        for(j=lowI;j<(fhdr.num_datarecs-lowI);j++){
+        for(j=lowI;j<fhdr.num_datarecs;j++){
 
             /*
              * Read the packet record from midI.
@@ -2393,10 +2460,24 @@ thresh_pos:
             }
 
             /*
-             * If the packet was not sent after threshR, then keep it
+             * If the seq_no is >= next_seqno, and it is not a lost
+             * packet record, then this session MUST be thrown out.
+             * Otherwise, if the packet was not sent after threshR, then keep it
              * by writing it back into the file if necessary.
+             * Finally, drop the packet.
              */
-            if(!(OWPNum64Cmp(rec.send.owptime,threshR) > 0)){
+
+            /* Invalid session */
+            if((rec.seq_no >= next_seqno) && !OWPIsLostRecord(&rec)){
+                errno = EFTYPE;
+                OWPError(cntrl->ctx,OWPErrFATAL,errno,
+                        "_OWPReadStopSessions: Invalid data record (seq_no too large) sid(%s)",
+                        sid_name);
+                goto loop_err;
+            }
+            /* Good record */
+            else if((rec.seq_no < next_seqno) &&
+                    (OWPNum64Cmp(rec.send.owptime,threshR) <= 0)){
                 if(wfp != rfp){
                     if(fwrite(rbuf,fhdr.rec_size,1,wfp) != 1){
                         OWPError(cntrl->ctx,OWPErrFATAL,errno,
@@ -2407,7 +2488,7 @@ thresh_pos:
                 }
             }
             /*
-             * If the packet record should not be kept.
+             * The packet record should not be kept.
              */
             else{
                 num_recs--;
@@ -2533,31 +2614,17 @@ clean_data:
             goto err;
         }
 
-        /*
-         * Read next_seqno, num_skips from SessionDescription record
-         */
-        n = _OWPReceiveBlocksIntr(cntrl,buf,1,intr);
-        if(n != 1){
-            OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                    "_OWPReadStopSessions: Unable to read session record (%d)",
-                    i);
-            goto err;
-        }
-        next_seqno = ntohl(*(uint32_t*)&buf[0]);
-        num_skips = ntohl(*(uint32_t*)&buf[4]);
-
-        if(!num_skips) goto done_skips;
 
         /*
          * Advance fp beyond datarecords, write skip records and write
          * NumSkipRecords
          */
+        if(!num_skips) goto done_skips;
         toff = fhdr.oset_datarecs + (num_recs * fhdr.rec_size);
         if(fseeko(rfp,toff,SEEK_SET) != 0){
             OWPError(cntrl->ctx,OWPErrFATAL,errno,"fseeko(): %M");
             goto err;
         }
-
 
         prev_skip.begin = prev_skip.end = 0;
         for(j=0; j < num_skips; j++){
