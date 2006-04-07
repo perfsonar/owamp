@@ -358,8 +358,9 @@ GetMaxSend(
  */
 static void
 write_session(
-        pow_cntrl   p,
-        OWPBoolean  newend
+        pow_cntrl       p,
+        OWPAcceptType   aval,
+        OWPBoolean      newend
         )
 {
     OWPSessionHeaderRec hdr;
@@ -374,10 +375,10 @@ write_session(
     OWPStats            stats = NULL;
 
     /*
-     * If this session does not have a started session, there is no
-     * reason to continue.
+     * If this session does not have a started session, or the
+     * data is corrupt there is no reason to save it.
      */
-    if(!p->fp || !p->session_started)
+    if(!p->fp || !p->session_started || (aval != OWP_CNTRL_ACCEPT))
         return;
 
     (void)OWPReadDataHeader(p->ctx,p->fp,&hdr);
@@ -449,16 +450,7 @@ write_session(
         }
 
         /*
-         * Read all records and find the "last" one in the file.
-         */
-        if(fseeko(p->fp,hdr.oset_datarecs,SEEK_SET) != 0){
-            I2ErrLog(eh,"fseeko(): %M");
-            return;
-        }
-
-        /*
-         * Find the last index in the file so it can be used to compute
-         * the assumed "send" time for the "end" time of the session.
+         * Read in skip recs
          */
         memset(&sndrec,0,sizeof(sndrec));
         sndrec.hdr = &hdr;
@@ -473,6 +465,18 @@ write_session(
                 free(sndrec.skips);
                 return;
             }
+        }
+
+        /*
+         * Find the last index in the file so it can be used to compute
+         * the assumed "send" time for the "end" time of the session.
+         *
+         * Read all records and find the "last" one in the file.
+         */
+        if(fseeko(p->fp,hdr.oset_datarecs,SEEK_SET) != 0){
+            if(sndrec.skips) free(sndrec.skips);
+            I2ErrLog(eh,"fseeko(): %M");
+            return;
         }
 
         if(OWPParseRecords(p->ctx,p->fp,hdr.num_datarecs,hdr.version,GetMaxSend,
@@ -701,7 +705,7 @@ ResetSession(
     /*
      * Output "early-terminated" owp file
      */
-    write_session(p,True);
+    write_session(p,aval,True);
 
     if(p->fp){
         fclose(p->fp);
@@ -1420,14 +1424,6 @@ main(
         exit(1);
     }
 
-    /*
-     * Set the detach processes flag.
-     */
-    if(!OWPContextConfigSetV(ctx,OWPDetachProcesses,(void*)True)){
-        I2ErrLog(eh,"Unable to set Context var: %M");
-        exit(1);
-    }
-
 #ifndef NDEBUG
     /*
      * Setup debugging of child prcesses.
@@ -1476,6 +1472,7 @@ NextConnection:
 
         /* init vars for loop */
         lastnum=OWPULongToNum64(0);
+        aval = OWP_CNTRL_ACCEPT;
 
         /*
          * Make local copies of start/end - SetupSession modifies
@@ -1507,6 +1504,7 @@ wait_again:
             rc = OWPStopSessionsWait(p->cntrl,NULL,&pow_intr,&aval,&err_ret);
             if(rc<0){
                 /* error - reset sessions and start over. */
+                p->call_stop = False;
                 CloseSessions();
                 goto NextConnection;
             }
@@ -1766,7 +1764,7 @@ cleanup:
         }
 
         if(p->cntrl && p->call_stop){
-            if(OWPStopSessions(p->cntrl,NULL,&aval)<OWPErrWARNING){
+            if(OWPStopSessions(p->cntrl,&pow_intr,&aval)<OWPErrWARNING){
                 OWPControlClose(p->cntrl);
                 p->cntrl = NULL;
             }
@@ -1775,7 +1773,7 @@ cleanup:
         /*
          * Write out the complete owp session file.
          */
-        write_session(p,False);
+        write_session(p,aval,False);
 
         /*
          * This session is complete - reset p.

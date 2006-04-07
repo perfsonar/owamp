@@ -37,6 +37,7 @@
 #include <errno.h>
 #include <assert.h>
 #include <time.h>
+#include <signal.h>
 
 #include "./owpingP.h"
 
@@ -47,6 +48,7 @@ static  ow_ping_trec    ping_ctx;
 static  I2ErrHandle     eh;
 static  char            tmpdir[PATH_MAX+1];
 static  uint8_t        aesbuff[16];
+static  int             owp_intr = 0;
 
     static void
 print_conn_args()
@@ -340,7 +342,6 @@ owp_fetch_sid(
         if(path)
             (void)unlink(path);
         if(rc < OWPErrWARNING){
-            I2ErrLog(eh,"owp_fetch_sid:OWPFetchSession error?");
             return NULL;
         }
         /*
@@ -727,6 +728,28 @@ FAILED:
     return False;
 }
 
+/*
+ * Signal handler installed so HUP/TERM signals will be noticed.
+ */
+static void
+signal_catch(
+        int signo
+        )
+{
+    switch(signo){
+        case SIGTERM:
+        case SIGHUP:
+            break;
+        default:
+            I2ErrLogP(eh,EINVAL,"signal_catch(): Invalid signal(%d)",signo);
+            _exit(-1);
+    }
+
+    owp_intr = 1;
+
+    return;
+}
+
 int
 main(
         int     argc,
@@ -749,6 +772,7 @@ main(
     char                localbuf[NI_MAXHOST+1+NI_MAXSERV+1];
     char                remotebuf[NI_MAXHOST+1+NI_MAXSERV+1];
     char                *local, *remote;
+    struct sigaction    setact;
 
     int                 ch;
     char                *endptr = NULL;
@@ -1043,6 +1067,15 @@ main(
         ping_ctx.opt.records = False;
     }
 
+    memset(&setact,0,sizeof(setact));
+    setact.sa_handler = signal_catch;
+    sigemptyset(&setact.sa_mask);
+    if(     (sigaction(SIGTERM,&setact,NULL) != 0) ||
+            (sigaction(SIGHUP,&setact,NULL) != 0)){
+        I2ErrLog(eh,"sigaction(): %M");
+        exit(1);
+    }
+
 
     /*
      * Handle 3 possible cases (owping, owfetch, owstats) one by one.
@@ -1286,20 +1319,15 @@ main(
         }
 
         /*
-         * TODO install sig handler for keyboard interupt - to send 
-         * stop sessions. (Currently SIGINT causes everything to be 
-         * killed and lost - might be reasonable to keep it that
-         * way...)
+         * If ch < 0, it is possible to continue parsing partial data.
          */
-        if(OWPStopSessionsWait(ping_ctx.cntrl,NULL,NULL,&acceptval,
-                    &err)){
-            exit(1);
-        }
-
-        if (acceptval != 0) {
+        ch = OWPStopSessionsWait(ping_ctx.cntrl,NULL,&owp_intr,&acceptval,&err);
+        if((ch < 0) || (acceptval != OWP_CNTRL_ACCEPT)){
             I2ErrLog(eh, "Test session(s) Failed...");
-
-            exit(0);
+            if(ping_ctx.opt.save_from_test){
+                (void)unlink(ping_ctx.opt.save_from_test);
+            }
+            exit(1);
         }
 
         /*
@@ -1345,9 +1373,13 @@ main(
                     ping_ctx.opt.machine)){
             FILE    *tofp;
 
-            tofp = owp_fetch_sid(ping_ctx.opt.save_to_test,
-                    ping_ctx.cntrl,tosid);
-            if(tofp && (!ping_ctx.opt.quiet || ping_ctx.opt.raw ||
+            if( !(tofp = owp_fetch_sid(ping_ctx.opt.save_to_test,
+                    ping_ctx.cntrl,tosid))){
+                char    sname[sizeof(OWPSID)*2 + 1];
+                I2HexEncode(sname,tosid,sizeof(OWPSID));
+                I2ErrLog(eh,"Unable to fetch data for sid(%s)",sname);
+            }
+            else if((!ping_ctx.opt.quiet || ping_ctx.opt.raw ||
                         ping_ctx.opt.machine) &&
                     do_stats(ctx,stdout,tofp,local,remote)){
                 I2ErrLog(eh, "do_stats(\"to\" session): %M");
@@ -1470,7 +1502,7 @@ main(
         }
         (void)OWPControlClose(ping_ctx.cntrl);
 
-        /* TODO: TimestampToTimeval, localtime, strftime */
+        /* TimestampToTimeval, localtime, strftime */
 
         if(!OWPTimestampToTimeval(&tval,&tstamp)){
             I2ErrLog(eh, "Unable to convert timestamp to timeval.");

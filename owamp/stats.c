@@ -1344,7 +1344,7 @@ OWPStatsParse(
     while(stats->pbegin && PacketBeginFlush(stats));
 
     /*
-     * TODO: Sort Delay histogram
+     * Sort Delay histogram
      */
 
     /* alloc sort array */

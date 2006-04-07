@@ -47,6 +47,7 @@
 /* Global variable - the total number of allowed Control connections. */
 static pid_t                mypid;
 static int                  owpd_chld = 0;
+static int                  owpd_int = 0;
 static int                  owpd_exit = 0;
 static int                  owpd_alrm = 0;
 static int                  owpd_intr = 0;
@@ -106,8 +107,10 @@ signal_catch(
         )
 {
     switch(signo){
-        case SIGTERM:
         case SIGINT:
+            owpd_int = 1;
+            /* fallthru*/
+        case SIGTERM:
         case SIGHUP:
         case SIGUSR1:
         case SIGUSR2:
@@ -638,8 +641,18 @@ ACCEPT:
                     owpd_intr = 0;
                     wstate = OWPStopSessionsWait(cntrl,NULL,
                             &owpd_intr,NULL,&rc);
-                    if(owpd_exit || (wstate < 0)){
+                    if(owpd_int){
                         goto done;
+                    }
+                    else if(owpd_exit){
+                        /*
+                         * wstate == 2 indicates gracefull shutdown...
+                         * Continue on and let StopSessions happen.
+                         */
+                        if(wstate != 2){
+                            goto done;
+                        }
+                        break;
                     }
                     if(wstate == 0){
                         goto nextreq;
@@ -684,7 +697,9 @@ nextreq:
         if(rc < OWPErrWARNING){
             break;
         }
-
+        if(owpd_exit){
+            break;
+        }
     }
 
 done:
@@ -1577,10 +1592,10 @@ main(int argc, char *argv[])
     ignact.sa_flags = setact.sa_flags = 0;
 
     if(     (sigaction(SIGPIPE,&ignact,NULL) != 0)  ||
+            (sigaction(SIGTERM,&setact,NULL) != 0)  ||
             (sigaction(SIGUSR1,&setact,NULL) != 0)  ||
             (sigaction(SIGUSR2,&setact,NULL) != 0)  ||
             (sigaction(SIGINT,&setact,NULL) != 0)   ||
-            (sigaction(SIGTERM,&setact,NULL) != 0)  ||
             (sigaction(SIGHUP,&setact,NULL) != 0)   ||
             (sigaction(SIGCHLD,&setact,NULL) != 0)  ||
             (sigaction(SIGALRM,&setact,NULL) != 0)  ){

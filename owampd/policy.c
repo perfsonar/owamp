@@ -2682,6 +2682,7 @@ OWPDCloseFile(
         finfo = tinfo->finfo;
         tinfo->finfo = NULL;
 
+
         /*
          * stat the file to determine how much disk was actually
          * used.
@@ -2694,10 +2695,27 @@ OWPDCloseFile(
 
         assert(tinfo->res[1].limit == OWPDLimDisk);
         lim.limit = OWPDLimDisk;
+
+        if(aval != OWP_CNTRL_ACCEPT){
+            /*
+             * The test session was invalid, delete the file,
+             * and release the resources.
+             */
+
+            /*
+             * Unlink the files
+             */
+            (void)unlink(finfo->linkpath);
+            (void)unlink(finfo->filepath);
+
+            assert(tinfo->res[1].limit == OWPDLimDisk);
+            mesg = OWPDMESGRELEASE;
+            lim = tinfo->res[1];
+        }
         /*
          * Can we release some diskspace from the resource broker?
          */
-        if(sbuf.st_size < (off_t)tinfo->res[1].value){
+        else if(sbuf.st_size < (off_t)tinfo->res[1].value){
             mesg = OWPDMESGRELEASE;
             lim.limit = tinfo->res[1].value - sbuf.st_size;
         }

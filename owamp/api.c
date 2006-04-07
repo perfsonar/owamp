@@ -29,6 +29,7 @@
 #include <netinet/in.h>
 #include <string.h>
 #include <assert.h>
+#include <libgen.h>
 
 
 /*
@@ -763,6 +764,860 @@ _OWPStopRecvSessions(
     return err2;
 }
 
+/*
+ * Function:    _OWPCleanDataRecs
+ *
+ * Description:    
+ *          Function is used to remove data records from the recieve
+ *          side test based on the information from the StopSession
+ *          message. (stoptime, next_seqno)
+ *
+ *          If StopSession message is not exchanged, then next_seqno
+ *          MUST be set to 0xFFFFFFFF.
+ *
+ *          The caller should have locked the file before calling this.
+ * In Args:    
+ *
+ * Out Args:    
+ *
+ * Scope:    
+ * Returns:    
+ * Side Effect:    
+ */
+OWPBoolean
+_OWPCleanDataRecs(
+        OWPContext      ctx,
+        OWPTestSession  tptr,
+        uint32_t        next_seqno,
+        OWPTimeStamp    stoptime,
+        uint32_t        *max_recv_rtn,
+        off_t           *off_start_rtn
+        )
+{
+    FILE            *rfp, *wfp;
+    char            sid_name[sizeof(OWPSID)*2+1];
+    off_t           toff;
+    OWPDataRec      rec;
+    _OWPSessionHeaderInitialRec fhdr;
+    uint8_t         rbuf[_OWP_MAXDATAREC_SIZE];
+    uint32_t        j;
+    uint32_t        lowI,midI,highI,num_recs;
+    OWPNum64        lowR,midR,highR,threshR;
+    uint32_t        max_recv_data;
+    uint32_t        *max_recv = &max_recv_data;
+    off_t           off_start_data;
+    off_t           *off_start = &off_start_data;
+
+    if(max_recv_rtn)
+        max_recv = max_recv_rtn;
+    *max_recv = 0;
+    if(off_start_rtn)
+        off_start = off_start_rtn;
+    *off_start = 0;
+
+
+    I2HexEncode(sid_name,tptr->sid,sizeof(OWPSID));
+
+    rfp = tptr->endpoint->datafile;
+    wfp = rfp;
+
+    /*
+     * Read needed file header info.
+     */
+    if(!_OWPReadDataHeaderInitial(ctx,rfp,&fhdr)){
+        goto err;
+    }
+
+    /*
+     * Compute number of data records currently in file using filesizes.
+     * (Verify that disk space is a multiple of datarec size too...)
+     */
+    toff = fhdr.sbuf.st_size - fhdr.oset_datarecs;
+    if(toff % fhdr.rec_size){
+        OWPError(ctx,OWPErrFATAL,EFTYPE,
+                "_OWPCleanDataRecs: Invalid records for sid(%s)",
+                sid_name);
+        goto err;
+    }
+    fhdr.num_datarecs = num_recs = toff / fhdr.rec_size;
+
+    /*
+     * If there is no data, this is a very simple file...
+     */
+    if(!fhdr.num_datarecs) goto clean_data;
+
+    /*
+     * Seek to beginning of data records.
+     */
+    if(fseeko(rfp,fhdr.oset_datarecs,SEEK_SET) != 0){
+        OWPError(ctx,OWPErrFATAL,errno,"fseeko(): %M");
+        goto err;
+    }
+
+    /*
+     * Delete data records sent later than stoptime-timeout as per
+     * section 3.8 owdp-draft-14
+     *
+     * To do this is somewhat non-trivial. The records in the file
+     * are sorted by recv time. There is a relationship between
+     * recv time and send time because of the "timeout" parameter
+     * of a test. A packet is only accepted and saved if the recv
+     * time is within "timeout" of the recv time. Therefore, this
+     * algorithm starts by finding the first packet record in the
+     * file with a recv time greater than (stoptime - (2 * timeout)).
+     * (recv time can be timeout less than send time if clocks are
+     * offset).
+     *
+     * Additionally, the next_seqno from the StopSessions message
+     * comes into play. Let the presumed sendtime of next_seqno be
+     * next_seqno_time. Then, the parsing may need to start
+     * as early as (next_seqno_time - (2 * timeout)).
+     *
+     * Therefore, the search algorithm actually looks for the minimum
+     * of those two values.
+     *
+     * lowI will be the index to the packet record with the
+     * largest recv time less than the threshold (stoptime - (2 * timeout))
+     * upon completion of the binary search. (If one exists.)
+     *
+     * After the binary search, the algorithm sequentially goes
+     * forward through the file deleting all packet records with
+     * (sendtime > (stoptime - timeout)).  During this pass, if any
+     * index is >= next_seqno, the entire session will be declared
+     * invalid. Additionally, any LostPacket records with
+     * index >= next_seqno will be removed.
+     *
+     */
+    if(next_seqno == 0xFFFFFFFF){
+        next_seqno = tptr->test_spec.npackets;
+    }
+
+    /*
+     * First use an interpolated binary search to find the "threshold"
+     * point in the file.
+     */
+
+    /* Initializing variables for search. */
+
+    /* find threshold time. MIN(stoptime,next_seqno_time) - (2 * timeout) */
+    if(OWPScheduleContextReset(tptr->sctx,NULL,NULL) != OWPErrOK){
+        OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                "_OWPCleanDataRecs: SchedulecontextReset(): FAILED");
+        goto err;
+    }
+
+    /* find next_seqno_time */
+    lowI = 0;
+    threshR = tptr->test_spec.start_time;
+    while(lowI < next_seqno){
+        threshR = OWPNum64Add(threshR,
+                OWPScheduleContextGenerateNextDelta(tptr->sctx));
+        lowI++;
+    }
+
+    /* find MIN(next_seqno_time,stoptime) */
+    threshR = OWPNum64Min(threshR,stoptime.owptime);
+
+    /*
+     * Set actual threshold to 2*timeout less than that to deal with
+     * offset clocks.
+     */
+    threshR = OWPNum64Sub(threshR,
+            OWPNum64Mult(tptr->test_spec.loss_timeout,OWPULongToNum64(2)));
+    highI = fhdr.num_datarecs;
+    highR = stoptime.owptime;
+    lowI = 0;
+
+    /*
+     * Read the first packet record to get the recv(0) for lowR.
+     */
+    if(fread(rbuf,fhdr.rec_size,1,rfp) != 1){
+        OWPError(ctx,OWPErrFATAL,errno,
+                "fread(): Reading session file for sid(%s): %M",sid_name);
+        goto err;
+    }
+    if(!_OWPDecodeDataRecord(fhdr.version,&rec,rbuf)){
+        errno = EFTYPE;
+        OWPError(ctx,OWPErrFATAL,errno,
+                "_OWPCleanDataRecs: Invalid data record for sid(%s)",
+                sid_name);
+        goto err;
+    }
+
+    if(OWPIsLostRecord(&rec)){
+        lowR = OWPNum64Add(rec.send.owptime,tptr->test_spec.loss_timeout);
+    }
+    else{
+        lowR = rec.recv.owptime;
+    }
+
+    /*
+     * If lowR is not less than threshR than we are done.
+     */
+    if(!(OWPNum64Cmp(lowR,threshR) < 0)){
+        goto thresh_pos;
+    }
+
+    /*
+     * This loop is the meat of the interpolated binary search
+     */
+    while((highI - lowI) > 1){
+        OWPNum64    portion;
+        OWPNum64    range;
+
+        range = OWPNum64Sub(highR,lowR);
+
+        /*
+         * If there are multiple records with the same recv time,
+         * interpolation will fail - in this case fall back to strict
+         * binary.
+         */
+        if(!range){
+            midI = (highI - lowI) / 2;
+        }
+        else{
+            /*
+             * Interpolate
+             */
+            portion = OWPNum64Sub(threshR,lowR);
+            midI = lowI + ((OWPNum64ToDouble(portion) * (highI - lowI)) /
+                    OWPNum64ToDouble(range));
+            if(midI == lowI) midI++;
+        }
+
+        /*
+         * determine offset from midI
+         */
+        toff = fhdr.oset_datarecs + midI * fhdr.rec_size;
+
+        /*
+         * Seek to midI data record.
+         */
+        if(fseeko(rfp,toff,SEEK_SET) != 0){
+            OWPError(ctx,OWPErrFATAL,errno,"fseeko(): %M");
+            goto err;
+        }
+
+        /*
+         * Read the packet record from midI.
+         */
+        if(fread(rbuf,fhdr.rec_size,1,rfp) != 1){
+            OWPError(ctx,OWPErrFATAL,errno,
+                    "fread(): Reading session file for sid(%s): %M",
+                    sid_name);
+            goto err;
+        }
+        if(!_OWPDecodeDataRecord(fhdr.version,&rec,rbuf)){
+            errno = EFTYPE;
+            OWPError(ctx,OWPErrFATAL,errno,
+                    "_OWPCleanDataRecs: Invalid data record for sid(%s)",
+                    sid_name);
+            goto err;
+        }
+
+        /*
+         * If midR is less than thresh, update lowI. Otherwise,
+         * update highI.
+         */
+        if(OWPIsLostRecord(&rec)){
+            midR = OWPNum64Add(rec.send.owptime,
+                    tptr->test_spec.loss_timeout);
+        }
+        else{
+            midR = rec.recv.owptime;
+        }
+        if(OWPNum64Cmp(midR,threshR) < 0){
+            lowI = midI;
+            lowR = midR;
+        }
+        else{
+            highI = midI;
+            highR = midR;
+        }
+    }
+thresh_pos:
+
+    /*
+     * Now, step through all records lowI and after to examine the
+     * sent time. The sent time must be less than (stop - timeout)
+     * and the index must be less than next_seqno for the record
+     * to be kept. (If index is greater than or equal to next_seqno,
+     * and it is not a lost packet record, the entire session
+     * MUST be deleted as per the spec.)
+     *
+     */
+    *off_start = toff = fhdr.oset_datarecs + (lowI * fhdr.rec_size);
+    threshR = OWPNum64Sub(stoptime.owptime,tptr->test_spec.loss_timeout);
+
+    /*
+     * Seek to lowI data record to start parsing.
+     */
+    if(fseeko(rfp,toff,SEEK_SET) != 0){
+        OWPError(ctx,OWPErrFATAL,errno,"fseeko(): %M");
+        goto err;
+    }
+
+    for(j=lowI;j<fhdr.num_datarecs;j++){
+
+        /*
+         * Read the packet record from midI.
+         */
+        if(fread(rbuf,fhdr.rec_size,1,rfp) != 1){
+            OWPError(ctx,OWPErrFATAL,errno,
+                    "fread(): Reading session file sid(%s): %M",
+                    sid_name);
+            goto loop_err;
+        }
+        if(!_OWPDecodeDataRecord(fhdr.version,&rec,rbuf)){
+            errno = EFTYPE;
+            OWPError(ctx,OWPErrFATAL,errno,
+                    "_OWPCleanDataRecs: Invalid data record sid(%s)",
+                    sid_name);
+            goto loop_err;
+        }
+
+        /*
+         * If the seq_no is >= next_seqno, and it is not a lost
+         * packet record, then this session MUST be thrown out.
+         * Otherwise, if the packet was not sent after threshR, then keep it
+         * by writing it back into the file if necessary.
+         * Finally, drop the packet.
+         */
+
+        /* Invalid session */
+        if((rec.seq_no >= next_seqno) && !OWPIsLostRecord(&rec)){
+            errno = EFTYPE;
+            OWPError(ctx,OWPErrFATAL,errno,
+                    "_OWPCleanDataRecs: Invalid data record (seq_no too large) sid(%s)",
+                    sid_name);
+            goto loop_err;
+        }
+        /* Good record */
+        else if((rec.seq_no < next_seqno) &&
+                (OWPNum64Cmp(rec.send.owptime,threshR) <= 0)){
+            *max_recv = MAX(rec.seq_no,*max_recv);
+            if(wfp != rfp){
+                if(fwrite(rbuf,fhdr.rec_size,1,wfp) != 1){
+                    OWPError(ctx,OWPErrFATAL,errno,
+                            "fwrite(): Writing session file sid(%s): %M",
+                            sid_name);
+                    goto loop_err;
+                }
+            }
+        }
+        /*
+         * The packet record should not be kept.
+         */
+        else{
+            num_recs--;
+            /*
+             * If wfp==rfp, then create another fp for wfp and point
+             * it at the current record so it will be written over.
+             */
+            if(wfp == rfp){
+                int     newfd;
+                char    tmpfname[PATH_MAX];
+                char    *dname;
+                char    *tmpl = "owamp.XXXXXXXX";
+
+                /*
+                 * Need another file for bookkeeping... First determine
+                 * what dir to put it in.
+                 */
+                dname = NULL;
+                memset(tmpfname,'\0',sizeof(tmpfname));
+
+                /* put it in the same dir as session data if possible */
+                if( strlen(tptr->endpoint->fname) > 0){
+                    strncpy(tmpfname,tptr->endpoint->fname,PATH_MAX);
+                    dname = dirname(tmpfname);
+                }
+
+                /* otherwise use tmpdir */
+                if( !dname){
+                    dname = getenv("TMPDIR");
+                }
+                if( !dname){
+                    dname = "/tmp";
+                }
+
+                /* Make sure pathname will not over-run memory. */
+                if(strlen(tmpl) + OWP_PATH_SEPARATOR_LEN + strlen(dname) >
+                        PATH_MAX){
+                    OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                            "_OWPCleanDataRecs: Unable to create temp file: Path Too Long");
+                    goto err;
+                }
+
+                /* create template (fname) string for mkstemp */
+                strcpy(tmpfname,dname);
+                strcat(tmpfname,OWP_PATH_SEPARATOR);
+                strcat(tmpfname,tmpl);
+                if( (newfd = mkstemp(tmpfname)) < 0){
+                    OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                            "_OWPCleanDataRecs: mkstemp(%s): %M",
+                            tmpfname);
+                    goto err;
+                }
+
+                /* immediately unlink - no need for a directory entry */
+                if(unlink(tmpfname) != 0){
+                    OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                            "unlink(%s): %M",tmpfname);
+                    close(newfd);
+                    goto err;
+                }
+
+                /*
+                 * Copy original file into tmpfile from the beginning
+                 * until just before the current record.
+                 */
+                toff = fhdr.oset_datarecs + (j * fhdr.rec_size);
+                if(I2CopyFile(OWPContextErrHandle(ctx),
+                            newfd,fileno(rfp),toff) != 0){
+                    OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                            "_OWPCleanDataRecs: Unable to copy session data: I2CopyFile(): %M");
+                    close(newfd);
+                    goto err;
+                }
+
+                if( !(wfp = fdopen(newfd,"r+b"))){
+                    OWPError(ctx,OWPErrFATAL,errno,"fdopen(%d): %M",
+                            newfd);
+                    close(newfd);
+                    goto err;
+                }
+
+                /*
+                 * Seek new wfp to end of tmpfile.
+                 */
+                if(fseeko(wfp,0,SEEK_END) != 0){
+                    OWPError(ctx,OWPErrFATAL,errno,"fseeko(): %M");
+                    goto loop_err;
+                }
+            }
+        }
+        continue;
+loop_err:
+        if(wfp != rfp){
+            fclose(wfp);
+        }
+        goto err;
+    }
+
+clean_data:
+
+    /*
+     * If two fp's were used, then the tmpfile needs to be copied
+     * back to the original file.
+     */
+    if(wfp != rfp){
+        if(I2CopyFile(OWPContextErrHandle(ctx),
+                    fileno(rfp),fileno(wfp),0) != 0){
+            OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                    "_OWPCleanDataRecs: Unable to copy session data: I2CopyFile(): %M");
+            fclose(wfp);
+            goto err;
+        }
+        fclose(wfp);
+    }
+
+    /*
+     * Write NumDataRecords into file.
+     * (This MUST be done before adding any skip records to the file
+     * or there is a race condition where partial session results could
+     * interpret skip records as data records!)
+     */
+    if( !OWPWriteDataHeaderNumDataRecs(ctx,rfp,num_recs)){
+        goto err;
+    }
+
+    return True;
+
+err:
+    OWPError(ctx, OWPErrFATAL,OWPErrUNKNOWN,
+            "_OWPCleanDataRecs: Failed");
+    return False;
+}
+
+typedef struct _maxrecv_rec{
+    OWPBoolean  found;
+    uint32_t    index;          /* count records (index in file) */
+    uint32_t    maxrecv;        /* max seqno for received records */
+    uint32_t    badlost;        /* seqno for *first* throw-away lost rec */
+    uint32_t    index_badlost;  /* record index in file for badlost */
+} _maxrecv_rec;
+
+static int
+GetMaxRecv(
+        OWPDataRec  *rec,
+        void        *data
+        )
+{
+    _maxrecv_rec    *mrec = (_maxrecv_rec *)data;
+
+
+    /*
+     * If this record is not lost, update maxrecv
+     */
+    if(!OWPIsLostRecord(rec)){
+        mrec->found = True;
+        mrec->maxrecv = MAX(mrec->maxrecv,rec->seq_no);
+    }
+    /*
+     * lost - if this is the first one greater than maxrecv, then
+     * record the badlost.
+     */
+    else if((rec->seq_no > mrec->maxrecv) &&
+            (mrec->badlost < mrec->maxrecv)){
+        mrec->badlost = rec->seq_no;
+        mrec->index_badlost = mrec->index;
+    }
+
+    mrec->index++;
+
+    return 0;
+}
+
+/*
+ * Function:    _OWPCleanUpSessions
+ *
+ * Description:    
+ *              This function updates the "recv" side sessions.
+ *              The StopSessions message was not read in this case,
+ *              so it relies on the stoptime of the session to
+ *              clean things up. Also, it deletes all trailing
+ *              Missing packet records in the file.
+ *
+ * In Args:    
+ *
+ * Out Args:    
+ *
+ * Scope:    
+ * Returns:    
+ * Side Effect:    
+ */
+OWPBoolean
+_OWPCleanUpSessions(
+        OWPControl      cntrl,
+        int             *intr __attribute__((unused)),
+        OWPAcceptType   *acceptval_ret,
+        OWPTimeStamp    stoptime
+        )
+{
+    OWPAcceptType   aval;
+    OWPAcceptType   *acceptval = &aval;
+    OWPTestSession  tptr;
+
+    if(acceptval_ret)
+        acceptval = acceptval_ret;
+    *acceptval = OWP_CNTRL_ACCEPT;
+
+    /*
+     * Parse test session list and pull recv sessions into the receivers
+     * list.
+     */
+    for(tptr = cntrl->tests;tptr;tptr = tptr->next){
+        char                        sid_name[sizeof(OWPSID)*2+1];
+        off_t                       toff;
+        FILE                        *rfp,*wfp;
+        _OWPSessionHeaderInitialRec fhdr;
+        struct flock                flk;
+        uint32_t                    j;
+        OWPDataRec                  rec;
+        uint8_t                     rbuf[_OWP_MAXDATAREC_SIZE];
+        uint32_t                    max_recv,num_recs;
+
+        if(!tptr->endpoint){
+            OWPError(cntrl->ctx,OWPErrFATAL,EINVAL,
+                    "_OWPCleanUpSessions: no endpoint state!");
+            goto err;
+        }
+
+        /*
+         * Only need to clean recv sessions.
+         */
+        if(tptr->endpoint->send){
+            continue;
+        }
+
+
+        I2HexEncode(sid_name,tptr->sid,sizeof(OWPSID));
+
+        rfp = wfp = tptr->endpoint->datafile;
+
+        /*
+         * Lock the data file for writing. This is needed so FetchSessions
+         * coming in from other control connections will get consistent
+         * information.
+         */
+        memset(&flk,0,sizeof(flk));
+        flk.l_start = 0;
+        flk.l_len = 0;
+        flk.l_whence = SEEK_SET;
+        flk.l_type = F_WRLCK;
+
+        if( fcntl(fileno(rfp), F_SETLKW, &flk) < 0){
+            OWPError(cntrl->ctx,OWPErrFATAL,errno,
+                    "_OWPCleanUpSessions: Unable to lock file sid(%s): %M",
+                    sid_name);
+            goto err;
+        }
+
+        max_recv = 0;
+        if( !_OWPCleanDataRecs(cntrl->ctx,tptr,0xFFFFFFFF,stoptime,&max_recv,
+                    &toff)){
+            OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                    "_OWPCleanUpSessions: Unable to clean data sid(%s): %M",
+                    sid_name);
+            goto err;
+        }
+
+        /*
+         * Read needed file header info.
+         */
+        if(!_OWPReadDataHeaderInitial(cntrl->ctx,rfp,&fhdr)){
+            goto err;
+        }
+
+        /*
+         * Because this is from a broken control connection, I
+         * now need to clean out any records with an index greater than
+         * the last received packet.
+         *
+         * If CleanDataRecs was unable to get a max index, then
+         * this degrades to a full parse of the dataset for the max
+         * 'found' index.
+         */
+        if(!max_recv){
+            _maxrecv_rec    maxrec;
+
+            memset(&maxrec,0,sizeof(maxrec));
+            if(fseeko(rfp,fhdr.oset_datarecs,SEEK_SET) != 0){
+                OWPError(cntrl->ctx,OWPErrFATAL,errno,"fseeko(): %M");
+                goto err;
+            }
+            if(OWPParseRecords(cntrl->ctx,rfp,fhdr.num_datarecs,fhdr.version,
+                        GetMaxRecv,(void*)&maxrec) != OWPErrOK){
+                OWPError(cntrl->ctx,OWPErrFATAL,errno,
+                        "_OWPCleanUpSessions: GetMaxRecv failed");
+                goto err;
+            }
+
+            /*
+             * If no records were actually received - truncate the
+             * file to oset_datarecs and set num_datarecs to 0 and
+             * be done.
+             */
+            if(!maxrec.found){
+                if(ftruncate(fileno(rfp),fhdr.oset_datarecs) != 0){
+                    OWPError(cntrl->ctx,OWPErrFATAL,errno,"ftruncate(): %M");
+                    goto err;
+                }
+                if( !OWPWriteDataHeaderNumDataRecs(cntrl->ctx,rfp,0)){
+                    goto err;
+                }
+
+                /* goto next session */
+                continue;
+            }
+            max_recv = maxrec.maxrecv;
+            toff = fhdr.oset_datarecs + (maxrec.index_badlost * fhdr.rec_size);
+        }
+            
+        /*
+         * Advance fp to toff and remove all lost records with
+         * index greater than max_recv from there to the end.
+         */
+        if(fseeko(rfp,toff,SEEK_SET) != 0){
+            OWPError(cntrl->ctx,OWPErrFATAL,errno,"fseeko(): %M");
+            goto err;
+        }
+
+        num_recs = fhdr.num_datarecs;
+        for(j=(toff - fhdr.oset_datarecs)/fhdr.rec_size;
+                j<fhdr.num_datarecs;
+                j++){
+
+            /*
+             * Read the packet record from midI.
+             */
+            if(fread(rbuf,fhdr.rec_size,1,rfp) != 1){
+                OWPError(cntrl->ctx,OWPErrFATAL,errno,
+                        "fread(): Reading session file sid(%s): %M",
+                        sid_name);
+                goto loop_err;
+            }
+            if(!_OWPDecodeDataRecord(fhdr.version,&rec,rbuf)){
+                errno = EFTYPE;
+                OWPError(cntrl->ctx,OWPErrFATAL,errno,
+                        "_OWPCleanDataRecs: Invalid data record sid(%s)",
+                        sid_name);
+                goto loop_err;
+            }
+
+            /*
+             * If seq_no is > max_recv then delete the packet
+             */
+            if(rec.seq_no > max_recv){
+                num_recs--;
+                /*
+                 * If wfp==rfp, then create another fp for wfp and point
+                 * it at the current record so it will be written over.
+                 */
+                if(wfp == rfp){
+                    int     newfd;
+                    char    tmpfname[PATH_MAX];
+                    char    *dname;
+                    char    *tmpl = "owamp.XXXXXXXX";
+
+                    /*
+                     * Need another file for bookkeeping... First determine
+                     * what dir to put it in.
+                     */
+                    dname = NULL;
+                    memset(tmpfname,'\0',sizeof(tmpfname));
+
+                    /* put it in the same dir as session data if possible */
+                    if( strlen(tptr->endpoint->fname) > 0){
+                        strncpy(tmpfname,tptr->endpoint->fname,PATH_MAX);
+                        dname = dirname(tmpfname);
+                    }
+
+                    /* otherwise use tmpdir */
+                    if( !dname){
+                        dname = getenv("TMPDIR");
+                    }
+                    if( !dname){
+                        dname = "/tmp";
+                    }
+
+                    /* Make sure pathname will not over-run memory. */
+                    if(strlen(tmpl) + OWP_PATH_SEPARATOR_LEN + strlen(dname) >
+                            PATH_MAX){
+                        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                                "_OWPCleanUpSessions: Unable to create temp file: Path Too Long");
+                        goto err;
+                    }
+
+                    /* create template (fname) string for mkstemp */
+                    strcpy(tmpfname,dname);
+                    strcat(tmpfname,OWP_PATH_SEPARATOR);
+                    strcat(tmpfname,tmpl);
+                    if( (newfd = mkstemp(tmpfname)) < 0){
+                        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                                "_OWPCleanUpSessions: mkstemp(%s): %M",
+                                tmpfname);
+                        goto err;
+                    }
+
+                    /* immediately unlink - no need for a directory entry */
+                    if(unlink(tmpfname) != 0){
+                        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                                "unlink(%s): %M",tmpfname);
+                        close(newfd);
+                        goto err;
+                    }
+
+                    /*
+                     * Copy original file into tmpfile from the beginning
+                     * until just before the current record.
+                     */
+                    toff = fhdr.oset_datarecs + (j * fhdr.rec_size);
+                    if(I2CopyFile(OWPContextErrHandle(cntrl->ctx),
+                                newfd,fileno(rfp),toff) != 0){
+                        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                                "_OWPCleanUpSessions: Unable to copy session data: I2CopyFile(): %M");
+                        close(newfd);
+                        goto err;
+                    }
+
+                    if( !(wfp = fdopen(newfd,"r+b"))){
+                        OWPError(cntrl->ctx,OWPErrFATAL,errno,"fdopen(%d): %M",
+                                newfd);
+                        close(newfd);
+                        goto err;
+                    }
+
+                    /*
+                     * Seek new wfp to end of tmpfile.
+                     */
+                    if(fseeko(wfp,0,SEEK_END) != 0){
+                        OWPError(cntrl->ctx,OWPErrFATAL,errno,"fseeko(): %M");
+                        goto loop_err;
+                    }
+                }
+            }
+            /*
+             * Otherwise, this is a good packet and it should be kept.
+             */
+            else{
+                if(wfp != rfp){
+                    if(fwrite(rbuf,fhdr.rec_size,1,wfp) != 1){
+                        OWPError(cntrl->ctx,OWPErrFATAL,errno,
+                                "fwrite(): Writing session file sid(%s): %M",
+                                sid_name);
+                        goto loop_err;
+                    }
+                }
+            }
+            continue;
+loop_err:
+            if(wfp != rfp){
+                fclose(wfp);
+            }
+            goto err;
+        }
+
+        /*
+         * If two fp's were used, then the tmpfile needs to be copied
+         * back to the original file.
+         */
+        if(wfp != rfp){
+            if(I2CopyFile(OWPContextErrHandle(cntrl->ctx),
+                        fileno(rfp),fileno(wfp),0) != 0){
+                OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                        "_OWPCleanDataRecs: Unable to copy session data: I2CopyFile(): %M");
+                fclose(wfp);
+                goto err;
+            }
+            fclose(wfp);
+        }
+
+        /*
+         * Write num_recs and "finished" into file.
+         */
+        if( !OWPWriteDataHeaderNumDataRecs(cntrl->ctx,rfp,num_recs)){
+            goto err;
+        }
+
+        /*
+         * Session should still be marked as incomplete because
+         * the StopSessions message information was not available.
+         */
+        if( !_OWPWriteDataHeaderFinished(cntrl->ctx,rfp,
+                    OWP_SESSION_FINISHED_INCOMPLETE,0)){
+            goto err;
+        }
+
+        flk.l_type = F_UNLCK;
+        if( fcntl(fileno(rfp), F_SETLKW, &flk) < 0){
+            OWPError(cntrl->ctx,OWPErrFATAL,errno,
+                    "_OWPCleanUpSessions: Unable to unlock file sid(%s): %M",
+                    sid_name);
+            goto err;
+        }
+    }
+
+    return True;
+
+err:
+
+    *acceptval = OWP_CNTRL_FAILURE;
+    OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                                            "_OWPCleanUpSessions: Failed");
+    return False;
+}
 
 /*
  * Function:    
@@ -790,8 +1645,9 @@ OWPStopSessions(
     OWPAcceptType   *acceptval=&aval;
     int             ival=0;
     int             *intr=&ival;
-    uint32_t       num_sessions=0;
+    uint32_t        num_sessions=0;
     OWPTimeStamp    stoptime;
+    OWPBoolean      readstop = True;
 
     if(acceptval_ret){
         acceptval = acceptval_ret;
@@ -809,7 +1665,8 @@ OWPStopSessions(
     err = _OWPWriteStopSessions(cntrl,intr,*acceptval,num_sessions);
     err2 = MIN(err,err2);
     if(err2 < OWPErrWARNING){
-        goto done;
+        readstop = False;
+        goto clean_sessions;
     }
 
     msgtype = OWPReadRequestType(cntrl,intr);
@@ -818,17 +1675,8 @@ OWPStopSessions(
             break;
 
         case OWPReqSockClose:
-            OWPError(cntrl->ctx,OWPErrFATAL,errno,
-                    "OWPStopSessions: Control socket closed: %M");
-            err2 = OWPErrFATAL;
-            goto done;
-            break;
-
         case OWPReqSockIntr:
-            OWPError(cntrl->ctx,OWPErrFATAL,errno,
-                    "OWPStopSessions: Session cancelled by interrupt: %M");
-            err2 = OWPErrFATAL;
-            goto done;
+            readstop = False;
             break;
 
         default:
@@ -837,6 +1685,8 @@ OWPStopSessions(
             err2 = OWPErrFATAL;
             goto done;
     }
+
+clean_sessions:
 
     /*
      * Get time StopSessions was recieved and use that to
@@ -861,10 +1711,12 @@ OWPStopSessions(
      * This will take the NextSeq and SkipRecords and
      * put them in the recv session files as well.
      */
-    err = _OWPReadStopSessions(cntrl,intr,acceptval,stoptime);
-    err2 = MIN(err,err2);
-    if(err2 < OWPErrWARNING){
-        goto done;
+    if(readstop){
+        err = _OWPReadStopSessions(cntrl,intr,acceptval,stoptime);
+        err2 = MIN(err,err2);
+    }
+    else if(!_OWPCleanUpSessions(cntrl,intr,acceptval,stoptime)){
+        err2 = OWPErrFATAL;
     }
 
 done:
@@ -880,7 +1732,10 @@ done:
         if(*acceptval == OWP_CNTRL_ACCEPT){
             *acceptval = OWP_CNTRL_FAILURE;
         }
-        (void)_OWPFailControlSession(cntrl,err2);
+        return _OWPFailControlSession(cntrl,err2);
+    }
+    else if(!readstop){
+        return _OWPFailControlSession(cntrl,OWPErrFATAL);
     }
 
     cntrl->state &= ~_OWPStateTest;
@@ -909,8 +1764,9 @@ OWPStopSessionsWait(
     OWPAcceptType   *acceptval=&aval;
     int             ival=0;
     int             *intr=&ival;
-    uint32_t       num_sessions=0;
+    uint32_t        num_sessions=0;
     OWPTimeStamp    stoptime;
+    OWPBoolean      readstop=True;
 
     *err_ret = OWPErrOK;
     if(acceptval_ret){
@@ -1021,22 +1877,15 @@ AGAIN:
             break;
 
         case OWPReqSockClose:
+        case OWPReqSockIntr:
             /*
-             * TODO: Go through all recv sessions and delete
+             * Go through all recv sessions and delete
              * all missing packet records *after* the last
              * good one. (section 3.8 of draft 14)
+             * (readstop indicates the call of _OWPCleanUpSessions()
+             * and that does the section 3.8 cleanup.)
              */
-            OWPError(cntrl->ctx,OWPErrFATAL,errno,
-                    "OWPStopSessionsWait: Control socket closed: %M");
-            *err_ret = OWPErrFATAL;
-            goto done;
-            break;
-
-        case OWPReqSockIntr:
-            OWPError(cntrl->ctx,OWPErrFATAL,errno,
-                    "OWPStopSessionsWait: Session cancelled by interrupt: %M");
-            *err_ret = OWPErrFATAL;
-            goto done;
+            readstop = False;
             break;
 
         default:
@@ -1078,16 +1927,25 @@ AGAIN:
      * Read the rest of the stop sessions message and complete
      * the recv side session files.
      */
-    err2 = _OWPReadStopSessions(cntrl,intr,acceptval,stoptime);
-    *err_ret = MIN(*err_ret,err2);
+    if(readstop){
+        err2 = _OWPReadStopSessions(cntrl,intr,acceptval,stoptime);
+        *err_ret = MIN(*err_ret,err2);
+    }
+    else if(!_OWPCleanUpSessions(cntrl,intr,acceptval,stoptime)){
+        *err_ret = OWPErrFATAL;
+    }
 
 done:
+
+    if(*err_ret < OWPErrWARNING){
+        *acceptval = OWP_CNTRL_FAILURE;
+    }
 
     /*
      * If errors are non-fatal (warning or better) then send the
      * stop sessions message.
      */
-    if(*err_ret >= OWPErrWARNING){
+    if(readstop && (*err_ret >= OWPErrWARNING)){
         err2 = _OWPWriteStopSessions(cntrl,intr,*acceptval,num_sessions);
         *err_ret = MIN(*err_ret,err2);
     }
@@ -1108,6 +1966,11 @@ done:
         _OWPFailControlSession(cntrl,OWPErrFATAL);
         return -1;
     }
+    else if(!readstop){
+        _OWPFailControlSession(cntrl,OWPErrFATAL);
+        return -1;
+    }
+
 
     /*
      * Otherwise, report success.
@@ -2024,37 +2887,6 @@ OWPWriteDataHeader(
 }
 
 /*
- * Function:        OWPTestDiskspace
- *
- * Description:        
- *         Returns the size of file a given testspec will require.
- *         (Specific to version 3 files - all write functions only
- *         support latest version of files.)
- *
- * In Args:        
- *
- * Out Args:        
- *
- * Scope:        
- * Returns:        
- * Side Effect:        
- */
-uint64_t
-OWPTestDiskspace(
-        OWPTestSpec        *tspec
-        )
-{
-    uint64_t   hdr_len;
-
-    /*
-     * 56 == 40 for initial portion + 16 for ending IZP
-     */
-    hdr_len = 56 + +_OWP_TEST_REQUEST_PREAMBLE_SIZE+
-        16*(tspec->nslots+1);
-    return hdr_len + tspec->npackets*_OWP_DATAREC_SIZE;
-}
-
-/*
  * Function:        OWPWriteDataRecord
  *
  * Description:        
@@ -2562,6 +3394,37 @@ OWPReadDataSkips(
     }
 
     return True;
+}
+
+/*
+ * Function:        OWPTestDiskspace
+ *
+ * Description:        
+ *         Returns the size of file a given testspec will require.
+ *         (Specific to version 3 files - all write functions only
+ *         support latest version of files.)
+ *
+ * In Args:        
+ *
+ * Out Args:        
+ *
+ * Scope:        
+ * Returns:        
+ * Side Effect:        
+ */
+uint64_t
+OWPTestDiskspace(
+        OWPTestSpec        *tspec
+        )
+{
+    uint64_t   hdr_len;
+
+    /*
+     * 56 == 40 for initial portion + 16 for ending IZP
+     */
+    hdr_len = 56 + +_OWP_TEST_REQUEST_PREAMBLE_SIZE+
+        16*(tspec->nslots+1);
+    return hdr_len + tspec->npackets*_OWP_DATAREC_SIZE;
 }
 
 /*

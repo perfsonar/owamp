@@ -644,12 +644,6 @@ typedef void (*OWPCloseFileFunc)(
 #define OWPChildWait        "OWPChildWait"
 #endif
 
-/*
- * This OWPBoolean type is used to determine if spawned off test processes
- * should create their own process group.
- */
-#define OWPDetachProcesses  "OWPDetachProcesses"
-
 extern OWPContext
 OWPContextCreate(
         I2ErrHandle eh
@@ -857,6 +851,9 @@ OWPStartSessions(
  * OWPTestSessionStatus until all sessions complete.  (OWPSessionsActive is
  * a simple way to poll all of them - you know you are done when it returns 0.)
  * You can of course recall StopSessionsWait in this case.
+ *
+ * If acceptval returns anything other than OWP_CNTRL_ACCEPT, the
+ * data files associated with the recieve sessions SHOULD be deleted.
  *
  * Client and Server
  */

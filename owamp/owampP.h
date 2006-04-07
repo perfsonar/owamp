@@ -404,6 +404,15 @@ _OWPWriteDataHeaderFinished(
         uint32_t   next_seqno
         );
 
+extern OWPBoolean
+_OWPCleanDataRecs(
+        OWPContext      cntrl,
+        OWPTestSession  tptr,
+        uint32_t        next_seqno,
+        OWPTimeStamp    stoptime,
+        uint32_t        *max_recv,  /* out: max received index */
+        off_t           *off_start  /* out: beginning of questionable data */
+        );
 /*
  * io.c prototypes
  */

@@ -1310,6 +1310,10 @@ AGAIN:
                         &clr_buffer[16],&ep->payload[16]);
             }
 
+            if(owp_int || owp_usr2){
+                goto finish_sender;
+            }
+
             if( (sent = sendto(ep->sockfd,ep->payload,
                             ep->len_payload,0,saddr,saddrlen)) < 0){
                 switch(errno){
@@ -2251,7 +2255,8 @@ _OWPEndpointInitHook(
     OWPEndpoint         *end_data = &tsession->endpoint;
     OWPEndpoint         ep = tsession->endpoint;
     struct sigaction    act;
-    struct sigaction    chldact,usr1act,usr2act,intact,pipeact,alrmact;
+    struct sigaction    chldact,usr1act,usr2act,hupact,termact;
+    struct sigaction    intact,pipeact,alrmact;
     sigset_t            sigs,osigs;
 
     /*
@@ -2292,6 +2297,8 @@ _OWPEndpointInitHook(
     sigemptyset(&sigs);
     sigaddset(&sigs,SIGUSR1);
     sigaddset(&sigs,SIGUSR2);
+    sigaddset(&sigs,SIGHUP);
+    sigaddset(&sigs,SIGTERM);
     sigaddset(&sigs,SIGINT);
     sigaddset(&sigs,SIGALRM);
     sigaddset(&sigs,SIGPIPE);
@@ -2323,8 +2330,13 @@ _OWPEndpointInitHook(
         return False;
     }
 
+    /*
+     * In the child, ignore PIPE, HUP, TERM.
+     */
     act.sa_handler = SIG_IGN;
-    if(     (sigaction(SIGPIPE,&act,&pipeact) != 0)){
+    if(     (sigaction(SIGPIPE,&act,&pipeact) != 0) ||
+            (sigaction(SIGHUP,&act,&hupact) != 0) ||
+            (sigaction(SIGTERM,&act,&termact) != 0)){
         OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"sigaction(): %M");
         EndpointFree(ep,OWP_CNTRL_FAILURE);
         *end_data = NULL;
@@ -2383,6 +2395,8 @@ _OWPEndpointInitHook(
         if(     (sigaction(SIGUSR1,&usr1act,NULL) != 0) ||
                 (sigaction(SIGUSR2,&usr2act,NULL) != 0) ||
                 (sigaction(SIGINT,&intact,NULL) != 0) ||
+                (sigaction(SIGHUP,&hupact,NULL) != 0) ||
+                (sigaction(SIGTERM,&termact,NULL) != 0) ||
                 (sigaction(SIGPIPE,&pipeact,NULL) != 0) ||
                 (sigaction(SIGALRM,&alrmact,NULL) != 0)){
             OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
@@ -2412,6 +2426,7 @@ parenterr:
         return False;
     }
 
+#if NOT
     /*
      * We are now in the child send/recv process.
      */
@@ -2420,6 +2435,7 @@ parenterr:
         OWPError(ctx,OWPErrFATAL,errno,"setsid(): %M");
         exit(OWP_CNTRL_FAILURE);
     }
+#endif
 
     /*
      * Create new session - do not want signals sent to the parent
@@ -2600,7 +2616,7 @@ done:
      * If accept state was good upon calling this function, but there
      * was an error stopping this session - report the problem up.
      */
-    if((*aval == OWP_CNTRL_ACCEPT) && (ep->acceptval != OWP_CNTRL_ACCEPT)){
+    if(*aval == OWP_CNTRL_ACCEPT){
         *aval = ep->acceptval;
     }
 
