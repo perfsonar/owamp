@@ -644,6 +644,16 @@ typedef void (*OWPCloseFileFunc)(
 #define OWPChildWait        "OWPChildWait"
 #endif
 
+/*
+ * If this variable is set in the context, send/recv children processes
+ * are directed to detach from the process group. (This is useful to
+ * catch ^C from a shell in the parent process without having the
+ * SIGINT being sent to the children processes. By doing this, it is
+ * possible to gracefully shutdown an owamp test session in response
+ * to SIGINT.)
+ */
+#define OWPDetachProcesses  "OWPDetachProcesses"
+
 extern OWPContext
 OWPContextCreate(
         I2ErrHandle eh

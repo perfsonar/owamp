@@ -1424,6 +1424,14 @@ main(
         exit(1);
     }
 
+    /*
+     * Set the detach processes flag.
+     */
+    if(!OWPContextConfigSetV(ctx,OWPDetachProcesses,(void*)True)){
+        I2ErrLog(eh,"Unable to set Context var: %M");
+        exit(1);
+    }
+
 #ifndef NDEBUG
     /*
      * Setup debugging of child prcesses.

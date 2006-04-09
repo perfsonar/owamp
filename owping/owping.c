@@ -737,6 +737,7 @@ signal_catch(
         )
 {
     switch(signo){
+        case SIGINT:
         case SIGTERM:
         case SIGHUP:
             break;
@@ -745,7 +746,7 @@ signal_catch(
             _exit(-1);
     }
 
-    owp_intr = 1;
+    owp_intr++;
 
     return;
 }
@@ -1054,6 +1055,7 @@ main(
                 exit(0);
                 /* UNREACHED */
         }
+        if(owp_intr) exit(2);
     }
     argc -= optind;
     argv += optind;
@@ -1071,7 +1073,8 @@ main(
     setact.sa_handler = signal_catch;
     sigemptyset(&setact.sa_mask);
     if(     (sigaction(SIGTERM,&setact,NULL) != 0) ||
-            (sigaction(SIGHUP,&setact,NULL) != 0)){
+            (sigaction(SIGHUP,&setact,NULL) != 0) ||
+            (sigaction(SIGINT,&setact,NULL) != 0)){
         I2ErrLog(eh,"sigaction(): %M");
         exit(1);
     }
@@ -1131,6 +1134,15 @@ main(
                     "OWPContextConfigSetV(): Unable to set OWPTestPortRange?!");
             exit(1);
         }
+
+        /*
+         * Set the detach processes flag.
+         */
+        if(!OWPContextConfigSetV(ctx,OWPDetachProcesses,(void*)True)){
+            I2ErrLog(eh,"Unable to set Context var: %M");
+            exit(1);
+        }
+
 #ifndef    NDEBUG
         /*
          * Setup debugging of child processes.
@@ -1231,6 +1243,7 @@ main(
         tspec.packet_size_padding = ping_ctx.opt.padding;
         tspec.npackets = ping_ctx.opt.numPackets;
 
+        if(owp_intr) exit(2);
 
         /*
          * Prepare paths for datafiles. Unlink if not keeping data.
@@ -1242,6 +1255,8 @@ main(
                         NULL,tosid,&err_ret))
                 FailSession(ping_ctx.cntrl);
         }
+
+        if(owp_intr) exit(2);
 
         if(ping_ctx.opt.from) {
 
@@ -1317,9 +1332,10 @@ main(
                     "Approximately %.1f seconds until results available\n",
                     endtime);
         }
+        if(owp_intr) exit(2);
 
         /*
-         * If ch < 0, it is possible to continue parsing partial data.
+         * If ch == 2, it is possible to continue parsing partial data.
          */
         ch = OWPStopSessionsWait(ping_ctx.cntrl,NULL,&owp_intr,&acceptval,&err);
         if((ch < 0) || (acceptval != OWP_CNTRL_ACCEPT)){
@@ -1329,6 +1345,19 @@ main(
             }
             exit(1);
         }
+
+        if(ch == 2){
+            /* early termination request (signal) */
+            (void)OWPStopSessions(ping_ctx.cntrl,&owp_intr,&acceptval);
+            if(acceptval != OWP_CNTRL_ACCEPT){
+                I2ErrLog(eh, "Test session(s) Failed...");
+                if(ping_ctx.opt.save_from_test){
+                    (void)unlink(ping_ctx.opt.save_from_test);
+                }
+                exit(2);
+            }
+        }
+        if(owp_intr > 1) exit(2);
 
         /*
          * Get "local" and "remote" names for pretty printing
@@ -1374,20 +1403,23 @@ main(
             FILE    *tofp;
 
             if( !(tofp = owp_fetch_sid(ping_ctx.opt.save_to_test,
-                    ping_ctx.cntrl,tosid))){
+                            ping_ctx.cntrl,tosid))){
                 char    sname[sizeof(OWPSID)*2 + 1];
                 I2HexEncode(sname,tosid,sizeof(OWPSID));
                 I2ErrLog(eh,"Unable to fetch data for sid(%s)",sname);
             }
-            else if((!ping_ctx.opt.quiet || ping_ctx.opt.raw ||
-                        ping_ctx.opt.machine) &&
-                    do_stats(ctx,stdout,tofp,local,remote)){
-                I2ErrLog(eh, "do_stats(\"to\" session): %M");
+            else if(!ping_ctx.opt.quiet || ping_ctx.opt.raw ||
+                    ping_ctx.opt.machine){
+                if( do_stats(ctx,stdout,tofp,local,remote)){
+                    I2ErrLog(eh, "do_stats(\"to\" session): %M");
+                }
             }
             if(tofp && fclose(tofp)){
                 I2ErrLog(eh,"close(): %M");
             }
         }
+
+        if(owp_intr > 1) exit(2);
 
         if(fromfp && (!ping_ctx.opt.quiet || ping_ctx.opt.raw ||
                     ping_ctx.opt.machine)){
@@ -1468,6 +1500,8 @@ main(
             else if(fclose(fp)){
                 I2ErrLog(eh,"fclose(): %M");
             }
+
+            if(owp_intr) exit(2);
         }
 
         exit(0);
