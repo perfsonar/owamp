@@ -1,4 +1,159 @@
+2006-04-09  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* doc/index.html: Prepare for 2.0b release. (ITEC only release)
+
+	* configure.ac: Prepare for 2.0b release. (ITEC only release)
+
+	jeff
+
+	* owamp/endpoint.c, owamp/owamp.h, owping/owping.c, powstream/powstream.c:
+	Added setsid() code back in. Realized the problem I was having before was
+	unrelated - so I was able to add this back in.
+
+	Now powstream and owping now catch ^C and attempt to save partial session
+	information. A second ^C should completely terminate.
+
+	jeff
+
+2006-04-07  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* owamp/api.c, owamp/endpoint.c, owamp/io.c, owamp/owamp.h, owamp/owampP.h, owamp/protocol.c, owamp/stats.c, owampd/owampd.c, owampd/policy.c, owping/owping.c, powstream/powstream.c:
+	Removed DetachProcess context option I added last week.
+
+	The sub-processes now ignore SIGTERM/SIGHUP correctly. The parent
+	process initiates graceful shutdown from SIGTERM/HUP and immediate
+	kill from SIGINT. (SIGINT gets sent to the whole process group and
+	immediately terminates all children processes as well.) For TERM/HUP
+	the parent process attempts to trade StopSession messages and
+	do data validation cleanup before exiting. (The parent process
+	sends USR2 to sub-processes to notify them of the early exit
+	time.)
+
+	This also works for owping. (Note however, that a ^C will send a
+	SIGINT on most systems, so this is not the way to get partial results.
+
+	(I could catch SIGINT in the parent processes, and for the first
+	one attempt to do a graceful shutdown, and for the second one do
+	a SIGKILL for the child processes... But, that would require
+	a fair amount of code rework.)
+
+	api.c:
+	    Added data cleanup routines. These get called in place of the
+	    ReadStopSessions functions if the control connection is closed.
+	    Basically, this removes any  missing packet records after the
+	    last real received one - but shares some functionality with
+	    the routines that are based on the 'stoptime' and 'next_seqno'
+	    version used by the ReadStopSessions functions.
+
+	endpoint.c:
+	    Now ignore TERM/HUP.
+
+	io.c:
+	    Remove error message printout in low-level read function. Higher
+	    levels deal with the error and report it if needed.
+
+	owamp.h:
+	    Remove DetachProcesses context stuff.
+
+	protocol.c:
+	    Moved much of the code from the ReadStopSessions function into
+	    utility routines in api.c so they could be shared.
+
+	owampd.c:
+	    Handle SIGTERM/HUP more gracefully. Current sessions are now
+	    sent the StopSessions message and partial sessions are saved.
+
+	policy.c:
+	    If StopSessions DOES happen and the AcceptValue is not ACCEPT,
+	    then delete the data file. It is invalid data. (This is how
+	    the data cleaning functions notify the other portions of the
+	    code.)
+
+	owping.c:
+	    Add sig handlers and pay attention to the StopSessions return
+	    values to determine if partial sessions should be kept or not.
+
+	powstream.c:
+	    Pay attention to the AcceptValue return and delete invalid
+	    partial sessions.
+
+	jeff
+
+2006-03-30  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* owamp/endpoint.c, owamp/owamp.h, owamp/protocol.c, powstream/powstream.c, powstream/powstreamP.h:
+	Modified signal handling with regard to early termination of tests
+	to be more resiliant in powstream. (There were problems if the
+	sessions contained too many LostPacket records - and other
+	things were fixed to make signal handling more predictable.)
+
+	endpoint.c:
+	    Added an option to make the test processes call setsid. (This
+	    ensures that if powstream is sent a SIGINT from another process
+	    it behaves the same way as if the user types ^C on the command-line.
+
+	owamp.h:
+	    Added context variable for DetachProcesses option.
+
+	protocol.c:
+	    Modified the data cleansing algorithm to compute the received
+	    time of the packet from the presumed send time in the case of
+	    lost packet records. (It needs to know the recv time to know
+	    how far it is in the recv stream - the packets are sorted
+	    by recv time.) It does this to avoid multiple passes
+	    through the data when deciding what records to keep an what
+	    records to throw away.
+
+	    Also, the data validation was not using the next_seqno from the
+	    stop_sessions packet like it should have. (The statistics
+	    code did - but it is better to add it here.)
+
+	    Currently the data cleaning code is embeded in the ReadStopSessions
+	    message code. The next step is to extract it from there and generalize
+	    it some so it can be called in the case where StopSessions messages
+	    are not passed. (In that case, data is just thrown out at the moment.)
+
+	powstream.c
+	    Added a delayStart option. Modified it to set the DetachProcesses
+	    option. Modified it to call StopSessions when abandoning a test
+	    instead of just closing the connection allowing the library
+	    to do a nicer job of cleaning up. Added a debug child option.
+
+	(Just checking in what I have before going off-line completely for a few days.)
+
+	jeff
+
+2006-03-25  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* owamp/stats.c: Adding cast so loss percent is calculated correctly.
+
+	(Ok, ok Eric. You were right, I should have held off longer before making another public
+	release.)
+
+	jeff
+
 2006-03-23  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* owampd/owampd.c, owping/owping.c: owampd.c
+	    The 'starttime' variable was not being initialized if the
+	    process was detaching from the terminial. Moved the initialization
+	    outside that block of code.
+
+	owping.c
+	    Removed non ISO strftime format options. Using older, more available
+	    versions instead.
+
+	jeff
+
+	* RELEASE.TODO:
+	Adding a list of things to be done for each release to help me
+	remember.
+
+	jeff
+
+	* CHANGELOG: new change log for 2.0a
+
+	jeff
 
 	* configure.ac, doc/index.html: preparing for 2.0a release
 	    fix statistics bugs...
