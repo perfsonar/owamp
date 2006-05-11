@@ -145,6 +145,18 @@ usage(const char *progname, const char *msg)
         print_conn_args();
         fprintf(stderr, "\n");
         print_output_args();
+    } else if (!strcmp(progname, "owup")) {
+        fprintf(stderr,
+                "usage: %s %s\n%s\n",
+                progname, "[arguments] servaddr",
+                "[arguments] are as follows: "
+               );
+        fprintf(stderr,"\n%s\n",
+            "   -h             print this message and exit"
+            );
+
+        fprintf(stderr, "\n");
+        print_conn_args();
     }
     else{
         fprintf(stderr,
