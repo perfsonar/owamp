@@ -1730,7 +1730,6 @@ run_receiver(
     struct timespec     expectspec;
     struct itimerval    wake;
     uint32_t           *seq;
-    uint32_t           maxseq=0;
     uint8_t            *tstamp;
     uint8_t            *tstamperr;
     uint8_t            *z1,*z2;
@@ -2004,36 +2003,35 @@ again:
              * queue.)
              */
             if(!ep->begin->hit){
+                OWPDataRec      lostrec;
+
                 /*
-                 * set fields in datarec for missing packet
+                 * set fields in lostrec for missing packet
                  * record.
                  */
                 /* seq no */
-                datarec.seq_no = ep->begin->seq;
+                lostrec.seq_no = ep->begin->seq;
                 /* presumed sent time */
-                datarec.send.owptime = OWPNum64Add(
+                lostrec.send.owptime = OWPNum64Add(
                         ep->tsession->test_spec.start_time,
                         ep->begin->relative);
-                datarec.send.sync = 0;
-                datarec.send.multiplier = 1;
-                datarec.send.scale = 64;
+                lostrec.send.sync = 0;
+                lostrec.send.multiplier = 1;
+                lostrec.send.scale = 64;
 
                 /* special value recv time */
-                datarec.recv.owptime = OWPULongToNum64(0);
+                lostrec.recv.owptime = OWPULongToNum64(0);
 
                 /* recv error was set above... */
 
-                datarec.ttl = 255;
+                lostrec.ttl = 255;
 
                 if( !OWPWriteDataRecord(ep->cntrl->ctx,
-                            ep->datafile,&datarec)){
+                            ep->datafile,&lostrec)){
                     OWPError(ep->cntrl->ctx,OWPErrFATAL,
                             OWPErrUNKNOWN,
                             "OWPWriteDataRecord()");
                     goto error;
-                }
-                if(datarec.seq_no > maxseq){
-                    maxseq = datarec.seq_no;
                 }
             }
 
@@ -2197,9 +2195,6 @@ again:
             OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
                     "OWPWriteDataRecord()");
             goto error;
-        }
-        if(datarec.seq_no > maxseq){
-            maxseq = datarec.seq_no;
         }
     }
 test_over:
