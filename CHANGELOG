@@ -1,3 +1,56 @@
+2006-05-24  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* owamp/endpoint.c:
+	Initialize timestamp structure for missing-packet record.
+
+	jeff
+
+2006-05-23  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* configure.ac: prepare 2.0c release.
+
+	jeff
+
+	* owamp/endpoint.c: BUGFIX!
+	    Problem: The receiver process over-writes the recv timestamp variable when
+	    outputting lost packet records. (The order of things changed in a
+	    previous release - it used to be ok to share this variable.)
+
+	    Solution: Add a temporary variable for the lost timestamp.
+
+	    Impact: If you have one lost packet, your data will show a lost packet
+	    roughly every 'timeout' seconds after that.
+
+	jeff
+
+	* doc/index.html: preparing for 2.0c release.
+
+	jeff
+
+2006-05-11  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* doc/Makefile.am: Adding owup.man into man1 targets.
+
+	jeff
+
+	* owping/owping.c: Adding usage message for owup.
+
+	jeff
+
+	* doc/index.html: Adding section on version compatibility.
+
+	jeff
+
+	* doc/owup.man: Adding documentation for owup.
+
+	jeff
+
+2006-04-18  Jeff W. Boote  <boote@packrat.internet2.edu>
+
+	* CHANGELOG: changelog for 2.0b release.
+
+	jeff
+
 2006-04-09  Jeff W. Boote  <boote@packrat.internet2.edu>
 
 	* doc/index.html: Prepare for 2.0b release. (ITEC only release)
