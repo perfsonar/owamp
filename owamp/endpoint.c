@@ -2020,6 +2020,7 @@ again:
                 lostrec.send.scale = 64;
 
                 /* special value recv time */
+                lostrec.recv = datarec.recv;
                 lostrec.recv.owptime = OWPULongToNum64(0);
 
                 /* recv error was set above... */
