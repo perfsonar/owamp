@@ -147,7 +147,8 @@ AC_SUBST(TOP_BUILD_DIRS)
 
 AC_CANONICAL_HOST
 AC_DEFINE(_GNU_SOURCE, 1, "Use glibc features.")
-AC_DEFINE(_LARGEFILE_SOURCE, 1, "Use large file API.")
+AC_SYS_LARGEFILE
+# AC_DEFINE(_LARGEFILE_SOURCE, 1, "Use large file API.")
 
 case $host in
     *-*-solaris* ) 

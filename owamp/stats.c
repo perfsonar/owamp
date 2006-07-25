@@ -1623,7 +1623,7 @@ OWPStatsPrintMachine(
      * Summary results
      */
     fprintf(output,"SENT\t%u\n",stats->sent);
-    fprintf(output,"SYNC\t%u\n",stats->sync);
+    fprintf(output,"SYNC\t%" PRIuPTR "\n",stats->sync);
     fprintf(output,"MAXERR\t%g\n",stats->maxerr);
     fprintf(output,"DUPS\t%u\n",stats->dups);
     fprintf(output,"LOST\t%u\n",stats->lost);

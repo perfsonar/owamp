@@ -313,7 +313,7 @@ typedef enum{
     OWP_CNTRL_UNAVAILABLE_TEMP=5    /* Temporary resource limitation    */
 } OWPAcceptType;
 
-typedef uint32_t   OWPBoolean;
+typedef intptr_t   OWPBoolean;
 typedef uint8_t    OWPSID[16];
 typedef uint8_t    OWPSequence[4];
 
