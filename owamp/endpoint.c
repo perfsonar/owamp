@@ -335,7 +335,7 @@ anon_file(
     }
 
     if( (fd = mkstemp(fpath)) < 0){
-        OWPError(ctx,OWPErrFATAL,errno,"mkstemp(): %M");
+        OWPError(ctx,OWPErrFATAL,errno,"mkstemp(%s): Check directory permissions: %M",fpath);
         goto error;
     }
 
@@ -796,7 +796,7 @@ success:
          * after the child exits no matter the size.
          */
 
-        if( !(ep->skiprecfd = anon_file(cntrl->ctx))){
+        if( (ep->skiprecfd = anon_file(cntrl->ctx)) < 0){
             OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
                     "Unable to create skips file");
             goto error;
