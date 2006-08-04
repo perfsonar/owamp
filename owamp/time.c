@@ -132,13 +132,13 @@ _OWPGetTimespec(
         )
 {
     struct timeval  tod;
-    uint32_t        maxerr;
+    uint32_t        timeerr;
 
     /*
      * By default, assume the clock is unsynchronized.
      */
     *sync = 0;
-    maxerr = (uint32_t)0;
+    timeerr = (uint32_t)0;
 
     if(gettimeofday(&tod,NULL) != 0){
         OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"gettimeofday(): %M");
@@ -204,7 +204,7 @@ _OWPGetTimespec(
                 ts->tv_nsec -= 1000000000;
             }
 
-            maxerr = (uint32_t)ntp_conf.maxerror;
+            timeerr = (uint32_t)ntp_conf.esterror;
         }
 
     }
@@ -213,7 +213,7 @@ _OWPGetTimespec(
     /*
      * Set estimated error
      */
-    *esterr = maxerr;
+    *esterr = timeerr;
 
     /*
      * Make sure a non-zero error is always returned - perfection
