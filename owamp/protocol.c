@@ -71,7 +71,7 @@ _OWPWriteServerGreeting(
 {
     /*
      * buf_aligned it to ensure uint32_t alignment, but I use
-     * buf for actuall assignments to make the array offsets agree with
+     * buf for actual assignments to make the array offsets agree with
      * the byte offsets shown above.
      */
     uint8_t    *buf = (uint8_t*)cntrl->msg;

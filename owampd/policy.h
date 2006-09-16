@@ -111,8 +111,8 @@ struct OWPDPolicyRec{
 
 };
 
-typedef uint64_t   OWPDLimitT;                /* values */
-typedef uint32_t   OWPDMesgT;
+typedef I2numT      OWPDLimitT;                /* values */
+typedef uint32_t    OWPDMesgT;
 
 typedef struct OWPDLimRec{
     OWPDMesgT   limit;
