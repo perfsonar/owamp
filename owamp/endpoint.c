@@ -1655,7 +1655,7 @@ recvfromttl(
     *peer_len = msg.msg_namelen;
 
     if((msg.msg_controllen < sizeof(struct cmsghdr)) ||
-            (msg.msg_flags && MSG_CTRUNC)){
+            (msg.msg_flags & MSG_CTRUNC)){
         return rc;
     }
 
