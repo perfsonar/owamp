@@ -151,6 +151,11 @@ EndpointClear(
         ep->payload = NULL;
     }
 
+    if(ep->hmac_ctx){
+        I2HMACSha1Free(ep->hmac_ctx);
+        ep->hmac_ctx = NULL;
+    }
+
     if(ep->lost_packet_buffer){
         I2HashClose(ep->lost_packet_buffer);
     }
@@ -379,11 +384,11 @@ _OWPEndpointInit(
     int                     sbuf_size;
     int                     sopt;
     socklen_t               opt_size;
-    uint32_t               i;
+    uint32_t                i;
     OWPTimeStamp            tstamp;
-    uint16_t               port=0;
-    uint16_t               p;
-    uint16_t               range;
+    uint16_t                port=0;
+    uint16_t                p;
+    uint16_t                range;
     OWPPortRange            portrange=NULL;
     int                     saveerr=0;
     char                    localnode[NI_MAXHOST];
@@ -425,13 +430,11 @@ _OWPEndpointInit(
 
     ep->len_payload = OWPTestPayloadSize(ep->cntrl->mode,
             ep->tsession->test_spec.packet_size_padding);
-    if(ep->len_payload < _OWP_DATAREC_SIZE){
-        ep->len_payload = _OWP_DATAREC_SIZE;
-    }
-    ep->payload = malloc(ep->len_payload);
+    /* use calloc to initialize the memory to 0 */
+    ep->payload = calloc(1,ep->len_payload);
 
     if(!ep->payload){
-        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,"malloc(): %M");
+        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,"calloc(): %M");
         goto error;
     }
 
@@ -734,9 +737,7 @@ success:
         }
 
         /*
-         * draft-ietf-ippm-owdp-08.txt adds TTL to the data that
-         * is stored by the receiver. Use IP_RECVTTL to indicate
-         * interest in receiving TTL ancillary data.
+         * Request TTL information in ancillary data.
          * TODO: Determine correct sockopt for IPV6!
          */
         switch(saddr->sa_family){
@@ -1090,6 +1091,61 @@ skip(
 }
 
 /*
+ * HERE
+ * Packet Formats:
+ *
+ * For unauthenticated mode:
+ *
+ *           0                   1                   2                   3
+ *           0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *        00|                        Sequence Number                        |
+ *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *        04|                          Timestamp                            |
+ *        08|                                                               |
+ *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *        12|        Error Estimate         |                               .
+ *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+                               .
+ *          .                                                               .
+ *          .                         Packet Padding                        .
+ *          .                                                               .
+ *          |                                                               |
+ *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *
+ *
+ * For authenticated and encrypted modes:
+ *
+ *           0                   1                   2                   3
+ *           0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *        00|                        Sequence Number                        |
+ *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *        04|                                                               |
+ *        08|                        MBZ (12 octets)                        |
+ *        12|                                                               |
+ *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *        16|                          Timestamp                            |
+ *        20|                                                               |
+ *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *        24|        Error Estimate         |                               |
+ *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+                               |
+ *        28|                         MBZ (6 octets)                        |
+ *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *        32|                                                               |
+ *        36|                       HMAC (16 octets)                        |
+ *        40|                                                               |
+ *        44|                                                               |
+ *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *          .                                                               .
+ *          .                                                               .
+ *          .                         Packet Padding                        .
+ *          .                                                               .
+ *          |                                                               |
+ *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *
+ */
+
+/*
  * Function:        run_sender
  *
  * Description:        
@@ -1115,26 +1171,29 @@ run_sender(
     size_t          nodenamelen = sizeof(nodename);
     char            nodeserv[NI_MAXSERV];
     size_t          nodeservlen = sizeof(nodeserv);
-    uint32_t       i;
+    uint32_t        i;
     struct timespec currtime;
     struct timespec nexttime;
     struct timespec timeout;
     struct timespec latetime;
     struct timespec sleeptime;
-    uint32_t       esterror;
-    uint32_t       lasterror=0;
-    uint8_t        sync;
+    uint32_t        esterror;
+    uint32_t        lasterror=0;
+    uint8_t         sync;
     ssize_t         sent;
-    uint32_t       *seq;
-    uint8_t        clr_buffer[32];
-    uint8_t        zeroiv[16];
-    uint8_t        *payload;
-    uint8_t        *tstamp;
-    uint8_t        *tstamperr;
+    uint32_t        *seq;
+    uint32_t        clr_mem[8]; /* two blocks */
+    char            *clr_buffer = (char *)clr_mem; /* legal type pun ;) */
+    uint8_t         iv[16];
+    char            *padding;
+    char            *tstamp;
+    char            *tstamperr;
+    char            *hmac;
     OWPTimeStamp    owptstamp;
     OWPNum64        nextoffset;
     _OWPSkip        sr;
-    uint32_t       num_skiprecs;
+    uint32_t        num_skiprecs;
+    int             r;
 
     if( !(saddr = I2AddrSAddr(ep->remoteaddr,&saddrlen)) ||
                 !I2AddrNodeName(ep->remoteaddr,nodename,&nodenamelen) ||
@@ -1148,27 +1207,29 @@ run_sender(
      * Initialize pointers to various positions in the packet buffer,
      * for data that changes for each packet. Also set zero padding.
      */
+    memset(clr_buffer,0,32);
+
     switch(ep->cntrl->mode){
         case OWP_MODE_OPEN:
             seq = (uint32_t*)&ep->payload[0];
             tstamp = &ep->payload[4];
             tstamperr = &ep->payload[12];
-            payload = &ep->payload[14];
+            hmac = NULL;
+            padding = &ep->payload[14];
             break;
         case OWP_MODE_AUTHENTICATED:
             seq = (uint32_t*)&clr_buffer[0];
             tstamp = &ep->payload[16];
             tstamperr = &ep->payload[24];
-            payload = &ep->payload[32];
-            memset(clr_buffer,0,32);
+            hmac = &ep->payload[32];
+            padding = &ep->payload[48];
             break;
         case OWP_MODE_ENCRYPTED:
             seq = (uint32_t*)&clr_buffer[0];
             tstamp = &clr_buffer[16];
             tstamperr = &clr_buffer[24];
-            payload = &ep->payload[32];
-            memset(clr_buffer,0,32);
-            memset(zeroiv,0,16);
+            hmac = &ep->payload[32];
+            padding = &ep->payload[48];
             break;
         default:
             /*
@@ -1180,20 +1241,6 @@ run_sender(
                     "run_sender: Bogus \"mode\" bits");
             exit(OWP_CNTRL_FAILURE);
     }
-
-    /*
-     * set random bits.
-     */
-#if        defined(OWP_ZERO_TEST_PAYLOAD)
-    memset(payload,0,ep->tsession->test_spec.packet_size_padding);
-#elif        !defined(OWP_VARY_TEST_PAYLOAD)
-    /*
-     * Ignore errors here - it isn't that critical that it be random.
-     * (just trying to defeat modem compression and the like.)
-     */
-    (void)I2RandomBytes(ep->cntrl->ctx->rand_src,payload,
-                        ep->tsession->test_spec.packet_size_padding);
-#endif
 
     /*
      * initialize nextoffset (running sum of next sendtime relative to
@@ -1219,10 +1266,12 @@ run_sender(
 
     do{
         /*
-         * First setup "this" packet.
+         * First setup "this" packet. calloc() used to allocate ep->payload,
+         * so padding will already be zero. Just leave it if zero payload
+         * is required.
          */
-#if        defined(OWP_VARY_TEST_PAYLOAD) && !defined(OWP_ZERO_TEST_PAYLOAD)
-        (void)I2RandomBytes(ep->cntrl->ctx->rand_src,payload,
+#if !defined(OWP_ZERO_TEST_PAYLOAD)
+        (void)I2RandomBytes(ep->cntrl->ctx->rand_src,(uint8_t *)padding,
                             ep->tsession->test_spec.packet_size_padding);
 #endif
         nextoffset = OWPNum64Add(nextoffset,
@@ -1233,14 +1282,30 @@ run_sender(
         *seq = htonl(i);
 
         /*
-         * Encrypt first block. (for MODE_AUTH we are done with AES -
-         * for MODE_ENCRYPT we will need to CBC the second block.
+         * blockEncrypt does CBC mode. Can still use this function for
+         * both authenticated and encrypted mode because CBC with iv=0
+         * of one block is identical to ECB of one block. Then iv is
+         * ready for the next block in the case of encrypted mode.
          */
+RETRY:
         if(ep->cntrl->mode & OWP_MODE_DOCIPHER){
-            rijndaelEncrypt(ep->cntrl->encrypt_key.rk,
-                    ep->cntrl->encrypt_key.Nr,
-                    &clr_buffer[0],&ep->payload[0]);
-            memset(&clr_buffer[16],0,16);
+            /*
+             * Initialize HMAC for this packet, and first block to it.
+             */
+            I2HMACSha1Init(ep->hmac_ctx,ep->hmac_key,sizeof(ep->hmac_key));
+            I2HMACSha1Append(ep->hmac_ctx,(uint8_t *)&clr_buffer[0],16);
+
+            /*
+             * Initialize IV and encrypt the first block
+             */
+            memset(iv,0,sizeof(iv));
+            r = blockEncrypt(iv,&ep->aeskey,(uint8_t *)&clr_buffer[0],16*8,
+                    (uint8_t *)&ep->payload[0]);
+            if(r != (16*8)){
+                OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                        "run_sender: Invalid ECB encryption of seq (#%ul)",i);
+                exit(OWP_CNTRL_FAILURE);
+            }
         }
 
 AGAIN:
@@ -1276,8 +1341,8 @@ AGAIN:
                                          &esterror,&lasterror);
             lasterror = esterror;
             owptstamp.sync = sync;
-            _OWPEncodeTimeStamp(tstamp,&owptstamp);
-            if(!_OWPEncodeTimeStampErrEstimate(tstamperr,
+            _OWPEncodeTimeStamp((uint8_t *)tstamp,&owptstamp);
+            if(!_OWPEncodeTimeStampErrEstimate((uint8_t *)tstamperr,
                         &owptstamp)){
                 OWPError(ep->cntrl->ctx,OWPErrFATAL,
                         OWPErrUNKNOWN,
@@ -1285,7 +1350,7 @@ AGAIN:
                 owptstamp.multiplier = 0xFF;
                 owptstamp.scale = 0x3F;
                 owptstamp.sync = 0;
-                (void)_OWPEncodeTimeStampErrEstimate(tstamperr,
+                (void)_OWPEncodeTimeStampErrEstimate((uint8_t *)tstamperr,
                                                      &owptstamp);
             }
 
@@ -1293,21 +1358,31 @@ AGAIN:
              * For ENCRYPTED mode, we have to encrypt the second
              * block after fetching the timestamp. (CBC mode)
              */
-            if(ep->cntrl->mode == OWP_MODE_ENCRYPTED){
+            if(ep->cntrl->mode & OWP_MODE_ENCRYPTED){
                 /*
-                 * For now - do CBC mode directly here.
-                 * TODO: remove AES hacks in local copy of
-                 * AES code - use "standard" version. This
-                 * becomes easier. (OWPSendBlocks becomes more
-                 * involved...)
+                 * Append second block to HMAC (timestamp block)
                  */
-                ((uint32_t*)clr_buffer)[4] ^= ((uint32_t*)ep->payload)[0];
-                ((uint32_t*)clr_buffer)[5] ^= ((uint32_t*)ep->payload)[1];
-                ((uint32_t*)clr_buffer)[6] ^= ((uint32_t*)ep->payload)[2];
-                ((uint32_t*)clr_buffer)[7] ^= ((uint32_t*)ep->payload)[3];
-                rijndaelEncrypt(ep->cntrl->encrypt_key.rk,
-                        ep->cntrl->encrypt_key.Nr,
-                        &clr_buffer[16],&ep->payload[16]);
+                I2HMACSha1Append(ep->hmac_ctx,(uint8_t *)&clr_buffer[16],16);
+
+                /*
+                 * Encrypt second block
+                 */
+                r = blockEncrypt(iv,&ep->aeskey,(uint8_t *)&clr_buffer[16],16*8,
+                        (uint8_t *)&ep->payload[16]);
+                if(r != (16*8)){
+                    OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                            "run_sender: Invalid CBC encryption of seq (#%ul)",
+                            i);
+                    exit(OWP_CNTRL_FAILURE);
+                }
+            }
+
+            if(hmac){
+                uint8_t hmacd[I2HMAC_SHA1_DIGEST_SIZE];
+
+                memset(hmacd,0,sizeof(hmacd));
+                I2HMACSha1Finish(ep->hmac_ctx,hmacd);
+                memcpy(hmac,hmacd,MIN(16,I2HMAC_SHA1_DIGEST_SIZE));
             }
 
             if(owp_int || owp_usr2){
@@ -1319,7 +1394,7 @@ AGAIN:
                 switch(errno){
                     /* retry errors */
                     case ENOBUFS:
-                        goto AGAIN;
+                        goto RETRY;
                         break;
                         /* fatal errors */
                     case EBADF:
@@ -1327,8 +1402,7 @@ AGAIN:
                     case ENOTSOCK:
                     case EFAULT:
                     case EAGAIN:
-                        OWPError(ep->cntrl->ctx,
-                                OWPErrFATAL,OWPErrUNKNOWN,
+                        OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
                                 "Unable to send([%s]:%s:(#%d): %M",
                                 nodename,nodeserv,i);
                         exit(OWP_CNTRL_FAILURE);
@@ -1729,20 +1803,18 @@ run_receiver(
     struct timespec     lostspec;
     struct timespec     expectspec;
     struct itimerval    wake;
-    uint32_t           *seq;
-    uint8_t            *tstamp;
-    uint8_t            *tstamperr;
-    uint8_t            *z1,*z2;
-    uint8_t            zero[12];
-    uint8_t            iv[16];
-    uint32_t           esterror,lasterror=0;
-    uint8_t            sync;
+    uint32_t            *seq;
+    char                *tstamp;
+    char                *tstamperr;
+    char                *hmac;
+    uint32_t            esterror,lasterror=0;
+    uint8_t             sync;
     OWPTimeStamp        expecttime;
     OWPSessionHeaderRec hdr;
-    uint8_t            lostrec[_OWP_DATAREC_SIZE];
+    uint8_t             lostrec[_OWP_DATAREC_SIZE];
     OWPLostPacket       node;
     int                 owp_intr;
-    uint32_t           finished = OWP_SESSION_FINISHED_INCOMPLETE;
+    uint32_t            finished = OWP_SESSION_FINISHED_INCOMPLETE;
     OWPDataRec          datarec;
     struct sockaddr     *lsaddr;
     socklen_t           lsaddrlen;
@@ -1800,14 +1872,13 @@ run_receiver(
         case OWP_MODE_OPEN:
             tstamp = &ep->payload[4];
             tstamperr = &ep->payload[12];
+            hmac = NULL;
             break;
         case OWP_MODE_ENCRYPTED:
         case OWP_MODE_AUTHENTICATED:
             tstamp = &ep->payload[16];
             tstamperr = &ep->payload[24];
-            z1 = &ep->payload[4];        /* 12 octets Zero Integrity */
-            z2 = &ep->payload[26];        /* 6 octets Zero Integrity */
-            memset(zero,0,sizeof(zero));
+            hmac = &ep->payload[32];
             break;
         default:
             /*
@@ -2091,47 +2162,59 @@ again:
          * Decrypt the packet if needed.
          */
         if(ep->cntrl->mode & OWP_MODE_DOCIPHER){
-            if(ep->cntrl->mode & OWP_MODE_ENCRYPTED){
-                /* save encrypted block for CBC */
-                memcpy(iv,&ep->payload[0],16);
-            }
-            rijndaelDecrypt(ep->cntrl->decrypt_key.rk,
-                    ep->cntrl->decrypt_key.Nr,
-                    &ep->payload[0],&ep->payload[0]);
+            uint8_t iv[16];
+            int     r;
+            uint8_t hmacd[I2HMAC_SHA1_DIGEST_SIZE];
 
             /*
-             * Check zero bits to ensure valid encryption.
+             * Initialize HMAC and iv.
              */
-            if(memcmp(z1,zero,12)){
-                goto again;
+            memset(iv,0,sizeof(iv));
+            I2HMACSha1Init(ep->hmac_ctx,ep->hmac_key,sizeof(ep->hmac_key));
+
+            /*
+             * Decrypt first block
+             */
+            r = blockDecrypt(iv,&ep->aeskey,(uint8_t *)&ep->payload[0],
+                    16*8,(uint8_t *)&ep->payload[0]);
+            if(r != (16*8)){
+                OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                        "run_receiver: Invalid ECB decryption");
+                goto error;
             }
+            I2HMACSha1Append(ep->hmac_ctx,(uint8_t *)&ep->payload[0],16);
+
 
             if(ep->cntrl->mode & OWP_MODE_ENCRYPTED){
-                /* second block - do CBC */
-                rijndaelDecrypt(ep->cntrl->decrypt_key.rk,
-                        ep->cntrl->decrypt_key.Nr,
-                        &ep->payload[16],&ep->payload[16]);
-                ((uint32_t*)ep->payload)[4] ^=
-                    ((uint32_t*)iv)[0];
-                ((uint32_t*)ep->payload)[5] ^=
-                    ((uint32_t*)iv)[1];
-                ((uint32_t*)ep->payload)[6] ^=
-                    ((uint32_t*)iv)[2];
-                ((uint32_t*)ep->payload)[7] ^=
-                    ((uint32_t*)iv)[3];
                 /*
-                 * Check zero bits to ensure valid encryption.
+                 * Decrypt second block if full encrypted mode wanted
+                 * (CBC mode done by blockDecrypt)
                  */
-                if(memcmp(z2,zero,6)){
-                    goto again;
+                r = blockDecrypt(iv,&ep->aeskey,(uint8_t *)&ep->payload[16],
+                        16*8,(uint8_t *)&ep->payload[16]);
+                if(r != (16*8)){
+                    OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                            "run_receiver: Invalid CBC decryption");
+                    goto error;
                 }
+                I2HMACSha1Append(ep->hmac_ctx,(uint8_t *)&ep->payload[16],16);
+            }
+
+            memset(hmacd,0,sizeof(hmacd));
+            I2HMACSha1Finish(ep->hmac_ctx,hmacd);
+            if( (memcmp(hmac,hmacd,
+                        MIN(_OWP_RIJNDAEL_BLOCK_SIZE,sizeof(hmacd))) != 0)){
+                OWPError(ep->cntrl->ctx,OWPErrWARNING,OWPErrUNKNOWN,
+                        "run_receiver: Invalid HMAC on received packet: "
+                        "ignoring");
+                goto again;
             }
         }
 
         datarec.seq_no = ntohl(*seq);
         if(datarec.seq_no >= ep->tsession->test_spec.npackets){
             OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                    "run_recv: Invalid seq_no received");
+                    "run_recv: Invalid seq_no received: %lu",datarec.seq_no);
             goto error;
         }
 
@@ -2153,8 +2236,8 @@ again:
         /*
          * What time did sender send this packet?
          */
-        _OWPDecodeTimeStamp(&datarec.send,tstamp);
-        if(!_OWPDecodeTimeStampErrEstimate(&datarec.send,tstamperr)){
+        _OWPDecodeTimeStamp(&datarec.send,(uint8_t *)tstamp);
+        if(!_OWPDecodeTimeStampErrEstimate(&datarec.send,(uint8_t *)tstamperr)){
             OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
                     "Invalid send timestamp!");
             goto error;
@@ -2265,6 +2348,62 @@ _OWPEndpointInitHook(
 
     if(!ep){
         return False;
+    }
+
+    /*
+     * Initialize crypto if needed
+     */
+    if(ep->cntrl->mode & OWP_MODE_DOCIPHER){
+        uint8_t     iv[16];
+        keyInstance sidkey;
+        int         r;
+
+        /*
+         * Generate AES and HMAC keys needed for Test Session crypto.
+         * (See Section 4.1 of RFC 4656.)
+         *
+         * initialize an aes key structure to be used for generating the
+         * test aeskey and hmac-key. (key bytes for this is from SID)
+         */
+        sidkey.Nr = rijndaelKeySetupEnc(sidkey.rk,tsession->sid,
+                sizeof(tsession->sid)*8);
+
+        /*
+         * generate OWAMP test aes key bytes AES ECB mode, and initialize
+         * an aes key structure.
+         */
+        rijndaelEncrypt(sidkey.rk,sidkey.Nr,ep->cntrl->aessession_key,
+                ep->aesbytes);
+
+        if(ep->send){
+            /* send side needs encryption */
+            ep->aeskey.Nr = rijndaelKeySetupEnc(ep->aeskey.rk,ep->aesbytes,
+                    sizeof(ep->aesbytes)*8);
+        }
+        else{
+            /* recv side needs decryption */
+            ep->aeskey.Nr = rijndaelKeySetupDec(ep->aeskey.rk,ep->aesbytes,
+                    sizeof(ep->aesbytes)*8);
+        }
+
+        /*
+         * generate OWAMP test hmac key bytes AES CBC mode.
+         */
+        memset(iv,0,sizeof(iv));
+        r = blockEncrypt(iv,&sidkey,cntrl->hmac_key,sizeof(cntrl->hmac_key)*8,
+                ep->hmac_key);
+        if(r != (sizeof(cntrl->hmac_key)*8)){
+            OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                    "blockEncrypt(): Failed to create Test Session HMAC");
+            return False;
+        }
+
+        /*
+         * Allocate an hmac_ctx for Test packets
+         */
+        if( !(ep->hmac_ctx = I2HMACSha1Alloc(OWPContextErrHandle(cntrl->ctx)))){
+            return False;
+        }
     }
 
     if(!ep->send){

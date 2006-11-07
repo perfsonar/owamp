@@ -85,7 +85,10 @@ Number of seconds to wait for protocol messages before timing out.
 .TP
 .BI datadir " datadir"
 Directory path where data files will be placed. The data files are the
-"\fIreceive\fR" session files that are buffered on the server.
+"\fIreceive\fR" session files that are buffered on the server. Policy
+restrictions can be used to set how much disk space a given connection
+can use, as well as to determine when each file is deleted. (See the
+\fBowampd.limits(f)\fR manual page.)
 .RS
 .IP Default:
 Current directory
@@ -96,6 +99,9 @@ Number of seconds to wait for child processes to gracefully terminate
 before killing them with \fBSIGKILL\fR. This is in response to the master
 process receiving \fBSIGTERM\fR or \fBSIGHUP\fR.
 .RS
+.PP
+This option should no longer be needed. If child processes are not exiting
+gracefully, please send a bug report to owamp-users\@internet2.edu.
 .IP Default:
 30
 .RE
@@ -139,6 +145,11 @@ LOG_DAEMON
 Specifies the gid the \fBowampd\fR process should run as. \fIgroup\fR
 can be specified using a valid group name on the system or by using -gid.
 This option is only used if \fBowampd\fR is started as root.
+.RS
+.PP
+This option can be useful to limit logfile permissions to only users
+in this group.
+.RE
 .TP
 .B loglocation
 Directs the \fBowampd\fR process to report source code file and line
@@ -150,15 +161,22 @@ Specify the address and port that \fBowampd\fR will listen for requests.
 \fInodename\fR can be specified using a DNS name or using the textual
 representation of the address. It is possible to set the source address
 without setting the \fIport\fR by simply leaving off the ':' and \fIport\fR
-specification. If an IPv6 address is specified, note that the accepted format
+specification. Likewise, a non-default port can be specified for
+all system addresses (wildcard) by starting the specification string with
+a ':'.  If an IPv6 address is specified, note that the accepted format
 contains \fInodename\fR in square brackets as: [fe80::fe9f:62d8]. This
 ensures the port number is distinct from the address specification. The
 address can be wildcarded by only specifying the \fIport\fR portion.
 .RS
+.PP
+Because the default port for \fBowampd\fR is in the \fIprotected\fR range
+for most operating systems, it is usually required that \fBowampd\fR
+is stared as root. This option can be used to specify a non-standard
+port value that is not protected.
 .IP Default:
 \fInodename\fR is wildcarded as any currently available address
 .br
-\fIport\fR is 4824.
+\fIport\fR is 861.
 .RE
 .TP
 .BI testports " 0 | lowport-highport"
@@ -188,6 +206,13 @@ to ensure root permissions are only used when explicitly intended.
 Specifies the uid the \fBowampd\fR process should run as. \fIuser\fR
 can be specified using a valid user name on the system or by using -uid.
 This option is only used if \fBowampd\fR is started as root.
+.RS
+.PP
+In the default case, \fBowampd\fR should be started as root so it can bind
+the default port 861. (See \fIsrcnode\fR option.) \fBowampd\fR will release root
+permissions shortly after binding to this protected port and requests will
+be serviced by processes running with permissions defined by the \fIuser\fR.
+.RE
 .TP
 .BI vardir " vardir"
 Directory path where the owampd.pid and owampd.info files will be placed.
@@ -200,7 +225,7 @@ Current directory
 If this option is present, it directs the \fBowampd\fR process to
 generate more verbose messages to syslog.
 .SH SEE ALSO
-owping(1), owampd(8), owampd.limits(5), owampd.keys(5), aespasswd(1),
+owping(1), owampd(8), owampd.limits(5), owampd.pfs(5), pfstore(1),
 and the \%http://e2epi.internet2.edu/owamp/ web site.
 .SH ACKNOWLEDGMENTS
 This material is based in part on work supported by the National Science

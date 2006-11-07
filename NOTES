@@ -1,0 +1,58 @@
+$Id$
+
+Implementation notes:
+
+Crypto algorithms:
+
+    AES is done using rijndael reference implementation. C source
+    files are in the owamp directory and included as part of
+    libowamp.a. The AES implementation is used for 2 things. One
+    it is used to encrypt data sent in encrypted mode. Second,
+    it is used as part of the exponentially distributed pseudo-random
+    number generator that is used to compute send schedules.
+
+    SHA-1 is based on a public-domain version of SHA-1 written
+    by Steve Reid <steve@edmweb.com>. It has been modified to
+    hopefully remove all type punning as well as changing
+    symbol names to start with I2 so they do not interfere
+    with other symbols. The implementation is in I2util/I2util
+    and test vectors from FIPS 180-1 are run by "make check" in
+    the I2util/test directory. SHA-1 is used as part of the
+    HMAC-SHA1 algorithm.
+
+    HMAC-SHA1 is original code. I was unable to find any public domain
+    versions of HMAC-SHA1. (GNU does not count.) Therefore, I wrote my own
+    version based on the information in rfc2104. The implementation is in
+    I2util/I2util and test vectors from rfc2202 are run by "make check"
+    in the I2util/test directory. HMAC-SHA1 is used for two
+    things in the implementation. First, it is used to authenticate
+    messages. Second, it is used as the pseudo-random function
+    used in the key derivation function (PBKDF2).
+
+    Likewise, I was unable to find a PBKDF2 without licensing restrictions.
+    So, I wrote my own based on rfc2898. I verified my implementation
+    using test vectors from rfc3962 (available in I2util/test with
+    'make check'). The PBKDF2 algorithm is used to derive session keys
+    from the shared secret (pass-phrase) known by both the client and
+    the server.
+
+Message Validation (HMAC check):
+    The current implementation does not check the HMAC as early as
+    it probably should when reading the StopSessions message. This
+    message is of variable length, and the current code modifies
+    the local 'recv' data files based on the data in the message
+    as it reads it. It should probably validate the message first
+    by reading the entire message in, checking the HMAC, and then
+    acting on the data. (This is somewhat problematic in that the
+    data is of variable length - it would probably be best to add
+    some intermediate HMAC blocks into this message for the next
+    version of the protocol - if/when that ever happens.)
+
+Protocol:
+    FetchAck - session data
+    When the server sends a FetchAck message - the session data follows.
+    It could be clearer in the spec, but the HMAC within the reproduciton
+    of the RequestSession message should be the 'new' HMAC. The new
+    reproduction of the message is modified with actual start times
+    and port numbers. Besides, the fetch could be happening over a completely
+    different control session in which case the old HMAC is useless.

@@ -36,10 +36,10 @@
 #include "fts.h"
 
 /*
- * Function:        parsekeys
+ * Function:        parsepfs
  *
  * Description:        
- *                 Read all keys from the keyfile and populate the keys
+ *                 Read all pass-phrases from the pfsfile and populate the pfs
  *                 hash with that data.
  *
  * In Args:        
@@ -51,7 +51,7 @@
  * Side Effect:        
  */
 static int
-parsekeys(
+parsepfs(
         OWPDPolicy  policy,
         FILE        *fp,
         char        **lbuf,
@@ -59,35 +59,29 @@ parsekeys(
         )
 {
     int         rc=0;
-    OWPUserID   username;
-    OWPKey      tkey;
+    char        *username;
+    char        *passphrase;
+    size_t      pf_len;
     I2Datum     key,val;
     I2ErrHandle eh = OWPContextErrHandle(policy->ctx);
-
-    /*
-     * TODO: Replace with an autoconf test
-     */
-    {
-        size_t  tsize;
-        tsize = sizeof(username);
-        assert(I2MAXIDENTITYLEN <= tsize);
-        tsize = sizeof(OWPKey);
-        assert(I2KEYLEN == tsize);
-    }
 
     if(!fp){
         return 0;
     }
 
-    while((rc = I2ParseKeyFile(eh,fp,rc,lbuf,lbuf_max,NULL,NULL,
-                    username,tkey)) > 0){
+    while((rc = I2ParsePFFile(eh,fp,NULL,rc,
+                    NULL,
+                    &username,
+                    &passphrase,
+                    &pf_len,
+                    lbuf,lbuf_max)) > 0){
 
         /*
          * Make sure the username is not already in the hash.
          */
         key.dptr = username;
         key.dsize = strlen(username);
-        if(I2HashFetch(policy->keys,key,&val)){
+        if(I2HashFetch(policy->pfs,key,&val)){
             OWPError(policy->ctx,OWPErrFATAL,OWPErrINVALID,
                     "username \"%s\" duplicated",username);
             return -rc;
@@ -103,22 +97,22 @@ parsekeys(
         }
 
         /*
-         * alloc memory for AESkey value.
+         * alloc memory for pass-phrase value.
          */
-        if(!(val.dptr = malloc(sizeof(tkey)))){
+        if(!(val.dptr = malloc(pf_len))){
             free(key.dptr);
             OWPError(policy->ctx,OWPErrFATAL,errno,
-                    "malloc(AESKEY): %M");
+                    "malloc(len(pass-phrase)): %M");
             return -rc;
         }
-        memcpy(val.dptr,tkey,sizeof(tkey));
-        val.dsize = sizeof(tkey);
+        memcpy(val.dptr,passphrase,pf_len);
+        val.dsize = pf_len;
 
-        if(I2HashStore(policy->keys,key,val) != 0){
+        if(I2HashStore(policy->pfs,key,val) != 0){
             free(key.dptr);
             free(val.dptr);
             OWPError(policy->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                    "Unable to store AESKey for %s",
+                    "Unable to store pass-phrase for %s",
                     username);
             return -rc;
         }
@@ -579,7 +573,7 @@ parseassignline(
         key.dsize = strlen(line);
 
         if((key.dsize >= sizeof(tpid.user.userid)) ||
-                !I2HashFetch(policy->keys,key,&val)){
+                !I2HashFetch(policy->pfs,key,&val)){
             OWPError(policy->ctx,OWPErrFATAL,OWPErrINVALID,
                     "Invalid user \"%s\".",line);
             return 1;
@@ -1168,7 +1162,7 @@ OWPDPolicyInstall(
 {
     OWPDPolicy  policy;
     I2ErrHandle eh;
-    char        kfname[MAXPATHLEN+1];
+    char        pfname[MAXPATHLEN+1];
     char        lfname[MAXPATHLEN+1];
     int         len;
     FILE        *kfp,*lfp;
@@ -1178,7 +1172,7 @@ OWPDPolicyInstall(
      * use variables for the func pointers so the compiler can give
      * type-mismatch warnings.
      */
-    OWPGetAESKeyFunc            getaeskey = OWPDGetAESKey;
+    OWPGetPFFunc                getpf = OWPDGetPF;
     OWPCheckControlPolicyFunc   checkcontrolfunc = OWPDCheckControlPolicy;
     OWPCheckTestPolicyFunc      checktestfunc = OWPDCheckTestPolicy;
     OWPTestCompleteFunc         testcompletefunc = OWPDTestComplete;
@@ -1216,34 +1210,34 @@ OWPDPolicyInstall(
     if(!(policy->limits = I2HashInit(eh,0,NULL,NULL)) ||
             !(policy->idents =
                 I2HashInit(eh,0,NULL,NULL)) ||
-            !(policy->keys = I2HashInit(eh,0,NULL,NULL))){
+            !(policy->pfs = I2HashInit(eh,0,NULL,NULL))){
         OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
                 "OWPDPolicyInstall: Unable to allocate hashes");
         return NULL;
     }
 
     /*
-     * Open the keys file.
+     * Open the pass-phrase file.
      */
-    kfname[0] = '\0';
-    len = strlen(OWP_KEY_FILE);
+    pfname[0] = '\0';
+    len = strlen(OWP_PFS_FILE);
     if(len > MAXPATHLEN){
         OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                "strlen(OWP_KEY_FILE > MAXPATHLEN)");
+                "strlen(OWP_PFS_FILE > MAXPATHLEN)");
         return NULL;
     }
 
     len += strlen(confdir) + strlen(OWP_PATH_SEPARATOR);
     if(len > MAXPATHLEN){
         OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
-                "Path to %s > MAXPATHLEN",OWP_KEY_FILE);
+                "Path to %s > MAXPATHLEN",OWP_PFS_FILE);
         return NULL;
     }
-    strcpy(kfname,confdir);
-    strcat(kfname,OWP_PATH_SEPARATOR);
-    strcat(kfname,OWP_KEY_FILE);
-    if(!(kfp = fopen(kfname,"r")) && (errno != ENOENT)){
-        OWPError(ctx,OWPErrFATAL,errno,"Unable to open %s: %M",kfname);
+    strcpy(pfname,confdir);
+    strcat(pfname,OWP_PATH_SEPARATOR);
+    strcat(pfname,OWP_PFS_FILE);
+    if(!(kfp = fopen(pfname,"r")) && (errno != ENOENT)){
+        OWPError(ctx,OWPErrFATAL,errno,"Unable to open %s: %M",pfname);
         return NULL;
     }
 
@@ -1281,9 +1275,9 @@ OWPDPolicyInstall(
      * lbuf will be realloc'd repeatedly as needed. Once conf file
      * parsing is complete - it is free'd from this function.
      */
-    if((rc = parsekeys(policy,kfp,lbuf,lbuf_max)) < 0){
+    if((rc = parsepfs(policy,kfp,lbuf,lbuf_max)) < 0){
         OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
-                "%s:%d Invalid file syntax",kfname,-rc);
+                "%s:%d Invalid file syntax",pfname,-rc);
         return NULL;
     }
 
@@ -1294,7 +1288,7 @@ OWPDPolicyInstall(
     }
 
     if(kfp && (fclose(kfp) != 0)){
-        OWPError(ctx,OWPErrFATAL,errno,"fclose(%s): %M",kfname);
+        OWPError(ctx,OWPErrFATAL,errno,"fclose(%s): %M",pfname);
         return NULL;
     }
 
@@ -1314,7 +1308,7 @@ OWPDPolicyInstall(
     if(!OWPContextConfigSetV(ctx,OWPDPOLICY,policy)){
         return NULL;
     }
-    if(!OWPContextConfigSetF(ctx,OWPGetAESKey,(OWPFunc)getaeskey)){
+    if(!OWPContextConfigSetF(ctx,OWPGetPF,(OWPFunc)getpf)){
         return NULL;
     }
     if(!OWPContextConfigSetF(ctx,OWPCheckControlPolicy,
@@ -1356,7 +1350,7 @@ OWPDPolicyPostInstall(
 }
 
 /*
- * Function:        OWPDGetAESKey
+ * Function:        OWPDGetPF
  *
  * Description:        
  *         Fetch the 128 bit AES key for a given userid and return it.
@@ -1375,10 +1369,12 @@ OWPDPolicyPostInstall(
  * Side Effect:        
  */
 extern OWPBoolean
-OWPDGetAESKey(
+OWPDGetPF(
         OWPContext      ctx,
         const OWPUserID userid,
-        OWPKey          key_ret,
+        uint8_t         **pf,
+        size_t          *pf_len,
+        void            **pf_free,
         OWPErrSeverity  *err_ret
         )
 {
@@ -1389,23 +1385,26 @@ OWPDGetAESKey(
 
     if(!(policy = (OWPDPolicy)OWPContextConfigGetV(ctx,OWPDPOLICY))){
         OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
-                "OWPDGetAESKey: OWPDPOLICY not set");
+                "OWPDGetPF: OWPDPOLICY not set");
         *err_ret = OWPErrFATAL;
         return False;
     }
 
     key.dptr = (void*)userid;
     key.dsize = strlen(userid);
-    if(!I2HashFetch(policy->keys,key,&val)){
+    if(!I2HashFetch(policy->pfs,key,&val)){
         OWPError(policy->ctx,OWPErrFATAL,OWPErrPOLICY,
                 "userid \"%s\" unknown",userid);
         return False;
     }
 
-    memcpy(key_ret,val.dptr,sizeof(OWPKey));
+    /* just point directly at memory in store */
+    *pf = val.dptr;
+    *pf_len = val.dsize;
+    *pf_free = NULL;
 
     return True;
-} 
+}
 
 static OWPDPolicyNode
 GetNodeDefault(
@@ -2440,8 +2439,7 @@ OWPDOpenFile(
          */
         if(!node_dir(ctx,True,node->policy->datadir,node,
                     OWP_PATH_SEPARATOR_LEN + (sizeof(OWPSID)*2) +
-                    strlen(OWP_FILE_EXT),
-                    finfo->filepath)){
+                    strlen(OWP_FILE_EXT),finfo->filepath)){
             return NULL;
         }
 
@@ -2454,8 +2452,7 @@ OWPDOpenFile(
          * node_dir, now make sure "catalog" directory exists.
          */
         if((mkdir(finfo->linkpath,0755) != 0) && (errno != EEXIST)){
-            OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                    "Unable to mkdir(%s): %M",
+            OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"Unable to mkdir(%s): %M",
                     finfo->linkpath);
             return NULL;
         }
@@ -2478,10 +2475,8 @@ OWPDOpenFile(
          * This is how fetchsession will find the file.
          */
         if(symlink(finfo->filepath,finfo->linkpath) != 0){
-            OWPError(ctx,OWPErrFATAL,errno,
-                    "symlink(%s,%s): %M",
-                    finfo->filepath,
-                    finfo->linkpath);
+            OWPError(ctx,OWPErrFATAL,errno,"symlink(%s,%s): %M",
+                    finfo->filepath,finfo->linkpath);
             goto error;
         }
 

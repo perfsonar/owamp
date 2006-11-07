@@ -278,7 +278,7 @@ OWPGetTimeOfDay(
  */
 void
 _OWPEncodeTimeStamp(
-        uint8_t        buf[8],
+        uint8_t         buf[8],
         OWPTimeStamp    *tstamp
         )
 {
@@ -325,7 +325,7 @@ _OWPEncodeTimeStamp(
  */
 OWPBoolean
 _OWPEncodeTimeStampErrEstimate(
-        uint8_t        buf[2],
+        uint8_t         buf[2],
         OWPTimeStamp    *tstamp
         )
 {
@@ -377,7 +377,7 @@ _OWPEncodeTimeStampErrEstimate(
 void
 _OWPDecodeTimeStamp(
         OWPTimeStamp    *tstamp,
-        uint8_t        buf[8]
+        uint8_t         buf[8]
         )
 {
     uint32_t   t32;
@@ -431,7 +431,7 @@ _OWPDecodeTimeStamp(
 OWPBoolean
 _OWPDecodeTimeStampErrEstimate(
         OWPTimeStamp    *tstamp,
-        uint8_t        buf[2]
+        uint8_t         buf[2]
         )
 {
     assert(tstamp);

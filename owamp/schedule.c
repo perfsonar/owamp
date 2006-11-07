@@ -359,7 +359,7 @@ OWPScheduleContextCreate(
      * (This is only needed for Exponential random numbers, but just
      * do it.)
      */
-    bytes2Key(&sctx->exp.key, sid);
+    bytes2Key(&sctx->exp.key,(uint8_t *)sid);
 
     memset(sctx->exp.out,0,16);
     memset(sctx->exp.counter,0,16);
@@ -411,7 +411,7 @@ OWPScheduleContextReset(
          * (This is only needed for Exponential random numbers, but just
          * do it.)
          */
-        bytes2Key(&sctx->exp.key, sid);
+        bytes2Key(&sctx->exp.key,(uint8_t *)sid);
 
         sctx->maxi = tspec->npackets;
         sctx->nslots = MIN(tspec->nslots,tspec->npackets);

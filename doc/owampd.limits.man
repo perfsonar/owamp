@@ -183,7 +183,7 @@ an invalid \fIsubnet\fR due to the bit set in the fourth octet.
 .TP
 .BI user " user"
 Assign a specific \fIuser\fR to a given \fIlimitclass\fR.
-The \fIuser\fR must be defined in the \fBowampd.keys\fR file.
+The \fIuser\fR must be defined in the \fBowampd.pfs\fR file.
 .SH AUTHENTICATION PROCESS
 \fBowampd\fR determines if it should allow a connection from
 the client based upon the authentication mode of the request and the source
@@ -220,7 +220,8 @@ file. This \fIlimitclass\fR has very liberal limits (900m limit on
 bandwidth, and 2 GB of disk space). However, open mode authentication
 is not enabled for
 this \fIlimitclass\fR, so the connections that get these limits must
-successfully authenticate using an AES key.
+successfully authenticate using an AES key derived from the pass-phrase
+in the \fBowampd.pfs\fR file.
 .PP
 If an administrator also wants to create a \fIlimitclass\fR that is used
 to deny all requests, they might add:
@@ -244,7 +245,7 @@ authenticated or encrypted mode will be dropped immediately.
 (It would not make much sense to assign a \fIuser\fR identity to this
 \fIlimitclass\fR. If you don't want connections from a particular \fIuser\fR
 identity the best thing to do is to remove that \fIuser\fR from
-the \fBowampd.keys\fR file.)
+the \fBowampd.pfs\fR file.)
 .PP
 If the administrator wanted to allow a limited amount of open tests, they
 could define a \fIlimitclass\fR like:
@@ -295,7 +296,7 @@ the \fBbadguys\fR subnet). All other connections would match the
 \fIassign default\fR rule and get the limits associated with the \fBopen\fR
 \fIlimitclass\fR.
 .SH SEE ALSO
-owping(1), owampd(8), owampd.limits(5), owampd.keys(5), aespasswd(1),
+owping(1), owampd(8), owampd.limits(5), owampd.pfs(5), aespasswd(1),
 and the \%http://e2epi.internet2.edu/owamp/ web site.
 .SH ACKNOWLEDGMENTS
 This material is based in part on work supported by the National Science

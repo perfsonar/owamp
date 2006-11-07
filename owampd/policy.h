@@ -27,8 +27,8 @@
 #include <I2util/util.h>
 #include <owamp/owamp.h>
 
-#ifndef OWP_KEY_FILE
-#define OWP_KEY_FILE    "owampd.keys"
+#ifndef OWP_PFS_FILE
+#define OWP_PFS_FILE    "owampd.pfs"
 #endif
 
 #ifndef OWP_LIMITS_FILE
@@ -103,11 +103,11 @@ struct OWPDPolicyRec{
      */
     I2Table         idents;
 
-    /* keys:
-     *         key = uint8_t[16]        (username from owamp protocol)
-     *         val = OWPKey
+    /* pfs:
+     *         key = OWPUserID (uint8_t[80])    (username from owamp protocol)
+     *         val = uint8_t *
      */
-    I2Table         keys;
+    I2Table         pfs;
 
 };
 
@@ -309,10 +309,12 @@ OWPDAllowOpenMode(
  * Functions actually used to install policy hooks into libowamp.
  */
 extern OWPBoolean
-OWPDGetAESKey(
+OWPDGetPF(
         OWPContext      ctx,
         const OWPUserID userid,
-        uint8_t        *key_ret,
+        uint8_t         **pf,
+        size_t          *pf_len,
+        void            **pf_free,
         OWPErrSeverity  *err_ret
         );
 

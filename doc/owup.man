@@ -83,16 +83,18 @@ The client can specify all the modes with which it is willing to communicate.
 The most strict mode that both the \fBOWAMP\fR server and the \fBOWAMP\fR
 client are willing to use
 will be selected. Authenticated and Encrypted modes require a "shared secret"
-in the form of an AES key.
+in the form of a pass-phrase that is used to generate the AES and HMAC-SHA1
+session keys.
 .IP Default:
 "AEO".
 .RE
 .TP
-\fB\-k\fR \fIkeyfile\fR
+\fB\-k\fR \fIpfsfile\fR
 .br
-Indicates that \fBowup\fR should use the AES key in \fIkeyfile\fR for
-\fIusername\fB. \fIusername\fR must have a valid key in \fIkeyfile\fR.
-\fIkeyfile\fR can be generated as described in the aespasswd(1) manual
+Indicates that \fBowup\fR should use the pass-phrase in \fIpfsfile\fR for
+\fIusername\fB to derive the symmetric AES key used for encryption.
+\fIusername\fR must have a valid entry in \fIpfsfile\fR.
+\fIpfsfile\fR can be generated as described in the pfstore(1) manual
 page.
 .RS
 .IP Default:
@@ -112,11 +114,12 @@ Unspecified (wild-card address selection).
 .TP
 \fB\-u\fR \fIusername\fR
 .br
-Specify the username that is used to identify the AES key for
+Specify the username that is used to identify the shared-secret (pass-phrase)
+used to derive the AES and HMAC-SHA1 session keys for
 authenticated or encrypted modes. If the \fB\-k\fR option is specified,
-the key is retrieved from the \fIkeyfile\fR, otherwise \fBowup\fR prompts
-the user for a \fIpassphrase\fR. The \fIpassphrase\fR is used to generate
-the AES key.
+the pass-phrase is retrieved from the \fIpfsfile\fR,
+otherwise \fBowup\fR prompts
+the user for a pass-phrase.
 .RS
 .IP Default:
 Unset.

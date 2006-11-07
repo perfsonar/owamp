@@ -55,14 +55,14 @@ typedef    struct {
 
         char            *authmode;          /* -A */
         char            *identity;          /* -u */
-        char            *keyfile;           /* -k */
-        uint32_t       numPackets;         /* -c */
+        char            *pffile;            /* -k */
+        uint32_t        numPackets;         /* -c */
 
         double          lossThreshold;      /* -L */
         double          delayStart;         /* -z */
 
         float           *percentiles;       /* -a */
-        uint32_t       npercentiles;
+        uint32_t        npercentiles;
         char            units;              /* -n */
         float           bucket_width;       /* -b */
 
@@ -71,10 +71,10 @@ typedef    struct {
         OWPPortRange    portspec;           /* -P */
 
 #ifndef    NDEBUG
-        void            *childwait;          /* -w */
+        void            *childwait;         /* -w */
 #endif
 
-        uint32_t       padding;            /* -s */
+        uint32_t        padding;            /* -s */
 
     } opt;
 

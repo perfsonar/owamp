@@ -36,7 +36,7 @@ main(
     I2LogImmediateAttr  ia;
     I2ErrHandle         eh;
     OWPContext          ctx;
-    uint8_t            seed[16];
+    uint8_t             seed[16];
     char                *seedvals[4] = {
         "2872979303ab47eeac028dab3829dab2",
         "0102030405060708090a0b0c0d0e0f00",
@@ -77,7 +77,7 @@ main(
 
     for(i=0;i<I2Number(seedvals);i++){
         assert(I2HexDecode(seedvals[i],seed,16));
-        assert((exp = OWPExpContextCreate(ctx,seed)));
+        assert((exp = OWPExpContextCreate(ctx,(uint8_t *)seed)));
         fprintf(stdout,"SEED = 0x%s\n",seedvals[i]);
         n = 0;
         sum = OWPULongToNum64(0);
@@ -86,10 +86,10 @@ main(
             sum = OWPNum64Add(sum,eval);
             if((n < I2Number(nice)) && (j == nice[n])){
                 /* local copies of eval and sum */
-                OWPNum64        te,ts;
+                OWPNum64    te,ts;
                 /* big-endian versions of eval and sum */
-                uint8_t        e[8];
-                uint8_t        s[8];
+                uint8_t     e[8];
+                uint8_t     s[8];
                 /* hex encoded big-endian ov eval and sum */
                 char                ve[17];
                 char                vs[17];

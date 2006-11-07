@@ -348,7 +348,8 @@ _OWPCreateSID(
     (void)OWPGetTimeOfDay(tsession->cntrl->ctx,&tstamp);
     _OWPEncodeTimeStamp(&tsession->sid[4],&tstamp);
 
-    if(I2RandomBytes(tsession->cntrl->ctx->rand_src,&tsession->sid[12],4)
+    if(I2RandomBytes(tsession->cntrl->ctx->rand_src,
+                (uint8_t *)&tsession->sid[12],4)
             != 0){
         return 1;
     }
@@ -370,7 +371,7 @@ OWPTestPayloadSize(
             break;
         case OWP_MODE_AUTHENTICATED:
         case OWP_MODE_ENCRYPTED:
-            msg_size = 32;
+            msg_size = 48;
             break;
         default:
             return 0;
@@ -794,19 +795,19 @@ _OWPCleanDataRecs(
         off_t           *off_start_rtn
         )
 {
-    FILE            *rfp, *wfp;
-    char            sid_name[sizeof(OWPSID)*2+1];
-    off_t           toff;
-    OWPDataRec      rec;
+    FILE        *rfp, *wfp;
+    char        sid_name[sizeof(OWPSID)*2+1];
+    off_t       toff;
+    OWPDataRec  rec;
     _OWPSessionHeaderInitialRec fhdr;
-    uint8_t         rbuf[_OWP_MAXDATAREC_SIZE];
-    uint32_t        j;
-    uint32_t        lowI,midI,highI,num_recs;
-    OWPNum64        lowR,midR,highR,threshR;
-    uint32_t        max_recv_data;
-    uint32_t        *max_recv = &max_recv_data;
-    off_t           off_start_data;
-    off_t           *off_start = &off_start_data;
+    char        rbuf[_OWP_MAXDATAREC_SIZE];
+    uint32_t    j;
+    uint32_t    lowI,midI,highI,num_recs;
+    OWPNum64    lowR,midR,highR,threshR;
+    uint32_t    max_recv_data;
+    uint32_t    *max_recv = &max_recv_data;
+    off_t       off_start_data;
+    off_t       *off_start = &off_start_data;
 
     if(max_recv_rtn)
         max_recv = max_recv_rtn;
@@ -1325,7 +1326,7 @@ _OWPCleanUpSessions(
         struct flock                flk;
         uint32_t                    j;
         OWPDataRec                  rec;
-        uint8_t                     rbuf[_OWP_MAXDATAREC_SIZE];
+        char                        rbuf[_OWP_MAXDATAREC_SIZE];
         uint32_t                    max_recv,num_recs;
 
         if(!tptr->endpoint){
@@ -2875,7 +2876,7 @@ OWPWriteDataHeader(
     }
 
     /*
-     * write 16 Zero Integrity bytes
+     * write 16 Zero bytes in place of HMAC
      */
     memset(msg,0,16);
     if(fwrite(msg,1,16,fp) != 16){
@@ -2907,7 +2908,7 @@ OWPWriteDataRecord(
         OWPDataRec  *rec
         )
 {
-    uint8_t    buf[_OWP_DATAREC_SIZE];
+    char    buf[_OWP_DATAREC_SIZE];
 
     if(!_OWPEncodeDataRecord(buf,rec)){
         OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
@@ -3247,8 +3248,8 @@ OWPParseRecords(
         )
 {
     size_t      len_rec;
-    uint8_t    rbuf[_OWP_MAXDATAREC_SIZE];
-    uint32_t   i;
+    char        rbuf[_OWP_MAXDATAREC_SIZE];
+    uint32_t    i;
     OWPDataRec  rec;
     int         rc;
 
@@ -3329,10 +3330,10 @@ OWPReadDataSkips(
 {
     int                         err;
     _OWPSessionHeaderInitialRec phrec;
-    uint32_t                   i;
+    uint32_t                    i;
 
     /* buffer for Skips 32 bit aligned */
-    uint8_t                    msg[_OWP_SKIPREC_SIZE];
+    char                        msg[_OWP_SKIPREC_SIZE];
 
     /*
      * validate array.

@@ -154,9 +154,9 @@
 #define OWP_DEFAULT_OFFERED_MODE         (OWP_MODE_OPEN|OWP_MODE_AUTHENTICATED|OWP_MODE_ENCRYPTED)
 
 /*
- * TODO: 4824 should eventually be replaced by an IANA blessed service name.
+ * IANA 'blessed' port number for OWAMP
  */
-#define OWP_CONTROL_SERVICE_NAME        "4824"
+#define OWP_CONTROL_SERVICE_NAME        "861"
 
 /*
  * Default value to use for the listen backlog. We pick something large
@@ -313,17 +313,16 @@ typedef enum{
     OWP_CNTRL_UNAVAILABLE_TEMP=5    /* Temporary resource limitation    */
 } OWPAcceptType;
 
-typedef intptr_t   OWPBoolean;
-typedef uint8_t    OWPSID[16];
-typedef uint8_t    OWPSequence[4];
+typedef intptr_t    OWPBoolean;
+typedef uint8_t     OWPSID[16];
+typedef uint8_t     OWPSequence[4];
 
 /*
  * technically the username in the client greeting message can have uint8_t
  * but this implementation limits it to a valid "char" type.
  */
-#define OWP_USERID_LEN        16
+#define OWP_USERID_LEN        80
 typedef char        OWPUserID[OWP_USERID_LEN+1];        /* add 1 for '\0' */
-typedef uint8_t    OWPKey[16];
 
 
 #define OWP_MODE_UNDEFINED      (0)
@@ -518,19 +517,26 @@ typedef        struct OWPPortRangeRec{
 /*
  * This type is used to define the function that retrieves the shared
  * secret from whatever key-store is in use.
- * It should return True if it is able to fill in the key_ret variable that
+ * It should return True if it is able to returnfill in the key_ret variable that
  * is passed in from the caller. False if not. If the function returns false,
  * the caller should check the err_ret value. If OK, then the userid simply
  * didn't exist - otherwise it indicates an error in the key store mechanism.
  *
  * If an application doesn't set this, Encrypted and Authenticated
  * mode will be disabled.
+ *
+ * The 'pf_free' pointer will be set to the memory block allocated for pf
+ * if the caller needs to free the memory after calling this function.
+ * (Different pass-phrase stores use different memory models. The returned
+ * pf value should NOT be freed directly!)
  */        
-#define        OWPGetAESKey                "OWPGetAESKey"
-typedef OWPBoolean      (*OWPGetAESKeyFunc)(
+#define        OWPGetPF                "OWPGetPF"
+typedef OWPBoolean      (*OWPGetPFFunc)(
         OWPContext      ctx,
         const OWPUserID userid,
-        OWPKey          key_ret,
+        uint8_t         **pf,
+        size_t          *pf_len,
+        void            **pf_free,  /* If implementation uses dynamic memory */
         OWPErrSeverity  *err_ret
         );
 
@@ -654,6 +660,11 @@ typedef void (*OWPCloseFileFunc)(
  */
 #define OWPDetachProcesses  "OWPDetachProcesses"
 
+/*
+ * Set the 'count' value for the pbkdf2 function.
+ */
+#define OWPKeyDerivationCount "OWPKeyDerivationCount"
+
 extern OWPContext
 OWPContextCreate(
         I2ErrHandle eh
@@ -683,6 +694,13 @@ OWPContextConfigSetV(
         void        *value
         );
 
+extern OWPBoolean
+OWPContextConfigSetU32(
+        OWPContext  ctx,
+        const char  *key,
+        uint32_t    value
+        );
+
 extern OWPFunc
 OWPContextConfigGetF(
         OWPContext  ctx,
@@ -693,6 +711,13 @@ extern void*
 OWPContextConfigGetV(
         OWPContext  ctx,
         const char  *key
+        );
+
+extern OWPBoolean
+OWPContextConfigGetU32(
+        OWPContext  ctx,
+        const char  *key,
+        uint32_t    *val
         );
 
 extern OWPBoolean
@@ -742,7 +767,7 @@ OWPControlConfigDelete(
  * OWPControlOpen allocates an OWPclient structure, opens a connection to
  * the OWP server and goes through the initialization phase of the
  * connection. This includes AES/CBC negotiation. It returns after receiving
- * the ServerOK message.
+ * the ServerStart message.
  *
  * This is typically only used by an OWP client application (or a server
  * when acting as a client of another OWP server).

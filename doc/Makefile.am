@@ -19,8 +19,12 @@
 #	Description:
 
 dist_man1_MANS = owping.man owstats.man owfetch.man owup.man
-dist_man5_MANS = owampd.conf.man owampd.limits.man owampd.keys.man
+dist_man5_MANS = owampd.conf.man owampd.limits.man owampd.pfs.man
 dist_man8_MANS = owampd.man
+
+# TODO: May be able to autogen html pages during packaging this way...
+#BUILT_SOURCES = owping.man.html
+
 
 # EXTRA_DIST = $(man1_MANS) $(man5_MANS) $(man8_MANS)
 EXTRA_DIST = index.html details.html owamp_arch.png

@@ -92,6 +92,7 @@ OpenSocket(
 
 failsock:
         while((close(fd) < 0) && (errno == EINTR));
+        fd = -1;
     }
 
     return fd;
@@ -178,8 +179,7 @@ OWPServerSockCreate(
      * if we failed to find any IPv6 or IPv4 addresses... punt.
      */
     if(fd < 0){
-        OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                "OWPServerSockCreate:%M");
+        OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"OWPServerSockCreate: %M");
         goto error;
     }
 
@@ -187,7 +187,7 @@ OWPServerSockCreate(
      * We have a bound socket - set the listen backlog.
      */
     if(listen(fd,OWP_LISTEN_BACKLOG) < 0){
-        OWPError(ctx,OWPErrFATAL,errno,"listen(%d,%d):%s",
+        OWPError(ctx,OWPErrFATAL,errno,"listen(%d,%d): %s",
                 fd,OWP_LISTEN_BACKLOG,strerror(errno));
         goto error;
     }
@@ -226,16 +226,20 @@ OWPControlAccept(
         int             connfd,         /* connected socket             */
         struct sockaddr *connsaddr,     /* connected socket addr        */
         socklen_t       connsaddrlen,   /* connected socket addr len    */
-        uint32_t       mode_offered,   /* advertised server mode       */
+        uint32_t        mode_offered,   /* advertised server mode       */
         OWPNum64        uptime,         /* uptime for server            */
         int             *retn_on_intr,  /* if *retn_on_intr return      */
         OWPErrSeverity  *err_ret        /* err - return                 */
         )
 {
     OWPControl      cntrl;
-    uint8_t        challenge[16];
-    uint8_t        rawtoken[32];
-    uint8_t        token[32];
+    uint8_t         challenge[16];
+    uint8_t         salt[16];
+    uint8_t         rawtoken[64];
+    uint8_t         token[64];
+    uint8_t         *pf=NULL;
+    void            *pf_free=NULL;
+    size_t          pf_len=0;
     int             rc;
     struct timeval  tvalstart,tvalend;
     int             ival=0;
@@ -300,19 +304,20 @@ OWPControlAccept(
             "Connection to ([%s]:%s) from ([%s]:%s)",
             localnode,localserv,remotenode,remoteserv);
 
-    /* generate 16 random bytes of challenge and save them away. */
-    if(I2RandomBytes(ctx->rand_src,challenge, 16) != 0){
+    /* generate 16 random bytes of challenge and salt. */
+    if((I2RandomBytes(ctx->rand_src,challenge,sizeof(challenge)) != 0) ||
+            (I2RandomBytes(ctx->rand_src,salt, sizeof(salt)) != 0)){
         *err_ret = OWPErrFATAL;
         goto error;
     }
 
     if(gettimeofday(&tvalstart,NULL)!=0){
-        OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"gettimeofday():%M");
+        OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"gettimeofday(): %M");
         *err_ret = OWPErrFATAL;
         goto error;
     }
     if( (rc = _OWPWriteServerGreeting(cntrl,mode_offered,
-                    challenge,intr)) < OWPErrOK){
+                    challenge,salt,ctx->pbkdf2_count,intr)) < OWPErrOK){
         *err_ret = (OWPErrSeverity)rc;
         goto error;
     }
@@ -328,13 +333,14 @@ OWPControlAccept(
         goto error;
     }
 
-    if((rc = _OWPReadClientGreeting(cntrl,&cntrl->mode,rawtoken,
+    if((rc = _OWPReadSetupResponse(cntrl,&cntrl->mode,rawtoken,
                     cntrl->readIV,intr)) < OWPErrOK){
         *err_ret = (OWPErrSeverity)rc;
         goto error;
     }
+
     if(gettimeofday(&tvalend,NULL)!=0){
-        OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"gettimeofday():%M");
+        OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"gettimeofday(): %M");
         *err_ret = OWPErrFATAL;
         goto error;
     }
@@ -342,7 +348,7 @@ OWPControlAccept(
     OWPTimevalToNum64(&cntrl->rtt_bound,&tvalend);
 
     /* insure that exactly one mode is chosen */
-    if(        (cntrl->mode != OWP_MODE_OPEN) &&
+    if((cntrl->mode != OWP_MODE_OPEN) &&
             (cntrl->mode != OWP_MODE_AUTHENTICATED) &&
             (cntrl->mode != OWP_MODE_ENCRYPTED)){
         *err_ret = OWPErrFATAL;
@@ -351,9 +357,9 @@ OWPControlAccept(
 
     if(!(cntrl->mode | mode_offered)){ /* can't provide requested mode */
         OWPError(cntrl->ctx,OWPErrWARNING,OWPErrPOLICY,
-                "Control request to ([%s]:%s) denied from ([%s]:%s):mode not offered (%u)",
+                "Control request to ([%s]:%s) denied from ([%s]:%s): mode not offered (%u)",
                 localnode,localserv,remotenode,remoteserv,cntrl->mode);
-        if( (rc = _OWPWriteServerOK(cntrl,OWP_CNTRL_REJECT,0,intr)) <
+        if( (rc = _OWPWriteServerStart(cntrl,OWP_CNTRL_REJECT,0,intr)) <
                 OWPErrOK){
             *err_ret = (OWPErrSeverity)rc;
         }
@@ -361,28 +367,25 @@ OWPControlAccept(
     }
 
     if(cntrl->mode & (OWP_MODE_AUTHENTICATED|OWP_MODE_ENCRYPTED)){
-        uint8_t        binKey[16];
-        OWPBoolean        getkey_success;
+        OWPBoolean  getkey_success;
 
-        /* Fetch the encryption key into binKey */
         /*
          * go through the motions of decrypting token even if
          * getkey fails to find username to minimize vulnerability
          * to timing attacks.
          */
-        getkey_success = _OWPCallGetAESKey(cntrl->ctx,
-                cntrl->userid_buffer,binKey,err_ret);
+        getkey_success = _OWPCallGetPF(cntrl->ctx,cntrl->userid_buffer,
+                &pf,&pf_len,&pf_free, err_ret);
         if(!getkey_success && (*err_ret != OWPErrOK)){
-            (void)_OWPWriteServerOK(cntrl,OWP_CNTRL_FAILURE,0,intr);
+            (void)_OWPWriteServerStart(cntrl,OWP_CNTRL_FAILURE,0,intr);
             goto error;
         }
 
-        if (OWPDecryptToken(binKey,rawtoken,token) < 0){
-            OWPError(cntrl->ctx,OWPErrFATAL,
-                    OWPErrUNKNOWN,
+        if(OWPDecryptToken(pf,pf_len,salt,ctx->pbkdf2_count,
+                    rawtoken,token) < 0){
+            OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
                     "Encryption state problem?!?!");
-            (void)_OWPWriteServerOK(cntrl,
-                                    OWP_CNTRL_FAILURE,0,intr);
+            (void)_OWPWriteServerStart(cntrl,OWP_CNTRL_FAILURE,0,intr);
             *err_ret = OWPErrFATAL;
             goto error;
         }
@@ -399,7 +402,7 @@ OWPControlAccept(
                         "Control request to ([%s]:%s) denied from ([%s]:%s):Invalid challenge encryption",
                         localnode,localserv,remotenode,remoteserv);
             }
-            (void)_OWPWriteServerOK(cntrl,OWP_CNTRL_REJECT,0,intr);
+            (void)_OWPWriteServerStart(cntrl,OWP_CNTRL_REJECT,0,intr);
             goto error;
         }
 
@@ -408,11 +411,27 @@ OWPControlAccept(
         if(I2RandomBytes(cntrl->ctx->rand_src,cntrl->writeIV,16) != 0){
             OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
                     "Unable to fetch randomness...");
-            (void)_OWPWriteServerOK(cntrl,OWP_CNTRL_FAILURE,0,intr);
+            (void)_OWPWriteServerStart(cntrl,OWP_CNTRL_FAILURE,0,intr);
             goto error;
         }
-        memcpy(cntrl->session_key,&token[16],16);
-        _OWPMakeKey(cntrl,cntrl->session_key); 
+
+        memcpy(cntrl->aessession_key,&token[16],16);
+        _OWPMakeKey(cntrl,cntrl->aessession_key); 
+
+        memcpy(cntrl->hmac_key,&token[32],32);
+        I2HMACSha1Init(cntrl->send_hmac_ctx,cntrl->hmac_key,
+                sizeof(cntrl->hmac_key));
+        I2HMACSha1Init(cntrl->recv_hmac_ctx,cntrl->hmac_key,
+                sizeof(cntrl->hmac_key));
+
+        if(pf_free){
+            /* clean-up */
+            memset(pf,0,pf_len);
+            free(pf_free);
+            pf_free = NULL;
+            pf = NULL;
+            pf_len = 0;
+        }
     }
 
     if(!_OWPCallCheckControlPolicy(cntrl,cntrl->mode,cntrl->userid, 
@@ -427,12 +446,12 @@ OWPControlAccept(
             /*
              * send mode of 0 to client, and then close.
              */
-            (void)_OWPWriteServerOK(cntrl,OWP_CNTRL_REJECT,0,intr);
+            (void)_OWPWriteServerStart(cntrl,OWP_CNTRL_REJECT,0,intr);
         }
         else{
             OWPError(ctx,*err_ret,OWPErrUNKNOWN,
                     "Policy function failed.");
-            (void)_OWPWriteServerOK(cntrl,OWP_CNTRL_FAILURE,0,intr);
+            (void)_OWPWriteServerStart(cntrl,OWP_CNTRL_FAILURE,0,intr);
         }
         goto error;
     }
@@ -440,7 +459,7 @@ OWPControlAccept(
     /*
      * Made it through the gauntlet - accept the control session!
      */
-    if( (rc = _OWPWriteServerOK(cntrl,OWP_CNTRL_ACCEPT,uptime,intr)) <
+    if( (rc = _OWPWriteServerStart(cntrl,OWP_CNTRL_ACCEPT,uptime,intr)) <
             OWPErrOK){
         *err_ret = (OWPErrSeverity)rc;
         goto error;
@@ -454,6 +473,8 @@ OWPControlAccept(
     return cntrl;
 
 error:
+    if(pf_free)
+        free(pf_free);
     OWPControlClose(cntrl);
     return NULL;
 }
@@ -602,8 +623,7 @@ OWPProcessTestRequest(
                     &tsession->closure,&err_ret)){
             if(err_ret < OWPErrOK)
                 goto error;
-            OWPError(cntrl->ctx, OWPErrWARNING, OWPErrPOLICY,
-                    "Test not allowed");
+            OWPError(cntrl->ctx,OWPErrWARNING,OWPErrPOLICY,"Test not allowed");
             acceptval = OWP_CNTRL_REJECT;
             err_ret = OWPErrWARNING;
             goto error;
@@ -625,7 +645,7 @@ OWPProcessTestRequest(
         port = I2AddrPort(tsession->receiver);
     }
 
-    if( (rc = _OWPWriteTestAccept(cntrl,intr,OWP_CNTRL_ACCEPT,
+    if( (rc = _OWPWriteAcceptSession(cntrl,intr,OWP_CNTRL_ACCEPT,
                     port,tsession->sid)) < OWPErrOK){
         err_ret = (OWPErrSeverity)rc;
         goto err2;
@@ -645,7 +665,7 @@ error:
      * send negative accept.
      */
     if(err_ret >= OWPErrWARNING)
-        (void)_OWPWriteTestAccept(cntrl,intr,acceptval,0,NULL);
+        (void)_OWPWriteAcceptSession(cntrl,intr,acceptval,0,NULL);
 
 err2:
     if(tsession)
@@ -712,7 +732,7 @@ DoDataRecords(
 {
     struct DoDataState  *dstate = (struct DoDataState *)udata;
     OWPControl          cntrl = dstate->cntrl;
-    uint8_t            *buf = (uint8_t*)cntrl->msg;
+    char                *buf = (char *)cntrl->msg;
 
     /*
      * Save largest index seen that is not lost.
@@ -748,7 +768,8 @@ DoDataRecords(
          * If the buffer is full enough to send, do so.
          */
         if(dstate->inbuf == _OWP_FETCH_DATAREC_BLOCKS){
-            if(_OWPSendBlocksIntr(cntrl,buf,_OWP_FETCH_AES_BLOCKS,
+            _OWPSendHMACAdd(cntrl,buf,_OWP_FETCH_AES_BLOCKS);
+            if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,_OWP_FETCH_AES_BLOCKS,
                         dstate->intr) != _OWP_FETCH_AES_BLOCKS){
                 dstate->err = OWPErrFATAL;
                 _OWPFailControlSession(cntrl,OWPErrFATAL);
@@ -772,7 +793,7 @@ OWPProcessFetchSession(
         int         *retn_on_intr
         )
 {
-    uint8_t                    *buf = (uint8_t*)cntrl->msg;
+    char                        *buf = (char *)cntrl->msg;
     OWPErrSeverity              err;
     OWPAcceptType               acceptval = OWP_CNTRL_REJECT;
     uint32_t                   begin;
@@ -964,8 +985,7 @@ read_file:
 
             /* set pointer to beginning of data recs */
             if(fseeko(fp,fhdr.oset_datarecs,SEEK_SET)){
-                OWPError(cntrl->ctx,OWPErrFATAL,errno,
-                        "fseeko(): %M");
+                OWPError(cntrl->ctx,OWPErrFATAL,errno,"fseeko(): %M");
                 goto failed;
             }
 
@@ -984,6 +1004,12 @@ read_file:
         num_skiprecs = fhdr.num_skiprecs;
     }
 
+    /* set file pointer to beginning of TestReq */
+    if(fseeko(fp,_OWP_TESTREC_OFFSET,SEEK_SET)){
+        OWPError(cntrl->ctx,OWPErrFATAL,errno,"fseeko(): %M");
+        goto failed;
+    }
+
     /*
      * Now accept the FetchRequest.
      */
@@ -992,12 +1018,6 @@ read_file:
                     num_skiprecs,sendrecs)) < OWPErrOK){
         _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
         return _OWPFailControlSession(cntrl,err);
-    }
-
-    /* set file pointer to beginning of TestReq */
-    if(fseeko(fp,_OWP_TESTREC_OFFSET,SEEK_SET)){
-        OWPError(cntrl->ctx,OWPErrFATAL,errno,"fseeko(): %M");
-        goto failed;
     }
 
     /*
@@ -1023,20 +1043,45 @@ read_file:
     }
 
     /*
-     * Read the TestReq from the file and write it to the socket.
+     * Read the TestRequestPreamble from the file, modify the HMAC
+     * then send.
+     * TestRequestPreamble is 7 blocks long (last one is HMAC).
+     */
+    if(fread(buf,7*_OWP_RIJNDAEL_BLOCK_SIZE,1,fp) != 1){
+        _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
+        return _OWPFailControlSession(cntrl,OWPErrFATAL);
+    }
+    _OWPSendHMACAdd(cntrl,buf,6);
+    _OWPSendHMACDigestClear(cntrl,&buf[96]);
+    if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,7,intr) != 7){
+        _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
+        return _OWPFailControlSession(cntrl,OWPErrFATAL);
+    }
+    tr_size -= (_OWP_RIJNDAEL_BLOCK_SIZE*7);
+
+    /*
+     * Read the TestReq slots from the file and write it to the socket.
+     * Ignore last block (it holds original HMAC - recompute the last
+     * block of HMAC and send).
      * (after this loop - fp is positioned at hdr_off.
      */
-    while(tr_size > 0){
+    while(tr_size > _OWP_RIJNDAEL_BLOCK_SIZE){
         if(fread(buf,1,_OWP_RIJNDAEL_BLOCK_SIZE,fp) !=
                 _OWP_RIJNDAEL_BLOCK_SIZE){
             _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
             return _OWPFailControlSession(cntrl,OWPErrFATAL);
         }
-        if(_OWPSendBlocksIntr(cntrl,buf,1,intr) != 1){
+        _OWPSendHMACAdd(cntrl,buf,1);
+        if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,intr) != 1){
             _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
             return _OWPFailControlSession(cntrl,OWPErrFATAL);
         }
         tr_size -= _OWP_RIJNDAEL_BLOCK_SIZE;
+    }
+    _OWPSendHMACDigestClear(cntrl,buf);
+    if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,intr) != 1){
+        _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
+        return _OWPFailControlSession(cntrl,OWPErrFATAL);
     }
 
     if(fhdr.finished && fhdr.num_skiprecs){
@@ -1044,7 +1089,8 @@ read_file:
         /* set file pointer to beginning of skips */
         if(fseeko(fp,fhdr.oset_skiprecs,SEEK_SET)){
             OWPError(cntrl->ctx,OWPErrFATAL,errno,"fseeko(): %M");
-            goto failed;
+            _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
+            return _OWPFailControlSession(cntrl,OWPErrFATAL);
         }
 
         /*
@@ -1061,7 +1107,8 @@ read_file:
                 _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
                 return _OWPFailControlSession(cntrl,OWPErrFATAL);
             }
-            if(_OWPSendBlocksIntr(cntrl,buf,1,intr) != 1){
+            _OWPSendHMACAdd(cntrl,buf,1);
+            if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,intr) != 1){
                 _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
                 return _OWPFailControlSession(cntrl,OWPErrFATAL);
             }
@@ -1079,7 +1126,8 @@ read_file:
                 _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
                 return _OWPFailControlSession(cntrl,OWPErrFATAL);
             }
-            if(_OWPSendBlocksIntr(cntrl,buf,1,intr) != 1){
+            _OWPSendHMACAdd(cntrl,buf,1);
+            if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,intr) != 1){
                 _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
                 return _OWPFailControlSession(cntrl,OWPErrFATAL);
             }
@@ -1087,9 +1135,9 @@ read_file:
 
     }
 
-    /* now send Zero Integrity Block (between skips & data */
-    memset(buf,0,_OWP_RIJNDAEL_BLOCK_SIZE);
-    if(_OWPSendBlocksIntr(cntrl,buf,1,intr) != 1){
+    /* now send HMAC Block (between skips & data */
+    _OWPSendHMACDigestClear(cntrl,buf);
+    if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,intr) != 1){
         _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
         return _OWPFailControlSession(cntrl,err);
     }
@@ -1103,7 +1151,8 @@ read_file:
     /* set file pointer to beginning of data */
     if(fseeko(fp,fhdr.oset_datarecs,SEEK_SET)){
         OWPError(cntrl->ctx,OWPErrFATAL,errno,"fseeko(): %M");
-        goto failed;
+        _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
+        return _OWPFailControlSession(cntrl,err);
     }
 
     /*
@@ -1132,7 +1181,8 @@ read_file:
         /*
          * Write enough AES blocks to get remaining records.
          */
-        if( (_OWPSendBlocksIntr(cntrl,buf,blks,intr) != blks)){
+        _OWPSendHMACAdd(cntrl,buf,blks);
+        if( (_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,blks,intr) != blks)){
             _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
             return _OWPFailControlSession(cntrl,err);
         }
@@ -1144,9 +1194,9 @@ final:
      */
     _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_ACCEPT);
 
-    /* now send final Zero Integrity Block */
-    memset(buf,0,_OWP_RIJNDAEL_BLOCK_SIZE);
-    if(_OWPSendBlocksIntr(cntrl,buf,1,intr) != 1){
+    /* now send final HMAC Block */
+    _OWPSendHMACDigestClear(cntrl,buf);
+    if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,intr) != 1){
         return _OWPFailControlSession(cntrl,err);
     }
 

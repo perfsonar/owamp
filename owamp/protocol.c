@@ -1,5 +1,7 @@
 /*
- **      $Id$
+ * ex: set tabstop=4 ai expandtab softtabstop=4 shiftwidth=4:
+ * -*- mode: c-basic-indent: 4; tab-width: 4; indent-tabls-mode: nil -*-
+ *      $Id$
  */
 /************************************************************************
  *                                                                      *
@@ -31,10 +33,12 @@
  **                     reference for byte offsets in the code - for
  **                     explainations of the fields please see the
  **                     relevant specification document.
- **                     (currently draft-ietf-ippm-owdp-14.txt)
+ **                     RFC 4656
  **
- **                     (ease of referenceing byte offsets is also why
- **                     the &buf[BYTE] notation is being used.)
+ **                     Ease of referenceing byte offsets is also why
+ **                     the &buf[BYTE] notation is being used.
+ **                     Now the C99 may actually start to take hold,
+ **                     (char *) is the type being used to accomplish this.
  */
 
 #include <I2util/util.h>
@@ -43,13 +47,13 @@
 /*
  *         ServerGreeting message format:
  *
- *         size: 32 octets
+ *         size: 64 octets
  *
  *            0                   1                   2                   3
  *            0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
  *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *        00|                                                               |
- *        04|                         MBZ (12 octets)                       |
+ *        04|                        Unused (12 octets)                     |
  *        08|                                                               |
  *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *        12|                            Modes                              |
@@ -59,13 +63,26 @@
  *        24|                                                               |
  *        28|                                                               |
  *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *        32|                                                               |
+ *        36|                        Salt (16 octets)                       |
+ *        40|                                                               |
+ *        44|                                                               |
+ *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *        48|                       Count (4 octets)                        |
+ *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *        52|                                                               |
+ *        56|                        MBZ (12 octets)                        |
+ *        60|                                                               |
+ *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *
  */
 OWPErrSeverity
 _OWPWriteServerGreeting(
         OWPControl  cntrl,
-        uint32_t   avail_modes,
-        uint8_t    *challenge,        /* [16] */
+        uint32_t    avail_modes,
+        uint8_t     *challenge,     /* [16] */
+        uint8_t     *salt,          /* [16] */
+        uint32_t    count,
         int         *retn_on_err
         )
 {
@@ -74,7 +91,7 @@ _OWPWriteServerGreeting(
      * buf for actual assignments to make the array offsets agree with
      * the byte offsets shown above.
      */
-    uint8_t    *buf = (uint8_t*)cntrl->msg;
+    char    *buf = (char *)cntrl->msg;
 
     if(!_OWPStateIsInitial(cntrl)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
@@ -83,13 +100,15 @@ _OWPWriteServerGreeting(
     }
 
     /*
-     * Set unused bits to 0.
+     * Set unused/MBZ bits to 0. (and initialize rest)
      */
-    memset(buf,0,12);
+    memset(buf,0,64);
 
     *((uint32_t *)&buf[12]) = htonl(avail_modes);
     memcpy(&buf[16],challenge,16);
-    if(I2Writeni(cntrl->sockfd,buf,32,retn_on_err) != 32){
+    memcpy(&buf[32],salt,16);
+    *((uint32_t *)&buf[48]) = htonl(count);
+    if(I2Writeni(cntrl->sockfd,buf,64,retn_on_err) != 64){
         return OWPErrFATAL;
     }
 
@@ -101,11 +120,13 @@ _OWPWriteServerGreeting(
 OWPErrSeverity
 _OWPReadServerGreeting(
         OWPControl  cntrl,
-        uint32_t   *mode,      /* modes available - returned   */
-        uint8_t    *challenge  /* [16] : challenge - returned  */
+        uint32_t   *mode,       /* modes available - returned   */
+        uint8_t    *challenge,  /* [16] : challenge - returned  */
+        uint8_t    *salt,       /* [16] : challenge - returned  */
+        uint32_t   *count       /* count - returned   */
         )
 {
-    uint8_t    *buf = (uint8_t*)cntrl->msg;
+    char    *buf = (char *)cntrl->msg;
 
     if(!_OWPStateIsInitial(cntrl)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
@@ -113,7 +134,7 @@ _OWPReadServerGreeting(
         return OWPErrFATAL;
     }
 
-    if(I2Readn(cntrl->sockfd,buf,32) != 32){
+    if(I2Readn(cntrl->sockfd,buf,64) != 64){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
                 "Read failed:(%s)",strerror(errno));
         return (int)OWPErrFATAL;
@@ -121,6 +142,8 @@ _OWPReadServerGreeting(
 
     *mode = ntohl(*((uint32_t *)&buf[12]));
     memcpy(challenge,&buf[16],16);
+    memcpy(salt,&buf[32],16);
+    *count = ntohl(*((uint32_t *)&buf[48]));
 
     cntrl->state = _OWPStateSetup;
 
@@ -128,11 +151,9 @@ _OWPReadServerGreeting(
 }
 
 /*
+ *         SetupResponse message format:
  *
- *
- *         ClientGreeting message format:
- *
- *         size: 68 octets
+ *         size: 164 octets
  *
  *            0                   1                   2                   3
  *            0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
@@ -140,67 +161,67 @@ _OWPReadServerGreeting(
  *        00|                             Mode                              |
  *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *        04|                                                               |
- *        08|                     Username (16 octets)                      |
+ *        08|                       KeyID (80 octets)                       |
  *        12|                                                               |
  *        16|                                                               |
+ *                                      ...
+ *
+ *        80|                                                               |
  *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
- *        20|                                                               |
- *        24|                       Token (32 octets)                       |
- *        28|                                                               |
- *        32|                                                               |
- *        36|                                                               |
- *        40|                                                               |
- *        44|                                                               |
- *        48|                                                               |
+ *        84|                                                               |
+ *        88|                       Token (64 octets)                       |
+ *        92|                                                               |
+ *        96|                                                               |
+ *                                      ...
+ *       144|                                                               |
  *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
- *        52|                                                               |
- *        56|                     Client-IV (16 octets)                     |
- *        60|                                                               |
- *        64|                                                               |
+ *       148|                                                               |
+ *       152|                     Client-IV (16 octets)                     |
+ *       156|                                                               |
+ *       160|                                                               |
  *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *
  */
 OWPErrSeverity
-_OWPWriteClientGreeting(
+_OWPWriteSetupResponse(
         OWPControl  cntrl,
-        uint8_t    *token        /* [32]        */
+        uint8_t    *token        /* [64]        */
         )
 {
-    uint8_t    *buf = (uint8_t*)cntrl->msg;
+    char    *buf = (char *)cntrl->msg;
 
     if(!_OWPStateIsSetup(cntrl)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                "_OWPWriteClientGreeting:called in wrong state.");
+                "_OWPWriteSetupResponse: called in wrong state.");
         return OWPErrFATAL;
     }
 
-    *(uint32_t *)&buf[0] = htonl(cntrl->mode);
+    memset(&buf[0],0,164);
 
+    *(uint32_t *)&buf[0] = htonl(cntrl->mode);
     if(cntrl->mode & OWP_MODE_DOCIPHER){
-        memcpy(&buf[4],cntrl->userid,16);
-        memcpy(&buf[20],token,32);
-        memcpy(&buf[52],cntrl->writeIV,16);
-    }else{
-        memset(&buf[4],0,64);
+        memcpy(&buf[4],cntrl->userid,80);
+        memcpy(&buf[84],token,64);
+        memcpy(&buf[148],cntrl->writeIV,16);
     }
 
-    if(I2Writen(cntrl->sockfd, buf, 68) != 68)
+    if(I2Writen(cntrl->sockfd, buf, 164) != 164)
         return OWPErrFATAL;
 
     return OWPErrOK;
 }
 
 OWPErrSeverity
-_OWPReadClientGreeting(
+_OWPReadSetupResponse(
         OWPControl  cntrl,
-        uint32_t   *mode,
-        uint8_t    *token,         /* [32] - return        */
-        uint8_t    *clientIV,      /* [16] - return        */
+        uint32_t    *mode,
+        uint8_t     *token,         /* [64] - return        */
+        uint8_t     *clientIV,      /* [16] - return        */
         int         *retn_on_intr
         )
 {
-    ssize_t     len;
-    uint8_t    *buf = (uint8_t*)cntrl->msg;
+    ssize_t len;
+    char    *buf = (char *)cntrl->msg;
 
     if(!_OWPStateIsSetup(cntrl)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
@@ -208,7 +229,7 @@ _OWPReadClientGreeting(
         return OWPErrFATAL;
     }
 
-    if((len = I2Readni(cntrl->sockfd,buf,68,retn_on_intr)) != 68){
+    if((len = I2Readni(cntrl->sockfd,buf,164,retn_on_intr)) != 164){
         if((len < 0) && *retn_on_intr && (errno == EINTR)){
             return OWPErrFATAL;
         }
@@ -223,9 +244,9 @@ _OWPReadClientGreeting(
     }
 
     *mode = ntohl(*(uint32_t *)&buf[0]);
-    memcpy(cntrl->userid_buffer,&buf[4],16);
-    memcpy(token,&buf[20],32);
-    memcpy(clientIV,&buf[52],16);
+    memcpy(cntrl->userid_buffer,&buf[4],80);
+    memcpy(token,&buf[84],64);
+    memcpy(clientIV,&buf[148],16);
 
     return OWPErrOK;
 }
@@ -233,7 +254,7 @@ _OWPReadClientGreeting(
 static OWPAcceptType
 GetAcceptType(
         OWPControl  cntrl,
-        uint8_t    val
+        uint8_t     val
         )
 {
     switch(val){
@@ -257,7 +278,7 @@ GetAcceptType(
 }
 
 /*
- *         ServerOK message format:
+ *         ServerStart message format:
  *
  *         size: 48 octets
  *
@@ -278,13 +299,13 @@ GetAcceptType(
  *        32|                      Uptime (Timestamp)                       |
  *        36|                                                               |
  *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
- *        40|              Integrity Zero Padding (8 octets)                |
+ *        40|                         MBZ (8 octets)                        |
  *        44|                                                               |
  *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *
  */
 OWPErrSeverity
-_OWPWriteServerOK(
+_OWPWriteServerStart(
         OWPControl      cntrl,
         OWPAcceptType   code,
         OWPNum64        uptime,
@@ -293,7 +314,7 @@ _OWPWriteServerOK(
 {
     ssize_t         len;
     OWPTimeStamp    tstamp;
-    uint8_t        *buf = (uint8_t*)cntrl->msg;
+    char            *buf = (char *)cntrl->msg;
     int             ival=0;
     int             *intr=&ival;
 
@@ -307,6 +328,9 @@ _OWPWriteServerOK(
         intr = retn_on_intr;
     }
 
+    /*
+     * Write first two blocks of message - not encrypted
+     */
     memset(&buf[0],0,15);
     *(uint8_t *)&buf[15] = code & 0xff;
     memcpy(&buf[16],cntrl->writeIV,16);
@@ -323,44 +347,52 @@ _OWPWriteServerOK(
          * func.
          */
         tstamp.owptime = uptime;
-        _OWPEncodeTimeStamp(&buf[0],&tstamp);
+        _OWPEncodeTimeStamp((uint8_t *)&buf[0],&tstamp);
         memset(&buf[8],0,8);
-        if(_OWPSendBlocksIntr(cntrl,buf,1,intr) != 1){
-            if((len < 0) && *intr && (errno == EINTR)){
-                return OWPErrFATAL;
-            }
-            return OWPErrFATAL;
-        }
+
         cntrl->state = _OWPStateRequest;
     }
     else{
-        cntrl->state = _OWPStateInvalid;
         memset(&buf[0],0,16);
-        if((len = I2Writeni(cntrl->sockfd,buf,16,intr)) != 16){
-            if((len < 0) && *intr && (errno == EINTR)){
-                return OWPErrFATAL;
-            }
+        cntrl->state = _OWPStateInvalid;
+    }
+
+    /*
+     * Add this block to HMAC, and then send it.
+     * No HMAC digest field in this message - so this block gets
+     * include as part of the text for the next digest sent in the
+     * 'next' message.
+     */
+    _OWPSendHMACAdd(cntrl,buf,1);
+    if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,intr) != 1){
+        if((len < 0) && *intr && (errno == EINTR)){
             return OWPErrFATAL;
         }
+        return OWPErrFATAL;
     }
 
     return OWPErrOK;
 }
 
 OWPErrSeverity
-_OWPReadServerOK(
+_OWPReadServerStart(
         OWPControl      cntrl,
-        OWPAcceptType   *acceptval        /* ret        */
+        OWPAcceptType   *acceptval, /* ret        */
+        OWPNum64        *uptime     /* ret        */
         )
 {
-    uint8_t    *buf = (uint8_t*)cntrl->msg;
+    char            *buf = (char *)cntrl->msg;
+    OWPTimeStamp    tstamp;
 
     if(!_OWPStateIsSetup(cntrl)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                "_OWPReadServerOK:called in wrong state.");
+                "_OWPReadServerStart: called in wrong state.");
         return OWPErrFATAL;
     }
 
+    /*
+     * First read unencrypted blocks
+     */
     if(I2Readn(cntrl->sockfd,buf,32) != 32){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
                 "Read failed:(%s)",strerror(errno));
@@ -376,42 +408,25 @@ _OWPReadServerOK(
 
     memcpy(cntrl->readIV,&buf[16],16);
 
-    cntrl->state = _OWPStateUptime;
-
-    return OWPErrOK;
-}
-
-OWPErrSeverity
-_OWPReadServerUptime(
-        OWPControl  cntrl,
-        OWPNum64    *uptime        /* ret        */
-        )
-{
-    uint8_t        *buf = (uint8_t*)cntrl->msg;
-    OWPTimeStamp    tstamp;
-
-    if(!_OWPStateIs(_OWPStateUptime,cntrl)){
-        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                "_OWPReadServerUptime: called in wrong state.");
-        return OWPErrFATAL;
-    }
-
-    if(_OWPReceiveBlocks(cntrl,buf,1) != 1){
+    /*
+     * Now read encrypted blocks (In encrypted modes, everything after
+     * IV is encrypted.
+     * Add block to HMAC
+     */
+    if(_OWPReceiveBlocks(cntrl,(uint8_t *)buf,1) != 1){
         OWPError(cntrl->ctx,OWPErrFATAL,errno,
-                "_OWPReadServerUptime: Unable to read from socket.");
+                "_OWPReadServerStart: Unable to read from socket.");
         cntrl->state = _OWPStateInvalid;
         return OWPErrFATAL;
     }
+    _OWPRecvHMACAdd(cntrl,buf,1);
 
-    if(memcmp(&buf[8],cntrl->zero,8)){
-        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                "_OWPReadServerUptime: Invalid zero padding");
-        return OWPErrFATAL;
-    }
-
-    _OWPDecodeTimeStamp(&tstamp,&buf[0]);
+    _OWPDecodeTimeStamp(&tstamp,(uint8_t *)&buf[0]);
     *uptime = tstamp.owptime;
 
+    /*
+     * Now in normal request state
+     */
     cntrl->state = _OWPStateRequest;
 
     return OWPErrOK;
@@ -422,7 +437,9 @@ _OWPReadServerUptime(
  * of client requests. The remaining read request messages MUST be called
  * next!.
  * It is also called by the client side from OWPStopSessionsWait and
- * OWPStopSessions
+ * OWPStopSessions.
+ *
+ * This function does NOT add any data to the HMAC.
  */
 OWPRequestType
 OWPReadRequestType(
@@ -430,10 +447,10 @@ OWPReadRequestType(
         int         *retn_on_intr
         )
 {
-    uint8_t    msgtype;
-    int         n;
-    int         ival=0;
-    int         *intr = &ival;
+    uint8_t msgtype;
+    int     n;
+    int     ival=0;
+    int     *intr = &ival;
 
     if(retn_on_intr){
         intr = retn_on_intr;
@@ -446,7 +463,7 @@ OWPReadRequestType(
     }
 
     /* Read one block so we can peek at the message type */
-    n = _OWPReceiveBlocksIntr(cntrl,(uint8_t*)cntrl->msg,1,intr);
+    n = _OWPReceiveBlocksIntr(cntrl,(uint8_t *)cntrl->msg,1,intr);
     if(n != 1){
         cntrl->state = _OWPStateInvalid;
         if((n < 0) && *intr && (errno == EINTR)){
@@ -455,7 +472,7 @@ OWPReadRequestType(
         return OWPReqSockClose;
     }
 
-    msgtype = *(uint8_t*)cntrl->msg;
+    msgtype = *(char *)cntrl->msg;
 
     /*
      * StopSessions(3) message is only allowed during active tests,
@@ -513,13 +530,13 @@ OWPReadRequestType(
  *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *        16|                        Sender Address                         |
  *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
- *        20|              Sender Address (cont.) or Unused                 |
+ *        20|              Sender Address (cont.) or MBZ (12 octets)        |
  *        24|                                                               |
  *        28|                                                               |
  *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *        32|                        Receiver Address                       |
  *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
- *        36|              Receiver Address (cont.) or Unused               |
+ *        36|              Receiver Address (cont.) or MBZ (12 octets)      |
  *        40|                                                               |
  *        44|                                                               |
  *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -533,18 +550,18 @@ OWPReadRequestType(
  *        68|                            Start Time                         |
  *        72|                                                               |
  *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
- *        76|                             Timeout                           |
+ *        76|                           Timeout (8 octets)                  |
  *        80|                                                               |
  *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *        84|                         Type-P Descriptor                     |
  *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
- *        88|                                MBZ                            |
+ *        88|                           MBZ (8 octets)                      |
  *        92|                                                               |
  *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *        96|                                                               |
- *     100|                Integrity Zero Padding (16 octets)             |
- *     104|                                                               |
- *     108|                                                               |
+ *       100|                           HMAC (16 octets)                    |
+ *       104|                                                               |
+ *       108|                                                               |
  *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  */
 int
@@ -560,8 +577,8 @@ _OWPEncodeTestRequestPreamble(
         OWPTestSpec     *tspec
         )
 {
-    uint8_t        *buf = (uint8_t*)msg;
-    uint8_t        version;
+    char            *buf = (char*)msg;
+    char            version;
     OWPTimeStamp    tstamp;
 
     if(*len_ret < 112){
@@ -683,14 +700,14 @@ _OWPEncodeTestRequestPreamble(
      * timestamps...
      */
     tstamp.owptime = tspec->start_time;
-    _OWPEncodeTimeStamp(&buf[68],&tstamp);
+    _OWPEncodeTimeStamp((uint8_t *)&buf[68],&tstamp);
     tstamp.owptime = tspec->loss_timeout;
-    _OWPEncodeTimeStamp(&buf[76],&tstamp);
+    _OWPEncodeTimeStamp((uint8_t *)&buf[76],&tstamp);
 
     *(uint32_t*)&buf[84] = htonl(tspec->typeP);
 
     /*
-     * Set MBZ and Integrity Zero Padding
+     * Set MBZ and HMAC area to 0
      */
     memset(&buf[88],0,24);
 
@@ -714,8 +731,7 @@ _OWPDecodeTestRequestPreamble(
         OWPTestSpec     *tspec
         )
 {
-    uint8_t        *buf = (uint8_t*)msg;
-    uint8_t        zero[_OWP_RIJNDAEL_BLOCK_SIZE];
+    char            *buf = (char *)msg;
     OWPTimeStamp    tstamp;
 
     if(msg_len != 112){
@@ -723,14 +739,6 @@ _OWPDecodeTestRequestPreamble(
                 "_OWPDecodeTestRequestPreamble: Invalid message size");
         return OWPErrFATAL;
     }
-
-    memset(zero,0,_OWP_RIJNDAEL_BLOCK_SIZE);
-    if(memcmp(zero,&buf[96],_OWP_RIJNDAEL_BLOCK_SIZE)){
-        OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
-                "_OWPDecodeTestRequestPreamble: Invalid zero padding");
-        return OWPErrFATAL;
-    }
-
 
     *ipvn = buf[1] & 0xF;
     tspec->nslots = ntohl(*(uint32_t*)&buf[4]);
@@ -839,9 +847,9 @@ _OWPDecodeTestRequestPreamble(
 
     tspec->packet_size_padding = ntohl(*(uint32_t*)&buf[64]);
 
-    _OWPDecodeTimeStamp(&tstamp,&buf[68]);
+    _OWPDecodeTimeStamp(&tstamp,(uint8_t *)&buf[68]);
     tspec->start_time = tstamp.owptime;
-    _OWPDecodeTimeStamp(&tstamp,&buf[76]);
+    _OWPDecodeTimeStamp(&tstamp,(uint8_t *)&buf[76]);
     tspec->loss_timeout = tstamp.owptime;
 
     /*
@@ -890,7 +898,7 @@ _OWPEncodeSlot(
         OWPSlot     *slot
         )
 {
-    uint8_t        *buf = (uint8_t*)msg;
+    char            *buf = (char *)msg;
     OWPTimeStamp    tstamp;
 
     /*
@@ -910,7 +918,7 @@ _OWPEncodeSlot(
         default:
             return OWPErrFATAL;
     }
-    _OWPEncodeTimeStamp(&buf[8],&tstamp);
+    _OWPEncodeTimeStamp((uint8_t *)&buf[8],&tstamp);
 
     return OWPErrOK;
 }
@@ -935,10 +943,10 @@ _OWPDecodeSlot(
         uint32_t   msg[4] /* 1 block 32bit aligned */
         )
 {
-    uint8_t        *buf = (uint8_t*)msg;
+    char            *buf = (char *)msg;
     OWPTimeStamp    tstamp;
 
-    _OWPDecodeTimeStamp(&tstamp,&buf[8]);
+    _OWPDecodeTimeStamp(&tstamp,(uint8_t *)&buf[8]);
     switch(buf[0]){
         case 0:
             slot->slot_type = OWPSlotRandExpType;
@@ -966,9 +974,9 @@ _OWPWriteTestRequest(
         OWPTestSpec     *test_spec
         )
 {
-    uint8_t    *buf = (uint8_t*)cntrl->msg;
-    uint32_t   buf_len = sizeof(cntrl->msg);
-    uint32_t   i;
+    char        *buf = (char *)cntrl->msg;
+    uint32_t    buf_len = sizeof(cntrl->msg);
+    uint32_t    i;
 
     /*
      * Ensure cntrl is in correct state.
@@ -990,10 +998,15 @@ _OWPWriteTestRequest(
         return OWPErrFATAL;
     }
 
+    /* Add everything up to the HMAC block into the HMAC */
+    _OWPSendHMACAdd(cntrl,buf,6);
+    /* Fetch the digest out into the final HMAC block   */
+    _OWPSendHMACDigestClear(cntrl,&buf[96]);
+
     /*
      * Now - send the request! 112 octets == 7 blocks.
      */
-    if(_OWPSendBlocks(cntrl,buf,7) != 7){
+    if(_OWPSendBlocks(cntrl,(uint8_t *)buf,7) != 7){
         cntrl->state = _OWPStateInvalid;
         return OWPErrFATAL;
     }
@@ -1008,22 +1021,23 @@ _OWPWriteTestRequest(
             cntrl->state = _OWPStateInvalid;
             return OWPErrFATAL;
         }
-        if(_OWPSendBlocks(cntrl,buf,1) != 1){
+        _OWPSendHMACAdd(cntrl,buf,1);
+        if(_OWPSendBlocks(cntrl,(uint8_t *)buf,1) != 1){
             cntrl->state = _OWPStateInvalid;
             return OWPErrFATAL;
         }
     }
 
     /*
-     * Send 1 block of Integrity Zero Padding.
+     * Send HMAC digest block
      */
-    memset(buf,0,16);
-    if(_OWPSendBlocks(cntrl,buf,1) != 1){
+    _OWPSendHMACDigestClear(cntrl,buf);
+    if(_OWPSendBlocks(cntrl,(uint8_t *)buf,1) != 1){
         cntrl->state = _OWPStateInvalid;
         return OWPErrFATAL;
     }
 
-    cntrl->state |= _OWPStateTestAccept;
+    cntrl->state |= _OWPStateAcceptSession;
 
     return OWPErrOK;
 }
@@ -1083,8 +1097,8 @@ _OWPReadTestRequestSlots(
         OWPSlot     *slots
         )
 {
-    uint8_t    *buf = (uint8_t*)cntrl->msg;
-    uint32_t   i;
+    char        *buf = (char *)cntrl->msg;
+    uint32_t    i;
     int         len;
 
     if(!_OWPStateIs(_OWPStateTestRequestSlots,cntrl)){
@@ -1098,7 +1112,7 @@ _OWPReadTestRequestSlots(
         /*
          * Read slot into buffer.
          */
-        if((len = _OWPReceiveBlocksIntr(cntrl,&buf[0],1,intr)) != 1){
+        if((len =_OWPReceiveBlocksIntr(cntrl,(uint8_t *)&buf[0],1,intr)) != 1){
             cntrl->state = _OWPStateInvalid;
             if((len < 0) && *intr && (errno==EINTR)){
                 return OWPErrFATAL;
@@ -1107,6 +1121,7 @@ _OWPReadTestRequestSlots(
                     "_OWPReadTestRequestSlots: Read Error: %M");
             return OWPErrFATAL;
         }
+        _OWPRecvHMACAdd(cntrl,buf,1);
 
         /*
          * slots will be null if we are just reading the slots
@@ -1130,9 +1145,9 @@ _OWPReadTestRequestSlots(
     }
 
     /*
-     * Now read Integrity Zero Padding
+     * Now read slot HMAC digest
      */
-    if((len=_OWPReceiveBlocksIntr(cntrl,&buf[0],1,intr)) != 1){
+    if((len=_OWPReceiveBlocksIntr(cntrl,(uint8_t *)&buf[0],1,intr)) != 1){
         cntrl->state = _OWPStateInvalid;
         if((len<0) && *intr && (errno == EINTR)){
             return OWPErrFATAL;
@@ -1145,15 +1160,15 @@ _OWPReadTestRequestSlots(
     /*
      * Now check the integrity.
      */
-    if(memcmp(cntrl->zero,&buf[0],_OWP_RIJNDAEL_BLOCK_SIZE) != 0){
+    if(!_OWPRecvHMACCheckClear(cntrl,buf)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                "_OWPReadTestRequestSlots:Invalid zero padding");
+                "_OWPReadTestRequestSlots: Invalid HMAC");
         cntrl->state = _OWPStateInvalid;
         return OWPErrFATAL;
     }
 
     /*
-     * TestRequestSlots are read, now ready to send TestAccept message.
+     * TestRequestSlots are read, now ready to send AcceptSession message.
      */
     cntrl->state &= ~_OWPStateTestRequestSlots;
 
@@ -1188,14 +1203,14 @@ _OWPReadTestRequest(
         OWPAcceptType   *accept_ret
         )
 {
-    uint8_t                *buf = (uint8_t*)cntrl->msg;
+    char                    *buf = (char *)cntrl->msg;
     OWPErrSeverity          err_ret=OWPErrOK;
     struct sockaddr_storage sendaddr_rec;
     struct sockaddr_storage recvaddr_rec;
     socklen_t               addrlen = sizeof(sendaddr_rec);
     I2Addr                  SendAddr=NULL;
     I2Addr                  RecvAddr=NULL;
-    uint8_t                ipvn;
+    uint8_t                 ipvn;
     OWPBoolean              conf_sender;
     OWPBoolean              conf_receiver;
     OWPSID                  sid;
@@ -1237,7 +1252,7 @@ _OWPReadTestRequest(
      * did this to determine the message type - client is doing this
      * as part of a fetch session.
      */
-    if(!accept_ret && (_OWPReceiveBlocksIntr(cntrl,&buf[0],1,intr) != 1)){
+    if(!accept_ret && (_OWPReceiveBlocksIntr(cntrl,(uint8_t *)&buf[0],1,intr) != 1)){
         OWPError(cntrl->ctx,OWPErrFATAL,errno,
                 "_OWPReadTestRequest: Unable to read from socket.");
         cntrl->state = _OWPStateInvalid;
@@ -1249,10 +1264,22 @@ _OWPReadTestRequest(
      * Already read the first block - read the rest for this message
      * type.
      */
-    if(_OWPReceiveBlocksIntr(cntrl,&buf[16],_OWP_TEST_REQUEST_BLK_LEN-1,
+    if(_OWPReceiveBlocksIntr(cntrl,(uint8_t *)&buf[16],_OWP_TEST_REQUEST_BLK_LEN-1,
                 intr) != (_OWP_TEST_REQUEST_BLK_LEN-1)){
         OWPError(cntrl->ctx,OWPErrFATAL,errno,
                 "_OWPReadTestRequest: Unable to read from socket.");
+        cntrl->state = _OWPStateInvalid;
+        *accept_ptr = OWP_CNTRL_INVALID;
+        return OWPErrFATAL;
+    }
+
+    /*
+     * Add data to HMAC and verify digest before decoding message
+     */
+    _OWPRecvHMACAdd(cntrl,buf,6);
+    if(!_OWPRecvHMACCheckClear(cntrl,&buf[96])){
+        OWPError(cntrl->ctx,OWPErrFATAL,EAUTH,
+                "_OWPReadTestRequest: Invalid HMAC");
         cntrl->state = _OWPStateInvalid;
         *accept_ptr = OWP_CNTRL_INVALID;
         return OWPErrFATAL;
@@ -1359,12 +1386,12 @@ _OWPReadTestRequest(
     }
 
     /*
-     * In the server context, we are going to _OWPStateTestAccept.
+     * In the server context, we are going to _OWPStateAcceptSession.
      * In the client "fetching" context we are ready to read the
      * record header and the records.
      */
     if(accept_ret){
-        cntrl->state |= _OWPStateTestAccept;
+        cntrl->state |= _OWPStateAcceptSession;
     }else{
         cntrl->state |= _OWPStateFetching;
     }
@@ -1386,9 +1413,9 @@ error:
 
 /*
  *
- *         TestAccept message format:
+ *         AcceptSession message format:
  *
- *         size: 32 octets
+ *         size: 48 octets
  *
  *            0                   1                   2                   3
  *            0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
@@ -1401,13 +1428,18 @@ error:
  *        16|                                                               |
  *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *        20|                                                               |
- *        24|                      Zero Padding (12 octets)                 |
+ *        24|                        MBZ (12 octets)                        |
  *        28|                                                               |
+ *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *        32|                                                               |
+ *        36|                       HMAC (16 octets)                        |
+ *        40|                                                               |
+ *        44|                                                               |
  *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *
  */
 OWPErrSeverity
-_OWPWriteTestAccept(
+_OWPWriteAcceptSession(
         OWPControl      cntrl,
         int             *intr,
         OWPAcceptType   acceptval,
@@ -1415,11 +1447,11 @@ _OWPWriteTestAccept(
         OWPSID          sid
         )
 {
-    uint8_t    *buf = (uint8_t*)cntrl->msg;
+    char    *buf = (char *)cntrl->msg;
 
-    if(!_OWPStateIs(_OWPStateTestAccept,cntrl)){
+    if(!_OWPStateIs(_OWPStateAcceptSession,cntrl)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                "_OWPWriteTestAccept called in wrong state.");
+                "_OWPWriteAcceptSession called in wrong state.");
         return OWPErrFATAL;
     }
 
@@ -1429,49 +1461,56 @@ _OWPWriteTestAccept(
         memcpy(&buf[4],sid,16);
     memset(&buf[20],0,12);
 
-    if(_OWPSendBlocksIntr(cntrl,buf,2,intr) != 2){
+    /*
+     * Add this block to HMAC, and then put the digest in the message.
+     */
+    _OWPSendHMACAdd(cntrl,buf,2);
+    _OWPSendHMACDigestClear(cntrl,&buf[32]);
+
+    if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,3,intr) != 3){
         cntrl->state = _OWPStateInvalid;
         return OWPErrFATAL;
     }
 
-    cntrl->state &= ~_OWPStateTestAccept;
+    cntrl->state &= ~_OWPStateAcceptSession;
 
     return OWPErrOK;
 }
 
 OWPErrSeverity
-_OWPReadTestAccept(
+_OWPReadAcceptSession(
         OWPControl      cntrl,
         OWPAcceptType   *acceptval,
         uint16_t       *port,
         OWPSID          sid
         )
 {
-    uint8_t    *buf = (uint8_t*)cntrl->msg;
+    char    *buf = (char *)cntrl->msg;
 
-    if(!_OWPStateIs(_OWPStateTestAccept,cntrl)){
+    if(!_OWPStateIs(_OWPStateAcceptSession,cntrl)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                "_OWPReadTestAccept called in wrong state.");
+                "_OWPReadAcceptSession called in wrong state.");
         return OWPErrFATAL;
     }
 
     /*
      * Get the servers response.
      */
-    if(_OWPReceiveBlocks(cntrl,buf,2) != 2){
+    if(_OWPReceiveBlocks(cntrl,(uint8_t *)buf,3) != 3){
         OWPError(cntrl->ctx,OWPErrFATAL,errno,
-                "_OWPReadTestAccept:Unable to read from socket.");
+                "_OWPReadAcceptSession:Unable to read from socket.");
         cntrl->state = _OWPStateInvalid;
         return OWPErrFATAL;
     }
 
     /*
-     * Check zero padding first.
+     * Add blocks to HMAC, then check digest.
      */
-    if(memcmp(&buf[20],cntrl->zero,12)){
+    _OWPRecvHMACAdd(cntrl,buf,2);
+    if(!_OWPRecvHMACCheckClear(cntrl,&buf[32])){
         cntrl->state = _OWPStateInvalid;
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                "Invalid Accept-Session message received");
+                "Invalid HMAC in Accept-Session message");
         return OWPErrFATAL;
     }
 
@@ -1487,7 +1526,7 @@ _OWPReadTestAccept(
     if(sid)
         memcpy(sid,&buf[4],16);
 
-    cntrl->state &= ~_OWPStateTestAccept;
+    cntrl->state &= ~_OWPStateAcceptSession;
 
     return OWPErrOK;
 }
@@ -1502,13 +1541,13 @@ _OWPReadTestAccept(
  *            0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
  *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *        00|      2        |                                               |
- *          +-+-+-+-+-+-+-+-+                                               +
+ *          +-+-+-+-+-+-+-+-+                                               |
  *        04|                         MBZ (15 octets)                       |
  *        08|                                                               |
  *        12|                                                               |
  *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *        16|                                                               |
- *        20|                    Zero Padding (16 octets)                   |
+ *        20|                        HMAC (16 octets)                       |
  *        24|                                                               |
  *        28|                                                               |
  *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -1519,7 +1558,7 @@ _OWPWriteStartSessions(
         OWPControl  cntrl
         )
 {
-    uint8_t    *buf = (uint8_t*)cntrl->msg;
+    char    *buf = (char *)cntrl->msg;
 
     if(!_OWPStateIsRequest(cntrl) || _OWPStateIsPending(cntrl)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
@@ -1533,7 +1572,13 @@ _OWPWriteStartSessions(
 #endif
     memset(&buf[16],0,16);        /* Zero padding */
 
-    if(_OWPSendBlocks(cntrl,buf,2) != 2){
+    /*
+     * Add text to HMAC and put digest in second block of message
+     */
+    _OWPSendHMACAdd(cntrl,buf,1);
+    _OWPSendHMACDigestClear(cntrl,&buf[16]);
+
+    if(_OWPSendBlocks(cntrl,(uint8_t *)buf,2) != 2){
         cntrl->state = _OWPStateInvalid;
         return OWPErrFATAL;
     }
@@ -1549,8 +1594,8 @@ _OWPReadStartSessions(
         int         *retn_on_intr
         )
 {
-    int         n;
-    uint8_t    *buf = (uint8_t*)cntrl->msg;
+    int     n;
+    char    *buf = (char *)cntrl->msg;
 
     if(!_OWPStateIs(_OWPStateStartSessions,cntrl)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
@@ -1562,7 +1607,7 @@ _OWPReadStartSessions(
      * Already read the first block - read the rest for this message
      * type.
      */
-    n = _OWPReceiveBlocksIntr(cntrl,&buf[16],
+    n = _OWPReceiveBlocksIntr(cntrl,(uint8_t *)&buf[16],
             _OWP_STOP_SESSIONS_BLK_LEN-1,retn_on_intr);
 
     if((n < 0) && *retn_on_intr && (errno == EINTR)){
@@ -1576,9 +1621,14 @@ _OWPReadStartSessions(
         return OWPErrFATAL;
     }
 
-    if(memcmp(cntrl->zero,&buf[16],16)){
+    /*
+     * Put first block in HMAC, then check to see if the digest matches
+     * the second block.
+     */
+    _OWPRecvHMACAdd(cntrl,buf,1);
+    if(!_OWPRecvHMACCheckClear(cntrl,&buf[16])){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                "_OWPReadStartSessions: Invalid zero padding");
+                "_OWPReadStartSessions: Invalid HMAC");
         cntrl->state = _OWPStateInvalid;
         return OWPErrFATAL;
     }
@@ -1616,7 +1666,7 @@ _OWPReadStartSessions(
  *        12|                                                               |
  *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *        16|                                                               |
- *        20|                    Zero Padding (16 octets)                   |
+ *        20|                        HMAC (16 octets)                       |
  *        24|                                                               |
  *        28|                                                               |
  *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -1629,8 +1679,8 @@ _OWPWriteStartAck(
         OWPAcceptType   acceptval
         )
 {
-    int         n;
-    uint8_t    *buf = (uint8_t*)cntrl->msg;
+    int     n;
+    char    *buf = (char *)cntrl->msg;
 
     if(!_OWPStateIs(_OWPStateStartAck,cntrl)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
@@ -1639,18 +1689,18 @@ _OWPWriteStartAck(
     }
 
     buf[0] = acceptval & 0xff;
-#ifndef        NDEBUG
-    memset(&buf[1],0,15);        /* Unused        */
-#endif
-    memset(&buf[16],0,16);        /* Zero padding */
+    memset(&buf[1],0,15);        /* MBZ        */
 
-    n = _OWPSendBlocksIntr(cntrl,buf,_OWP_START_ACK_BLK_LEN,retn_on_intr);
+    _OWPSendHMACAdd(cntrl,buf,1);
+    _OWPSendHMACDigestClear(cntrl,&buf[16]);
+
+    n = _OWPSendBlocksIntr(cntrl,(uint8_t *)buf,2,retn_on_intr);
 
     if((n < 0) && *retn_on_intr && (errno == EINTR)){
         return OWPErrFATAL;
     }
 
-    if(n != _OWP_START_ACK_BLK_LEN){
+    if(n != 2){
         cntrl->state = _OWPStateInvalid;
         return OWPErrFATAL;
     }
@@ -1676,30 +1726,36 @@ _OWPReadStartAck(
         OWPAcceptType   *acceptval
         )
 {
-    uint8_t    *buf = (uint8_t*)cntrl->msg;
+    char    *buf = (char *)cntrl->msg;
 
     *acceptval = OWP_CNTRL_INVALID;
 
     if(!_OWPStateIs(_OWPStateStartAck,cntrl)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                "_OWPReadStartAck called in wrong state.");
+                "_OWPReadStartAck: called in wrong state.");
         return OWPErrFATAL;
     }
 
-    if(_OWPReceiveBlocks(cntrl,&buf[0],_OWP_START_ACK_BLK_LEN) != 
+    if(_OWPReceiveBlocks(cntrl,(uint8_t *)&buf[0],2) != 
             (_OWP_START_ACK_BLK_LEN)){
         OWPError(cntrl->ctx,OWPErrFATAL,errno,
-                "_OWPReadStartAck:Unable to read from socket.");
+                "_OWPReadStartAck: Unable to read from socket.");
         cntrl->state = _OWPStateInvalid;
         return OWPErrFATAL;
     }
 
-    if(memcmp(cntrl->zero,&buf[16],16)){
+    /*
+     * Put first block in HMAC, then check to see if the digest matches
+     * the second block.
+     */
+    _OWPRecvHMACAdd(cntrl,buf,1);
+    if(!_OWPRecvHMACCheckClear(cntrl,&buf[16])){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                "_OWPReadStartAck:Invalid zero padding");
+                "_OWPReadStartAck: Invalid HMAC");
         cntrl->state = _OWPStateInvalid;
         return OWPErrFATAL;
     }
+
     *acceptval = GetAcceptType(cntrl,buf[0]);
     if(*acceptval == OWP_CNTRL_INVALID){
         cntrl->state = _OWPStateInvalid;
@@ -1789,11 +1845,11 @@ _OWPReadStartAck(
  *            0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
  *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *        00|                                                               |
- *        04|                        IZP (16 octets)                        |
+ *        04|                       HMAC (16 octets)                        |
  *        08|                                                               |
  *        12|                                                               |
-*          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-*/
+ *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ */
 /*
  * Function:    
  *                  _OWPWriteStopSessions
@@ -1820,17 +1876,17 @@ _OWPWriteStopSessions(
         )
 {
     OWPTestSession  sptr;
-    uint8_t        *buf = (uint8_t*)cntrl->msg;
+    char            *buf = (char *)cntrl->msg;
 
     if(!(_OWPStateIs(_OWPStateRequest,cntrl) &&
                 _OWPStateIs(_OWPStateTest,cntrl))){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                "_OWPWriteStopSessions called in wrong state.");
+                "_OWPWriteStopSessions: called in wrong state.");
         return OWPErrFATAL;
     }
 
     /*
-     * WriteStopSessions header
+     * StopSessions header
      */
     memset(&buf[0],0,16);
 
@@ -1838,9 +1894,14 @@ _OWPWriteStopSessions(
     buf[1] = acceptval & 0xff;
     *(uint32_t*)&buf[4] = htonl(num_sessions);
 
-    if(_OWPSendBlocksIntr(cntrl,buf,1,retn_on_intr) != 1){
+    /*
+     * Add 'header' into HMAC and send
+     */
+    _OWPSendHMACAdd(cntrl,buf,1);
+    if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,retn_on_intr) != 1){
         return _OWPFailControlSession(cntrl,OWPErrFATAL);
     }
+
 
     /*
      * Loop through each session, write out a session description
@@ -1863,7 +1924,8 @@ _OWPWriteStopSessions(
          */
         if(!sptr->endpoint->send) continue;
 
-        if(_OWPSendBlocksIntr(cntrl,sptr->sid,1,retn_on_intr) != 1){
+        _OWPSendHMACAdd(cntrl,(char *)sptr->sid,1);
+        if(_OWPSendBlocksIntr(cntrl,(uint8_t *)sptr->sid,1,retn_on_intr) != 1){
             return _OWPFailControlSession(cntrl,OWPErrFATAL);
         }
 
@@ -1876,7 +1938,8 @@ _OWPWriteStopSessions(
             if(I2Readni(sptr->endpoint->skiprecfd,buf,16,retn_on_intr) != 16){
                 return _OWPFailControlSession(cntrl,OWPErrFATAL);
             }
-            if(_OWPSendBlocksIntr(cntrl,buf,1,retn_on_intr) != 1){
+            _OWPSendHMACAdd(cntrl,buf,1);
+            if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,retn_on_intr) != 1){
                 return _OWPFailControlSession(cntrl,OWPErrFATAL);
             }
             sd_size -= 16;
@@ -1890,8 +1953,10 @@ _OWPWriteStopSessions(
             if(I2Readni(sptr->endpoint->skiprecfd,buf,8,retn_on_intr) != 8){
                 return _OWPFailControlSession(cntrl,OWPErrFATAL);
             }
+            /* pad with 0 */
             memset(&buf[8],0,8);
-            if(_OWPSendBlocksIntr(cntrl,buf,1,retn_on_intr) != 1){
+            _OWPSendHMACAdd(cntrl,buf,1);
+            if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,retn_on_intr) != 1){
                 return _OWPFailControlSession(cntrl,OWPErrFATAL);
             }
             sd_size -= 8;
@@ -1906,10 +1971,10 @@ _OWPWriteStopSessions(
     }
 
     /*
-     * Complete WriteStopSessions by sending IZP.
+     * Complete WriteStopSessions by sending HMAC.
      */
-    memset(buf,0,16);
-    if(_OWPSendBlocksIntr(cntrl,buf,1,retn_on_intr) != 1){
+    _OWPSendHMACDigestClear(cntrl,buf);
+    if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,retn_on_intr) != 1){
         return _OWPFailControlSession(cntrl,OWPErrFATAL);
     }
 
@@ -1949,8 +2014,8 @@ _OWPWriteStopSessions(
  */
 void
 _OWPEncodeSkipRecord(
-        uint8_t    buf[_OWP_SKIPREC_SIZE],
-        OWPSkip    skip
+        uint8_t buf[_OWP_SKIPREC_SIZE],
+        OWPSkip skip
         )
 {
     uint32_t        nlbuf;
@@ -1984,8 +2049,8 @@ _OWPEncodeSkipRecord(
  */
 void
 _OWPDecodeSkipRecord(
-        OWPSkip    skip,
-        uint8_t    buf[_OWP_SKIPREC_SIZE]
+        OWPSkip skip,
+        char    buf[_OWP_SKIPREC_SIZE]
         )
 {
     /*
@@ -2007,8 +2072,10 @@ _OWPDecodeSkipRecord(
  *              This function updates the "recv" side sessions with
  *              the data from the senders in the Stop Sessions message.
  *              This includes updating the recv file record. Therefore,
- *              there are possible race-conditions. It is imperative that
- *              things be done in the correct order to avoid this.
+ *              there are possible race-conditions. (This is done by the
+ *              recv process - a control process could potentially be
+ *              reading the file at any time.) Therefore, it is imperative
+ *              that things be done in the correct order to avoid this.
  *
  *              Correct order:
  *                  No skip records can be added into the file until
@@ -2026,6 +2093,10 @@ _OWPDecodeSkipRecord(
  *                      5. write num_skips
  *                      6. write next_seqno/finished
  *
+ *
+ *              TODO: Eventually should probably read this message into a temp
+ *              buffer of some sort, and check the HMAC BEFORE modifying
+ *              the recv files.
  * In Args:    
  *
  * Out Args:    
@@ -2043,9 +2114,9 @@ _OWPReadStopSessions(
         )
 {
     int             n;
-    uint8_t        *buf = (uint8_t*)cntrl->msg;
+    char            *buf = (char *)cntrl->msg;
     OWPAcceptType   aval;
-    uint32_t       i,j,num_sessions;
+    uint32_t        i,j,num_sessions;
     OWPTestSession  *sptr,tptr;
     OWPTestSession  receivers = NULL;
     off_t           toff;
@@ -2060,12 +2131,6 @@ _OWPReadStopSessions(
     /*
      * Decode first block of StopSessions message.
      */
-    if(memcmp(cntrl->zero,&buf[2],2) || memcmp(cntrl->zero,&buf[8],4)){
-        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                "_OWPReadStopSessions:Invalid zero padding");
-        goto err;
-    }
-
     aval = GetAcceptType(cntrl,buf[1]);
     if(acceptval)
         *acceptval = aval;
@@ -2075,6 +2140,8 @@ _OWPReadStopSessions(
     }
 
     num_sessions = ntohl(*(uint32_t*)&buf[4]);
+
+    _OWPRecvHMACAdd(cntrl,buf,1);
 
     /*
      * Parse test session list and pull recv sessions into the receivers
@@ -2122,13 +2189,14 @@ _OWPReadStopSessions(
         /*
          * Read sid from session description record
          */
-        n = _OWPReceiveBlocksIntr(cntrl,buf,1,intr);
+        n = _OWPReceiveBlocksIntr(cntrl,(uint8_t *)buf,1,intr);
         if(n != 1){
             OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
                     "_OWPReadStopSessions: Unable to read session record (%d)",
                     i);
             goto err;
         }
+        _OWPRecvHMACAdd(cntrl,buf,1);
 
         /*
          * Match TestSession record with session description record
@@ -2168,13 +2236,14 @@ _OWPReadStopSessions(
         /*
          * Read next_seqno, num_skips from SessionDescription record
          */
-        n = _OWPReceiveBlocksIntr(cntrl,buf,1,intr);
+        n = _OWPReceiveBlocksIntr(cntrl,(uint8_t *)buf,1,intr);
         if(n != 1){
             OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
                     "_OWPReadStopSessions: Unable to read session record (%d)",
                     i);
             goto err;
         }
+        _OWPRecvHMACAdd(cntrl,buf,1);
         next_seqno = ntohl(*(uint32_t*)&buf[0]);
         num_skips = ntohl(*(uint32_t*)&buf[4]);
 
@@ -2227,7 +2296,7 @@ _OWPReadStopSessions(
 
         prev_skip.begin = prev_skip.end = 0;
         for(j=0; j < num_skips; j++){
-            uint8_t    bufi;
+            uint8_t bufi;
 
             /*
              * Index into buffer for this skip record. (Either 0 or 8)
@@ -2241,13 +2310,14 @@ _OWPReadStopSessions(
                 /*
                  * Read next block
                  */
-                n = _OWPReceiveBlocksIntr(cntrl,buf,1,intr);
+                n = _OWPReceiveBlocksIntr(cntrl,(uint8_t *)buf,1,intr);
                 if(n != 1){
                     OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
                             "_OWPReadStopSessions: Unable to read skip record sid(%s)",
                             sid_name);
                     goto err;
                 }
+                _OWPRecvHMACAdd(cntrl,buf,1);
             }
 
             /*
@@ -2324,17 +2394,17 @@ done_skips:
     }
 
     /*
-     * IZP completes the StopSessions message.
+     * HMAC completes the StopSessions message.
      */
-    n = _OWPReceiveBlocksIntr(cntrl,buf,1,intr);
+    n = _OWPReceiveBlocksIntr(cntrl,(uint8_t *)buf,1,intr);
     if(n != 1){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                "_OWPReadStopSessions: Unable to read final IZP block");
+                "_OWPReadStopSessions: Unable to read final HMAC block");
         goto err;
     }
-    if(memcmp(cntrl->zero,&buf[0],16)){
+    if(!_OWPRecvHMACCheckClear(cntrl,buf)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                "_OWPReadStopSessions: Invalid final IZP block");
+                "_OWPReadStopSessions: Invalid HMAC");
         goto err;
     }
 
@@ -2359,8 +2429,9 @@ err:
         cntrl->tests = tptr;
     }
 
-    if(acceptval)
+    if(acceptval){
         *acceptval = OWP_CNTRL_FAILURE;
+    }
     OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
             "_OWPReadStopSessions: Failed");
     return _OWPFailControlSession(cntrl,OWPErrFATAL);
@@ -2388,7 +2459,7 @@ err:
  *        28|                                                               |
  *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *        32|                                                               |
- *        36|                    Zero Padding (16 octets)                   |
+ *        36|                        HMAC (16 octets)                       |
  *        40|                                                               |
  *        44|                                                               |
  *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -2402,7 +2473,7 @@ _OWPWriteFetchSession(
         OWPSID      sid
         )
 {
-    uint8_t    *buf = (uint8_t*)cntrl->msg;
+    char    *buf = (char *)cntrl->msg;
 
     if(!_OWPStateIs(_OWPStateRequest,cntrl) || _OWPStateIsTest(cntrl)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
@@ -2417,9 +2488,11 @@ _OWPWriteFetchSession(
     *(uint32_t*)&buf[8] = htonl(begin);
     *(uint32_t*)&buf[12] = htonl(end);
     memcpy(&buf[16],sid,16);
-    memset(&buf[32],0,16);        /* Zero padding */
 
-    if(_OWPSendBlocks(cntrl,buf,3) != 3)
+    _OWPSendHMACAdd(cntrl,buf,2);
+    _OWPSendHMACDigestClear(cntrl,&buf[32]);
+
+    if(_OWPSendBlocks(cntrl,(uint8_t *)buf,3) != 3)
         return OWPErrFATAL;
 
     cntrl->state |= (_OWPStateFetchAck | _OWPStateFetchSession);
@@ -2436,12 +2509,12 @@ _OWPReadFetchSession(
         OWPSID      sid
         )
 {
-    int         n;
-    uint8_t    *buf = (uint8_t*)cntrl->msg;
+    int     n;
+    char    *buf = (char *)cntrl->msg;
 
     if(!_OWPStateIs(_OWPStateFetchSession,cntrl)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                "_OWPReadFetchSession called in wrong state.");
+                "_OWPReadFetchSession: called in wrong state.");
         return OWPErrFATAL;
     }
 
@@ -2449,7 +2522,7 @@ _OWPReadFetchSession(
      * Already read the first block - read the rest for this message
      * type.
      */
-    n = _OWPReceiveBlocksIntr(cntrl,&buf[16],_OWP_FETCH_SESSION_BLK_LEN-1,
+    n = _OWPReceiveBlocksIntr(cntrl,(uint8_t *)&buf[16],_OWP_FETCH_SESSION_BLK_LEN-1,
             retn_on_intr);
 
     if((n < 0) && *retn_on_intr && (errno == EINTR)){
@@ -2458,20 +2531,22 @@ _OWPReadFetchSession(
 
     if(n != (_OWP_FETCH_SESSION_BLK_LEN-1)){
         OWPError(cntrl->ctx,OWPErrFATAL,errno,
-                "_OWPReadFetchSession:Unable to read from socket.");
+                "_OWPReadFetchSession: Unable to read from socket.");
         cntrl->state = _OWPStateInvalid;
         return OWPErrFATAL;
     }
 
-    if(memcmp(cntrl->zero,&buf[32],16)){
+    _OWPRecvHMACAdd(cntrl,buf,2);
+    if(!_OWPRecvHMACCheckClear(cntrl,&buf[32])){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                "_OWPReadFetchSession:Invalid zero padding");
+                "_OWPReadFetchSession: Invalid HMAC");
         cntrl->state = _OWPStateInvalid;
         return OWPErrFATAL;
     }
+
     if(buf[0] != 4){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                "_OWPReadFetchSession:Invalid message...");
+                "_OWPReadFetchSession: Invalid message...");
         cntrl->state = _OWPStateInvalid;
         return OWPErrFATAL;
     }
@@ -2509,7 +2584,7 @@ _OWPReadFetchSession(
  *        12|                       Number of Records                       |
  *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *        16|                                                               |
- *        20|                        IZP (16 octets)                        |
+ *        20|                       HMAC (16 octets)                        |
  *        24|                                                               |
  *        28|                                                               |
  *          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -2526,8 +2601,8 @@ _OWPWriteFetchAck(
         uint32_t       num_datarecs
         )
 {
-    int         n;
-    uint8_t    *buf = (uint8_t*)cntrl->msg;
+    int     n;
+    char    *buf = (char *)cntrl->msg;
 
     if(!_OWPStateIs(_OWPStateFetchAck,cntrl)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
@@ -2546,9 +2621,10 @@ _OWPWriteFetchAck(
     *(uint32_t*)&buf[8] = htonl(num_skiprecs);
     *(uint32_t*)&buf[12] = htonl(num_datarecs);
 
-    memset(&buf[16],0,16);        /* IZP */
+    _OWPSendHMACAdd(cntrl,buf,1);
+    _OWPSendHMACDigestClear(cntrl,&buf[16]);
 
-    n = _OWPSendBlocksIntr(cntrl,buf,_OWP_FETCH_ACK_BLK_LEN,retn_on_intr);
+    n = _OWPSendBlocksIntr(cntrl,(uint8_t *)buf,2,retn_on_intr);
 
     /*
      * Return control to a higher level on interrupt.
@@ -2557,7 +2633,7 @@ _OWPWriteFetchAck(
         return OWPErrFATAL;
     }
 
-    if(n != _OWP_FETCH_ACK_BLK_LEN){
+    if(n != 2){
         cntrl->state = _OWPStateInvalid;
         return OWPErrFATAL;
     }
@@ -2590,27 +2666,27 @@ _OWPReadFetchAck(
         uint32_t       *num_datarecs
         )
 {
-    uint8_t    *buf = (uint8_t*)cntrl->msg;
+    char    *buf = (char *)cntrl->msg;
 
     *acceptval = OWP_CNTRL_INVALID;
 
     if(!_OWPStateIs(_OWPStateFetchAck,cntrl)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                "_OWPReadFetchAck called in wrong state.");
+                "_OWPReadFetchAck: called in wrong state.");
         return OWPErrFATAL;
     }
 
-    if(_OWPReceiveBlocks(cntrl,buf,_OWP_FETCH_ACK_BLK_LEN) != 
-            (_OWP_FETCH_ACK_BLK_LEN)){
+    if(_OWPReceiveBlocks(cntrl,(uint8_t *)buf,2) != 2){
         OWPError(cntrl->ctx,OWPErrFATAL,errno,
-                "_OWPReadFetchAck:Unable to read from socket.");
+                "_OWPReadFetchAck: Unable to read from socket.");
         cntrl->state = _OWPStateInvalid;
         return OWPErrFATAL;
     }
 
-    if(memcmp(cntrl->zero,&buf[16],16)){
+    _OWPRecvHMACAdd(cntrl,buf,1);
+    if(!_OWPRecvHMACCheckClear(cntrl,&buf[16])){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                "_OWPReadFetchAck:Invalid zero padding");
+                "_OWPReadFetchAck: Invalid HMAC");
         cntrl->state = _OWPStateInvalid;
         return OWPErrFATAL;
     }
@@ -2705,7 +2781,7 @@ _OWPReadFetchAck(
  */
 OWPBoolean
 _OWPEncodeDataRecord(
-        uint8_t    buf[25],
+        char        buf[25],
         OWPDataRec  *rec
         )
 {
@@ -2718,20 +2794,20 @@ _OWPEncodeDataRecord(
     memcpy(&buf[0],&nlbuf,4);
 
     /* send stamp */
-    _OWPEncodeTimeStamp(&buf[8],&rec->send);
+    _OWPEncodeTimeStamp((uint8_t *)&buf[8],&rec->send);
 
     /* send err */
-    if(!_OWPEncodeTimeStampErrEstimate(&buf[4],&rec->send)){
+    if(!_OWPEncodeTimeStampErrEstimate((uint8_t *)&buf[4],&rec->send)){
         return False;
     }
 
     /* recv err */
-    if(!_OWPEncodeTimeStampErrEstimate(&buf[6],&rec->recv)){
+    if(!_OWPEncodeTimeStampErrEstimate((uint8_t *)&buf[6],&rec->recv)){
         return False;
     }
 
     /* recv stamp */
-    _OWPEncodeTimeStamp(&buf[16],&rec->recv);
+    _OWPEncodeTimeStamp((uint8_t *)&buf[16],&rec->recv);
 
     buf[24] = rec->ttl;
 
@@ -2756,9 +2832,9 @@ _OWPEncodeDataRecord(
  */
 OWPBoolean
 _OWPDecodeDataRecord(
-        uint32_t   file_version,
+        uint32_t    file_version,
         OWPDataRec  *rec,
-        uint8_t    *buf
+        char        *buf
         )
 {
     /*
@@ -2771,26 +2847,26 @@ _OWPDecodeDataRecord(
     switch(file_version){
         case 0:
         case 2:
-            _OWPDecodeTimeStamp(&rec->send,&buf[4]);
-            if(!_OWPDecodeTimeStampErrEstimate(&rec->send,&buf[12])){
+            _OWPDecodeTimeStamp(&rec->send,(uint8_t *)&buf[4]);
+            if(!_OWPDecodeTimeStampErrEstimate(&rec->send,(uint8_t *)&buf[12])){
                 return False;
             }
 
-            _OWPDecodeTimeStamp(&rec->recv,&buf[14]);
-            if(!_OWPDecodeTimeStampErrEstimate(&rec->recv,&buf[22])){
+            _OWPDecodeTimeStamp(&rec->recv,(uint8_t *)&buf[14]);
+            if(!_OWPDecodeTimeStampErrEstimate(&rec->recv,(uint8_t *)&buf[22])){
                 return False;
             }
 
             rec->ttl = 255;
             break;
         case 3:
-            _OWPDecodeTimeStamp(&rec->send,&buf[8]);
-            if(!_OWPDecodeTimeStampErrEstimate(&rec->send,&buf[4])){
+            _OWPDecodeTimeStamp(&rec->send,(uint8_t *)&buf[8]);
+            if(!_OWPDecodeTimeStampErrEstimate(&rec->send,(uint8_t *)&buf[4])){
                 return False;
             }
 
-            _OWPDecodeTimeStamp(&rec->recv,&buf[16]);
-            if(!_OWPDecodeTimeStampErrEstimate(&rec->recv,&buf[6])){
+            _OWPDecodeTimeStamp(&rec->recv,(uint8_t *)&buf[16]);
+            if(!_OWPDecodeTimeStampErrEstimate(&rec->recv,(uint8_t *)&buf[6])){
                 return False;
             }
 

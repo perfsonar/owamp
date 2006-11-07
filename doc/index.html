@@ -31,7 +31,7 @@
 
 <center>
 <h1>
-OWAMP Version 2.0c</h1></center>
+OWAMP Version 3.0a</h1></center>
 
 <center>(An implementation of the <b>O</b>ne-<b>W</b>ay <b>A</b>ctive <b>M</b>easurement
 <b>P</b>rotocol)
@@ -42,8 +42,8 @@ OWAMP Version 2.0c</h1></center>
 $Date$</h5></center>
 <b>OWAMP</b> is a command line client application and a policy daemon used
 to determine one way latencies between hosts. It is an implementation of
-the <b><i>OWAMP</i></b> protocol (<a href="http://www.internet2.edu/~shalunov/ippm/draft-ietf-ippm-owdp-14.txt">http://www.internet2.edu/~shalunov/ippm/draft-ietf-ippm-owdp-14.txt</a>)
-that is currently going through the standardization process within <a href="http://www.ietf.org/">IETF</a>.
+the <b><i>OWAMP</i></b> protocol as defined by
+<a href="http://www.rfc-editor.org/rfc/rfc4656.txt">http://www.rfc-editor.org/rfc/rfc4656.txt</a>.
 (When referring to the protocol within this document, "<i>OWAMP</i>" will
 be in italicized. In all other instances, "OWAMP" will be referring to
 this implementation.)
@@ -197,7 +197,7 @@ OWAMP has been tested on the following:
     <dd>2.4.21 (32-bit)</dd>
     <dd>2.6.11 (64-bit)</dd>
     <dt>MacOS X</dt>
-    <dd>10.4.5</dd>
+    <dd>10.4.8</dd>
     <dt>Solaris</dt>
     <dd>5.8</dd>
 </dl>
@@ -211,7 +211,9 @@ versions of the protocol as it has evolved. To determine which versions
 are compatible, look at the major version number. Whenever the application
 has moved to a new incompatible version of the protocol the major version
 number has changed. For example, version 1.6f is <b>NOT</b> compatible
-with version 2.0*.
+with version 2.0c, and those two versions are also <b>NOT</b> compatible with
+any version 3 implementation. (Version 3 is the first version that is
+actually compatible with RFC 4656.)
 <h3> <hr WIDTH="100%">Recommended Hardware</h3>
 OWAMP does not have any strict hardware requirements. More tasking packet
 send schedules will of course require more capable hardware but low bandwidth
@@ -259,7 +261,7 @@ The basic procedure to configure <b>owampd</b> is to create an
 <a href="owampd.conf.man.html">owampd.conf</a>
 and, optionally, an <a href="owampd.limits.man.html">owampd.limits</a>
 file and an
-<a href="owampd.keys.man.html">owampd.keys</a> file. These
+<a href="owampd.pfs.man.html">owampd.pfs</a> file. These
 files need to be installed in the same directory that is specified with
 the <b>-c</b> option to <b>owampd</b>. The recommended directory is
 <i>/inst/root/etc</i>.
@@ -279,10 +281,11 @@ must pass the limit restrictions of the assigned class as well as all parent
 classes. For a detailed description of the options available, see the
 <a href="owampd.limits.man.html">owampd.limits(5)</a>
 manual page.
-<p><b>owampd.keys:</b>
-<br>Used to associate identities with AES keys. These identities are then
+<p><b>owampd.pfs:</b>
+<br>Used to associate identities with pass-phrases (shared secrets).
+These identities are then
 mapped to a class by the <b>owampd.limits</b> file. For a more detailed
-description, see the <a href="owampd.keys.man.html">owampd.keys(5)</a>
+description, see the <a href="owampd.pfs.man.html">owampd.pfs(5)</a>
 manual page.
 <h3>
 

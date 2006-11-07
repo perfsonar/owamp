@@ -65,9 +65,10 @@ static I2ErrHandle      eh;
 static pow_cntrl_rec    pcntrl[2];
 static OWPTestSpec      tspec;
 static OWPSlot          slot;
-static uint32_t        sessionTime;
+static uint32_t         sessionTime;
 static double           inf_delay;
-static uint8_t         aesbuff[16];
+static uint8_t          *pfbuff;
+static size_t           pfbuff_len;
 
 /*
  * signal catching vars
@@ -96,10 +97,10 @@ static uint32_t        file_offset,tstamp_offset,ext_offset;
 static void
 print_conn_args(){
         fprintf(stderr,"              [Connection Args]\n\n"
-"   -A authmode    requested modes: [A]uthenticated, [E]ncrypted, [O]pen\n"
-"   -k keyfile     AES keyfile to use with Authenticated/Encrypted modes\n"
-"   -u username    username to use with Authenticated/Encrypted modes\n"
-"   -S srcaddr     use this as a local address for control connection and tests\n"
+"   -A authmode requested modes: [A]uthenticated, [E]ncrypted, [O]pen\n"
+"   -k pffile   pass-phrase file to use with Authenticated/Encrypted modes\n"
+"   -u username username to use with Authenticated/Encrypted modes\n"
+"   -S srcaddr  use this as a local address for control connection and tests\n"
         );
 }
 
@@ -152,14 +153,18 @@ usage(
 }
 
 static OWPBoolean
-getclientkey(
+getclientpf(
         OWPContext      ctx __attribute__((unused)),
         const OWPUserID userid __attribute__((unused)),
-        OWPKey          key_ret,
+        uint8_t         **pf,
+        size_t          *pf_len,
+        void            **pf_free,
         OWPErrSeverity  *err_ret __attribute__((unused))
         )
 {
-    memcpy(key_ret,aesbuff,sizeof(aesbuff));
+    *pf = pfbuff;
+    *pf_len = pfbuff_len;
+    *pf_free = NULL;
 
     return True;
 }
@@ -175,51 +180,39 @@ owp_set_auth(
         )
 {
     if(pctx->opt.identity){
-        uint8_t        *aes = NULL;
+        char    *lbuf=NULL;
+        size_t  lbuf_max=0;
+        char    *passphrase;
 
         /*
-         * If keyfile specified, attempt to get key from there.
+         * If pffile specified, attempt to get key from there.
          */
-        if(pctx->opt.keyfile){
-            /* keyfile */
-            FILE        *fp;
-            int        rc = 0;
-            char        *lbuf=NULL;
-            size_t        lbuf_max=0;
+        if(pctx->opt.pffile){
+            /* pffile */
+            FILE    *filep;
+            int     rc = 0;
 
-            if(!(fp = fopen(pctx->opt.keyfile,"r"))){
-                I2ErrLog(eh,"Unable to open %s: %M",pctx->opt.keyfile);
+            if(!(filep = fopen(pctx->opt.pffile,"r"))){
+                I2ErrLog(eh,"Unable to open %s: %M",pctx->opt.pffile);
                 goto DONE;
             }
 
-            rc = I2ParseKeyFile(eh,fp,0,&lbuf,&lbuf_max,NULL,
-                    pctx->opt.identity,NULL,aesbuff);
-            if(lbuf){
-                free(lbuf);
-            }
-            lbuf = NULL;
-            lbuf_max = 0;
-            fclose(fp);
-
-            if(rc > 0){
-                aes = aesbuff;
-            }
-            else{
+            rc = I2ParsePFFile(eh,filep,NULL,0,pctx->opt.identity,NULL,
+                    &passphrase,&pfbuff_len,&lbuf,&lbuf_max);
+            if(rc < 1){
                 I2ErrLog(eh,
-                        "Unable to find key for id=\"%s\" from keyfile=\"%s\"",
-                        pctx->opt.identity,pctx->opt.keyfile);
+                        "Unable to find pass-phrase for id=\"%s\" from pffile=\"%s\"",
+                        pctx->opt.identity,pctx->opt.pffile);
             }
-        }else{
+
+            fclose(filep);
+        }
+        else{
             /*
              * Do passphrase:
              *         open tty and get passphrase.
-             *        (md5 the passphrase to create an aes key.)
              */
-            char                *passphrase;
-            char                ppbuf[MAX_PASSPHRASE];
             char                prompt[MAX_PASSPROMPT];
-            I2MD5_CTX        mdc;
-            size_t                pplen;
 
             if(snprintf(prompt,MAX_PASSPROMPT,
                         "Enter passphrase for identity '%s': ",
@@ -228,30 +221,40 @@ owp_set_auth(
                 goto DONE;
             }
 
-            if(!(passphrase = I2ReadPassPhrase(prompt,ppbuf,
-                            sizeof(ppbuf),I2RPP_ECHO_OFF))){
-                I2ErrLog(eh,"I2ReadPassPhrase(): %M");
+            if(!(passphrase = I2ReadPassPhraseAlloc(prompt,I2RPP_ECHO_OFF,
+                            &lbuf,&lbuf_max))){
+                I2ErrLog(eh,"I2ReadPassPhraseAlloc(): %M");
                 goto DONE;
             }
-            pplen = strlen(passphrase);
-
-            I2MD5Init(&mdc);
-            I2MD5Update(&mdc,(unsigned char *)passphrase,pplen);
-            I2MD5Final(aesbuff,&mdc);
-            aes = aesbuff;
+            pfbuff_len = strlen(passphrase);
         }
-DONE:
-        if(aes){
-            /*
-             * install getaeskey func (key is in aesbuff)
-             */
-            OWPGetAESKeyFunc        getaeskey = getclientkey;
 
-            if(!OWPContextConfigSetF(ctx,OWPGetAESKey,
-                        (OWPFunc)getaeskey)){
+        /* copy pass-phrase */
+        if(passphrase){
+            if( !(pfbuff = malloc(pfbuff_len))){
+                I2ErrLog(eh,"malloc: %M");
+                exit(1);
+            }
+            memcpy(pfbuff,passphrase,pfbuff_len);
+        }
+
+DONE:
+
+        if(lbuf){
+            free(lbuf);
+        }
+        lbuf = NULL;
+        lbuf_max = 0;
+
+        if(pfbuff){
+            /*
+             * install getpf func (passphrase is in pfbuff)
+             */
+            OWPGetPFFunc    getpf = getclientpf;
+
+            if(!OWPContextConfigSetF(ctx,OWPGetPF,(OWPFunc)getpf)){
                 I2ErrLog(eh,"Unable to set AESKey for context: %M");
-                aes = NULL;
-                goto DONE;
+                exit(1);
             }
         }
         else{
@@ -284,7 +287,8 @@ DONE:
             }
             s++;
         }
-    }else{
+    }
+    else{
         /*
          * Default to all modes.
          * If identity not set - library will ignore A/E.
@@ -292,6 +296,8 @@ DONE:
         pctx->auth_mode = OWP_MODE_OPEN|OWP_MODE_AUTHENTICATED|
             OWP_MODE_ENCRYPTED;
     }
+
+    return;
 }
 
 typedef struct pow_maxsend_rec{
@@ -1138,7 +1144,7 @@ main(
                 }
                 break;
             case 'k':
-                if (!(appctx.opt.keyfile = strdup(optarg))) {
+                if (!(appctx.opt.pffile = strdup(optarg))) {
                     I2ErrLog(eh,"malloc: %M");
                     exit(1);
                 }

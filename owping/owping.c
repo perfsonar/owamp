@@ -47,7 +47,8 @@
 static  ow_ping_trec    ping_ctx;
 static  I2ErrHandle     eh;
 static  char            tmpdir[PATH_MAX+1];
-static  uint8_t        aesbuff[16];
+static  uint8_t         *pfbuff = NULL;
+static  size_t          pfbuff_len = 0;
 static  int             owp_intr = 0;
 
     static void
@@ -56,7 +57,7 @@ print_conn_args()
     fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n",
             "              [Connection Args]",
             "   -A authmode    requested modes: [A]uthenticated, [E]ncrypted, [O]pen",
-            "   -k keyfile     AES keyfile to use with Authenticated/Encrypted modes",
+            "   -k passphrasefile     passphrasefile to use with Authenticated/Encrypted modes",
             "   -S srcaddr     use this as a local address for control connection and tests",
             "   -u username    username to use with Authenticated/Encrypted modes"
             );
@@ -338,7 +339,7 @@ owp_fetch_sid(
     if(savefile){
         path = savefile;
         if( !(fp = fopen(path,"w+b"))){
-            I2ErrLog(eh,"owp_fetch_sid:fopen(%s):%M",path);
+            I2ErrLog(eh,"owp_fetch_sid:fopen(%s): %M",path);
             return NULL;
         }
     }
@@ -368,14 +369,18 @@ owp_fetch_sid(
 }
 
 static OWPBoolean
-getclientkey(
-        OWPContext    ctx __attribute__((unused)),
-        const OWPUserID    userid    __attribute__((unused)),
-        OWPKey        key_ret,
-        OWPErrSeverity    *err_ret __attribute__((unused))
+getclientpf(
+        OWPContext      ctx __attribute__((unused)),
+        const OWPUserID userid    __attribute__((unused)),
+        uint8_t         **pf,
+        size_t          *pf_len,
+        void            **pf_free,
+        OWPErrSeverity  *err_ret __attribute__((unused))
         )
 {
-    memcpy(key_ret,aesbuff,sizeof(aesbuff));
+    *pf = pfbuff;
+    *pf_len = pfbuff_len;
+    *pf_free = NULL;
 
     return True;
 }
@@ -391,52 +396,40 @@ owp_set_auth(
         )
 {
     if(pctx->opt.identity){
-        uint8_t    *aes = NULL;
+        char        *lbuf=NULL;
+        size_t      lbuf_max=0;
+        char        *passphrase;
 
         /*
-         * If keyfile specified, attempt to get key from there.
+         * If pffile specified, attempt to get key from there.
          */
-        if(pctx->opt.keyfile){
-            /* keyfile */
-            FILE    *fp;
-            int    rc = 0;
-            char    *lbuf=NULL;
-            size_t    lbuf_max=0;
+        if(pctx->opt.pffile){
+            /* pffile */
+            FILE        *filep;
+            int         rc = 0;
 
-            if(!(fp = fopen(pctx->opt.keyfile,"r"))){
+            if(!(filep = fopen(pctx->opt.pffile,"r"))){
                 I2ErrLog(eh,"Unable to open %s: %M",
-                        pctx->opt.keyfile);
+                        pctx->opt.pffile);
                 goto DONE;
             }
 
-            rc = I2ParseKeyFile(eh,fp,0,&lbuf,&lbuf_max,NULL,
-                    pctx->opt.identity,NULL,aesbuff);
-            if(lbuf){
-                free(lbuf);
-            }
-            lbuf = NULL;
-            lbuf_max = 0;
-            fclose(fp);
-
-            if(rc > 0){
-                aes = aesbuff;
-            }
-            else{
+            rc = I2ParsePFFile(eh,filep,NULL,0,pctx->opt.identity,NULL,
+                    &passphrase,&pfbuff_len,&lbuf,&lbuf_max);
+            if(rc < 1){
                 I2ErrLog(eh,
-                        "Unable to find key for id=\"%s\" from keyfile=\"%s\"",
-                        pctx->opt.identity,pctx->opt.keyfile);
+                        "Unable to find pass-phrase for id=\"%s\" from pffile=\"%s\"",
+                        pctx->opt.identity,pctx->opt.pffile);
             }
+
+            fclose(filep);
+
         }else{
             /*
              * Do passphrase:
              *     open tty and get passphrase.
-             *    (md5 the passphrase to create an aes key.)
              */
-            char        *passphrase;
-            char        ppbuf[MAX_PASSPHRASE];
             char        prompt[MAX_PASSPROMPT];
-            I2MD5_CTX    mdc;
-            size_t        pplen;
 
             if(snprintf(prompt,MAX_PASSPROMPT,
                         "Enter passphrase for identity '%s': ",
@@ -445,29 +438,38 @@ owp_set_auth(
                 goto DONE;
             }
 
-            if(!(passphrase = I2ReadPassPhrase(prompt,ppbuf,
-                            sizeof(ppbuf),I2RPP_ECHO_OFF))){
-                I2ErrLog(eh,"I2ReadPassPhrase(): %M");
+            if(!(passphrase = I2ReadPassPhraseAlloc(prompt,I2RPP_ECHO_OFF,
+                            &lbuf,&lbuf_max))){
+                I2ErrLog(eh,"I2ReadPassPhraseAlloc(): %M");
                 goto DONE;
             }
-            pplen = strlen(passphrase);
+            pfbuff_len = strlen(passphrase);
+        }
 
-            I2MD5Init(&mdc);
-            I2MD5Update(&mdc,(unsigned char *)passphrase,pplen);
-            I2MD5Final(aesbuff,&mdc);
-            aes = aesbuff;
+        /* copy passphrase */
+        if(passphrase){
+            if( !(pfbuff = malloc(pfbuff_len))){
+                I2ErrLog(eh,"malloc: %M");
+                exit(1);
+            }
+            memcpy(pfbuff,passphrase,pfbuff_len);
         }
 DONE:
-        if(aes){
-            /*
-             * install getaeskey func (key is in aesbuff)
-             */
-            OWPGetAESKeyFunc    getaeskey = getclientkey;
+        if(lbuf){
+            free(lbuf);
+        }
+        lbuf = NULL;
+        lbuf_max = 0;
 
-            if(!OWPContextConfigSetF(ctx,OWPGetAESKey,(OWPFunc)getaeskey)){
-                I2ErrLog(eh,"Unable to set AESKey for context: %M");
-                aes = NULL;
-                goto DONE;
+        if(pfbuff){
+            /*
+             * install getpf func (pf is in pfbuff)
+             */
+            OWPGetPFFunc    getpf = getclientpf;
+
+            if(!OWPContextConfigSetF(ctx,OWPGetPF,(OWPFunc)getpf)){
+                I2ErrLog(eh,"Unable to set pass-phrase func for context: %M");
+                exit(1);
             }
         }
         else{
@@ -501,7 +503,8 @@ DONE:
             }
             s++;
         }
-    }else{
+    }
+    else{
         /*
          * Default to all modes.
          * If identity not set - library will ignore A/E.
@@ -843,7 +846,7 @@ main(
     ping_ctx.opt.quiet = ping_ctx.opt.raw = ping_ctx.opt.machine = False;
     ping_ctx.opt.childwait = NULL;
     ping_ctx.opt.save_from_test = ping_ctx.opt.save_to_test 
-        = ping_ctx.opt.identity = ping_ctx.opt.keyfile 
+        = ping_ctx.opt.identity = ping_ctx.opt.pffile 
         = ping_ctx.opt.srcaddr = ping_ctx.opt.authmode = NULL;
     ping_ctx.opt.numPackets = 100;
     ping_ctx.opt.lossThreshold = 0.0;
@@ -885,25 +888,25 @@ main(
 
             case 'A':
                 if(!(ping_ctx.opt.authmode = strdup(optarg))){
-                    I2ErrLog(eh,"malloc:%M");
+                    I2ErrLog(eh,"malloc: %M");
                     exit(1);
                 }
                 break;
             case 'k':
-                if (!(ping_ctx.opt.keyfile = strdup(optarg))){
-                    I2ErrLog(eh,"malloc:%M");
+                if (!(ping_ctx.opt.pffile = strdup(optarg))){
+                    I2ErrLog(eh,"malloc: %M");
                     exit(1);
                 }
                 break;
             case 'S':
                 if(!(ping_ctx.opt.srcaddr = strdup(optarg))){
-                    I2ErrLog(eh,"malloc:%M");
+                    I2ErrLog(eh,"malloc: %M");
                     exit(1);
                 }
                 break;
             case 'u':
                 if(!(ping_ctx.opt.identity = strdup(optarg))){
-                    I2ErrLog(eh,"malloc:%M");
+                    I2ErrLog(eh,"malloc: %M");
                     exit(1);
                 }
                 break;
@@ -938,7 +941,7 @@ main(
                 break;
             case 'F':
                 if (!(ping_ctx.opt.save_from_test = strdup(optarg))){
-                    I2ErrLog(eh,"malloc:%M");
+                    I2ErrLog(eh,"malloc: %M");
                     exit(1);
                 }
                 /* fall through */
@@ -968,7 +971,7 @@ main(
                 break;
             case 'T':
                 if (!(ping_ctx.opt.save_to_test = strdup(optarg))) {
-                    I2ErrLog(eh,"malloc:%M");
+                    I2ErrLog(eh,"malloc: %M");
                     exit(1);
                 }
                 /* fall through */
@@ -1218,7 +1221,7 @@ main(
          *  will be 3 rtt's.
          */
         if(!OWPGetTimeOfDay(ctx,&curr_time)){
-            I2ErrLogP(eh,errno,"Unable to get current time:%M");
+            I2ErrLogP(eh,errno,"Unable to get current time: %M");
             exit(1);
         }
         /* using ch to hold num_rtt */
@@ -1276,7 +1279,7 @@ main(
                 fromfp = fopen(ping_ctx.opt.save_from_test,
                         "w+b");
                 if(!fromfp){
-                    I2ErrLog(eh,"fopen(%s):%M", 
+                    I2ErrLog(eh,"fopen(%s): %M", 
                             ping_ctx.opt.save_from_test);
                     exit(1);
                 }
@@ -1334,7 +1337,7 @@ main(
              * Compute a relative time from "endtime" and curr_time.
              */
             if(!OWPGetTimeOfDay(ctx,&curr_time)){
-                I2ErrLogP(eh,errno,"Unable to get current time:%M");
+                I2ErrLogP(eh,errno,"Unable to get current time: %M");
                 exit(1);
             }
 
@@ -1452,7 +1455,7 @@ main(
         FILE        *fp;
 
         if(!(fp = fopen(argv[0],"rb"))){
-            I2ErrLog(eh,"fopen(%s):%M",argv[0]);
+            I2ErrLog(eh,"fopen(%s): %M",argv[0]);
             exit(1);
         }
 

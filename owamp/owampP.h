@@ -25,6 +25,7 @@
 #define        OWAMPP_H
 
 #include <I2util/util.h>
+#include <I2util/hmac-sha1.h>
 #include <owamp/owamp.h>
 
 #include <stdlib.h>
@@ -56,6 +57,11 @@
 #define _OWP_SKIPFILE_FMT   "owpskips.XXXXXX"
 
 /*
+ * Default 'count' for pbkdf2() for key generation
+ */
+#define _OWP_DEFAULT_PBKDF2_COUNT   (2048)
+
+/*
  * Offset's and lengths for various file versions.
  */
 #define _OWP_TESTREC_OFFSET (40)
@@ -69,6 +75,12 @@
  * Size of a single AES block
  */
 #define _OWP_RIJNDAEL_BLOCK_SIZE    16
+
+/*
+ * Size of token,salt - SetupResponseMessage
+ */
+#define _OWP_TOKEN_SIZE (64)
+#define _OWP_SALT_SIZE (16)
 
 /*
  * The FETCH buffer is the smallest multiple of both the _OWP_DATAREC_SIZE
@@ -108,6 +120,8 @@
 
 /*
  * Control state constants.
+ * (Used to keep track of partially read messages, and to make debugging
+ * control session state easier to manage.)
  */
 /* initial & invalid */
 #define _OWPStateInitial    (0x0000)
@@ -127,8 +141,8 @@
 #define _OWPStateStartSessions      (_OWPStateTestRequestSlots << 1)
 #define _OWPStateStopSessions       (_OWPStateStartSessions << 1)
 #define _OWPStateFetchSession       (_OWPStateStopSessions << 1)
-#define _OWPStateTestAccept         (_OWPStateFetchSession << 1)
-#define _OWPStateStartAck           (_OWPStateTestAccept << 1)
+#define _OWPStateAcceptSession         (_OWPStateFetchSession << 1)
+#define _OWPStateStartAck           (_OWPStateAcceptSession << 1)
 /* during fetch-session */
 #define _OWPStateFetchAck           (_OWPStateStartAck << 1)
 #define _OWPStateFetching           (_OWPStateFetchAck << 1)
@@ -140,7 +154,7 @@
 /*
  * "Pending" indicates waiting for server response to a request.
  */
-#define _OWPStatePending            (_OWPStateTestAccept|_OWPStateStartAck|_OWPStateStopSessions|_OWPStateFetchAck)
+#define _OWPStatePending            (_OWPStateAcceptSession|_OWPStateStartAck|_OWPStateStopSessions|_OWPStateFetchAck)
 
 
 #define _OWPStateIsInitial(c)       (!(c)->state)
@@ -173,6 +187,7 @@ struct OWPContextRec{
     I2ErrHandle     eh;
     I2Table         table;
     I2RandomSource  rand_src;
+    uint32_t        pbkdf2_count;
     OWPControlRec   *cntrl_list;
 };
 
@@ -206,11 +221,13 @@ struct OWPControlRec{
      * This field is initialized to zero and used for comparisons
      * to ensure AES is working.
      */
-    uint8_t                zero[16];
+    char                    zero[16];
 
-    /* area for peer's messages                 */
-    /* make uint32_t to get wanted alignment   */
-    /* Usually cast to uint8_t when used...    */
+    /*
+     * area for peer's messages, make uint32_t to get integer alignment.
+     * Cast to char * when used... C99 indicates (char *) as only valid
+     * type for punning like this.
+     */
     uint32_t               msg[_OWP_MAX_MSG_SIZE/sizeof(uint32_t)];
 
     /*
@@ -229,9 +246,13 @@ struct OWPControlRec{
     OWPUserID               userid_buffer;
     keyInstance             encrypt_key;
     keyInstance             decrypt_key;
-    uint8_t                session_key[16];
-    uint8_t                readIV[16];
-    uint8_t                writeIV[16];
+    uint8_t                 aessession_key[16];
+    uint8_t                 readIV[16];
+    uint8_t                 writeIV[16];
+
+    uint8_t                 hmac_key[32];
+    I2HMACSha1Context       send_hmac_ctx;
+    I2HMACSha1Context       recv_hmac_ctx;
 
     int                     *retn_on_intr;
 
@@ -259,49 +280,57 @@ struct _OWPSkipRec{
  * managed.
  */
 typedef struct OWPEndpointRec{
-    OWPControl      cntrl;
-    OWPTestSession  tsession;
+    OWPControl          cntrl;
+    OWPTestSession      tsession;
 
 #ifndef        NDEBUG
-    I2Boolean       childwait;
+    I2Boolean           childwait;
 #endif
 
-    OWPAcceptType   acceptval;
-    pid_t           child;
-    int             wopts;
-    OWPBoolean      send;
-    int             sockfd;
-    int             skiprecfd;
-    off_t           skiprecsize;
-    I2Addr          remoteaddr;
-    I2Addr          localaddr;
+    OWPAcceptType       acceptval;
+    pid_t               child;
+    int                 wopts;
+    OWPBoolean          send;
+    int                 sockfd;
+    int                 skiprecfd;
+    off_t               skiprecsize;
+    I2Addr              remoteaddr;
+    I2Addr              localaddr;
 
-    char            fname[PATH_MAX];
-    FILE            *userfile;          /* from _OWPOpenFile */
-    FILE            *datafile;          /* correct buffering */
-    char            *fbuff;
+    /*
+     * crypt fields
+     */
+    uint8_t             aesbytes[_OWP_RIJNDAEL_BLOCK_SIZE];
+    keyInstance         aeskey;
+    uint8_t             hmac_key[32];
+    I2HMACSha1Context   hmac_ctx;
 
-    struct timespec start;
-    uint8_t        *payload;
+    char                fname[PATH_MAX];
+    FILE                *userfile;          /* from _OWPOpenFile */
+    FILE                *datafile;          /* correct buffering */
+    char                *fbuff;
 
-    size_t          len_payload;
+    struct timespec     start;
+    char                *payload;
+
+    size_t              len_payload;
 
 
     /* Keep track of "lost" packets */
-    uint32_t       numalist;
-    OWPLostPacket   lost_allocated;
-    OWPLostPacket   freelist;
-    OWPLostPacket   begin;
-    OWPLostPacket   end;
-    I2Table            lost_packet_buffer;
+    uint32_t            numalist;
+    OWPLostPacket       lost_allocated;
+    OWPLostPacket       freelist;
+    OWPLostPacket       begin;
+    OWPLostPacket       end;
+    I2Table             lost_packet_buffer;
 
     /* Keep track of which packets the sender actually sent */
-    uint32_t       nextseq;
-    uint32_t       num_allocskip;
-    _OWPSkip        skip_allocated;
-    _OWPSkip        free_skiplist;
-    _OWPSkip        head_skip;
-    _OWPSkip        tail_skip;
+    uint32_t            nextseq;
+    uint32_t            num_allocskip;
+    _OWPSkip            skip_allocated;
+    _OWPSkip            free_skiplist;
+    _OWPSkip            head_skip;
+    _OWPSkip            tail_skip;
 
 } OWPEndpointRec, *OWPEndpoint;
 
@@ -419,7 +448,7 @@ _OWPCleanDataRecs(
 extern int
 _OWPSendBlocksIntr(
         OWPControl  cntrl,
-        uint8_t    *buf,
+        uint8_t     *buf,
         int         num_blocks,
         int         *retn_on_intr
         );
@@ -427,7 +456,7 @@ _OWPSendBlocksIntr(
 extern int
 _OWPReceiveBlocksIntr(
         OWPControl  cntrl,
-        uint8_t    *buf,
+        uint8_t     *buf,
         int         num_blocks,
         int         *retn_on_intr
         );
@@ -435,89 +464,124 @@ _OWPReceiveBlocksIntr(
 extern int
 _OWPSendBlocks(
         OWPControl  cntrl,
-        uint8_t    *buf,
+        uint8_t     *buf,
         int         num_blocks
         );
 
 extern int
 _OWPReceiveBlocks(
         OWPControl  cntrl,
-        uint8_t    *buf,
+        uint8_t     *buf,
         int         num_blocks
         );
 
 extern int
 _OWPEncryptBlocks(
         OWPControl  cntrl,
-        uint8_t    *in_buf,
+        uint8_t     *in_buf,
         int         num_blocks,
-        uint8_t    *out_buf
+        uint8_t     *out_buf
         );
 
 extern int
 _OWPDecryptBlocks(
         OWPControl  cntrl,
-        uint8_t    *in_buf,
+        uint8_t     *in_buf,
         int         num_blocks,
-        uint8_t    *out_buf
+        uint8_t     *out_buf
         );
 
 extern void
 _OWPMakeKey(
         OWPControl  cntrl,
-        uint8_t    *binKey
+        uint8_t     *binKey
         );
 
 extern int
 OWPEncryptToken(
-        uint8_t    *binKey,
-        uint8_t    *token_in,
-        uint8_t    *token_out
+        const uint8_t   *pf,
+        size_t          pf_len,
+        const uint8_t   salt[16],
+        uint32_t        count,
+        const uint8_t   token_in[_OWP_TOKEN_SIZE],
+        uint8_t         token_out[_OWP_TOKEN_SIZE]
         );
 
 extern int
 OWPDecryptToken(
-        uint8_t    *binKey,
-        uint8_t    *token_in,
-        uint8_t    *token_out
+        const uint8_t   *pf,
+        size_t          pf_len,
+        const uint8_t   salt[16],
+        uint32_t        count,
+        const uint8_t   token_in[_OWP_TOKEN_SIZE],
+        uint8_t         token_out[_OWP_TOKEN_SIZE]
+        );
+
+extern void
+_OWPSendHMACAdd(
+        OWPControl  cntrl,
+        const char  *txt,
+        uint32_t    num_blocks
+        );
+
+extern void
+_OWPSendHMACDigestClear(
+        OWPControl  cntrl,
+        char        digest[16]
+        );
+
+extern void
+_OWPRecvHMACAdd(
+        OWPControl  cntrl,
+        const char  *txt,
+        uint32_t    num_blocks
+        );
+
+extern OWPBoolean
+_OWPRecvHMACCheckClear(
+        OWPControl  cntrl,
+        char        check[16]
         );
 
 /*
  * protocol.c
  */
-
 extern OWPErrSeverity
 _OWPWriteServerGreeting(
         OWPControl  cntrl,
-        uint32_t   avail_modes,
-        uint8_t    *challenge,     /* [16] */
+        uint32_t    avail_modes,
+        uint8_t     *challenge,  /* [16] */
+        uint8_t     *salt,       /* [16] */
+        uint32_t    count,
         int         *retn_on_intr
         );
 
 extern OWPErrSeverity
 _OWPReadServerGreeting(
         OWPControl  cntrl,
-        uint32_t   *mode,          /* modes available - returned   */
-        uint8_t    *challenge      /* [16] : challenge - returned  */
+        uint32_t    *mode,      /* modes available - returned   */
+        uint8_t     *challenge, /* [16] : challenge - returned  */
+        uint8_t     *salt,      /* [16] : salt - returned       */
+        uint32_t    *count
         );
 
 extern OWPErrSeverity
-_OWPWriteClientGreeting(
+_OWPWriteSetupResponse(
         OWPControl  cntrl,
-        uint8_t    *token          /* [32] */
+        uint8_t     *token          /* [64] */
         );
 
 extern OWPErrSeverity
-_OWPReadClientGreeting(
+_OWPReadSetupResponse(
         OWPControl  cntrl,
-        uint32_t   *mode,
-        uint8_t    *token,         /* [32] - return    */
-        uint8_t    *clientIV,      /* [16] - return    */
+        uint32_t    *mode,
+        uint8_t     *token,         /* [32] - return    */
+        uint8_t     *clientIV,      /* [16] - return    */
         int         *retn_on_intr
         );
 
 extern OWPErrSeverity
-_OWPWriteServerOK(
+_OWPWriteServerStart(
         OWPControl      cntrl,
         OWPAcceptType   code,
         OWPNum64        uptime,
@@ -525,9 +589,10 @@ _OWPWriteServerOK(
         );
 
 extern OWPErrSeverity
-_OWPReadServerOK(
+_OWPReadServerStart(
         OWPControl      cntrl,
-        OWPAcceptType   *acceptval        /* ret        */
+        OWPAcceptType   *acceptval, /* ret        */
+        OWPNum64        *uptime_ret /* ret        */
         );
 
 extern OWPErrSeverity
@@ -605,20 +670,20 @@ _OWPReadTestRequest(
 
 extern OWPBoolean
 _OWPEncodeDataRecord(
-        uint8_t        buf[_OWP_MAXDATAREC_SIZE],
-        OWPDataRec      *rec
+        char        buf[_OWP_MAXDATAREC_SIZE],
+        OWPDataRec  *rec
         );
 
 extern OWPBoolean
 _OWPDecodeDataRecord(
-        uint32_t       file_version,
-        OWPDataRec      *rec,
+        uint32_t    file_version,
+        OWPDataRec  *rec,
         /* V0,V2 == [_OWP_DATARECV2_SIZE], V3 == [_OWP_DATAREC_SIZE] */
-        uint8_t        *buf
+        char        *buf
         );
 
 extern OWPErrSeverity
-_OWPWriteTestAccept(
+_OWPWriteAcceptSession(
         OWPControl      cntrl,
         int             *retn_on_intr,
         OWPAcceptType   acceptval,
@@ -627,7 +692,7 @@ _OWPWriteTestAccept(
         );
 
 extern OWPErrSeverity
-_OWPReadTestAccept(
+_OWPReadAcceptSession(
         OWPControl      cntrl,
         OWPAcceptType   *acceptval,
         uint16_t       *port,
@@ -647,14 +712,14 @@ _OWPReadStartSessions(
 
 extern void
 _OWPEncodeSkipRecord(
-        uint8_t    buf[_OWP_SKIPREC_SIZE],
-        OWPSkip     skip
+        uint8_t buf[_OWP_SKIPREC_SIZE],
+        OWPSkip skip
         );
 
 extern void
 _OWPDecodeSkipRecord(
-        OWPSkip     skip,
-        uint8_t    buf[_OWP_SKIPREC_SIZE]
+        OWPSkip skip,
+        char    buf[_OWP_SKIPREC_SIZE]
         );
 
 extern OWPErrSeverity
@@ -735,11 +800,13 @@ _OWPControlAlloc(
         );
 
 extern OWPBoolean
-_OWPCallGetAESKey(
-        OWPContext      ctx,            /* context record           */
-        const char      *userid,        /* identifies key           */
-        uint8_t        *key_ret,       /* key - return             */
-        OWPErrSeverity  *err_ret        /* error - return           */
+_OWPCallGetPF(
+        OWPContext      ctx,        /* context record       */
+        const OWPUserID userid,     /* identifies key       */
+        uint8_t         **pf_ret,   /* pass-phrase - return */
+        size_t          *pf_len,    /* len - return         */
+        void            **pf_free,  /* free if set - return */
+        OWPErrSeverity  *err_ret    /* error - return       */
         );
 
 extern OWPBoolean
@@ -875,23 +942,23 @@ _OWPGetTimespec(
  */
 extern void
 _OWPEncodeTimeStamp(
-        uint8_t        buf[8],
+        uint8_t         buf[8],
         OWPTimeStamp    *tstamp
         );
 extern OWPBoolean
 _OWPEncodeTimeStampErrEstimate(
-        uint8_t        buf[2],
+        uint8_t         buf[2],
         OWPTimeStamp    *tstamp
         );
 extern void
 _OWPDecodeTimeStamp(
         OWPTimeStamp    *tstamp,
-        uint8_t        buf[8]
+        uint8_t         buf[8]
         );
 extern OWPBoolean
 _OWPDecodeTimeStampErrEstimate(
         OWPTimeStamp    *tstamp,
-        uint8_t        buf[2]
+        uint8_t         buf[2]
         );
 
 #endif        /* OWAMPP_H */

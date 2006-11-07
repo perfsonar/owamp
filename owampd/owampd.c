@@ -1006,6 +1006,20 @@ LoadConfig(
             }
             opts.controltimeout = tlng;
         }
+        else if(!strncasecmp(key,"pbkdf2_count",13)){
+            char        *end=NULL;
+            uint32_t    tlng;
+
+            errno = 0;
+            tlng = strtoul(val,&end,10);
+            if((end == val) || (errno == ERANGE)){
+                fprintf(stderr,"strtoul(): %s\n",
+                        strerror(errno));
+                rc=-rc;
+                break;
+            }
+            opts.count = tlng;
+        }
         else{
             fprintf(stderr,"Unknown key=%s\n",key);
             rc = -rc;
@@ -1022,8 +1036,10 @@ LoadConfig(
     return;
 }
 
-    int
-main(int argc, char *argv[])
+int main(
+        int     argc,
+        char    *argv[]
+        )
 {
     char                *progname=NULL;
     OWPErrSeverity      out = OWPErrFATAL;
@@ -1256,6 +1272,16 @@ main(int argc, char *argv[])
         exit(1);
     }
 
+    /*
+     * Setup count
+     */
+    if(opts.count && !OWPContextConfigSetU32(ctx,OWPKeyDerivationCount,
+                opts.count)){
+        I2ErrLog(errhand,
+                "OWPContextConfigSetV(): Can't set OWPKeyDerivationCount?!");
+        exit(1);
+    }
+
     if(!opts.vardir)
         opts.vardir = opts.cwd;
     if(!opts.confdir)
@@ -1323,10 +1349,13 @@ main(int argc, char *argv[])
             else if(opts.user[0] == '-'){
                 setuser = strtoul(&opts.user[1],NULL,10);
                 if(errno || !getpwuid(setuser)){
-                    I2ErrLog(errhand,"Invalid user/-U option: %s",
-                            opts.user);
+                    I2ErrLog(errhand,"Invalid user/-U option: %s",opts.user);
                     exit(1);
                 }
+            }
+            else{
+                I2ErrLog(errhand,"Invalid user/-U option: %s",opts.user);
+                exit(1);
             }
         }
 
@@ -1349,6 +1378,7 @@ main(int argc, char *argv[])
                 if(errno || !getgrgid(setgroup))
                     setgroup = 0;
             }
+
             if(!setgroup){
                 I2ErrLog(errhand,"Invalid user/-G option: %s",
                         opts.group);

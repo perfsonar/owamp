@@ -1,11 +1,323 @@
-2006-05-24  Jeff W. Boote  <boote@packrat.internet2.edu>
+2006-11-06  boote  <boote@foo.local>
+
+	* doc/Makefile.am, doc/index.html, doc/owampd.conf.man, doc/owampd.keys.man, doc/owampd.limits.man, doc/owampd.man, doc/owampd.pfs.man, doc/owfetch.man, doc/owping.man, doc/owup.man:
+	Modified owamp documentation for RFC version.
+
+	jeff
+
+	* doc/owampd.pfs.man: New file.
+
+	* configure.ac: Changing 'version' string for 3.0 release.
+
+	* I2util/doc/Makefile.am, I2util/doc/pfstore.man:
+	Adding man page for pfstore(1).
+
+	* I2util/doc/pfstore.man: New file.
+
+2006-11-04  boote  <boote@foo.local>
+
+	* owamp/capi.c, owamp/endpoint.c, owamp/owampP.h:
+	Test protocol now updated to RFC. It has not been heavily tested yet, but I believe the implementation
+	is now RFC compliant. (Expect an alpha release by monday - I plan on working on documentation and
+	releaes management stuff sunday.)
+
+	jeff
+
+2006-11-02  boote  <boote@foo.local>
+
+	* owampd/policy.c: Remove temporary print statement.
+
+	* I2util/aespasswd/aespasswd.c, I2util/pfstore/pfstore.c, owamp/capi.c, owamp/endpoint.c, owamp/owamp.h, owamp/owampP.h, owamp/protocol.c, owamp/time.c, owampd/policy.c, test/owtvec.c, I2util/I2util/conf.c, I2util/I2util/conf.h, I2util/I2util/hex.c, I2util/I2util/hex.h:
+	Moving many things back to uint8_t*. (bit shifts on signed variables breaks
+	lots of things.) So, now I have to be more careful with the type punning
+	since only (char *) is explicitely allowed by the C99 standard. Ugh.
+
+	* owampd/policy.c, owping/owping.c, powstream/powstream.c, test/owtvec.c:
+	More uint8_t* to char* changes.
+
+	* owamp/api.c, owamp/capi.c, owamp/endpoint.c, owamp/owamp.h, owamp/owampP.h, owamp/protocol.c, owamp/schedule.c, owamp/time.c:
+	Changing several (uint8_t  *) variables to (char *) to allow for type punning.
+
+	* I2util/I2util/conf.c, I2util/I2util/conf.h, I2util/I2util/hex.c, I2util/I2util/hex.h, I2util/aespasswd/aespasswd.c, I2util/pfstore/pfstore.c:
+	Modifying several variables from uint8_t * to char * to minimize type punning
+	issues.
+
+	jeff
+
+2006-11-01  boote  <boote@foo.local>
+
+	* owamp/api.c, owamp/capi.c, owamp/io.c, owamp/owampP.h, owamp/protocol.c, owamp/sapi.c:
+	Control protocol portion of implementation is now compliant with the RFC.
+
+	I will change the test packet format tomorrow.
+
+	* NOTES: Adding some implementation notes.
+
+	* NOTES: New file.
+
+2006-10-30  boote  <boote@foo.local>
+
+	* owamp/capi.c, owamp/io.c, owamp/owampP.h:
+	Corrected authentication/encryption identity check code.
+	(sizeof operator only sees size of the pointer, not the size of
+	the array inside a function.)
+
+2006-10-29  boote  <boote@foo.local>
+
+	* owamp/sapi.c, owampd/owampd.c:
+	Corrected error message for permission denied when binding a socket
+	to a port <1024.
+
+	* owping/owping.c:
+	Correcting usage message for 'pass-phrase' file option.
+
+	* powstream/powstream.c, powstream/powstreamP.h:
+	Now uses passphrase instead of key.
+
+	jeff
+
+	* owping/owping.c, owping/owpingP.h: -k option for passphrase file.
+
+	* doc/owping.man: Keeping -k as option for passphrase file.
+
+	* conf/owampd.conf, owampd/owampd.c:
+	Adding pbkdf2_count option to config file.
+
+	* I2util/I2util/addr.c:
+	Add 'passive' flag if 'wildcard' function is used to create the addr.
+
+	jeff
+
+2006-10-28  boote  <boote@foo.local>
+
+	* owping/owpingP.h, doc/owping.man, owamp/capi.c, owamp/context.c, owamp/io.c, owamp/owamp.h, owamp/owampP.h, owamp/protocol.c, owamp/rijndael-api-fst.c, owamp/rijndael-api-fst.h, owamp/sapi.c, owampd/owampd.c, owampd/owampdP.h, owampd/policy.c, owampd/policy.h, owping/owping.c:
+	Modified protocol through setup phase to use derived-key and hmac
+	functions. (powstream not modified yet)
+
+	* I2util/I2util/conf.c, I2util/I2util/pbkdf2.c, I2util/I2util/pbkdf2.h:
+	Added 'const' to some func args - and modified parsing functions.
+
+	jeff
+
+2006-10-24  boote  <boote@foo.local>
+
+	* I2util/test/pbkdf2test.c, owamp/api.c, owamp/io.c, owamp/owamp.h, owamp/owampP.h, owamp/protocol.c, owamp/sapi.c:
+	check-point commit of work on RFC branch.
+
+	So far:
+	Have modified the protocol.c functions to deal with the new server
+	greeting protocol, but have not yet updated the other portions of
+	the code to use the extra information yet. (hmac is not used yet)
+
+	Removed illegal type punning from protocol.c.
+
+	Also added another test to pbkdf2test.c - I wanted to see how long it
+	would take for the pbkdf2 function for various values of count. I plan
+	to make the 'count' be a server configuration value. I intend to make
+	the 'default' value be 2048 based on how long the algorithm takes on
+	my laptop. (roughly 10 msec's for a fairly long pw and salt.)
+
+	jeff
+
+2006-10-20  boote  <boote@foo.local>
+
+	* I2util/I2util/conf.c, I2util/I2util/conf.h, I2util/I2util/hex.c, I2util/I2util/hex.h, I2util/I2util/readpassphrase.c, I2util/I2util/readpassphrase.h, I2util/Makefile.am, I2util/configure.ac, I2util/pfstore/Makefile.am, I2util/pfstore/pfstore.c, I2util/test/Makefile.am:
+	Adding a utility program for managing a pass-phrase store.
+
+	The store is not encrypted in any way, although the passphrases are saved
+	in hex. (This is primarily to make it easier for parsing, and dealing with
+	possible different character sets - if you can enter the bytes at a
+	prompt somehow, this will be able to save it.)
+
+	jeff
+
+2006-10-17  boote  <boote@foo.local>
+
+	* I2util/I2util/pbkdf2.c: Better comment.
+
+	jeff
+
+	* I2util/I2util/pbkdf2.c:
+	Revert most of pbkdf2 code back to previous version - and fix the single index
+	that was off. (It was only the 'index' of the last incomplete block
+	that was wrong before - there was no reason to switch to base-1 array
+	indexing to fix it.)
+
+	* I2util/test/pbkdf2test.c:
+	Adding pbkdf2 test appliation for RFC 3962 test vectors.
+
+	jeff
+
+	* I2util/I2util/pbkdf2.c:
+	Fixed a bug in the pbkdf2() impl. Did not work correctly if the
+	derived key length was shorter than the prf-hlen.
+
+	jeff
+
+2006-10-14  boote  <boote@foo.local>
+
+	* I2util/I2util/Makefile.am, I2util/I2util/pbkdf2.c, I2util/I2util/pbkdf2.h, I2util/test/Makefile.am, I2util/test/pbkdf2test.c:
+	Adding a pbkdf2 function (and test driver application).
+
+	I have not been able to find test vectors for this function, so I don't
+	have huge confidence that I wrote it completely correct yet. (I wrote
+	it right from the RFC so I would not have to deal with licensing junk.)
+
+	jeff
+
+2006-10-12  boote  <boote@foo.local>
+
+	* I2util/I2util/sha1P.h: Forgot to add sha1P.h...
+
+2006-10-11  boote  <boote@foo.local>
+
+	* I2util/test/hmac-sha1test.c: add program to run test vectors.
+
+	jeff
+
+2006-10-10  boote  <boote@foo.local>
+
+	* I2util/I2util/Makefile.am, I2util/I2util/hmac-sha1.c, I2util/I2util/hmac-sha1.h, I2util/I2util/sha1.c, I2util/I2util/sha1.h, I2util/test/Makefile.am:
+	hmac-sha1 implementation and test vectors.
+
+	jeff
+
+2006-10-06  boote  <boote@foo.local>
+
+	* owamp/endpoint.c:
+	fix typo in detection of truncated cmd message from recvmsg().
+
+2006-10-03  boote  <boote@foo.local>
+
+	* I2util/I2util/sha1.c, I2util/I2util/sha1.h, I2util/test/sha1test.c:
+	Just adding remaining test vectors into sha1 test application.
+
+	jeff
+
+2006-09-30  boote  <boote@foo.local>
+
+	* I2util/I2util/Makefile.am, I2util/I2util/sha1.c, I2util/I2util/sha1.h, I2util/Makefile.am, I2util/configure.ac, I2util/test/Makefile.am, I2util/test/sha1test.c:
+	Adding an sha1 implementation and compliance test to I2util.
+
+	jeff
+
+2006-09-16  boote  <boote@foo.local>
+
+	* owamp/protocol.c, owampd/policy.h:
+	comment changes - and unify a type.
+
+	* I2util/I2util/addr.c, I2util/I2util/saddr.c, I2util/I2util/saddr.h:
+	Remove non-union type punning.
+
+2006-09-13  boote  <boote@foo.local>
+
+	* I2util/I2util/Makefile.am, I2util/I2util/Options.c, I2util/I2util/addr.c, I2util/I2util/options.h, I2util/I2util/optionsP.h, I2util/I2util/saddr.c, I2util/I2util/util.h:
+	Removing 'options' stuff. getopt is easier...
+
+	Added comments for areas of possible type punning problems.
+
+	jeff
+
+2006-09-12  boote  <boote@foo.local>
+
+	* I2util/I2util/ErrLogImmediate.c, I2util/I2util/addr.c, I2util/I2util/errlog.h:
+	Merge jslawins branch into HEAD. (with some minor cleanup due to conflicts.)
+
+	jeff
+
+2006-08-04  boote  <boote@foo.local>
+
+	* owamp/time.c:
+	going back to using esterror instead of maxerror from NTP. maxerror is just TOO conservative.
+
+	jeff
+
+2006-07-25  boote  <boote@foo.local>
+
+	* I2util/I2util/util.h, configure.ac, owamp/owamp.h, owamp/stats.c:
+	Updating Boolean type to be intptr_t so get/set funcitions work better.
+
+	jeff
+
+	* I2util/I2util/addr.c, owamp/endpoint.c: addr.c:
+	    Modifed the 64-bit byte swapping code so it does not violate
+	    the strict alias rules for gcc's optimizing compiler.
+	    (Now, instead of casting a uint8_t * into the uint64_t I do
+	    a memcpy and set the memory back into the uint64_t. How is that
+	    for un-optimizing...)
+
+	endpoint.c:
+	    Corrected a bug in the tempfile creation. (Failed permissions were
+	    not being detected correctly.)
+
+	jeff
+
+2006-07-02  jeremian  <jeremian@foo.local>
+
+	* I2util/I2util/addr.c: Fixed small bug in the I2AddrSockLen.
+
+2006-06-21  jeremian  <jeremian@foo.local>
+
+	* I2util/I2util/addr.c: Small fix in the preprocessor directives.
+
+2006-06-19  boote  <boote@foo.local>
+
+	* I2util/I2util/saddr.c:
+	Using -j to update saddr.c - perhaps that will make it easier for
+	jslawins to back-merge...
+
+	jeff
+
+	* I2util/I2util/addr.c:
+	Accepting I2SockAddrLen() from jslawins branch into head.
+
+	jeff
+
+	* I2util/I2util/saddr.c: pulling jslawins fix into head. (thanks)
+
+	jeff
+
+2006-06-18  jeremian  <jeremian@foo.local>
+
+	* I2util/I2util/ErrLogImmediate.c, I2util/I2util/errlog.h:
+	Added the possibility to log immediately without the new line.
+
+2006-06-17  jeremian  <jeremian@foo.local>
+
+	* I2util/I2util/addr.c: Added the implementation of the I2AddrSockLen.
+
+	* I2util/I2util/saddr.c: Fixed the bug in I2SockAddrIsLoopback.
+
+2006-06-08  boote  <boote@foo.local>
+
+	* I2util/I2util/saddr.c: typo.
+
+2006-06-07  boote  <boote@foo.local>
+
+	* I2util/I2util/saddr.c:
+	Incorporate patch from (jeremia@poczta.fm to fix I2SockAddrEqual).
+
+	jeff
+
+2006-05-25  boote  <boote@foo.local>
+
+	* doc/owfetch.man, doc/owstats.man:
+	These reference the reordering url too.
+
+	* doc/owping.man: Changing to make reordering url work.
+
+2006-05-24  boote  <boote@foo.local>
+
+	* CHANGELOG: New changes for OWAMP_2_0c release.
+
+	jeff
 
 	* owamp/endpoint.c:
 	Initialize timestamp structure for missing-packet record.
 
 	jeff
 
-2006-05-23  Jeff W. Boote  <boote@packrat.internet2.edu>
+2006-05-23  boote  <boote@foo.local>
 
 	* configure.ac: prepare 2.0c release.
 
@@ -27,7 +339,7 @@
 
 	jeff
 
-2006-05-11  Jeff W. Boote  <boote@packrat.internet2.edu>
+2006-05-11  boote  <boote@foo.local>
 
 	* doc/Makefile.am: Adding owup.man into man1 targets.
 
@@ -45,13 +357,13 @@
 
 	jeff
 
-2006-04-18  Jeff W. Boote  <boote@packrat.internet2.edu>
+2006-04-18  boote  <boote@foo.local>
 
 	* CHANGELOG: changelog for 2.0b release.
 
 	jeff
 
-2006-04-09  Jeff W. Boote  <boote@packrat.internet2.edu>
+2006-04-09  boote  <boote@foo.local>
 
 	* doc/index.html: Prepare for 2.0b release. (ITEC only release)
 
@@ -68,7 +380,7 @@
 
 	jeff
 
-2006-04-07  Jeff W. Boote  <boote@packrat.internet2.edu>
+2006-04-07  boote  <boote@foo.local>
 
 	* owamp/api.c, owamp/endpoint.c, owamp/io.c, owamp/owamp.h, owamp/owampP.h, owamp/protocol.c, owamp/stats.c, owampd/owampd.c, owampd/policy.c, owping/owping.c, powstream/powstream.c:
 	Removed DetachProcess context option I added last week.
@@ -132,7 +444,7 @@
 
 	jeff
 
-2006-03-30  Jeff W. Boote  <boote@packrat.internet2.edu>
+2006-03-30  boote  <boote@foo.local>
 
 	* owamp/endpoint.c, owamp/owamp.h, owamp/protocol.c, powstream/powstream.c, powstream/powstreamP.h:
 	Modified signal handling with regard to early termination of tests
@@ -176,7 +488,7 @@
 
 	jeff
 
-2006-03-25  Jeff W. Boote  <boote@packrat.internet2.edu>
+2006-03-25  boote  <boote@foo.local>
 
 	* owamp/stats.c: Adding cast so loss percent is calculated correctly.
 
@@ -185,7 +497,7 @@
 
 	jeff
 
-2006-03-23  Jeff W. Boote  <boote@packrat.internet2.edu>
+2006-03-23  boote  <boote@foo.local>
 
 	* owampd/owampd.c, owping/owping.c: owampd.c
 	    The 'starttime' variable was not being initialized if the
@@ -234,7 +546,7 @@
 
 	jeff
 
-2006-03-15  Jeff W. Boote  <boote@packrat.internet2.edu>
+2006-03-15  boote  <boote@foo.local>
 
 	* CHANGELOG: Updating changelog for 2.0 release.
 
@@ -292,7 +604,7 @@
 
 	jeff
 
-2006-03-14  Jeff W. Boote  <boote@packrat.internet2.edu>
+2006-03-14  boote  <boote@foo.local>
 
 	* I2util/I2util/io.c, owamp/endpoint.c, owampd/fts.c, owampd/owampd.c, owampd/owampdP.h, owping/owping.c, owping/owpingP.h:
 	Mostly corrections for 64-bit FreeBSD. (plus one bug fix in endpoint.c)
@@ -327,7 +639,7 @@
 
 	jeff
 
-2006-03-13  Jeff W. Boote  <boote@packrat.internet2.edu>
+2006-03-13  boote  <boote@foo.local>
 
 	* I2util/I2util/addr.c, I2util/I2util/io.c, I2util/I2util/io.h, I2util/I2util/util.h, owamp/endpoint.c, owamp/protocol.c, powstream/powstream.c:
 	I2util:
@@ -344,7 +656,7 @@
 
 	jeff
 
-2006-03-10  Jeff W. Boote  <boote@packrat.internet2.edu>
+2006-03-10  boote  <boote@foo.local>
 
 	* LICENSE, README: changes for 2.0 release.
 
@@ -380,7 +692,7 @@
 
 	jeff
 
-2006-03-09  Jeff W. Boote  <boote@packrat.internet2.edu>
+2006-03-09  boote  <boote@foo.local>
 
 	* owamp/sapi.c:
 	Removing #define of _GNU_SOURCE. I am moving that into the autoconf
@@ -401,13 +713,13 @@
 
 	jeff
 
-2006-03-08  Jeff W. Boote  <boote@packrat.internet2.edu>
+2006-03-08  boote  <boote@foo.local>
 
 	* doc/Makefile.am: Forgot owstats.man and owfetch.man in man targets.
 
 	jeff
 
-2006-03-07  Jeff W. Boote  <boote@packrat.internet2.edu>
+2006-03-07  boote  <boote@foo.local>
 
 	* doc/Makefile.am: Want to actually install documentation...
 
@@ -423,7 +735,7 @@
 
 	jeff
 
-2006-02-17  Jeff W. Boote  <boote@packrat.internet2.edu>
+2006-02-17  boote  <boote@foo.local>
 
 	* owampd/owampd.c, powstream/powstream.c: owampd/owampd.c:
 	    Fixing bug found at Jt Tech's workshop. (null uid specified would
@@ -437,7 +749,7 @@
 
 	jeff
 
-2006-02-04  Jeff W. Boote  <boote@packrat.internet2.edu>
+2006-02-04  boote  <boote@foo.local>
 
 	* configure.ac: Preparing for another distribution: OWAMP_2_0_dev_e
 
@@ -450,11 +762,11 @@
 
 	jeff
 
-2006-01-06  Jeff W. Boote  <boote@packrat.internet2.edu>
+2006-01-06  boote  <boote@foo.local>
 
 	* I2util/I2util/addr.c: add cast to remove compiler warning.
 
-2006-01-05  Jeff W. Boote  <boote@packrat.internet2.edu>
+2006-01-05  boote  <boote@foo.local>
 
 	* owampd/owampd.c, owampd/policy.c, owampd/policy.h:
 	Breaking up policy so that reading of key files is done with
@@ -490,7 +802,7 @@
 
 	* configure.ac: Bump version again.
 
-2006-01-04  Jeff W. Boote  <boote@packrat.internet2.edu>
+2006-01-04  boote  <boote@foo.local>
 
 	* owamp/sapi.c: Fix uninitialized variable.
 
@@ -500,7 +812,7 @@
 
 	* configure.ac: bumping version number.
 
-2005-12-23  Jeff W. Boote  <boote@packrat.internet2.edu>
+2005-12-23  boote  <boote@foo.local>
 
 	* I2util/I2util/addr.c, doc/details.html, doc/index.html, doc/owampd.conf.man, doc/owampd.man, doc/owfetch.man, doc/owping.man, doc/owstats.man, owamp/sapi.c, owamp/stats.c, owampd/owampd.c, owping/owping.c:
 	addr.c:
@@ -553,7 +865,7 @@
 	    in the spec. (Saving only packet records earlier than the
 	    last actual received packet.)
 
-2005-12-20  Jeff W. Boote  <boote@packrat.internet2.edu>
+2005-12-20  boote  <boote@foo.local>
 
 	* configure.ac, powstream/Makefile.am:
 	Removing direct specification of -lm from the powstream makefile. It
@@ -595,7 +907,7 @@
 
 	jeff
 
-2005-12-16  Jeff W. Boote  <boote@packrat.internet2.edu>
+2005-12-16  boote  <boote@foo.local>
 
 	* owampd/policy.c, powstream/powstream.c, powstream/powstreamP.h, owamp/endpoint.c, owamp/stats.c, owampd/owampd.c, owampd/owampdP.h:
 	endpoint.c:
@@ -612,13 +924,13 @@
 	powstream.c:
 	    Added new stats stuff.
 
-2005-12-13  Jeff W. Boote  <boote@packrat.internet2.edu>
+2005-12-13  boote  <boote@foo.local>
 
 	* configure.ac: Autoconf bs to link -lm.
 
 	jeff
 
-2005-12-10  Jeff W. Boote  <boote@packrat.internet2.edu>
+2005-12-10  boote  <boote@foo.local>
 
 	* owamp/Makefile.am, owamp/api.c, owamp/endpoint.c, owamp/owamp.h, owamp/protocol.c, owamp/schedule.c, owamp/stats.c, owping/owping.c, owping/owpingP.h, powstream/powstream.c, powstream/powstreamP.h, I2util/I2util/table.c, I2util/I2util/table.h, doc/owping.man:
 	I2Util:
@@ -644,13 +956,13 @@
 
 	jeff
 
-2005-11-03  Jeff W. Boote  <boote@packrat.internet2.edu>
+2005-11-03  boote  <boote@foo.local>
 
 	* doc/owstats.man: Updated the -R option to include the TTL field.
 
 	jeff
 
-2005-10-26  Jeff W. Boote  <boote@packrat.internet2.edu>
+2005-10-26  boote  <boote@foo.local>
 
 	* owamp/api.c, owamp/endpoint.c, owamp/io.c, owampd/owampd.c, powstream/powstream.c:
 	Fixed some signal handling problems in owamp.
@@ -688,7 +1000,7 @@
 
 	jeff
 
-2005-10-20  Jeff W. Boote  <boote@packrat.internet2.edu>
+2005-10-20  boote  <boote@foo.local>
 
 	* owamp/api.c, owamp/endpoint.c, owamp/owamp.h, owamp/owampP.h, owamp/protocol.c, powstream/powstream.c, powstream/powstreamP.h:
 	owamp library:
@@ -702,7 +1014,7 @@
 
 	jeff
 
-2005-10-15  Jeff W. Boote  <boote@packrat.internet2.edu>
+2005-10-15  boote  <boote@foo.local>
 
 	* owamp/api.c, owamp/endpoint.c, owamp/owamp.h, owamp/owampP.h, owamp/protocol.c, owamp/sapi.c, powstream/powstream.c, powstream/powstreamP.h:
 	Added functionality to terminate a powstream session early by sending
@@ -715,7 +1027,7 @@
 	with differences between current owp files and future files that
 	have ttl in them.
 
-2005-10-12  Jeff W. Boote  <boote@packrat.internet2.edu>
+2005-10-12  boote  <boote@foo.local>
 
 	* owamp/api.c, owamp/arithm64.c, owamp/capi.c, owamp/context.c, owamp/endpoint.c, owamp/error.c, owamp/io.c, owamp/owamp.h, owamp/owampP.h, owamp/protocol.c, owamp/rijndael-alg-fst.c, owamp/rijndael-api-fst.c, owamp/rijndael-test-fst.c, owamp/sapi.c, owamp/schedule.c, owamp/time.c, owampd/owampd.c, owampd/owampdP.h, owampd/policy.c, owampd/policy.h, owping/owping.c, test/owtvec.c:
 	Modified all formatting to remove tabs and use 4 char indents.
@@ -733,7 +1045,7 @@
 
 	jeff
 
-2005-10-06  Jeff W. Boote  <boote@packrat.internet2.edu>
+2005-10-06  boote  <boote@foo.local>
 
 	* owamp/api.c, owamp/endpoint.c, owamp/owampP.h, owamp/time.c, powstream/powstream.c:
 	Fixed several bugs that were exposed by running on OS X:
@@ -787,7 +1099,7 @@
 
 	jeff
 
-2005-09-30  Jeff W. Boote  <boote@packrat.internet2.edu>
+2005-09-30  boote  <boote@foo.local>
 
 	* powstream/powstream.c, powstream/powstreamP.h:
 	Checkpoint. powstream is currently a mess.
@@ -830,7 +1142,7 @@
 
 	jeff
 
-2005-08-28  Jeff W. Boote  <boote@packrat.internet2.edu>
+2005-08-28  boote  <boote@foo.local>
 
 	* I2util/doc/aespasswd.man:
 	Added a some explanitory text that mentions the name of the bwctld.keys and
@@ -838,14 +1150,14 @@
 
 	jeff
 
-2005-07-17  Jeff W. Boote  <boote@packrat.internet2.edu>
+2005-07-17  boote  <boote@foo.local>
 
 	* I2util/I2util/ErrLogSyslog.c:
 	Adding newline to fprintf output of PERROR code.
 
 	jeff
 
-2005-07-16  Jeff W. Boote  <boote@packrat.internet2.edu>
+2005-07-16  boote  <boote@foo.local>
 
 	* I2util/config/c-syslog-perror.m4, I2util/configure.ac:
 	Adding autoconf magic for determining if the OS syslog supports LOG_PERROR.
@@ -858,7 +1170,7 @@
 
 	jeff
 
-2005-07-15  Jeff W. Boote  <boote@packrat.internet2.edu>
+2005-07-15  boote  <boote@foo.local>
 
 	* I2util/I2util/ErrLogSyslog.c, I2util/I2util/Options.c, I2util/I2util/conf.c, I2util/I2util/readpassphrase.c, I2util/configure.ac:
 	Porting to Solaris... This compiles, I have yet to do any real testing.
@@ -897,7 +1209,7 @@
 	util.c:
 	    Adding cast from char to int for all isspace/isdigit args.
 
-2005-07-14  Jeff W. Boote  <boote@packrat.internet2.edu>
+2005-07-14  boote  <boote@foo.local>
 
 	* I2util/I2util/readpassphrase.h: Removing cdefs here too...
 
@@ -918,7 +1230,7 @@
 
 	jeff
 
-2005-06-21  Jeff W. Boote  <boote@packrat.internet2.edu>
+2005-06-21  boote  <boote@foo.local>
 
 	* owamp/protocol.c, owamp/sapi.c:
 	I introduced a few bugs in the new version with regard to authenticated
@@ -931,7 +1243,7 @@
 
 	jeff
 
-2005-06-20  Jeff W. Boote  <boote@packrat.internet2.edu>
+2005-06-20  boote  <boote@foo.local>
 
 	* owampd/policy.c:
 	Corrected size of copy. (Only the first 4 chars of a username were actually
@@ -939,14 +1251,14 @@
 
 	jeff
 
-2005-05-10  Jeff W. Boote  <boote@packrat.internet2.edu>
+2005-05-10  boote  <boote@foo.local>
 
 	* owamp/api.c, owampd/owampd.c, owping/owping.c, powstream/powstream.c, powstream/powstreamP.h:
 	Added support for ttl and the new file API into powstream.
 
 	jeff
 
-2005-05-09  Jeff W. Boote  <boote@packrat.internet2.edu>
+2005-05-09  boote  <boote@foo.local>
 
 	* CHANGELOG, configure.ac: Preparing for a 2.0dev-a release.
 
@@ -958,7 +1270,7 @@
 
 	jeff
 
-2005-05-06  Jeff W. Boote  <boote@packrat.internet2.edu>
+2005-05-06  boote  <boote@foo.local>
 
 	* doc/owampd.man, owamp/capi.c, owamp/endpoint.c, owamp/sapi.c, owampd/policy.c:
 	owampd.man:
@@ -974,7 +1286,7 @@
 
 	jeff
 
-2005-05-03  Jeff W. Boote  <boote@packrat.internet2.edu>
+2005-05-03  boote  <boote@foo.local>
 
 	* conf/owampd.limits, doc/owping.man, owping/owping.c:
 	Changed the default test back to 10hz. (Stas convinced me it is better.)
@@ -998,7 +1310,7 @@
 
 	jeff
 
-2005-05-02  Jeff W. Boote  <boote@packrat.internet2.edu>
+2005-05-02  boote  <boote@foo.local>
 
 	* owping/owping.c: syntax...
 
@@ -1016,7 +1328,7 @@
 
 	jeff
 
-2005-04-30  Jeff W. Boote  <boote@packrat.internet2.edu>
+2005-04-30  boote  <boote@foo.local>
 
 	* owping/owping.c: Oops - syntax.
 
@@ -1028,7 +1340,7 @@
 
 	jeff
 
-2005-04-29  Jeff W. Boote  <boote@packrat.internet2.edu>
+2005-04-29  boote  <boote@foo.local>
 
 	* configure.ac, owamp/endpoint.c, owamp/owampP.h:
 	Removed all shm stuff. The portability issues were not worth the marginal
@@ -1036,7 +1348,7 @@
 
 	jeff
 
-2005-04-28  Jeff W. Boote  <boote@packrat.internet2.edu>
+2005-04-28  boote  <boote@foo.local>
 
 	* owamp/api.c, owamp/capi.c, owamp/endpoint.c, owamp/owampP.h, owamp/sapi.c, owping/owping.c:
 	Initial port to Linux, and
@@ -1051,7 +1363,7 @@
 
 	jeff
 
-2005-04-27  Jeff W. Boote  <boote@packrat.internet2.edu>
+2005-04-27  boote  <boote@foo.local>
 
 	* owamp/api.c, owamp/endpoint.c, owping/owping.c:
 	Added shm file sizing.
@@ -1088,7 +1400,7 @@
 
 	jeff
 
-2005-04-26  Jeff W. Boote  <boote@packrat.internet2.edu>
+2005-04-26  boote  <boote@foo.local>
 
 	* owamp/api.c, owamp/endpoint.c, owamp/owamp.h, owamp/protocol.c, owamp/sapi.c, owampd/policy.c, owping/owping.c:
 	Bug fixes for new code:
@@ -1112,7 +1424,7 @@
 
 	jeff
 
-2005-04-22  Jeff W. Boote  <boote@packrat.internet2.edu>
+2005-04-22  boote  <boote@foo.local>
 
 	* powstream/powstream.c: Ugh. - typo.
 
@@ -1122,7 +1434,7 @@
 
 	jeff
 
-2005-04-21  Jeff W. Boote  <boote@packrat.internet2.edu>
+2005-04-21  boote  <boote@foo.local>
 
 	* owping/owping.c, powstream/powstream.c:
 	Modified api call for reading an owp file header.
@@ -1139,7 +1451,7 @@
 
 	jeff
 
-2005-04-20  Jeff W. Boote  <boote@packrat.internet2.edu>
+2005-04-20  boote  <boote@foo.local>
 
 	* owamp/api.c, owamp/arithm64.c, owamp/capi.c, owamp/endpoint.c, owamp/io.c, owamp/owamp.h, owamp/owampP.h, owamp/protocol.c, owamp/sapi.c, owampd/owampd.c, owping/owping.c, powstream/powstream.c, I2util/aespasswd/aespasswd.c, doc/details.html, doc/index.html, doc/owamp_arch.png:
 	I2util/
@@ -1168,31 +1480,31 @@
 
 	jeff
 
-2005-03-15  Jeff W. Boote  <boote@packrat.internet2.edu>
+2005-03-15  boote  <boote@foo.local>
 
 	* I2util/I2util/io.c, I2util/I2util/random.c, I2util/I2util/random.h, I2util/I2util/table.c:
 	better comments.
 
 	jeff
 
-2004-12-02  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-12-02  boote  <boote@foo.local>
 
 	* doc/index.html: Added a link to J-OWAMP.
 
-2004-10-05  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-10-05  boote  <boote@foo.local>
 
 	* owamp/capi.c, owamp/endpoint.c, owamp/owamp.h, owamp/protocol.c, owamp/sapi.c:
 	Adding some new failure (accept) values into code.
 
 	jeff
 
-2004-09-28  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-09-28  boote  <boote@foo.local>
 
 	* owamp/endpoint.c: remove unused vars.
 
 	jeff
 
-2004-09-27  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-09-27  boote  <boote@foo.local>
 
 	* owamp/endpoint.c: typo's.
 
@@ -1216,7 +1528,7 @@
 
 	jeff
 
-2004-09-23  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-09-23  boote  <boote@foo.local>
 
 	* powstream/powstream.c:
 	correct summary data for case of duplicate packets.
@@ -1252,7 +1564,7 @@
 
 	jeff
 
-2004-09-22  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-09-22  boote  <boote@foo.local>
 
 	* owping/owping.c, owping/owpingP.h: reformat to 4-char tab stops.
 
@@ -1262,7 +1574,7 @@
 
 	jeff
 
-2004-09-10  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-09-10  boote  <boote@foo.local>
 
 	* I2util/I2util/ErrLog.c, I2util/I2util/ErrLogSyslog.c, I2util/I2util/conf.c, I2util/I2util/conf.h, I2util/I2util/errlog.h:
 	Merging SERVLESS_CLIENT changes into HEAD.
@@ -1282,7 +1594,7 @@
 		byte function uses k == 1024.
 	jeff
 
-2004-09-09  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-09-09  boote  <boote@foo.local>
 
 	* I2util/I2util/ErrLogSyslog.c, I2util/I2util/errlog.h:
 	SYSLOG_NAMES is painful...
@@ -1303,7 +1615,7 @@
 
 	jeff (still need to test.)
 
-2004-08-23  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-08-23  boote  <boote@foo.local>
 
 	* owampd/policy.c: Added more info to debug messages.
 
@@ -1311,7 +1623,7 @@
 
 	jeff
 
-2004-08-20  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-08-20  boote  <boote@foo.local>
 
 	* I2util/I2util/conf.c:
 	syntax errors - stand-alone client now compiles. (now onto real testing...)
@@ -1324,7 +1636,7 @@
 
 	jeff
 
-2004-07-26  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-07-26  boote  <boote@foo.local>
 
 	* owamp/capi.c, owamp/endpoint.c, owamp/sapi.c, owamp/time.c:
 	Hacks to port to apple. (Notice this is only in the OWAMP_1_6f_apple
@@ -1338,13 +1650,13 @@
 
 	jeff
 
-2004-07-08  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-07-08  boote  <boote@foo.local>
 
 	* doc/index.html: Added a recommended hardware section.
 
 	jeff
 
-2004-06-29  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-06-29  boote  <boote@foo.local>
 
 	* owamp/endpoint.c, owampd/policy.c:
 	Initialize 'rc' so fine optimized code still works... Ugh.
@@ -1354,7 +1666,7 @@
 
 	jeff
 
-2004-06-28  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-06-28  boote  <boote@foo.local>
 
 	* owamp/endpoint.c, owamp/owampP.h:
 	Modified socket options to be AF specific. (ttl becomes hoplimit in IPv6)
@@ -1414,7 +1726,7 @@
 
 	jeff
 
-2004-06-19  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-06-19  boote  <boote@foo.local>
 
 	* owamp/api.c, owamp/endpoint.c, owamp/time.c, I2util/I2util/ErrLogSyslog.c, I2util/I2util/hex.c, I2util/I2util/hex.h, I2util/I2util/table.c:
 	Some compile errors fixed... will fix the rest next week.
@@ -1443,7 +1755,7 @@
 
 	jeff
 
-2004-06-09  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-06-09  boote  <boote@foo.local>
 
 	* configure.ac, doc/index.html: Preparing to tag version OWAMP_1_6f.
 
@@ -1504,7 +1816,7 @@
 		value being lost, and not saved in the owp files with the
 		rest of the TestRequest record.
 
-2004-06-08  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-06-08  boote  <boote@foo.local>
 
 	* owping/owping.c: shortcutting ephemeral specification...
 
@@ -1517,7 +1829,7 @@
 
 	jeff
 
-2004-06-07  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-06-07  boote  <boote@foo.local>
 
 	* owamp/capi.c, owamp/endpoint.c, owamp/owamp.h:
 	Added hooks to allow a port range to be specified for the test stream.
@@ -1527,7 +1839,7 @@
 
 	jeff
 
-2004-06-04  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-06-04  boote  <boote@foo.local>
 
 	* doc/owping.man: Adding just a bit more...
 
@@ -1548,7 +1860,7 @@
 
 	jeff
 
-2004-05-28  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-05-28  boote  <boote@foo.local>
 
 	* owampd/owampd.c, owampd/policy.c: Oops - missed a few references.
 
@@ -1567,7 +1879,7 @@
 
 	jeff
 
-2004-05-27  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-05-27  boote  <boote@foo.local>
 
 	* owamp/endpoint.c, owamp/protocol.c, owampd/owampd.c, owampd/policy.c, owping/owping.c:
 	Corrected a number of bugs in the AES implementation within the test packets.
@@ -1584,14 +1896,14 @@
 
 	jeff
 
-2004-05-21  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-05-21  boote  <boote@foo.local>
 
 	* owampd/owampd.c:
 	close file descriptors in new owampd-control processes.
 
 	jeff
 
-2004-05-20  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-05-20  boote  <boote@foo.local>
 
 	* owping/owpingP.h, powstream/powstream.c, powstream/powstreamP.h, test/owtvec.c, bootstrap, owamp/context.c, owamp/endpoint.c, owamp/owamp.h, owamp/owampP.h, owamp/time.c, owping/owping.c:
 	bootstrap: corrected to work with later versions of autoconf.
@@ -1613,7 +1925,7 @@
 
 	jeff
 
-2004-05-13  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-05-13  boote  <boote@foo.local>
 
 	* doc/index.html: fixed typo.
 
@@ -1643,7 +1955,7 @@
 
 	jeff
 
-2004-05-12  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-05-12  boote  <boote@foo.local>
 
 	* doc/index.html: Corrected bold in title.
 
@@ -1664,7 +1976,7 @@
 
 	jeff
 
-2004-05-11  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-05-11  boote  <boote@foo.local>
 
 	* doc/details.html, doc/owampd.conf.man, doc/owampd.man, doc/owfetch.man, doc/owping.man, doc/owstats.man:
 	details.html:
@@ -1676,12 +1988,12 @@
 
 	jeff
 
-2004-05-10  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-05-10  boote  <boote@foo.local>
 
 	* doc/owampd.man, doc/owping.man, doc/owstats.man:
 	Incorporated Susan's edits.
 
-2004-05-07  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-05-07  boote  <boote@foo.local>
 
 	* doc/owampd.man: spell checked.
 
@@ -1707,7 +2019,7 @@
 
 	jeff
 
-2004-05-05  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-05-05  boote  <boote@foo.local>
 
 	* owping/owping.c, owping/owpingP.h: Removing the '-V' option.
 
@@ -1717,13 +2029,13 @@
 
 	jeff
 
-2004-05-04  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-05-04  boote  <boote@foo.local>
 
 	* doc/details.html, doc/index.html: Incorporating Susan's edits.
 
 	jeff
 
-2004-05-03  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-05-03  boote  <boote@foo.local>
 
 	* doc/details.html, doc/owping.man: Minor changes...
 
@@ -1744,7 +2056,7 @@
 
 	jeff
 
-2004-04-28  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-04-28  boote  <boote@foo.local>
 
 	* bench/timeintervals.c, bench/timesyscall.c:
 	Adding two simple benchmark programs that are being used to make decisions
@@ -1752,13 +2064,13 @@
 
 	jeff
 
-2004-03-24  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-03-24  boote  <boote@foo.local>
 
 	* powstream/powstream.c: Adding message when sig is caught.
 
 	jeff
 
-2004-03-10  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-03-10  boote  <boote@foo.local>
 
 	* owampd/owampd.c: syntax error.
 
@@ -1777,13 +2089,13 @@
 
 	jeff
 
-2004-03-04  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-03-04  boote  <boote@foo.local>
 
 	* I2util/doc/aespasswd.man: Susan's edits.
 
 	jeff
 
-2004-03-03  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-03-03  boote  <boote@foo.local>
 
 	* I2util/bootstrap:
 	Rich, the bootstrap file I was saying you needed to change was the one in
@@ -1791,12 +2103,12 @@
 
 	jeff
 
-2004-03-03  Rich Carlson, e2e, 630-971-8736  <rcarlson@packrat.internet2.edu>
+2004-03-03  rcarlson  <rcarlson@foo.local>
 
 	* I2util/bootstrap:
 	changed bootstrap file for I2util per Jeff Boote comments
 
-2004-03-03  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-03-03  boote  <boote@foo.local>
 
 	* owamp/endpoint.c, owampd/owampd.c: endpoint.c:
 		Changed time error estimates to use "maxerror" instead of "esterror".
@@ -1807,13 +2119,13 @@
 
 	jeff
 
-2004-03-02  Rich Carlson, e2e, 630-971-8736  <rcarlson@packrat.internet2.edu>
+2004-03-02  rcarlson  <rcarlson@foo.local>
 
 	* I2util/config/c-attribute.m4:
 	updated configure.ac to include I2UTILINC functions.  This should allow the
 	NDT web100srv.c code to use the LoadConf function.
 
-2004-02-25  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-02-25  boote  <boote@foo.local>
 
 	* I2util/support/mandoc.cgi: mandoc.cgi:
 		calls man2html using INC path instead of using full path.
@@ -1829,7 +2141,7 @@
 
 	jeff
 
-2004-02-21  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-02-21  boote  <boote@foo.local>
 
 	* I2util/doc/aespasswd.man:
 	Disabled hyphenation in url references in manpages. The hypphenation broke
@@ -1851,7 +2163,7 @@
 
 	jeff
 
-2004-02-17  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-02-17  boote  <boote@foo.local>
 
 	* I2util/Makefile.am, I2util/bootstrap, I2util/configure.ac, I2util/doc/Makefile.am:
 	Modified to support installing of man pages. This took an upgrade of the
@@ -1859,7 +2171,7 @@
 
 	jeff
 
-2004-02-16  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-02-16  boote  <boote@foo.local>
 
 	* I2util/doc/aespasswd.man:
 	Spell checking, and incorporating changes based on Eric's comments.
@@ -1873,7 +2185,7 @@
 
 	jeff
 
-2004-02-14  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-02-14  boote  <boote@foo.local>
 
 	* I2util/doc/aespasswd.man:
 	Adding the last man pages. bwctld.limits.man is not done yet, but it is
@@ -1881,18 +2193,18 @@
 
 	jeff
 
-2004-02-09  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-02-09  boote  <boote@foo.local>
 
 	* I2util/doc/aespasswd.man:
 	bwctl.c: changing so remotehost is attached to the -c/-s options
 
 	bwctl.1: checkpoint
 
-2004-02-08  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-02-08  boote  <boote@foo.local>
 
 	* I2util/doc/aespasswd.man: Adding manpage for aespasswd.
 
-2004-01-16  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-01-16  boote  <boote@foo.local>
 
 	* owamp/endpoint.c:
 	Try again... Wasn't handling negative offsets correctly.
@@ -1913,19 +2225,19 @@
 
 	jeff
 
-2004-01-14  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-01-14  boote  <boote@foo.local>
 
 	* test/owtvec.c: fix signed/unsigned compare mistake.
 
 	jeff
 
-2004-01-13  Jeff W. Boote  <boote@packrat.internet2.edu>
+2004-01-13  boote  <boote@foo.local>
 
 	* configure.ac: incrementing revision number for hawaii tracking.
 
 	jeff
 
-2003-12-19  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-12-19  boote  <boote@foo.local>
 
 	* I2util/I2util/table.c:
 	Hmm - things were confused. There was a length and a num_elements entry.
@@ -1978,7 +2290,7 @@
 
 	jeff
 
-2003-12-18  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-12-18  boote  <boote@foo.local>
 
 	* I2util/I2util/conf.c, I2util/I2util/readpassphrase.c:
 	Now compiles on Linux.
@@ -1992,7 +2304,7 @@
 
 	jeff
 
-2003-12-17  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-12-17  boote  <boote@foo.local>
 
 	* I2util/I2util/md5.c, I2util/I2util/md5.copyright, I2util/I2util/md5.h, I2util/I2util/readpassphrase.c, I2util/I2util/readpassphrase.h, I2util/I2util/util.h, I2util/I2util/ErrLog.c, I2util/I2util/ErrLogSyslog.c, I2util/I2util/Makefile.am, I2util/I2util/conf.c, I2util/I2util/conf.h, I2util/I2util/errlogsyslog.h, I2util/I2util/hex.c, I2util/I2util/hex.h:
 	I2util:
@@ -2011,17 +2323,17 @@
 
 	jeff
 
-2003-12-08  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-12-08  boote  <boote@foo.local>
 
 	* owamp/capi.c, owampd/policy.c: Remove compiler warnings.
 
 	jeff
 
-2003-11-17  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-11-17  boote  <boote@foo.local>
 
 	* I2util/I2util/saddr.c: blah
 
-2003-11-16  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-11-16  boote  <boote@foo.local>
 
 	* I2util/I2util/saddr.c, I2util/I2util/saddr.h:
 	Adding test for "loopback" to allow a test. "loopback" is implicitly
@@ -2029,14 +2341,14 @@
 
 	jeff
 
-2003-11-07  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-11-07  boote  <boote@foo.local>
 
 	* conf/Makefile.am, conf/owampd.passwd, owampd/owampd.c, owampd/owampdP.h:
 	Removed unused owampd.passwd file from owamp.
 
 	jeff
 
-2003-10-29  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-10-29  boote  <boote@foo.local>
 
 	* owamp/endpoint.c:
 	fixed a small bug that could happen if a child process somehow hung.
@@ -2046,14 +2358,14 @@
 
 	jeff
 
-2003-10-21  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-10-21  boote  <boote@foo.local>
 
 	* test/owtvec.c:
 	byte-swap the OWPNum64 values before hex-encoding them for output.
 
 	jeff
 
-2003-10-20  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-10-20  boote  <boote@foo.local>
 
 	* Makefile.am, configure.ac, owamp/owamp.h, owamp/schedule.c, test/Makefile.am, test/owtvec.c:
 	Adding a program to generate test vectors.
@@ -2066,7 +2378,7 @@
 
 	jeff
 
-2003-10-01  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-10-01  boote  <boote@foo.local>
 
 	* owampd/policy.h, conf/owampd.limits, owamp/api.c, owamp/owamp.h, owamp/protocol.c, owamp/sapi.c:
 	owampd: Changed the bandwidth limit to be bits/second instead of bytes/second.
@@ -2077,7 +2389,7 @@
 
 	jeff
 
-2003-09-26  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-09-26  boote  <boote@foo.local>
 
 	* powstream/powstream.c, owamp/sapi.c:
 	sapi.c:	modified the order of ProcessStartSession to remove a potential
@@ -2088,7 +2400,7 @@
 
 	jeff
 
-2003-09-19  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-09-19  boote  <boote@foo.local>
 
 	* powstream/powstream.c: Adding -r option to -h message.
 
@@ -2096,7 +2408,7 @@
 
 	jeff
 
-2003-07-15  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-07-15  boote  <boote@foo.local>
 
 	* configure.ac: removed unused stuff.
 
@@ -2111,14 +2423,14 @@
 
 	jeff
 
-2003-07-09  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-07-09  boote  <boote@foo.local>
 
 	* powstream/powstream.c:
 	Corrected bug that caused lost records to be reported incorrectly.
 
 	jeff
 
-2003-06-15  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-06-15  boote  <boote@foo.local>
 
 	* powstream/powstreamP.h: Forgot to add element to struct.
 
@@ -2134,7 +2446,7 @@
 
 	jeff
 
-2003-06-14  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-06-14  boote  <boote@foo.local>
 
 	* powstream/powstream.c: more diagnostics...
 
@@ -2190,33 +2502,33 @@
 
 	jeff
 
-2003-06-13  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-06-13  boote  <boote@foo.local>
 
 	* powstream/powstream.c, powstream/powstreamP.h:
 	Fixed max/min problem. (The problem was that I forgot to implement it. Sigh.)
 
 	jeff
 
-2003-05-28  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-05-28  boote  <boote@foo.local>
 
 	* powstream/powstream.c: Fixed bug with -b flag.
 
 	jeff
 
-2003-05-27  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-05-27  boote  <boote@foo.local>
 
 	* powstream/Makefile.am, powstream/powstream.c, powstream/powstreamP.h:
 	Added an option to powstream to make it compute summary data on the fly.
 
 	jeff
 
-2003-05-02  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-05-02  boote  <boote@foo.local>
 
 	* owamp/sapi.c: Don't set V6 sockopts unless you have a V6 socket!
 
 	jeff
 
-2003-04-03  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-04-03  boote  <boote@foo.local>
 
 	* owping/Makefile.am: I thought $(RM) was standard?
 
@@ -2229,7 +2541,7 @@
 
 	jeff
 
-2003-03-28  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-03-28  boote  <boote@foo.local>
 
 	* conf/owampd.conf, conf/owampd.limits, owamp/api.c, owamp/capi.c, owamp/endpoint.c, owping/owping.c, owping/owpingP.h:
 	owping:
@@ -2242,28 +2554,28 @@
 
 	jeff
 
-2003-03-27  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-03-27  boote  <boote@foo.local>
 
 	* owamp/sapi.c:
 	Make sure IPV6_V6ONLY sockopt is 0 for server sock so dual-stack will work.
 
 	jeff
 
-2003-03-24  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-03-24  boote  <boote@foo.local>
 
 	* owamp/protocol.c:
 	Grr! - missing packet records are valid to write as well as read!
 
 	jeff
 
-2003-03-21  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-03-21  boote  <boote@foo.local>
 
 	* owamp/api.c, owamp/protocol.c:
 	Ugh! Yes - a "missing packet" record is a valid record.
 
 	jeff
 
-2003-03-20  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-03-20  boote  <boote@foo.local>
 
 	* owampd/policy.c:
 	Fixed another case where an IPv4 address was presented as a v6 "v4 mapped"
@@ -2289,7 +2601,7 @@
 
 	jeff
 
-2003-03-19  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-03-19  boote  <boote@foo.local>
 
 	* I2util/I2util/saddr.h: fix bug. - I like descriptive comments.
 
@@ -2311,7 +2623,7 @@
 
 	jeff
 
-2003-03-18  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-03-18  boote  <boote@foo.local>
 
 	* owamp/api.c, owamp/capi.c, owamp/context.c, owamp/endpoint.c, owamp/owamp.h, owamp/owampP.h, owamp/protocol.c, owamp/sapi.c, owampd/owampd.c, owampd/policy.c, owampd/policy.h, conf/owampd.conf, conf/owampd.limits:
 	checkpoint - fixes to policy and signal handling.
@@ -2322,7 +2634,7 @@
 
 	jeff
 
-2003-03-17  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-03-17  boote  <boote@foo.local>
 
 	* powstream/powstream.c, owamp/endpoint.c, owamp/owamp.h, owamp/owampP.h, owamp/protocol.c, owamp/sapi.c, owampd/owampd.c, owping/owping.c:
 	Just fixed compile errors from laptop code changes.
@@ -2331,7 +2643,7 @@
 
 	jeff
 
-2003-03-16  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-03-16  boote  <boote@foo.local>
 
 	* owamp/api.c, owamp/capi.c, owamp/context.c, owamp/endpoint.c, owamp/owampP.h, owamp/protocol.c, owamp/sapi.c, owampd/policy.c:
 	check-point. (This may not even completely compile - I edited a bunch on
@@ -2339,7 +2651,7 @@
 
 	jeff
 
-2003-03-10  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-03-10  boote  <boote@foo.local>
 
 	* owampd/owampd.c, owampd/policy.c, conf/owampd.limits:
 	Did some limited testing... Fixed a few dumb bugs.
@@ -2356,7 +2668,7 @@
 
 	jeff
 
-2003-03-08  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-03-08  boote  <boote@foo.local>
 
 	* owampd/policy.c, owampd/policy.h:
 	Ok - I *believe* I have all policy done with the exception of writing
@@ -2371,7 +2683,7 @@
 
 	jeff
 
-2003-03-07  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-03-07  boote  <boote@foo.local>
 
 	* conf/owampd.conf, conf/owampd.limits, owampd/policy.c, owampd/policy.h:
 	check-point.
@@ -2384,7 +2696,7 @@
 	check-point - fixed some run-time bugs and added comments for owampd.limits
 	 file.
 
-2003-03-06  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-03-06  boote  <boote@foo.local>
 
 	* I2util/I2util/saddr.c, I2util/I2util/saddr.h, I2util/I2util/table.c, owamp/api.c, owamp/capi.c, owamp/context.c, owamp/endpoint.c, owamp/error.c, owamp/owamp.h, owamp/owampP.h, owamp/print.c, owamp/read_class2limits.c, owamp/sapi.c, owampd/owampd.c, owampd/owampdP.h, owampd/policy.c, owampd/policy.h, powstream/powstream.c:
 	I2Util:
@@ -2430,7 +2742,7 @@
 
 	jeff
 
-2003-02-28  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-02-28  boote  <boote@foo.local>
 
 	* owampd/conf.c, owampd/conf.h, owampd/policy.c, owampd/policy.h:
 	New file.
@@ -2442,14 +2754,14 @@
 
 	jeff
 
-2003-02-27  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-02-27  boote  <boote@foo.local>
 
 	* owamp/Makefile.am, owamp/access.h, owamp/access2.c, owamp/capi.c, owamp/owamp.h, owamp/owampP.h, owamp/policy.c, owamp/policy.h, owamp/read_class2limits.c, owamp/sapi.c, owampd/owampd.c, owampd/owampdP.h, I2util/I2util/table.h:
 	checkpoint - will not completely compile right now.
 
 	jeff
 
-2003-02-18  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-02-18  boote  <boote@foo.local>
 
 	* powstream/powstream.c: Corrected OWPNum arithmatic.
 
@@ -2465,13 +2777,13 @@
 
 	* LICENSE: New file.
 
-2003-02-10  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-02-10  boote  <boote@foo.local>
 
 	* INSTALL, README: Add a bit more text...
 
 	jeff
 
-2003-02-07  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-02-07  boote  <boote@foo.local>
 
 	* I2util/Makefile.am, Makefile.am, configure.ac: prepare alpha
 
@@ -2494,13 +2806,13 @@
 
 	jeff
 
-2003-02-05  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-02-05  boote  <boote@foo.local>
 
 	* configure.ac: Try using RCS version string...
 
 	jeff
 
-2003-01-29  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-01-29  boote  <boote@foo.local>
 
 	* owamp/api.c, owamp/context.c: Linux fixes...
 
@@ -2541,7 +2853,7 @@
 		Modified to read owd files with "double" format precision in the
 		header for "err". (not yet tested.)
 
-2003-01-26  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-01-26  boote  <boote@foo.local>
 
 	* owamp/api.c, owamp/arithm64.c, owamp/capi.c, owamp/endpoint.c, owamp/owamp.h, owamp/owampP.h, owamp/sapi.c, owamp/schedule.c, owamp/time.c, owping/owping.c, powstream/powstream.c, powstream/powstreamP.h:
 	renamed OWPnum64 to OWPNum64 so it complies with the naming scheme.
@@ -2558,7 +2870,7 @@
 	worked out in my head fairly well at this point, so it should just take
 	a few hours of coding.
 
-2003-01-24  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-01-24  boote  <boote@foo.local>
 
 	* owamp/schedule.c, owamp/time.c, owampd/owampd.c, owping/owping.c, I2util/I2util/table.c, configure.ac, owamp/access.h, owamp/api.c, owamp/capi.c, owamp/endpoint.c, owamp/owamp.h, owamp/policy.c, owamp/policy.h, owamp/protocol.c, owamp/sapi.c:
 	I2util/table.c:
@@ -2578,7 +2890,7 @@
 	owamp/(the rest):
 		Fixed lots of small bugs. Mostly of the data-initialization type.
 
-2003-01-22  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-01-22  boote  <boote@foo.local>
 
 	* Makefile.am, configure.ac, owamp/arithm64.c, owamp/endpoint.c, owamp/protocol.c, owamp/sapi.c, owampd/Makefile.am, owampd/owampd.c, owping/Makefile.am, owping/owping.c, powstream/Makefile.am:
 	Ok - all apps now compile with the exception of owdigest. (Not sure what to
@@ -2597,7 +2909,7 @@
 
 	jeff
 
-2003-01-21  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-01-21  boote  <boote@foo.local>
 
 	* owamp/api.c, owamp/arithm64.c, owamp/arithm64.h, owamp/context.c, owamp/owamp.h, owamp/policy.c, owamp/schedule.c, owamp/time.c:
 	put OWPNum64Mult back in, and searched for all OWPnum64 arithmatic.
@@ -2618,13 +2930,13 @@
 
 	jeff
 
-2003-01-21  karp  <karp@packrat.internet2.edu>
+2003-01-21  karp  <karp@foo.local>
 
 	* exp-spec.txt:
 	An extensive rewrite. Attempted to incorporate Jeff's remarks on the
 	first draft.
 
-2003-01-21  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-01-21  boote  <boote@foo.local>
 
 	* owamp/Makefile.am, owamp/access.h, owamp/api.c, owamp/arithm64.c, owamp/capi.c, owamp/conndata.h, owamp/context.c, owamp/defaults.c, owamp/defaults.h, owamp/endpoint.c, owamp/owamp.h, owamp/owampP.h, owamp/policy.c, owamp/policy.h, owamp/protocol.c, owamp/sapi.c, owamp/schedule.c, owamp/time.c, powstream/powstream.c, powstream/powstreamP.h:
 	Lots of cleanup. Lots of fixed "features". The policy functionality is
@@ -2645,7 +2957,7 @@
 
 	* owamp/policy.c, owamp/policy.h, owamp/schedule.c: New file.
 
-2003-01-14  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-01-14  boote  <boote@foo.local>
 
 	* owamp/arithm64.h, owamp/capi.c, owamp/endpoint.c, owamp/endpoint.h, owamp/owamp.h, owamp/owampP.h, owamp/protocol.c, owamp/sapi.c, owamp/time.c, owamp/Makefile.am, owamp/api.c, owamp/arithm64.c:
 	libowamp.a finally compiles - none of the apps do yet, so obviously this
@@ -2655,7 +2967,7 @@
 
 	jeff
 
-2003-01-12  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-01-12  boote  <boote@foo.local>
 
 	* owamp/owampP.h, owamp/protocol.c, owamp/read_class2limits.c, owamp/sapi.c, owamp/util.c, owamp/Makefile.am, owamp/access.h, owamp/access2.c, owamp/api.c, owamp/capi.c, owamp/context.c, owamp/defaults.c, owamp/defaults.h, owamp/endpoint.c, owamp/error.c, owamp/io.c, owamp/owamp.h:
 	Cleaned up the policy interface. However, the actual policy functions need
@@ -2674,7 +2986,7 @@
 
 	* owamp/defaults.h: New file.
 
-2003-01-10  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-01-10  boote  <boote@foo.local>
 
 	* owamp/api.c, owamp/capi.c, owamp/owamp.h, owamp/owampP.h, owamp/protocol.c, owamp/sapi.c, I2util/I2util/random.c, I2util/I2util/table.c, I2util/I2util/table.h:
 	random.c: simplified.
@@ -2688,7 +3000,7 @@
 
 	jeff
 
-2003-01-04  Jeff W. Boote  <boote@packrat.internet2.edu>
+2003-01-04  boote  <boote@foo.local>
 
 	* owamp/api.c, owamp/arithm64.c, owamp/arithm64.h, owamp/capi.c, owamp/conndata.h, owamp/context.c, owamp/endpoint.c, owamp/io.c, owamp/owamp.h, owamp/owampP.h, owamp/protocol.c, owamp/sapi.c, owamp/time.c, owamp/unixtime.c, owampd/owampd.c, owampd/owampdP.h, owping/owping.c, owping/owpingP.h, powstream/powstream.c, powstream/powstreamP.h:
 	This is a couple of days work toward v5 compliance. It doesn't even currently
@@ -2706,7 +3018,7 @@
 
 	jeff
 
-2002-12-09  karp  <karp@packrat.internet2.edu>
+2002-12-09  karp  <karp@foo.local>
 
 	* exp-spec.txt: First cut at the exponential RNG part of the spec.
 
@@ -2716,14 +3028,14 @@
 	the last one.  It can be used by future implementors of
 	OWAMP to verify correctness of the exponential RNG.
 
-2002-11-27  owamp  <owamp@packrat.internet2.edu>
+2002-11-27  owamp  <owamp@foo.local>
 
 	* owamp/sapi.c:
 	Oops - accidentily checked in a debugging error message yesterday.
 
 	jeff
 
-2002-11-26  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-11-26  boote  <boote@foo.local>
 
 	* configure.ac, owamp/protocol.c, owamp/sapi.c:
 	Adding check for sa_len. FreeBSD getaddrinfo/getnameinfo functions don't work
@@ -2752,12 +3064,12 @@
 
 	jeff
 
-2002-11-08  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-11-08  boote  <boote@foo.local>
 
 	* owamp/access2.c, owamp/sapi.c:
 	Now it will even compile back on freebsd...
 
-2002-11-08  owamp  <owamp@packrat.internet2.edu>
+2002-11-08  owamp  <owamp@foo.local>
 
 	* configure.ac, owamp/owamp.h: fix for linux fseeko brain-damage...
 
@@ -2769,14 +3081,14 @@
 
 	jeff
 
-2002-11-07  owamp  <owamp@packrat.internet2.edu>
+2002-11-07  owamp  <owamp@foo.local>
 
 	* I2util/I2util/ErrLogSyslog.c:
 	Fixed a bug in how syslog.h was included.
 
 	jeff
 
-2002-11-07  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-11-07  boote  <boote@foo.local>
 
 	* powstream/powstream.c, powstream/powstreamP.h:
 	Added syslog facility option.
@@ -2818,7 +3130,7 @@
 
 	jeff
 
-2002-11-06  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-11-06  boote  <boote@foo.local>
 
 	* owamp/endpoint.c, owamp/sapi.c:
 	Fixed errors that occured during failure conditions. i.e. If the endpoint
@@ -2826,20 +3138,20 @@
 
 	jeff
 
-2002-11-05  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-11-05  boote  <boote@foo.local>
 
 	* I2util/I2util/ErrLogSyslog.c, I2util/I2util/errlogsyslog.h, I2util/config/c-syslog-names.m4, I2util/configure.ac:
 	Added functionality to specify syslog facilities/priorities by name.
 
 	jeff
 
-2002-10-28  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-10-28  boote  <boote@foo.local>
 
 	* owampd/owampd.c: owampd now uses syslog.
 
 	jeff
 
-2002-10-25  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-10-25  boote  <boote@foo.local>
 
 	* powstream/powstream.c:
 	Reworked the sig stuff yet again... It is "a little" more simple now.
@@ -2852,18 +3164,18 @@
 
 	jeff
 
-2002-10-25  karp  <karp@packrat.internet2.edu>
+2002-10-25  karp  <karp@foo.local>
 
 	* configure.ac: Added scripts/OWP/Makefile
 
-2002-10-24  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-10-24  boote  <boote@foo.local>
 
 	* owamp/api.c, owamp/owamp.h:
 	Fixed a problem with send/recv children being zombied.
 
 	jeff
 
-2002-10-22  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-10-22  boote  <boote@foo.local>
 
 	* owampd/owampd.c:
 	Modified format of owampd.info file to contain both the pid and the
@@ -2874,19 +3186,19 @@
 
 	jeff
 
-2002-10-18  karp  <karp@packrat.internet2.edu>
+2002-10-18  karp  <karp@foo.local>
 
 	* Makefile.am, configure.ac:
 	Added support for scripts directory Makefile
 
-2002-10-16  karp  <karp@packrat.internet2.edu>
+2002-10-16  karp  <karp@foo.local>
 
 	* owping/owping.c: Fixed losThre default to be 10
 
 	* owampd/owampd.c:
 	Converted command-line options to match the style of owping.
 
-2002-10-10  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-10-10  boote  <boote@foo.local>
 
 	* owamp/endpoint.c, owamp/owamp.h:
 	checkpointing mostly... long weekend.
@@ -2901,7 +3213,7 @@
 
 	jeff
 
-2002-10-05  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-10-05  boote  <boote@foo.local>
 
 	* owamp/capi.c, powstream/powstream.c: owamp/capi.c:
 		Fixed a bug. Error condition was reported fatal, when it should
@@ -2921,7 +3233,7 @@
 
 	jeff
 
-2002-10-04  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-10-04  boote  <boote@foo.local>
 
 	* powstream/powstream.c, powstream/powstreamP.h: powstream:
 		Added -p option: causes it to print the filenames it creates
@@ -2935,7 +3247,7 @@
 
 	jeff
 
-2002-10-03  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-10-03  boote  <boote@foo.local>
 
 	* powstream/powstream.c:
 	powsteam: added powstream specific cmdline args to usage().
@@ -2973,7 +3285,7 @@
 
 	jeff
 
-2002-09-30  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-09-30  boote  <boote@foo.local>
 
 	* owamp/endpoint.c, powstream/powstream.c: endpoint.c:
 		Removed a nasty racecondition that was caused by my misunderstanding
@@ -2991,7 +3303,7 @@
 
 	jeff
 
-2002-09-23  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-09-23  boote  <boote@foo.local>
 
 	* powstream/powstream.c:
 	Added signal handling - SIGHUP now causes it to re-init control connections,
@@ -3003,12 +3315,12 @@
 
 	jeff
 
-2002-09-23  karp  <karp@packrat.internet2.edu>
+2002-09-23  karp  <karp@foo.local>
 
 	* owamp/defaults.c, owamp/sapi.c, owamp/util.c, I2util/I2util/Options.c, I2util/I2util/table.c:
 	Cosmetic changes (tiny).
 
-2002-09-21  karp  <karp@packrat.internet2.edu>
+2002-09-21  karp  <karp@foo.local>
 
 	* owamp/access2.c:
 	Fixed a most evil bug - it only presented itself on linux and,
@@ -3017,7 +3329,7 @@
 	Anyway, a couple of small changes fixed it - and the code looks
 	slightly better too.
 
-2002-09-20  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-09-20  boote  <boote@foo.local>
 
 	* powstream/powstream.c: output lost packets.
 
@@ -3046,7 +3358,7 @@
 
 	jeff
 
-2002-09-19  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-09-19  boote  <boote@foo.local>
 
 	* owamp/api.c, powstream/powstream.c, powstream/powstreamP.h:
 	powstream compiles - but I have not tested at all yet. Gotta go, and wanted
@@ -3054,7 +3366,7 @@
 
 	jeff
 
-2002-09-19  karp  <karp@packrat.internet2.edu>
+2002-09-19  karp  <karp@foo.local>
 
 	* owampd/owampd.c, powstream/powstream.c, powstream/powstreamP.h, owamp/owamp.h:
 	Moved commonly used macros to owamp.h.
@@ -3067,7 +3379,7 @@
 
 	--Tolya
 
-2002-09-19  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-09-19  boote  <boote@foo.local>
 
 	* owping/owping.c: Changed to use new ParseRecords interface.
 
@@ -3090,14 +3402,14 @@
 
 	jeff
 
-2002-09-18  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-09-18  boote  <boote@foo.local>
 
 	* owping/owping.c, owamp/capi.c, owamp/endpoint.c, owamp/owamp.h, owamp/owampP.h, owamp/protocol.c, owamp/sapi.c, owamp/api.c:
 	Modified owp file read/write functions to actually do something useful.
 
 	jeff
 
-2002-09-17  karp  <karp@packrat.internet2.edu>
+2002-09-17  karp  <karp@foo.local>
 
 	* configure.ac: Added mergesort/qsort work-around
 
@@ -3118,7 +3430,7 @@
 
 	* Makefile.am, configure.ac: Add owdigest to source list.
 
-2002-09-12  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-09-12  boote  <boote@foo.local>
 
 	* owping/owping.c, powstream/powstream.c, powstream/powstreamP.h, owamp/api.c, owamp/capi.c, owamp/owamp.h:
 	First functioning version of powstream. Not yet validated - but it creates data
@@ -3146,7 +3458,7 @@
 
 	jeff
 
-2002-09-11  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-09-11  boote  <boote@foo.local>
 
 	* owamp/owamp.h, powstream/Makefile.am, powstream/powstream.c, powstream/powstreamP.h, owamp/api.c, owamp/arithm64.c, owamp/arithm64.h, owamp/endpoint.c:
 	Initial version of powstream. Doesn't work yet, but I wanted to check-point
@@ -3154,7 +3466,7 @@
 
 	jeff
 
-2002-09-09  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-09-09  boote  <boote@foo.local>
 
 	* Makefile.am, configure.ac, owamp/conndata.h, owamp/defaults.c, owamp/endpoint.c, owamp/io.c, owamp/owamp.h, owampd/owampd.c, owping/owping.c:
 	Adding initial version of powstream. It does not work yet, but it will compile.
@@ -3163,7 +3475,7 @@
 
 	jeff
 
-2002-09-09  karp  <karp@packrat.internet2.edu>
+2002-09-09  karp  <karp@foo.local>
 
 	* owping/owping.c:
 	Fixed lost stats calculation and added precision in summary
@@ -3171,7 +3483,7 @@
 	individual packets - this is conservatively safe, but unfortunately
 	one bad packet can now an create unduly bad impression.
 
-2002-09-09  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-09-09  boote  <boote@foo.local>
 
 	* owping/owping.c: Fixed template for mkstemp. (Linux requires 6 X's.)
 
@@ -3185,13 +3497,13 @@
 
 	jeff
 
-2002-09-07  karp  <karp@packrat.internet2.edu>
+2002-09-07  karp  <karp@foo.local>
 
 	* owping/owping.c: Improved reporting of lost packets
 
 	* owping/owping.c: Fixed owstats to read the header.
 
-2002-09-06  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-09-06  boote  <boote@foo.local>
 
 	* owping/Makefile.am, owping/localnode.c, owping/localnode.h, owping/owping.c:
 	removed localnode stuff.
@@ -3234,7 +3546,7 @@
 
 	jeff
 
-2002-09-04  karp  <karp@packrat.internet2.edu>
+2002-09-04  karp  <karp@foo.local>
 
 	* owping/owping.c: Write data header (version 0)
 
@@ -3288,7 +3600,7 @@
 
 	--Tolya
 
-2002-09-03  karp  <karp@packrat.internet2.edu>
+2002-09-03  karp  <karp@foo.local>
 
 	* owping/owdrive: Initial import.
 
@@ -3300,7 +3612,7 @@
 	* owamp/capi.c, owamp/owamp.h, owping/owping.c:
 	Added handling of lost records.
 
-2002-08-30  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-08-30  boote  <boote@foo.local>
 
 	* owping/owping.c, owamp/api.c, owamp/capi.c, owamp/endpoint.c, owamp/owamp.h, owamp/owampP.h, owamp/sapi.c:
 	api.c:
@@ -3345,14 +3657,14 @@
 
 	jeff
 
-2002-08-30  karp  <karp@packrat.internet2.edu>
+2002-08-30  karp  <karp@foo.local>
 
 	* owping/owping.c, owping/owpingP.h:
 	Added error-checks for command-line options.
 
 	* owping/owping.c: Dynamically create getopt string.
 
-2002-08-29  karp  <karp@packrat.internet2.edu>
+2002-08-29  karp  <karp@foo.local>
 
 	* owping/owping.c: usage() now works with owping/owstats/owfetch
 
@@ -3395,20 +3707,20 @@
 	If this can be arranged then it's enough to simply
 	call owp_fetch_sid() multiple times.
 
-2002-08-27  karp  <karp@packrat.internet2.edu>
+2002-08-27  karp  <karp@foo.local>
 
 	* owamp/capi.c, owamp/endpoint.c, owamp/owamp.h, owping/Makefile.am, owping/owping.c, owping/owpingP.h:
 	Reimplemented command-line options using getopt().
 
 	Plugged in the use of file descriptors into owping.
 
-2002-08-27  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-08-27  boote  <boote@foo.local>
 
 	* owping/owping.c: Corrected scale of prec value.
 
 	jeff
 
-2002-08-26  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-08-26  boote  <boote@foo.local>
 
 	* owamp/api.c: Corrected sockaddr length determination.
 
@@ -3424,7 +3736,7 @@
 
 	jeff
 
-2002-08-23  karp  <karp@packrat.internet2.edu>
+2002-08-23  karp  <karp@foo.local>
 
 	* owamp/api.c, owamp/capi.c, owamp/owamp.h, owamp/owampP.h, owamp/print.c, owping/owping.c:
 	Added print-out for endpoints of test-sessions.
@@ -3435,7 +3747,7 @@
 	are inserted after every 32 records
 	(the stars are replaced by the actual node name(s) if known)
 
-2002-08-23  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-08-23  boote  <boote@foo.local>
 
 	* owping/owping.c: Changed order of args so -readfile will work.
 
@@ -3455,12 +3767,12 @@
 
 	jeff
 
-2002-08-22  karp  <karp@packrat.internet2.edu>
+2002-08-22  karp  <karp@foo.local>
 
 	* owping/owping.c, owping/owpingP.h:
 	Added "-percentile" option. Takes argument between 0 and 100 (float)
 
-2002-08-22  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-08-22  boote  <boote@foo.local>
 
 	* owamp/capi.c, owamp/endpoint.c, owamp/owamp.h, owamp/util.c:
 	fixed some bugs in endpoint's time distribution calculation code:
@@ -3470,7 +3782,7 @@
 
 	jeff
 
-2002-08-22  karp  <karp@packrat.internet2.edu>
+2002-08-22  karp  <karp@foo.local>
 
 	* owping/owping.c: Tiny - fixed loss percentage error.
 
@@ -3492,14 +3804,14 @@
 	NOTE: by default "-keepdata" is turned off. However it gets turned ON
 	when used with "-readfrom" (I think this is sensible)
 
-2002-08-21  karp  <karp@packrat.internet2.edu>
+2002-08-21  karp  <karp@foo.local>
 
 	* owping/owping.c, owping/owpingP.h: Added percentiles computations.
 
 	* owping/owping.c:
 	Quick check-in with coredump bug fixed - thanks, efence
 
-2002-08-20  karp  <karp@packrat.internet2.edu>
+2002-08-20  karp  <karp@foo.local>
 
 	* owamp/sapi.c:
 	This bug never materialized but I just noticed it anyway -
@@ -3524,7 +3836,7 @@
 	Fixed Fetch warning messages - no need to issue them when can't open ".i"
 	file (but do warn if ".i" file exists and can't be opened)
 
-2002-08-20  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-08-20  boote  <boote@foo.local>
 
 	* owamp/protocol.c:
 	Fix to ensure WriteSessionRequest is not sent if cntrl->state shows current
@@ -3552,7 +3864,7 @@
 
 	jeff
 
-2002-08-20  karp  <karp@packrat.internet2.edu>
+2002-08-20  karp  <karp@foo.local>
 
 	* owping/owping.c, owping/owpingP.h:
 	Implemented -keepdata, -full, -quiet and -datadir options.
@@ -3561,13 +3873,13 @@
 	Removed max - average and stddev will follow soon (keep for
 	now as sanity check + debugging info).
 
-2002-08-20  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-08-20  boote  <boote@foo.local>
 
 	* owamp/capi.c: Fix malloc problem.
 
 	jeff
 
-2002-08-19  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-08-19  boote  <boote@foo.local>
 
 	* owamp/capi.c:
 	Was setting the wrong default address for the server side of the test.
@@ -3589,7 +3901,7 @@
 
 	jeff
 
-2002-08-19  karp  <karp@packrat.internet2.edu>
+2002-08-19  karp  <karp@foo.local>
 
 	* owping/owping.c:
 	Debugged the window so it actully works (tested small win_size)
@@ -3602,7 +3914,7 @@
 	Did some serious clean-up - now have few functions, each doing
 	something truly useful.
 
-2002-08-18  karp  <karp@packrat.internet2.edu>
+2002-08-18  karp  <karp@foo.local>
 
 	* owamp/sapi.c: Fixed directory path
 
@@ -3611,11 +3923,11 @@
 	but less headaches with memory management. Added new command-line
 	options - still need to incorporate them.
 
-2002-08-16  karp  <karp@packrat.internet2.edu>
+2002-08-16  karp  <karp@foo.local>
 
 	* owamp/access2.c: Zero out memory for robust hash lookups
 
-2002-08-16  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-08-16  boote  <boote@foo.local>
 
 	* owamp/api.c, owamp/capi.c, owamp/context.c, owamp/endpoint.c, owamp/endpoint.h, owamp/owamp.h, owamp/owampP.h, owamp/sapi.c, owampd/owampd.c:
 	Fixed memory problem with endpoint functions.
@@ -3635,7 +3947,7 @@
 
 	jeff
 
-2002-08-16  karp  <karp@packrat.internet2.edu>
+2002-08-16  karp  <karp@foo.local>
 
 	* owping/owping.c: Fixed handling of header in data file.
 
@@ -3647,7 +3959,7 @@
 
 	* owamp/endpoint.c: Small bug fix
 
-2002-08-16  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-08-16  boote  <boote@foo.local>
 
 	* owamp/access2.c, owping/owping.c:
 	client seems to be working fine as receiver.
@@ -3659,7 +3971,7 @@
 
 	jeff
 
-2002-08-15  karp  <karp@packrat.internet2.edu>
+2002-08-15  karp  <karp@foo.local>
 
 	* owamp/capi.c, owamp/owamp.h, owping/owping.c:
 	Have application (owping) manipulate timestamp data records
@@ -3677,13 +3989,13 @@
 	* owamp/capi.c, owamp/owampP.h, owamp/protocol.c:
 	Have client process Type-P during Fetch.
 
-2002-08-15  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-08-15  boote  <boote@foo.local>
 
 	* owping/owping.c, owamp/access.h.in, owamp/access2.c, owamp/conndata.h, owamp/defaults.c, owamp/owamp.h, owamp/read_class2limits.c, owamp/sapi.c, owampd/owampd.c:
 	policy changes for client. (There is a problem with the endpoint now - it can't
 	write to the directory...) I'll look at it when I get back.
 
-2002-08-15  karp  <karp@packrat.internet2.edu>
+2002-08-15  karp  <karp@foo.local>
 
 	* owamp/capi.c, owamp/owamp.h:
 	Changed OWPFetchSessions to look like this:
@@ -3775,7 +4087,7 @@
 
 	/*
 
-2002-08-14  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-08-14  boote  <boote@foo.local>
 
 	* owamp/api.c, owamp/defaults.c, owamp/io.c, owamp/sapi.c, owampd/owampd.c:
 	Removed some printing (#define VERBOSE if you want it back).
@@ -3804,7 +4116,7 @@
 
 	jeff
 
-2002-08-12  karp  <karp@packrat.internet2.edu>
+2002-08-12  karp  <karp@foo.local>
 
 	* owping/owping.c:
 	Set up skeleton and basic structures for Fetch - both local
@@ -3834,13 +4146,13 @@
 	It seems somewhat tricky (and a bit ugly) to combine it with
 	OWPFetchRecords so I am thinking of just keeping them apart.
 
-2002-08-10  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-08-10  boote  <boote@foo.local>
 
 	* I2util/I2util/io.c, I2util/I2util/io.h: see last ci.
 
 	jeff
 
-2002-08-09  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-08-09  boote  <boote@foo.local>
 
 	* owampd/owampd.c, owping/owping.c, owping/owpingP.h, I2util/I2util/ErrLog.c, I2util/I2util/Makefile.am, I2util/I2util/random.c, I2util/I2util/util.h, I2util/Makefile.am, owamp/api.c, owamp/capi.c, owamp/endpoint.c, owamp/io.c, owamp/owamp.h, owamp/protocol.c, owamp/sapi.c:
 	I2util:
@@ -3873,7 +4185,7 @@
 
 	jeff
 
-2002-08-08  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-08-08  boote  <boote@foo.local>
 
 	* I2util/I2util/ErrLog.c, I2util/I2util/errlog.h, owamp/access2.c, owamp/api.c, owamp/capi.c, owamp/context.c, owamp/endpoint.c, owamp/error.c, owamp/io.c, owamp/owamp.h, owamp/owampP.h, owamp/sapi.c, owampd/owampd.c, owping/owping.c:
 	I2util: added a va_list logging function.
@@ -3885,7 +4197,7 @@
 
 	jeff
 
-2002-08-08  karp  <karp@packrat.internet2.edu>
+2002-08-08  karp  <karp@foo.local>
 
 	* owamp/capi.c, owamp/owamp.h, owamp/sapi.c:
 	Fully implemented server-side Fetch functionality. Added functions:
@@ -3918,7 +4230,7 @@
 				 OWPErrSeverity* err_ret
 	)
 
-2002-08-08  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-08-08  boote  <boote@foo.local>
 
 	* I2util/I2util/ErrLog.c, I2util/I2util/errlog.h, I2util/I2util/random.c, I2util/I2util/random.h, owamp/api.c, owamp/capi.c, owamp/endpoint.c, owamp/error.c, owamp/owamp.h, owamp/owampP.h, owamp/protocol.c, owamp/sapi.c, owampd/owampd.c, owping/owping.c, bootstrap:
 	Modified the random functions to be relative to a random "context".
@@ -3952,7 +4264,7 @@
 
 	jeff
 
-2002-08-07  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-08-07  boote  <boote@foo.local>
 
 	* I2util/I2util/ErrLog.c, I2util/I2util/random.c, I2util/I2util/random.h, I2util/README, I2util/config/randomdev.m4, I2util/configure.ac:
 	Added an autoconfig check to ensure a kernel random device is available.
@@ -3964,14 +4276,14 @@
 
 	jeff
 
-2002-08-06  karp  <karp@packrat.internet2.edu>
+2002-08-06  karp  <karp@foo.local>
 
 	* owamp/endpoint.c: More replacements of the last #defines - done now.
 
 	* owamp/endpoint.c, owamp/owamp.h:
 	Added defines for nodes/sessions dirsr etc
 
-2002-08-06  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-08-06  boote  <boote@foo.local>
 
 	* Makefile.am, configure.ac, owamp/Makefile.am, owamp/conndata.h, owamp/defaults.c, owamp/endpoint.c, owampd/Makefile.am, owampd/owampd.c, owping/Makefile.am, owping/owping.c:
 	libraries are merged.
@@ -3994,11 +4306,11 @@
 
 	jeff
 
-2002-08-06  karp  <karp@packrat.internet2.edu>
+2002-08-06  karp  <karp@foo.local>
 
 	* owamp/endpoint.c: Make hexencode public for use in debug functions
 
-2002-08-06  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-08-06  boote  <boote@foo.local>
 
 	* owamp/endpoint.c, owamp/owamp.h, owampd/owampd.c, owampd/owampdP.h, owping/owping.c, owping/owpingP.h:
 	Added sym-link dir for all session files.
@@ -4011,7 +4323,7 @@
 
 	jeff
 
-2002-08-06  karp  <karp@packrat.internet2.edu>
+2002-08-06  karp  <karp@foo.local>
 
 	* owamp/print.c: Added owp_dump_msg() function
 
@@ -4023,13 +4335,13 @@
 	2. repeated calls to I2RandomBytes() [not affected by any subsequent changes
 				             in underlying randomness source]
 
-2002-08-05  karp  <karp@packrat.internet2.edu>
+2002-08-05  karp  <karp@foo.local>
 
 	* I2util/I2util/random.c: Tiny - forgot to add a cast
 
 	* I2util/I2util/random.c: Re-did I2RandomBytes to use /dev/urandom
 
-2002-08-05  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-08-05  boote  <boote@foo.local>
 
 	* owampd/owampd.c, I2util/I2util/table.h, owamp/endpoint.c, owamp/sapi.c:
 	Test sessions seem to work - owping doesn't wait for the test session to finish - but if you wait until the -datadir/SID.i file is renamed to -datadir/SID you
@@ -4040,7 +4352,7 @@
 
 	jeff
 
-2002-08-05  karp  <karp@packrat.internet2.edu>
+2002-08-05  karp  <karp@foo.local>
 
 	* owping/owping.c: Minor fix - misplaced #define
 
@@ -4064,14 +4376,14 @@
 	* owamp/capi.c:
 	Moved fetch call-back functions into owping.c. Minor fixes.
 
-2002-08-02  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-08-02  boote  <boote@foo.local>
 
 	* owamp/endpoint.c, owamp/sapi.c:
 	fixed memory bugs relating to sockaddr_storage.
 
 	jeff
 
-2002-08-01  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-08-01  boote  <boote@foo.local>
 
 	* owamp/access2.c, owamp/conndata.h, owamp/endpoint.c, owamp/io.c, owamp/read_class2limits.c, owamp/unixtime.c, owamp/unixtime.h, owampd/owampd.c, owampd/owampdP.h, owping/owping.c, owping/owpingP.h:
 	First cut at the recv/send functionality. There are definitely some problems
@@ -4082,7 +4394,7 @@
 
 	jeff
 
-2002-07-30  karp  <karp@packrat.internet2.edu>
+2002-07-30  karp  <karp@foo.local>
 
 	* owamp/access2.c:
 	Minor - replaced bcopy by memcpy (yes, watched arg order\!)
@@ -4118,7 +4430,7 @@
 
 	* owamp/access2.c: Minor bug fix.
 
-2002-07-29  karp  <karp@packrat.internet2.edu>
+2002-07-29  karp  <karp@foo.local>
 
 	* owamp/access2.c:
 	This is a message for the last check-in (typed Enter too fast, sorry).
@@ -4130,7 +4442,7 @@
 	* owamp/access.h.in, owamp/access2.c, owamp/defaults.c, owamp/read_class2limits.c:
 	access2.c
 
-2002-07-27  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-07-27  boote  <boote@foo.local>
 
 	* owamp/api.c, owamp/conndata.h, owamp/defaults.c, owamp/endpoint.c, owamp/owamp.h, owamp/owampP.h, owamp/protocol.c, owamp/rijndael-api-fst.h, owamp/unixtime.c, owamp/unixtime.h, owampd/owampd.c, owampd/owampdP.h, owping/owping.c:
 	compiles - but I have NOT tested it at ALL.
@@ -4142,7 +4454,7 @@
 
 	jeff
 
-2002-07-26  karp  <karp@packrat.internet2.edu>
+2002-07-26  karp  <karp@foo.local>
 
 	* owamp/access2.c, owamp/read_class2limits.c:
 	Fixed memory leaks from indiscriminate use of raw2datum()
@@ -4180,7 +4492,7 @@
 	* owampd/owampd.c:
 	Fixed policy arg to NewConnection. Installed default call-backsin cfg.
 
-2002-07-25  karp  <karp@packrat.internet2.edu>
+2002-07-25  karp  <karp@foo.local>
 
 	* owamp/protocol.c: Fixed a big with a wrong message size.
 
@@ -4195,26 +4507,26 @@
 	* owamp/capi.c, owamp/owamp.h:
 	Implmented OWPFetchRecords() using the callback function mechanism.
 
-2002-07-24  karp  <karp@packrat.internet2.edu>
+2002-07-24  karp  <karp@foo.local>
 
 	* owamp/access2.c: Added #ifdefs for AF_INET6
 
 	* owamp/capi.c, owamp/owamp.h, owamp/owampP.h, owamp/protocol.c:
 	Added functions OWPFetchSession() and OWPReadDataHeader().
 
-2002-07-23  karp  <karp@packrat.internet2.edu>
+2002-07-23  karp  <karp@foo.local>
 
 	* owamp/arithm64.h, owamp/arithm64.c:
 	Added OWPnum64 OWPusec2num64() function.
 
-2002-07-23  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-07-23  boote  <boote@foo.local>
 
 	* owamp/api.c, owamp/owampP.h, owamp/protocol.c:
 	api.c,owampP.h,protocol.c:	modified kid to be 16 byte field.
 
 	jeff
 
-2002-07-22  karp  <karp@packrat.internet2.edu>
+2002-07-22  karp  <karp@foo.local>
 
 	* owamp/arithm64.c, owamp/arithm64.h: Added timespec conversions.
 
@@ -4235,7 +4547,7 @@
 
 	* I2util/I2util/table.c: Added casts to pacify compiler.
 
-2002-07-19  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-07-19  boote  <boote@foo.local>
 
 	* owamp/api.c, owamp/capi.c, owamp/conndata.h, owamp/endpoint.c, owamp/owamp.h, owamp/owampP.h, owamp/protocol.c, owamp/sapi.c:
 	Made changes to use sockaddr_storage instead of dynamic memory...
@@ -4247,7 +4559,7 @@
 
 	jeff
 
-2002-07-19  karp  <karp@packrat.internet2.edu>
+2002-07-19  karp  <karp@foo.local>
 
 	* owamp/api.c, owamp/owamp.h: Added owp_ip_packet_size function.
 
@@ -4256,7 +4568,7 @@
 	* owamp/access.h.in, owamp/access2.c, owamp/read_class2limits.c:
 	Fixed bugs in look-ups. Changed field class2limits to class2node
 
-2002-07-18  karp  <karp@packrat.internet2.edu>
+2002-07-18  karp  <karp@foo.local>
 
 	* owamp/conndata.h: oops - forgot semicolon
 
@@ -4279,11 +4591,11 @@
 	to the policy struct - simplifies set-up of default
 	classes for ip addresses.
 
-2002-07-17  karp  <karp@packrat.internet2.edu>
+2002-07-17  karp  <karp@foo.local>
 
 	* owamp/conndata.h: Added 'node' field for the connection class.
 
-2002-07-16  karp  <karp@packrat.internet2.edu>
+2002-07-16  karp  <karp@foo.local>
 
 	* owamp/read_class2limits.c:
 	Added consistency and integrity checks to owp_get_description()
@@ -4300,7 +4612,7 @@
 	Added prototypes for owp_kid2passwd() and owp_sockaddr2class() functions.
 	Minor clean-up.
 
-2002-07-15  karp  <karp@packrat.internet2.edu>
+2002-07-15  karp  <karp@foo.local>
 
 	* owamp/defaults.c: Initial import - added owp_get_aes_key() function.
 
@@ -4331,7 +4643,7 @@
 	outside the ones being hashed. Minor addition for easier
 	debugging.
 
-2002-07-04  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-07-04  boote  <boote@foo.local>
 
 	* owamp/conndata.h: Adding.
 
@@ -4351,7 +4663,7 @@
 
 	jeff
 
-2002-07-03  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-07-03  boote  <boote@foo.local>
 
 	* owamp/capi.c, owamp/owampP.h, owamp/protocol.c, owamp/sapi.c, owampd/owampd.c, owampd/owampdP.h:
 	Fixed a number of really dumb errors on my part.
@@ -4365,7 +4677,7 @@
 
 	jeff
 
-2002-07-02  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-07-02  boote  <boote@foo.local>
 
 	* owping/localnode.c, owping/owping.c, owamp/api.c, owamp/capi.c, owamp/context.c, owamp/endpoint.c, owamp/endpoint.h, owamp/error.c, owamp/io.c, owamp/owamp.h, owamp/owampP.h, owamp/protocol.c, owamp/sapi.c, owamp/sprotocol.c, owampd/owampd.c:
 	Big changes... Too many to go through. I should not have gone so long between
@@ -4383,7 +4695,7 @@
 
 	jeff
 
-2002-06-25  karp  <karp@packrat.internet2.edu>
+2002-06-25  karp  <karp@foo.local>
 
 	* owamp/access.h.in, owamp/access2.c, owamp/print.c:
 	Parsing and print-out for new design of the password file.
@@ -4399,12 +4711,12 @@
 	Also changed id2class to ip2class everywhere - cleaner solution in light
 	of the upcoming changes to config files design.
 
-2002-06-24  karp  <karp@packrat.internet2.edu>
+2002-06-24  karp  <karp@foo.local>
 
 	* owamp/arithm128.c, owamp/arithm64.c, owamp/arithm64.h, owamp/bc.txt, owamp/owamp.h, owamp/ques.dat:
 	Added conversions OWPnum64 to/from struct timeval. Comments/clean-up.
 
-2002-06-22  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-06-22  boote  <boote@foo.local>
 
 	* owampd/owampd.c, owampd/owampdP.h:
 	cleaned up a bit. won't compile until I add the process_requests function...
@@ -4437,7 +4749,7 @@
 
 	jeff
 
-2002-06-21  karp  <karp@packrat.internet2.edu>
+2002-06-21  karp  <karp@foo.local>
 
 	* owamp/arithm64.c:
 	Replaced 'unsigned long long' by u_int64_t. Improved comments
@@ -4448,7 +4760,7 @@
 	timestamps. Generation of uniform and exponential random
 	numbers using AES and based on 64-bit integer type.
 
-2002-06-19  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-06-19  boote  <boote@foo.local>
 
 	* I2util/I2util/table.c, I2util/I2util/table.h, I2util/I2util/util.h:
 	Tolya - I corrected some problems with the table code, and added some features.
@@ -4495,7 +4807,7 @@
 
 	jeff
 
-2002-06-19  karp  <karp@packrat.internet2.edu>
+2002-06-19  karp  <karp@foo.local>
 
 	* owamp/access2.c, owamp/print.c: Fixed bugs in IPv6 print-out.
 
@@ -4513,7 +4825,7 @@
 	PolicyInit2(eh, ip2class, class2limits, passwd, &out);
 	I2hash_print(policy->ip2class, stdout);
 
-2002-06-18  karp  <karp@packrat.internet2.edu>
+2002-06-18  karp  <karp@foo.local>
 
 	* owamp/access.h.in, owamp/print.c: More warnings removed
 
@@ -4523,7 +4835,7 @@
 
 	* owamp/access2.c: owamp_read_id2class() understands ipv6 now.
 
-2002-06-18  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-06-18  boote  <boote@foo.local>
 
 	* I2util/I2util/table.c, I2util/I2util/table.h:
 	Added I2hash_iterate function - this is similar to the "print" function, but
@@ -4533,19 +4845,19 @@
 
 	jeff
 
-2002-06-17  karp  <karp@packrat.internet2.edu>
+2002-06-17  karp  <karp@foo.local>
 
 	* owamp/access2.c: Simplified logic in owamp_read_id2class().
 
-2002-06-16  karp  <karp@packrat.internet2.edu>
+2002-06-16  karp  <karp@foo.local>
 
 	* owamp/access2.c: Correctly recognize legal IPv4 and IPv6 masks.
 
-2002-06-15  karp  <karp@packrat.internet2.edu>
+2002-06-15  karp  <karp@foo.local>
 
 	* owamp/access2.c: Initial import. Started work on ipv6 policy.
 
-2002-06-14  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-06-14  boote  <boote@foo.local>
 
 	* I2util/I2util/util.h:
 	fix for __attribute__ check... I had put it in the config.h.in file, but since
@@ -4621,7 +4933,7 @@
 
 	jeff
 
-2002-06-12  karp  <karp@packrat.internet2.edu>
+2002-06-12  karp  <karp@foo.local>
 
 	* owamp/arithm128.c, owamp/arithm128.h:
 	Added OWP prefix to all symbols.
@@ -4638,21 +4950,21 @@
 	num_add() to num128_add(), and num_mul() to num128_mul().
 	Removed auxilliary/debug functions - much leaner file now.
 
-2002-06-11  karp  <karp@packrat.internet2.edu>
+2002-06-11  karp  <karp@foo.local>
 
 	* owamp/arithm128.c: Implemented timeval2num() conversion function.
 
 	* owamp/rijndael-api-fst.c, owamp/rijndael-api-fst.h:
 	Added prototype for bytes2Key().
 
-2002-06-10  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-06-10  boote  <boote@foo.local>
 
 	* I2util/I2util/ErrLog.c, I2util/I2util/ErrLogImmediate.c, I2util/I2util/ErrLogSyslog.c, I2util/I2util/Options.c, I2util/I2util/Pthread.h, I2util/I2util/errlog.h, I2util/I2util/random.c, I2util/I2util/random.h, I2util/I2util/table.c, I2util/config/c-attribute.m4, I2util/configure.ac:
 	Removed compiler warnings.
 
 	jeff
 
-2002-06-10  karp  <karp@packrat.internet2.edu>
+2002-06-10  karp  <karp@foo.local>
 
 	* owamp/arithm128.c, owamp/arithm128.h:
 	Removed leftshift() and mask arrays. Lots of overall improvements.
@@ -4661,7 +4973,7 @@
 	Put in fixes to make code work on machines with any size of long
 	and short. Added 128-bit counter for generator of uniforms.
 
-2002-06-09  karp  <karp@packrat.internet2.edu>
+2002-06-09  karp  <karp@foo.local>
 
 	* owamp/arithm128.c, owamp/arithm128.h:
 	More reorganization and clean-up. Keep currently unused functions
@@ -4673,13 +4985,13 @@
 	Removed more unneeded code. Completely changed the interface to
 	match srand()/rand() approach.
 
-2002-06-08  karp  <karp@packrat.internet2.edu>
+2002-06-08  karp  <karp@foo.local>
 
 	* owamp/arithm128.c, owamp/arithm128.h:
 	Separated left shift into a separate function. Fixed many compiler
 	warnings.
 
-2002-06-07  karp  <karp@packrat.internet2.edu>
+2002-06-07  karp  <karp@foo.local>
 
 	* owamp/arithm128.c: Clean-up. Removed unnecessary comments.
 
@@ -4691,7 +5003,7 @@
 	* owamp/arithm128.c, owamp/arithm128.h, owamp/rijndael-api-fst.c, owamp/rijndael-api-fst.h:
 	Quick check-in - fixed reuse of uniforms.
 
-2002-06-06  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-06-06  boote  <boote@foo.local>
 
 	* owamp/api.c, owamp/capi.c, owamp/owamp.h, owamp/owampP.h, owamp/sapi.c, owamp/sprotocol.c, owampd/owampd.c, owping/owping.c:
 	substaintial reorganization of the server code. I'm not done yet, but I wanted
@@ -4701,14 +5013,14 @@
 
 	jeff
 
-2002-06-06  karp  <karp@packrat.internet2.edu>
+2002-06-06  karp  <karp@foo.local>
 
 	* owamp/arithm128.c, owamp/arithm128.h:
 	Algorithm is largely working - checking in for safety's sake.
 
 	* owamp/arithm128.c: Corrected small bugs - more work is needed.
 
-2002-06-05  karp  <karp@packrat.internet2.edu>
+2002-06-05  karp  <karp@foo.local>
 
 	* owamp/exponential.c, owamp/exponential.h:
 	Not needed anymore - implemented Knuth at home.
@@ -4716,7 +5028,7 @@
 	* owamp/arithm128.c, owamp/arithm128.h:
 	Essentially completed implementation of Knuth. Untested so far.
 
-2002-06-04  karp  <karp@packrat.internet2.edu>
+2002-06-04  karp  <karp@foo.local>
 
 	* owamp/rijndael-api-fst.h, owamp/rijndael-api-fst.c:
 	Added support for counter mode.
@@ -4734,14 +5046,14 @@
 	* owamp/arithm128.c, owamp/arithm128.h:
 	Clean-up and better documentation. Renamed the file into arithm128*.{c,h}
 
-2002-06-03  karp  <karp@packrat.internet2.edu>
+2002-06-03  karp  <karp@foo.local>
 
 	* owamp/arithm.c, owamp/arithm.h:
 	Various improvements. Added more conversion functions.
 
 	* owamp/arithm.c: Added conversion functions.
 
-2002-06-02  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-06-02  boote  <boote@foo.local>
 
 	* I2util/I2util/Makefile.am, I2util/I2util/random.c, I2util/I2util/random.h, I2util/I2util/util.h, I2util/Makefile.am, owamp/Makefile.am, owamp/api.c, owamp/arithm.c, owamp/arithm.h, owamp/capi.c, owamp/cprotocol.c, owamp/owampP.h, owamp/random.c, owamp/sapi.c, owampd/owampd.c:
 	Reorganizing things...
@@ -4826,7 +5138,7 @@
 		Also modified how the "addr" code is called to reflect the corrections
 		mentioned above in api.c.
 
-2002-05-31  karp  <karp@packrat.internet2.edu>
+2002-05-31  karp  <karp@foo.local>
 
 	* I2util/I2util/Makefile.am, I2util/I2util/util.h:
 	Added support for arithmetic functions.
@@ -4837,12 +5149,12 @@
 	* owamp/owamp.h, owamp/sprotocol.c, owampd/owampd.c:
 	Fix to make things compile.
 
-2002-05-30  karp  <karp@packrat.internet2.edu>
+2002-05-30  karp  <karp@foo.local>
 
 	* owamp/api.c, owamp/owamp.h, owamp/owampP.h, owamp/sprotocol.c, owampd/owampd.c:
 	Bulk check-in to have a common base.
 
-2002-05-29  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-05-29  boote  <boote@foo.local>
 
 	* owamp/Makefile.am, owamp/api.c, owamp/context.c, owamp/endpoint.c, owamp/endpoint.h, owamp/owamp.h, owamp/owampP.h:
 	Added endpoint logic - the "meat" is not there yet.
@@ -4852,7 +5164,7 @@
 
 	jeff
 
-2002-05-28  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-05-28  boote  <boote@foo.local>
 
 	* owamp/api.c, owamp/context.c, owamp/cprotocol.c, owamp/io.c, owamp/owamp.h, owamp/owampP.h, owampd/owampd.c, owping/owping.c:
 	api.c:
@@ -4877,14 +5189,14 @@
 
 	jeff
 
-2002-05-24  karp  <karp@packrat.internet2.edu>
+2002-05-24  karp  <karp@foo.local>
 
 	* owampd/owampd.c:
 	Minor bug fixes and clean-up. Added some error checks.
 
 	* owampd/owampd.c: Improved handling of EINTR in select().
 
-2002-05-23  karp  <karp@packrat.internet2.edu>
+2002-05-23  karp  <karp@foo.local>
 
 	* owampd/owampd.c:
 	Child is ready for testing Control session now. Server can simply
@@ -4897,11 +5209,11 @@
 
 	* owampd/owampd.c: Parent correctly manages fd_set now.
 
-2002-05-22  karp  <karp@packrat.internet2.edu>
+2002-05-22  karp  <karp@foo.local>
 
 	* owamp/sprotocol.c: Fixed a bug in OWPServerReadRequest().
 
-2002-05-22  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-05-22  boote  <boote@foo.local>
 
 	* owamp/api.c: Oops - typo already....
 
@@ -4913,14 +5225,14 @@
 
 	jeff
 
-2002-05-22  karp  <karp@packrat.internet2.edu>
+2002-05-22  karp  <karp@foo.local>
 
 	* owampd/owampd.c:
 	Rewrote server skeleton to make use of parent-child communication
 	via pipes. The code is still quite raw, and much needs to be
 	improved.
 
-2002-05-22  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-05-22  boote  <boote@foo.local>
 
 	* owamp/owampP.h: Adding port to Addr struct.
 
@@ -4932,7 +5244,7 @@
 
 	jeff
 
-2002-05-21  karp  <karp@packrat.internet2.edu>
+2002-05-21  karp  <karp@foo.local>
 
 	* owamp/api.c:
 	Minor clean-up. Sorted out _OWPCallCheckControlPolicy() call.
@@ -4942,7 +5254,7 @@
 	* owamp/access.h.in:
 	Added OWP_ prefix to OPEN_CLASS, AUTH_CLASS and BANNED_CLASS
 
-2002-05-20  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-05-20  boote  <boote@foo.local>
 
 	* owamp/api.c, owamp/error.c: api.c
 		fixed bug in ClientConnect code.
@@ -4963,7 +5275,7 @@
 
 	jeff
 
-2002-05-20  karp  <karp@packrat.internet2.edu>
+2002-05-20  karp  <karp@foo.local>
 
 	* owampd/owampd.c: Fixed location of parentheses.
 
@@ -4980,7 +5292,7 @@
 
 	* owamp/api.c: Added robustness to OWPControlAccept().
 
-2002-05-18  karp  <karp@packrat.internet2.edu>
+2002-05-18  karp  <karp@foo.local>
 
 	* owampd/owampd.c: Some clean-up of things not being used right now.
 
@@ -4994,21 +5306,21 @@
 	* owamp/owamp.h:
 	Added prototypes for OWPGetContext() and OWPServerCheckAddrPolicy().
 
-2002-05-17  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-05-17  boote  <boote@foo.local>
 
 	* owamp/api.c, owamp/context.c, owamp/cprotocol.c, owamp/io.c, owamp/owamp.h, owamp/owampP.h, owamp/sprotocol.c, owping/Makefile.am, owping/localnode.c, owping/owping.c, owping/owpingP.h:
 	check-point last week of work.
 
 	jeff
 
-2002-05-16  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-05-16  boote  <boote@foo.local>
 
 	* owamp/access.h.in, owamp/unixtime.c, owamp/unixtime.h:
 	Fix for conf_dir and adding gettimeofday interface.
 
 	jeff
 
-2002-05-16  karp  <karp@packrat.internet2.edu>
+2002-05-16  karp  <karp@foo.local>
 
 	* owamp/sprotocol.c:
 	Commented out _OWPSendServerGreeting and _OWPReadServerGreeting
@@ -5018,7 +5330,7 @@
 	* owamp/api.c, owamp/context.c, owamp/owamp.h, owamp/sprotocol.c, owampd/owampd.c:
 	Quick check-in while everything still compiles.
 
-2002-05-14  karp  <karp@packrat.internet2.edu>
+2002-05-14  karp  <karp@foo.local>
 
 	* owamp/context.c:
 	Replaced OWPContext by OWPControl argument in _OWPCallCheckTestPolicy().
@@ -5029,7 +5341,7 @@
 	* owamp/ques.dat:
 	Computed hex-encoded Q[] values for Knuth S algorithm.
 
-2002-05-11  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-05-11  boote  <boote@foo.local>
 
 	* configure.ac, owamp/api.c, owampd/Makefile.am, owping/owping.c:
 	I believe a full build will not work.
@@ -5060,11 +5372,11 @@
 
 	jeff
 
-2002-05-10  karp  <karp@packrat.internet2.edu>
+2002-05-10  karp  <karp@foo.local>
 
 	* owamp/api.c: Removed OWPAddrCheck() - not needed.
 
-2002-05-08  karp  <karp@packrat.internet2.edu>
+2002-05-08  karp  <karp@foo.local>
 
 	* owamp/exponential.c, owamp/exponential.h:
 	Implementation of uniform and exponential distributions following
@@ -5082,7 +5394,7 @@
 	Alternative is to use system-provided random() to get the
 	uniform deviates as input for the algorithm.
 
-2002-05-03  karp  <karp@packrat.internet2.edu>
+2002-05-03  karp  <karp@foo.local>
 
 	* owampd/owampd.c:
 	Some clean-up. Removed policy init into a separate function.
@@ -5108,7 +5420,7 @@
 
 	--Tolya
 
-2002-05-02  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-05-02  boote  <boote@foo.local>
 
 	* configure.ac, owamp/Makefile.am, owamp/api.c, owamp/context.c, owamp/owamp.h, owping/Makefile.am, owping/localaddr.c, owping/localaddr.h, owping/localnode.c, owping/localnode.h, owping/owping.c, owping/owpingP.h:
 	My changes now compile.
@@ -5125,7 +5437,7 @@
 
 	jeff
 
-2002-05-01  karp  <karp@packrat.internet2.edu>
+2002-05-01  karp  <karp@foo.local>
 
 	* owamp/io.c:
 	Not need to update IV as this is done in rijndael api now. Added banner.
@@ -5139,7 +5451,7 @@
 	blockDecrypt so that libowamp (_OWPEncryptBlocks and _OWPDecryptBlocks)
 	need not worry about it at all.
 
-2002-04-30  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-04-30  boote  <boote@foo.local>
 
 	* owamp/api.c: reverse if test to make more clear.
 
@@ -5151,12 +5463,12 @@
 
 	jeff
 
-2002-04-30  karp  <karp@packrat.internet2.edu>
+2002-04-30  karp  <karp@foo.local>
 
 	* owamp/sprotocol.c:
 	Updated to make use of latest additions to the api.
 
-2002-04-30  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-04-30  boote  <boote@foo.local>
 
 	* owping/Makefile.am: forgot to add owpingP.h as source file...
 
@@ -5178,7 +5490,7 @@
 
 	jeff
 
-2002-04-30  karp  <karp@packrat.internet2.edu>
+2002-04-30  karp  <karp@foo.local>
 
 	* owamp/rijndael-api-fst.c, owamp/rijndael-api-fst.h:
 	Removed unused code.
@@ -5199,7 +5511,7 @@
 
 	Minor clean-up.
 
-2002-04-30  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-04-30  boote  <boote@foo.local>
 
 	* owamp/api.c: wrong include syntax.
 
@@ -5223,7 +5535,7 @@
 
 	jeff
 
-2002-04-29  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-04-29  boote  <boote@foo.local>
 
 	* I2util/I2util/ErrLog.c, I2util/I2util/Makefile.am, I2util/I2util/Options.c, I2util/I2util/options.h, I2util/I2util/table.c, I2util/I2util/table.h, I2util/I2util/util.h, I2util/Makefile.am:
 	Adding Tolya's hash table into the I2util library. Modified the symbols to
@@ -5247,7 +5559,7 @@
 	util.h:
 		added include of table.h
 
-2002-04-26  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-04-26  boote  <boote@foo.local>
 
 	* I2util/I2util/Options.c, I2util/I2util/options.h:
 	Adding ability for an -option to take variable args after it.
@@ -5268,7 +5580,7 @@
 
 	jeff
 
-2002-04-26  karp  <karp@packrat.internet2.edu>
+2002-04-26  karp  <karp@foo.local>
 
 	* owamp/api.c: Remove unnneded field-setting functions.
 
@@ -5290,7 +5602,7 @@
 	* owamp/api.c:
 	Broke down OWPControlAccept() into protocol-driven pieces.
 
-2002-04-25  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-04-25  boote  <boote@foo.local>
 
 	* owamp/api.c:
 	fix double alloc bug - clean up error handling in client_connect and client_open.
@@ -5302,7 +5614,7 @@
 
 	jeff
 
-2002-04-25  karp  <karp@packrat.internet2.edu>
+2002-04-25  karp  <karp@foo.local>
 
 	* owamp/api.c: (Re)moved random_bytes().
 
@@ -5310,14 +5622,14 @@
 
 	* owamp/random.c: Initial import.
 
-2002-04-25  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-04-25  boote  <boote@foo.local>
 
 	* Makefile.am, bootstrap, configure.ac:
 	Added support to build sub-package I2util.
 
 	jeff
 
-2002-04-25  karp  <karp@packrat.internet2.edu>
+2002-04-25  karp  <karp@foo.local>
 
 	* owamp/sprotocol.c: Initial import.
 
@@ -5348,7 +5660,7 @@
 
 	* owamp/Makefile.am: Added sprotocol.c to the sources list.
 
-2002-04-24  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-04-24  boote  <boote@foo.local>
 
 	* I2util/I2util/ErrLog.c, I2util/I2util/ErrLogSyslog.c, I2util/I2util/Makefile.am, I2util/I2util/Pthread.h, I2util/I2util/mach_dep.c, I2util/I2util/mach_dep.h, I2util/I2util/options.h, I2util/I2util/util.h, I2util/Makefile.am, I2util/bootstrap, I2util/config/Make-rules, I2util/configure.ac:
 	Build for libI2util.a
@@ -5359,7 +5671,7 @@
 
 	jeff
 
-2002-04-24  karp  <karp@packrat.internet2.edu>
+2002-04-24  karp  <karp@foo.local>
 
 	* owampd/owampd.c:
 	Removed a lot server code to be placed in OWPControlAccept.
@@ -5368,7 +5680,7 @@
 
 	* owamp/api.c: Started work on OWPControlAccept().
 
-2002-04-23  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-04-23  boote  <boote@foo.local>
 
 	* I2util/README:
 	Beginnings of a utility library. I don't have build files for it yet - tomorrow.
@@ -5397,7 +5709,7 @@
 
 	jeff
 
-2002-04-23  karp  <karp@packrat.internet2.edu>
+2002-04-23  karp  <karp@foo.local>
 
 	* owamp/access.h.in, owampd/owampd.c:
 	Some clean-up - pass hash and Context pointers as function arguments.
@@ -5412,24 +5724,24 @@
 
 	* owamp/Makefile.am: Added io.c
 
-2002-04-22  karp  <karp@packrat.internet2.edu>
+2002-04-22  karp  <karp@foo.local>
 
 	* owamp/owampP.h:
 	Changed readIV/writeIV types for smooth interaction with rijndael API.
 
-2002-04-22  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-04-22  boote  <boote@foo.local>
 
 	* owamp/owampP.h: Modified fields.
 
 	jeff
 
-2002-04-22  karp  <karp@packrat.internet2.edu>
+2002-04-22  karp  <karp@foo.local>
 
 	* owampd/owampd.c: Moved readn() and writen() to owamp/io.c
 
 	* owamp/io.c: Initial import.
 
-2002-04-20  karp  <karp@packrat.internet2.edu>
+2002-04-20  karp  <karp@foo.local>
 
 	* owampd/owampd.c: Completely re-did printing out of hash tables.
 
@@ -5437,13 +5749,13 @@
 
 	* owping/Makefile.am: Added owping.c to the list of source files.
 
-2002-04-19  karp  <karp@packrat.internet2.edu>
+2002-04-19  karp  <karp@foo.local>
 
 	* owampd/owampd.c: Updated to use home-made hash instead of ndbm.
 
 	* owamp/access.h.in: Changed to use home-made hash instead of ndbm.
 
-2002-04-18  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-04-18  boote  <boote@foo.local>
 
 	* owamp/Makefile.am: Adding rijndael functions into libowamp.a
 
@@ -5454,7 +5766,7 @@
 
 	jeff
 
-2002-04-17  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-04-17  boote  <boote@foo.local>
 
 	* owamp/Makefile.am:
 	moved test-hash back to contrib where it should have been.
@@ -5470,7 +5782,7 @@
 
 	jeff
 
-2002-04-17  karp  <karp@packrat.internet2.edu>
+2002-04-17  karp  <karp@foo.local>
 
 	* owampd/owampd.c: Updated to use ../owamp instead of ../libowamp.
 
@@ -5479,7 +5791,7 @@
 
 	* owampd/owampd.c: Initial import.
 
-2002-04-16  karp  <karp@packrat.internet2.edu>
+2002-04-16  karp  <karp@foo.local>
 
 	* owamp/access.h.in:
 	Added syslog support, changed field name in owamp_limits
@@ -5487,13 +5799,13 @@
 	* owamp/api.c:
 	Commented out a few little bits and added two stubs to make compile.
 
-2002-04-16  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-04-16  boote  <boote@foo.local>
 
 	* owamp/owamp.h: Fix func pointers.
 
 	jeff
 
-2002-04-15  karp  <karp@packrat.internet2.edu>
+2002-04-15  karp  <karp@foo.local>
 
 	* Doxyfile: Changed EXTRACT_ALL to NO.
 
@@ -5503,25 +5815,25 @@
 
 	* owamp/owamp.h: Included <sys/time.h> and <sys/param.h>
 
-2002-04-15  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-04-15  boote  <boote@foo.local>
 
 	* owamp/api.c, owamp/context.c, owamp/error.c, owamp/owamp.h, owamp/owampP.h, owamp/protocol.c:
 	check-point - this at least compiles.
 
 	jeff
 
-2002-04-15  karp  <karp@packrat.internet2.edu>
+2002-04-15  karp  <karp@foo.local>
 
 	* owamp/table.128: Initial import.
 
 	* owamp/rijndael-alg-fst.c, owamp/rijndael-alg-fst.h, owamp/rijndael-api-fst.c, owamp/rijndael-api-fst.h:
 	Initial import for rijndael.
 
-2002-04-14  karp  <karp@packrat.internet2.edu>
+2002-04-14  karp  <karp@foo.local>
 
 	* owamp/access.h.in: Major rewrite.
 
-2002-04-12  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-04-12  boote  <boote@foo.local>
 
 	* owamp/api.c, owamp/context.c, owamp/owamp.h, owamp/protocol.c:
 	check-point.
@@ -5532,7 +5844,7 @@
 
 	jeff
 
-2002-04-04  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-04-04  boote  <boote@foo.local>
 
 	* owamp/api.c, owamp/owamp.h, owamp/owampP.h:
 	Not completely consistant at the moment - but I wanted to check-in anyway since
@@ -5540,24 +5852,24 @@
 
 	jeff
 
-2002-04-01  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-04-01  boote  <boote@foo.local>
 
 	* owamp/api.c, owamp/error.c, owamp/owamp.h, owamp/owampP.h:
 	just checking in for backup purposes.
 
 	jeff
 
-2002-03-31  karp  <karp@packrat.internet2.edu>
+2002-03-31  karp  <karp@foo.local>
 
 	* owamp/access.h.in: Added dbm, open, and assert support
 
 	* owamp/access.h.in: Added fcntl header file.
 
-2002-03-30  karp  <karp@packrat.internet2.edu>
+2002-03-30  karp  <karp@foo.local>
 
 	* owamp/access.h.in: Initial import
 
-2002-03-28  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-03-28  boote  <boote@foo.local>
 
 	* owamp/owamp.h: OWAMPKey
 
@@ -5571,26 +5883,26 @@
 
 	jeff
 
-2002-03-22  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-03-22  boote  <boote@foo.local>
 
 	* owamp/owamp.h, owamp/owampP.h: next round.
 
-2002-03-22  karp  <karp@packrat.internet2.edu>
+2002-03-22  karp  <karp@foo.local>
 
 	* owamp/owamp.h:
 	Added and clarified some api docs. Corrected name mismatches
 
-2002-03-21  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-03-21  boote  <boote@foo.local>
 
 	* owamp/owampP.h: Command-line vim is working!
 
 	* owamp/owamp.h, owamp/owampP.h: *** empty log message ***
 
-2002-03-20  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-03-20  boote  <boote@foo.local>
 
 	* owamp/owamp.h, owamp/owampP.h: *** empty log message ***
 
-2002-03-19  Jeff W. Boote  <boote@packrat.internet2.edu>
+2002-03-19  boote  <boote@foo.local>
 
 	* design/control_flow, design/decisions: Initial design docs.
 

@@ -123,6 +123,10 @@ OWPContextCreate(
         return NULL;
     }
 
+    if( !OWPContextConfigGetU32(ctx,OWPKeyDerivationCount,&ctx->pbkdf2_count)){
+        ctx->pbkdf2_count = _OWP_DEFAULT_PBKDF2_COUNT;
+    }
+
     /*
      * Do NOT exit on SIGPIPE. To defeat this in the least intrusive
      * way only set SIG_IGN if SIGPIPE is currently set to SIG_DFL.
@@ -198,8 +202,9 @@ OWPContextErrHandle(
 }
 
 typedef union _OWPContextHashValue{
-    void    *value;
-    void    (*func)(void);
+    void        *value;
+    void        (*func)(void);
+    uint32_t    u32;
 } _OWPContextHashValue;
 
 struct _OWPContextHashRecord{
@@ -298,6 +303,15 @@ OWPControlClose(
         I2HashClose(cntrl->table);
     }
 
+    if(cntrl->send_hmac_ctx){
+        I2HMACSha1Free(cntrl->send_hmac_ctx);
+        cntrl->send_hmac_ctx = NULL;
+    }
+    if(cntrl->recv_hmac_ctx){
+        I2HMACSha1Free(cntrl->recv_hmac_ctx);
+        cntrl->recv_hmac_ctx = NULL;
+    }
+
     /*
      * Remove cntrl from ctx list.
      */
@@ -345,9 +359,7 @@ _OWPControlAlloc(
      */
     if( !(cntrl->table = I2HashInit(ctx->eh,_OWP_CONTEXT_TABLE_SIZE,
                     NULL,NULL))){
-        *err_ret = OWPErrFATAL;
-        free(cntrl);
-        return NULL;
+        goto error;
     }
 
     /*
@@ -365,6 +377,13 @@ _OWPControlAlloc(
      */
     memset(cntrl->userid_buffer,'\0',sizeof(cntrl->userid_buffer));
 
+    if( !(cntrl->send_hmac_ctx = I2HMACSha1Alloc(ctx->eh))){
+        goto error;
+    }
+    if( !(cntrl->recv_hmac_ctx = I2HMACSha1Alloc(ctx->eh))){
+        goto error;
+    }
+
     /*
      * Put this control record on the ctx list.
      */
@@ -372,6 +391,19 @@ _OWPControlAlloc(
     ctx->cntrl_list = cntrl;
 
     return cntrl;
+
+error:
+    *err_ret = OWPErrFATAL;
+    if(cntrl){
+        if(cntrl->send_hmac_ctx){
+            I2HMACSha1Free(cntrl->send_hmac_ctx);
+        }
+        if(cntrl->recv_hmac_ctx){
+            I2HMACSha1Free(cntrl->recv_hmac_ctx);
+        }
+        free(cntrl);
+    }
+    return NULL;
 }
 
 static OWPBoolean
@@ -435,6 +467,19 @@ ConfigSetV(
 }
 
 static OWPBoolean
+ConfigSetU32(
+        I2Table     table,
+        const char  *key,
+        uint32_t    u32
+        )
+{
+    _OWPContextHashValue    val;
+
+    val.u32 = u32;
+    return ConfigSetU(table,key,val);
+}
+
+static OWPBoolean
 ConfigSetF(
         I2Table     table,
         const char  *key,
@@ -447,18 +492,16 @@ ConfigSetF(
     return ConfigSetU(table,key,val);
 }
 
-static _OWPContextHashValue
+static OWPBoolean
 ConfigGetU(
-        I2Table     table,
-        const char  *key
+        I2Table                 table,
+        const char              *key,
+        _OWPContextHashValue    *val
         )
 {
     struct _OWPContextHashRecord    *rec;
     I2Datum                         k,v;
     char                            kval[_OWP_CONTEXT_MAX_KEYLEN+1];
-    _OWPContextHashValue            not;
-
-    not.value = NULL;
 
     assert(key);
 
@@ -468,12 +511,13 @@ ConfigGetU(
     k.dsize = strlen(kval);
 
     if(!I2HashFetch(table,k,&v)){
-        return not;
+        return False;
     }
 
     rec = (struct _OWPContextHashRecord*)v.dptr;
+    *val = rec->val;
 
-    return rec->val;
+    return True;
 }
 
 static void *
@@ -482,9 +526,31 @@ ConfigGetV(
         const char  *key
         )
 {
-    _OWPContextHashValue    val = ConfigGetU(table,key);
+    _OWPContextHashValue    val;
+   
+    if( !ConfigGetU(table,key,&val)){
+        return NULL;
+    }
 
     return val.value;
+}
+
+static OWPBoolean
+ConfigGetU32(
+        I2Table     table,
+        const char  *key,
+        uint32_t    *u32
+        )
+{
+    _OWPContextHashValue    val;
+
+    if( !ConfigGetU(table,key,&val)){
+        return False;
+    }
+
+    *u32 = val.u32;
+
+    return False;
 }
 
 static OWPFunc ConfigGetF(
@@ -492,10 +558,11 @@ static OWPFunc ConfigGetF(
         const char  *key
         )
 {
-    _OWPContextHashValue    val = ConfigGetU(table,key);
+    _OWPContextHashValue    val;
 
-    if(val.value == NULL)
+    if( !ConfigGetU(table,key,&val)){
         return NULL;
+    }
 
     return val.func;
 }
@@ -560,6 +627,18 @@ OWPContextConfigSetF(
     return ConfigSetF(ctx->table,key,func);
 }
 
+OWPBoolean
+OWPContextConfigSetU32(
+        OWPContext  ctx,
+        const char  *key,
+        uint32_t    u32
+        )
+{
+    assert(ctx);
+
+    return ConfigSetU32(ctx->table,key,u32);
+}
+
 void *
 OWPContextConfigGetV(
         OWPContext  ctx,
@@ -569,6 +648,18 @@ OWPContextConfigGetV(
     assert(ctx);
 
     return ConfigGetV(ctx->table,key);
+}
+
+OWPBoolean
+OWPContextConfigGetU32(
+        OWPContext  ctx,
+        const char  *key,
+        uint32_t    *u32
+        )
+{
+    assert(ctx);
+
+    return ConfigGetU32(ctx->table,key,u32);
 }
 
 OWPFunc
@@ -619,6 +710,18 @@ OWPControlConfigSetV(
 }
 
 OWPBoolean
+OWPControlConfigSetU32(
+        OWPControl  cntrl,
+        const char  *key,
+        uint32_t    u32
+        )
+{
+    assert(cntrl);
+
+    return ConfigSetU32(cntrl->table,key,u32);
+}
+
+OWPBoolean
 OWPControlConfigSetF(
         OWPControl  cntrl,
         const char  *key,
@@ -639,6 +742,18 @@ OWPControlConfigGetV(
     assert(cntrl);
 
     return ConfigGetV(cntrl->table,key);
+}
+
+OWPBoolean
+OWPControlConfigGetU32(
+        OWPControl  cntrl,
+        const char  *key,
+        uint32_t    *u32
+        )
+{
+    assert(cntrl);
+
+    return ConfigGetU32(cntrl->table,key,u32);
 }
 
 OWPFunc
@@ -664,26 +779,28 @@ OWPControlConfigDelete(
 }
 
 /*
- * Function:        _OWPCallGetAESKey
+ * Function:        _OWPCallGetPF
  *
  * Description:
- *         Calls the get_key function that is defined by the application.
- *         If the application didn't define the get_key function, then provide
+ *         Calls the get_pf function that is defined by the application.
+ *         If the application didn't define the get_pf function, then provide
  *         the default response of False.
  */
 OWPBoolean
-_OWPCallGetAESKey(
+_OWPCallGetPF(
         OWPContext      ctx,        /* library context  */
-        const OWPUserID userid,     /* identifies key   */
-        uint8_t        *key_ret,   /* key - return     */
+        const OWPUserID userid,     /* identifies user  */
+        uint8_t         **pf_ret,   /* pf - return      */
+        size_t          *pf_len,    /* pf_len - return  */
+        void            **pf_free,  /* pf_free - return */
         OWPErrSeverity  *err_ret    /* error - return   */
         )
 {
-    OWPGetAESKeyFunc    func;
+    OWPGetPFFunc    func;
 
     *err_ret = OWPErrOK;
 
-    func = (OWPGetAESKeyFunc)OWPContextConfigGetF(ctx,OWPGetAESKey);
+    func = (OWPGetPFFunc)OWPContextConfigGetF(ctx,OWPGetPF);
 
     /*
      * Default action is no encryption support.
@@ -692,7 +809,7 @@ _OWPCallGetAESKey(
         return False;
     }
 
-    return func(ctx,userid,key_ret,err_ret);
+    return func(ctx,userid,pf_ret,pf_len,pf_free,err_ret);
 }
 
 /*

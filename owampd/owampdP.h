@@ -41,7 +41,7 @@ typedef struct {
     char            *datadir;
 
     char            *authmode;
-    uint32_t       auth_mode;        /* cooked version of authmode */
+    uint32_t        auth_mode;        /* cooked version of authmode */
     char            *srcnode;
 
     OWPPortRange    portspec;
@@ -52,8 +52,9 @@ typedef struct {
     OWPBoolean      allowroot;
 
     double          diskfudge;
-    uint32_t       dieby;
-    uint32_t       controltimeout;
+    uint32_t        dieby;
+    uint32_t        controltimeout;
+    uint32_t        count;
 #ifndef        NDEBUG
     void            *childwait;
 #endif

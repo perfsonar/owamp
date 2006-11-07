@@ -133,12 +133,13 @@ cipherInit(
  ** This function encrypts a given number of bits (= inputlen),
  ** assumed to bo divisible by 128 (= 16 bytes * 8 bits/byte).
  ** NOTICE that binIV is automatically updated in the end.
+ ** NOTICE that binIV is updated! (CBC mode)
  */
 int
 blockEncrypt(
         BYTE        *binIV,
         keyInstance *key,
-        BYTE        *input,
+        const BYTE  *input,
         int         inputLen,
         BYTE        *outBuffer
         )
@@ -183,7 +184,7 @@ int
 blockDecrypt(
         BYTE        *binIV,
         keyInstance *key,
-        BYTE        *input,
+        const BYTE  *input,
         int         inputLen,
         BYTE        *outBuffer
         )

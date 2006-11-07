@@ -330,11 +330,14 @@ OWPControlOpen(
 {
     int             rc;
     OWPControl      cntrl;
-    uint32_t       mode_avail;
-    uint8_t        key_value[16];
-    uint8_t        challenge[16];
-    uint8_t        token[32];
-    uint8_t        *key=NULL;
+    uint32_t        mode_avail;
+    uint8_t         challenge[16];
+    uint8_t         salt[_OWP_SALT_SIZE];
+    uint32_t        count;
+    uint8_t         token[_OWP_TOKEN_SIZE];
+    uint8_t         *pf=NULL;
+    void            *pf_free=NULL;
+    size_t          pf_len=0;
     OWPAcceptType   acceptval;
     struct timeval  tvalstart,tvalend;
     OWPNum64        uptime;
@@ -372,7 +375,8 @@ OWPControlOpen(
     /*
      * Read the server greating.
      */
-    if((rc=_OWPReadServerGreeting(cntrl,&mode_avail,challenge)) < OWPErrOK){
+    if((rc=_OWPReadServerGreeting(cntrl,&mode_avail,challenge,salt,&count))
+            < OWPErrOK){
         *err_ret = (OWPErrSeverity)rc;
         goto error;
     }
@@ -383,15 +387,13 @@ OWPControlOpen(
     mode_avail &= mode_req_mask;        /* mask out unwanted modes */
 
     /*
-     * retrieve key if needed
+     * retrieve pf if needed
      */
-    if(userid &&
-            (mode_avail & OWP_MODE_DOCIPHER)){
+    if(userid && (mode_avail & OWP_MODE_DOCIPHER)){
         strncpy(cntrl->userid_buffer,userid,
                 sizeof(cntrl->userid_buffer)-1);
-        if(_OWPCallGetAESKey(cntrl->ctx,cntrl->userid_buffer,key_value,
-                    err_ret)){
-            key = key_value;
+        if(_OWPCallGetPF(cntrl->ctx,cntrl->userid_buffer,
+                    &pf,&pf_len,&pf_free,err_ret)){
             cntrl->userid = cntrl->userid_buffer;
         }
         else{
@@ -400,9 +402,9 @@ OWPControlOpen(
         }
     }
     /*
-     * If no key, then remove auth/crypt modes
+     * If no pf, then remove auth/crypt modes
      */
-    if(!key)
+    if(!pf)
         mode_avail &= ~OWP_MODE_DOCIPHER;
 
     /*
@@ -447,38 +449,49 @@ OWPControlOpen(
      */
     if(cntrl->mode & OWP_MODE_DOCIPHER){
         /*
-         * Create "token" for ClientGreeting message.
-         * Section 4.1 of owamp spec:
-         *         AES(concat(challenge(16),sessionkey(16)))
+         * Create "token" for SetUpResponse message.
+         * Section 3.1 of owamp spec:
+         *         AES(concat(challenge(16),aessession_key(16),hmackey(32)))
          */
-        unsigned char   buf[32];
+        uint8_t   buf[_OWP_TOKEN_SIZE];
 
         /*
-         * copy challenge
-         */
-        memcpy(buf,challenge,16);
-
-        /*
-         * Create random session key
-         */
-        if(I2RandomBytes(ctx->rand_src,cntrl->session_key,16) != 0)
-            goto error;
-        /*
-         * concat session key to buffer
-         */
-        memcpy(&buf[16],cntrl->session_key,16);
-
-        /*
-         * Initialize AES structures for use with this
+         * Create random aes session key. Use rand data to
+         * initialize AES structures for use with this
          * key. (ReadBlock/WriteBlock functions will automatically
          * use this key for this cntrl connection.
          */
-        _OWPMakeKey(cntrl,cntrl->session_key);
+        if(I2RandomBytes(ctx->rand_src,cntrl->aessession_key,16) != 0)
+            goto error;
+        _OWPMakeKey(cntrl,cntrl->aessession_key);
 
         /*
-         * Encrypt the token as specified by Section 4.1
+         * Create random HMAC Session-key
+         * Initialize hmac structures with this key.
          */
-        if(OWPEncryptToken(key,buf,token) != 0)
+        if(I2RandomBytes(ctx->rand_src,cntrl->hmac_key,
+                    sizeof(cntrl->hmac_key)) != 0){
+            goto error;
+        }
+        I2HMACSha1Init(cntrl->send_hmac_ctx,cntrl->hmac_key,
+                sizeof(cntrl->hmac_key));
+        I2HMACSha1Init(cntrl->recv_hmac_ctx,cntrl->hmac_key,
+                sizeof(cntrl->hmac_key));
+
+        /*
+         * copy challenge
+         * concat session key to buffer
+         * concat hmac key to buffer
+         */
+        memcpy(buf,challenge,16);
+        memcpy(&buf[16],cntrl->aessession_key,16);
+        memcpy(&buf[32],cntrl->hmac_key,32);
+
+        /*
+         * Encrypt the token as specified by Section 3.1
+         * (AES CBC, IV=0, key=pbkdf2(pf))
+         */
+        if(OWPEncryptToken(pf,pf_len,salt,count,buf,token) != 0)
             goto error;
 
         /*
@@ -486,6 +499,15 @@ OWPControlOpen(
          */
         if(I2RandomBytes(ctx->rand_src,cntrl->writeIV,16) != 0)
             goto error;
+    }
+
+    if(pf_free){
+        /* clean-up */
+        memset(pf,0,pf_len);
+        free(pf_free);
+        pf_free = NULL;
+        pf = NULL;
+        pf_len = 0;
     }
 
     /*
@@ -498,8 +520,8 @@ OWPControlOpen(
     /*
      * Write the client greeting, and see if the Server agree's to it.
      */
-    if( ((rc=_OWPWriteClientGreeting(cntrl,token)) < OWPErrOK) ||
-            ((rc=_OWPReadServerOK(cntrl,&acceptval)) < OWPErrOK)){
+    if( ((rc=_OWPWriteSetupResponse(cntrl,token)) < OWPErrOK) ||
+            ((rc=_OWPReadServerStart(cntrl,&acceptval,&uptime)) < OWPErrOK)){
         *err_ret = (OWPErrSeverity)rc;
         goto error;
     }
@@ -522,11 +544,6 @@ OWPControlOpen(
     tvalsub(&tvalend,&tvalstart);
     OWPTimevalToNum64(&cntrl->rtt_bound,&tvalend);
 
-    if((rc=_OWPReadServerUptime(cntrl,&uptime)) < OWPErrOK){
-        *err_ret = (OWPErrSeverity)rc;
-        goto error;
-    }
-
     if(uptime_ret){
         *uptime_ret = uptime;
     }
@@ -546,6 +563,8 @@ error:
      * If access was denied - cleanup memory and return.
      */
 denied:
+    if(pf_free)
+        free(pf_free);
     if(cntrl->local_addr != local_addr)
         I2AddrFree(local_addr);
     if(cntrl->remote_addr != server_addr)
@@ -584,8 +603,8 @@ _OWPClientRequestTestReadResponse(
 {
     int             rc;
     OWPAcceptType   acceptval;
-    uint16_t       port_ret=0;
-    uint8_t        *sid_ret=NULL;
+    uint16_t        port_ret=0;
+    uint8_t         *sid_ret=NULL;
 
     if( (rc = _OWPWriteTestRequest(cntrl,
                     I2AddrSAddr(sender,NULL),
@@ -599,7 +618,7 @@ _OWPClientRequestTestReadResponse(
     if(server_conf_receiver)
         sid_ret = sid;
 
-    if((rc = _OWPReadTestAccept(cntrl,&acceptval,&port_ret,sid_ret)) <
+    if((rc = _OWPReadAcceptSession(cntrl,&acceptval,&port_ret,sid_ret)) <
             OWPErrOK){
         *err_ret = (OWPErrSeverity)rc;
         return 1;
@@ -1160,12 +1179,12 @@ OWPFetchSession(
         )
 {
     OWPAcceptType       acceptval;
-    uint8_t            finished;
-    uint32_t           n;
+    uint8_t             finished;
+    uint32_t            n;
     OWPTestSession      tsession = NULL;
     OWPSessionHeaderRec hdr;
     off_t               toff;
-    uint8_t            buf[_OWP_FETCH_BUFFSIZE];
+    char                buf[_OWP_FETCH_BUFFSIZE];
     OWPBoolean          dowrite = True;
     struct sockaddr     *saddr;
     socklen_t           saddrlen;
@@ -1266,10 +1285,11 @@ OWPFetchSession(
      * Read even AES blocks of skips first
      */
     while(toff > _OWP_RIJNDAEL_BLOCK_SIZE){
-        if(_OWPReceiveBlocks(cntrl,buf,1) != 1){
+        if(_OWPReceiveBlocks(cntrl,(uint8_t *)buf,1) != 1){
             *err_ret = OWPErrFATAL;
             goto failure;
         }
+        _OWPRecvHMACAdd(cntrl,buf,1);
         if(dowrite && ( fwrite(buf,1,_OWP_RIJNDAEL_BLOCK_SIZE,fp) !=
                     _OWP_RIJNDAEL_BLOCK_SIZE)){
             OWPError(cntrl->ctx,OWPErrFATAL,errno,
@@ -1282,10 +1302,11 @@ OWPFetchSession(
      * Finish incomplete block
      */
     if(toff){
-        if(_OWPReceiveBlocks(cntrl,buf,1) != 1){
+        if(_OWPReceiveBlocks(cntrl,(uint8_t *)buf,1) != 1){
             *err_ret = OWPErrFATAL;
             goto failure;
         }
+        _OWPRecvHMACAdd(cntrl,buf,1);
         if(dowrite && ( fwrite(buf,1,toff,fp) != (size_t)toff)){
             OWPError(cntrl->ctx,OWPErrFATAL,errno,
                     "OWPFetchSession: fwrite(): %M");
@@ -1294,15 +1315,15 @@ OWPFetchSession(
     }
 
     /*
-     * Read one block of IZP
+     * Read sent HMAC digest and compare
      */
-    if(_OWPReceiveBlocks(cntrl,buf,1) != 1){
+    if(_OWPReceiveBlocks(cntrl,(uint8_t *)buf,1) != 1){
         *err_ret = OWPErrFATAL;
         goto failure;
     }
-    if(memcmp(cntrl->zero,buf,_OWP_RIJNDAEL_BLOCK_SIZE)){
+    if(!_OWPRecvHMACCheckClear(cntrl,buf)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                "OWPFetchSession: IZP block corrupt");
+                "OWPFetchSession: Invalid HMAC");
         *err_ret = OWPErrFATAL;
         goto failure;
     }
@@ -1314,11 +1335,12 @@ OWPFetchSession(
     for(n=hdr.num_datarecs;
             n >= _OWP_FETCH_DATAREC_BLOCKS;
             n -= _OWP_FETCH_DATAREC_BLOCKS){
-        if(_OWPReceiveBlocks(cntrl,buf,_OWP_FETCH_AES_BLOCKS) !=
+        if(_OWPReceiveBlocks(cntrl,(uint8_t *)buf,_OWP_FETCH_AES_BLOCKS) !=
                 _OWP_FETCH_AES_BLOCKS){
             *err_ret = OWPErrFATAL;
             goto failure;
         }
+        _OWPRecvHMACAdd(cntrl,buf,_OWP_FETCH_AES_BLOCKS);
         if(dowrite && (fwrite(buf,_OWP_DATAREC_SIZE,
                         _OWP_FETCH_DATAREC_BLOCKS,fp) !=
                     _OWP_FETCH_DATAREC_BLOCKS)){
@@ -1334,10 +1356,11 @@ OWPFetchSession(
          */
         int        blks = n*_OWP_DATAREC_SIZE/_OWP_RIJNDAEL_BLOCK_SIZE + 1;
 
-        if(_OWPReceiveBlocks(cntrl,buf,blks) != blks){
+        if(_OWPReceiveBlocks(cntrl,(uint8_t *)buf,blks) != blks){
             *err_ret = OWPErrFATAL;
             goto failure;
         }
+        _OWPRecvHMACAdd(cntrl,buf,blks);
         if(dowrite && (fwrite(buf,_OWP_DATAREC_SIZE,n,fp) != n)){
             OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
                     "OWPFetchSession: fwrite(): %M");
@@ -1348,15 +1371,15 @@ OWPFetchSession(
     fflush(fp);
 
     /*
-     * Read final block of IZP
+     * Read final block of HMAC
      */
-    if(_OWPReceiveBlocks(cntrl,buf,1) != 1){
+    if(_OWPReceiveBlocks(cntrl,(uint8_t *)buf,1) != 1){
         *err_ret = OWPErrFATAL;
         goto failure;
     }
-    if(memcmp(cntrl->zero,buf,_OWP_RIJNDAEL_BLOCK_SIZE)){
+    if(!_OWPRecvHMACCheckClear(cntrl,buf)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                "OWPFetchSession: IZP block corrupt");
+                "OWPFetchSession: Invalid HMAC");
         *err_ret = OWPErrFATAL;
         goto failure;
     }

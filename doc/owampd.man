@@ -74,14 +74,15 @@ will be selected.
 .RE
 .TP
 .BI \-c " confdir"
-Specify the directory that holds the \fBowampd\fR configuration files.
+Specify the directory that holds the \fBowampd\fR configuration files:
+\fBowampd.conf\fR, \fBowampd.limits\fR and \fBowampd.pfs\fR.
 .RS
 .IP Default:
 Current working directory.
 .RE
 .TP
 .BI \-d " datadir"
-Specify the directory that holds the output data files. The data files are
+Specify the directory that holds the buffered data files. The data files are
 the result of one-way latency tests where the server is the receiving
 host. The data files are used to buffer the data, at least until a client
 downloads the file. Policy restrictions can be used to set how much disk space
@@ -113,6 +114,11 @@ intended.
 Specify the gid for the \fBowampd\fR process. \fIgroup\fR can
 be specified using a valid group name or by using \-gid. This option is
 only used if \fBowampd\fR is started as root.
+.RS
+.PP
+This option can be useful to limit logfile permissions to only users in
+this group.
+.RE
 .TP
 .B \-h
 Print a help message.
@@ -144,19 +150,28 @@ Specify the address and port on which \fBowampd\fR will listen for requests.
 \fInodename\fR can be specified using a DNS name or using the textual
 representation of the address. It is possible to set the source address,
 without setting the \fIport\fR, simply by leaving off the ':' and \fIport\fR
-specification. If an IPv6 address is specified, note that the accepted format
+specification. Likewise, a non-default port can be specified for
+all system addresses (wildcard) by starting the specification string with
+a ':'. If an IPv6 address is specified, note that the accepted format
 contains \fInodename\fR in square brackets, such as: [fe80::fe9f:62d8]. This
 ensures the port number is distinct from the address specification.
 .RS
 .IP Default:
 \fInodename\fR is wildcarded as any currently available address.
-\fIport\fR is 4822.
+\fIport\fR is 861.
 .RE
 .TP
 .BI \-U " user"
-Specify the uid for the \fBowampd\fR process. \fIuser\fR can
-be specified using a valid user name or by using \-uid. This option is
-only used if \fBowampd\fR is started as root.
+Specify the uid the \fBowampd\fR process should run as. \fIuser\fR
+can be specified using a valid user name or by using \-uid.
+This option is only used if \fBowampd\fR is started as root.
+.RS
+.PP
+In the default case, \fBowampd\fR should be started as root so it can bind
+the protected port 861. (See \-S option.) \fBowampd\fR will release root
+permissions shortly after binding to this protected port and requests will
+be serviced by processes running with permissions defined by the \fIuser\fR.
+.RE
 .TP
 .B \-v
 Set verbose output. Messages will still only go to syslog unless the \fB\-Z\fR
@@ -232,11 +247,11 @@ owampd.conf
 .br
 owampd.limits
 .br
-owampd.keys
+owampd.pfs
 .SH SEE ALSO
 There are more details on configuring the \fBowampd\fR daemon in the
 owampd.conf(5) manual page. Details on configuring the policy
-are in the owampd.limits(5) and owampd.keys(5) manual pages.
+are in the owampd.limits(5) and owampd.pfs(5) manual pages.
 Information on the client is in the owping(1) manual page.
 For more of an overview of the full functionality and architecture, see
 the \%http://e2epi.internet2.edu/owamp/ web site.
