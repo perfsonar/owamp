@@ -1278,7 +1278,7 @@ _OWPReadTestRequest(
      */
     _OWPRecvHMACAdd(cntrl,buf,6);
     if(!_OWPRecvHMACCheckClear(cntrl,&buf[96])){
-        OWPError(cntrl->ctx,OWPErrFATAL,EAUTH,
+        OWPError(cntrl->ctx,OWPErrFATAL,EACCES,
                 "_OWPReadTestRequest: Invalid HMAC");
         cntrl->state = _OWPStateInvalid;
         *accept_ptr = OWP_CNTRL_INVALID;
