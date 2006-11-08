@@ -18,14 +18,14 @@
  *
  *        Description:        
  */
+#include <owamp/owamp.h>
+#include <I2util/util.h>
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 #include <assert.h>
-
-#include <I2util/util.h>
-#include <owamp/owamp.h>
 
 int
 main(

@@ -41,8 +41,8 @@
  **                     (char *) is the type being used to accomplish this.
  */
 
-#include <I2util/util.h>
 #include <owampP.h>
+#include <I2util/util.h>
 
 /*
  *         ServerGreeting message format:

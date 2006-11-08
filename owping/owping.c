@@ -24,8 +24,8 @@
  *    Initial implementation of owping commandline application. This
  *    application will measure active one-way udp latencies.
  */
-#include <I2util/util.h>
 #include <owamp/owamp.h>
+#include <I2util/util.h>
 
 #include <stdlib.h>
 #include <stdio.h>

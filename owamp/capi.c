@@ -21,8 +21,8 @@
  *        This file contains the api functions that are typically called from
  *        an owamp client application.
  */
-#include <I2util/util.h>
 #include <owamp/owampP.h>
+#include <I2util/util.h>
 
 #include <sys/types.h>
 #include <sys/socket.h>

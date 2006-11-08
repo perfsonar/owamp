@@ -1437,9 +1437,9 @@ OWPStatsPrintSummary(
 {
     long int    i;
     uint32_t    ui;
-    uint8_t    nttl=0;
-    uint8_t    minttl=255;
-    uint8_t    maxttl=0;
+    uint8_t    	nttl=0;
+    uint8_t    	minttl=255;
+    uint8_t    	maxttl=0;
     char        minval[80];
     char        maxval[80];
     char        n1val[80];

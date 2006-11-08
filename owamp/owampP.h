@@ -24,9 +24,10 @@
 #ifndef        OWAMPP_H
 #define        OWAMPP_H
 
+#include <owamp/owamp.h>
+
 #include <I2util/util.h>
 #include <I2util/hmac-sha1.h>
-#include <owamp/owamp.h>
 
 #include <stdlib.h>
 #include <stdio.h>

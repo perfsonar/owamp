@@ -23,8 +23,6 @@
 #ifndef        OWAMP_H
 #define        OWAMP_H
 
-#include <I2util/util.h>
-
 /*
  * Portablility sanity checkes.
  */
@@ -36,6 +34,7 @@
 #undef PACKAGE_VERSION
 
 #include <owamp/config.h>
+#endif        /* HAVE_CONFIG_H */
 
 #if        !HAVE_ERRNO_H || !HAVE_NETDB_H || !HAVE_STDLIB_H || !HAVE_SYS_PARAM_H
 #error        Missing Header!
@@ -49,7 +48,6 @@
 #if        !HAVE_MALLOC || !HAVE_MEMSET
 #error        Missing needed memory functions!
 #endif
-#endif        /* HAVE_CONFIG_H */
 
 #ifndef        HAVE___ATTRIBUTE__
 #define __attribute__(x)
@@ -112,6 +110,8 @@
 #ifndef MAX
 #define MAX(a,b) ((a>b)?a:b)
 #endif
+
+#include <I2util/util.h>
 
 /*
  * Filename/path component macros used by various parts of owamp.
