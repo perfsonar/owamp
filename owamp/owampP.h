@@ -549,16 +549,17 @@ _OWPRecvHMACCheckClear(
 extern OWPErrSeverity
 _OWPWriteServerGreeting(
         OWPControl  cntrl,
+        int         *retn_on_intr,
         uint32_t    avail_modes,
         uint8_t     *challenge,  /* [16] */
         uint8_t     *salt,       /* [16] */
-        uint32_t    count,
-        int         *retn_on_intr
+        uint32_t    count
         );
 
 extern OWPErrSeverity
 _OWPReadServerGreeting(
         OWPControl  cntrl,
+        int         *retn_on_intr,
         uint32_t    *mode,      /* modes available - returned   */
         uint8_t     *challenge, /* [16] : challenge - returned  */
         uint8_t     *salt,      /* [16] : salt - returned       */
@@ -568,44 +569,47 @@ _OWPReadServerGreeting(
 extern OWPErrSeverity
 _OWPWriteSetupResponse(
         OWPControl  cntrl,
+        int         *retn_on_intr,
         uint8_t     *token          /* [64] */
         );
 
 extern OWPErrSeverity
 _OWPReadSetupResponse(
         OWPControl  cntrl,
+        int         *retn_on_intr,
         uint32_t    *mode,
         uint8_t     *token,         /* [32] - return    */
-        uint8_t     *clientIV,      /* [16] - return    */
-        int         *retn_on_intr
+        uint8_t     *clientIV       /* [16] - return    */
         );
 
 extern OWPErrSeverity
 _OWPWriteServerStart(
         OWPControl      cntrl,
+        int             *retn_on_intr,
         OWPAcceptType   code,
-        OWPNum64        uptime,
-        int             *retn_on_intr
+        OWPNum64        uptime
         );
 
 extern OWPErrSeverity
 _OWPReadServerStart(
         OWPControl      cntrl,
-        OWPAcceptType   *acceptval, /* ret        */
-        OWPNum64        *uptime_ret /* ret        */
+        int             *retn_on_intr,
+        OWPAcceptType   *acceptval,     /* ret        */
+        OWPNum64        *uptime_ret     /* ret        */
         );
 
 extern OWPErrSeverity
 _OWPReadServerUptime(
         OWPControl      cntrl,
+        int             *retn_on_intr,
         OWPNum64        *uptime_ret
         );
 
 extern int
 _OWPEncodeTestRequestPreamble(
         OWPContext      ctx,
-        uint32_t       *msg,
-        uint32_t       *len_ret,
+        uint32_t        *msg,
+        uint32_t        *len_ret,
         struct sockaddr *sender,
         struct sockaddr *receiver,
         OWPBoolean      server_conf_sender,
@@ -618,12 +622,12 @@ extern OWPErrSeverity
 _OWPDecodeTestRequestPreamble(
         OWPContext      ctx,
         OWPBoolean      request,
-        uint32_t       *msg,
-        uint32_t       msg_len,
+        uint32_t        *msg,
+        uint32_t        msg_len,
         struct sockaddr *sender,
         struct sockaddr *receiver,
         socklen_t       *socklen,
-        uint8_t        *ipvn,
+        uint8_t         *ipvn,
         OWPBoolean      *server_conf_sender,
         OWPBoolean      *server_conf_receiver,
         OWPSID          sid,
@@ -632,18 +636,19 @@ _OWPDecodeTestRequestPreamble(
 
 extern OWPErrSeverity
 _OWPEncodeSlot(
-        uint32_t       *msg,   /* [4] - one block/ 16 bytes 32 bit aligned */
-        OWPSlot         *slot
+        uint32_t    *msg,   /* [4] - one block/ 16 bytes 32 bit aligned */
+        OWPSlot     *slot
         );
 extern OWPErrSeverity
 _OWPDecodeSlot(
-        OWPSlot         *slot,
-        uint32_t       *msg    /* [4] - one block/ 16 bytes 32 bit aligned */
+        OWPSlot     *slot,
+        uint32_t    *msg    /* [4] - one block/ 16 bytes 32 bit aligned */
         );
 
 extern OWPErrSeverity
 _OWPWriteTestRequest(
         OWPControl      cntrl,
+        int             *retn_on_intr,
         struct sockaddr *sender,
         struct sockaddr *receiver,
         OWPBoolean      server_conf_sender,
@@ -687,21 +692,23 @@ _OWPWriteAcceptSession(
         OWPControl      cntrl,
         int             *retn_on_intr,
         OWPAcceptType   acceptval,
-        uint16_t       port,
+        uint16_t        port,
         OWPSID          sid
         );
 
 extern OWPErrSeverity
 _OWPReadAcceptSession(
         OWPControl      cntrl,
+        int             *retn_on_intr,
         OWPAcceptType   *acceptval,
-        uint16_t       *port,
+        uint16_t        *port,
         OWPSID          sid
         );
 
 extern OWPErrSeverity
 _OWPWriteStartSessions(
-        OWPControl      cntrl
+        OWPControl      cntrl,
+        int             *retn_on_intr
         );
 
 extern OWPErrSeverity
@@ -727,7 +734,7 @@ _OWPWriteStopSessions(
         OWPControl      cntrl,
         int             *retn_on_intr,
         OWPAcceptType   acceptval,
-        uint32_t       num_sessions
+        uint32_t        num_sessions
         );
 
 extern OWPErrSeverity
@@ -741,8 +748,9 @@ _OWPReadStopSessions(
 extern OWPErrSeverity
 _OWPWriteFetchSession(
         OWPControl      cntrl,
-        uint32_t       begin,
-        uint32_t       end,
+        int             *retn_on_intr,
+        uint32_t        begin,
+        uint32_t        end,
         OWPSID          sid
         );
 
@@ -750,8 +758,8 @@ extern OWPErrSeverity
 _OWPReadFetchSession(
         OWPControl      cntrl,
         int             *retn_on_intr,
-        uint32_t       *begin,
-        uint32_t       *end,
+        uint32_t        *begin,
+        uint32_t        *end,
         OWPSID          sid
         );
 
@@ -760,20 +768,21 @@ _OWPWriteFetchAck(
         OWPControl      cntrl,
         int             *retn_on_intr,
         OWPAcceptType   acceptval,
-        uint8_t        finished,
-        uint32_t       next_seqno,
-        uint32_t       num_skiprecs,
-        uint32_t       num_datarecs
+        uint8_t         finished,
+        uint32_t        next_seqno,
+        uint32_t        num_skiprecs,
+        uint32_t        num_datarecs
         );
 
 extern OWPErrSeverity
 _OWPReadFetchAck(
         OWPControl      cntrl,
+        int             *retn_on_intr,
         OWPAcceptType   *acceptval,
-        uint8_t        *finished,
-        uint32_t       *next_seqno,
-        uint32_t       *num_skiprecs,
-        uint32_t       *num_datarecs
+        uint8_t         *finished,
+        uint32_t        *next_seqno,
+        uint32_t        *num_skiprecs,
+        uint32_t        *num_datarecs
         );
 
 extern OWPErrSeverity
@@ -786,6 +795,7 @@ _OWPWriteStartAck(
 extern OWPErrSeverity
 _OWPReadStartAck(
         OWPControl      cntrl,
+        int             *retn_on_intr,
         OWPAcceptType   *acceptval
         );
 

@@ -79,11 +79,11 @@
 OWPErrSeverity
 _OWPWriteServerGreeting(
         OWPControl  cntrl,
+        int         *retn_on_err,
         uint32_t    avail_modes,
         uint8_t     *challenge,     /* [16] */
         uint8_t     *salt,          /* [16] */
-        uint32_t    count,
-        int         *retn_on_err
+        uint32_t    count
         )
 {
     /*
@@ -120,23 +120,24 @@ _OWPWriteServerGreeting(
 OWPErrSeverity
 _OWPReadServerGreeting(
         OWPControl  cntrl,
-        uint32_t   *mode,       /* modes available - returned   */
-        uint8_t    *challenge,  /* [16] : challenge - returned  */
-        uint8_t    *salt,       /* [16] : challenge - returned  */
-        uint32_t   *count       /* count - returned   */
+        int         *retn_on_intr,
+        uint32_t    *mode,      /* modes available - returned   */
+        uint8_t     *challenge, /* [16] : challenge - returned  */
+        uint8_t     *salt,      /* [16] : challenge - returned  */
+        uint32_t    *count      /* count - returned   */
         )
 {
     char    *buf = (char *)cntrl->msg;
 
     if(!_OWPStateIsInitial(cntrl)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                "_OWPReadServerGreeting:called in wrong state.");
+                "_OWPReadServerGreeting: called in wrong state.");
         return OWPErrFATAL;
     }
 
-    if(I2Readn(cntrl->sockfd,buf,64) != 64){
+    if(I2Readni(cntrl->sockfd,buf,64,retn_on_intr) != 64){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                "Read failed:(%s)",strerror(errno));
+                "Read failed: (%s)",strerror(errno));
         return (int)OWPErrFATAL;
     }
 
@@ -185,7 +186,8 @@ _OWPReadServerGreeting(
 OWPErrSeverity
 _OWPWriteSetupResponse(
         OWPControl  cntrl,
-        uint8_t    *token        /* [64]        */
+        int         *retn_on_intr,
+        uint8_t     *token        /* [64]        */
         )
 {
     char    *buf = (char *)cntrl->msg;
@@ -205,7 +207,7 @@ _OWPWriteSetupResponse(
         memcpy(&buf[148],cntrl->writeIV,16);
     }
 
-    if(I2Writen(cntrl->sockfd, buf, 164) != 164)
+    if(I2Writeni(cntrl->sockfd,buf,164,retn_on_intr) != 164)
         return OWPErrFATAL;
 
     return OWPErrOK;
@@ -214,10 +216,10 @@ _OWPWriteSetupResponse(
 OWPErrSeverity
 _OWPReadSetupResponse(
         OWPControl  cntrl,
+        int         *retn_on_intr,
         uint32_t    *mode,
         uint8_t     *token,         /* [64] - return        */
-        uint8_t     *clientIV,      /* [16] - return        */
-        int         *retn_on_intr
+        uint8_t     *clientIV       /* [16] - return        */
         )
 {
     ssize_t len;
@@ -307,9 +309,9 @@ GetAcceptType(
 OWPErrSeverity
 _OWPWriteServerStart(
         OWPControl      cntrl,
+        int             *retn_on_intr,
         OWPAcceptType   code,
-        OWPNum64        uptime,
-        int             *retn_on_intr
+        OWPNum64        uptime
         )
 {
     ssize_t         len;
@@ -377,6 +379,7 @@ _OWPWriteServerStart(
 OWPErrSeverity
 _OWPReadServerStart(
         OWPControl      cntrl,
+        int             *retn_on_intr,
         OWPAcceptType   *acceptval, /* ret        */
         OWPNum64        *uptime     /* ret        */
         )
@@ -393,7 +396,7 @@ _OWPReadServerStart(
     /*
      * First read unencrypted blocks
      */
-    if(I2Readn(cntrl->sockfd,buf,32) != 32){
+    if(I2Readni(cntrl->sockfd,buf,32,retn_on_intr) != 32){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
                 "Read failed:(%s)",strerror(errno));
         cntrl->state = _OWPStateInvalid;
@@ -413,7 +416,7 @@ _OWPReadServerStart(
      * IV is encrypted.
      * Add block to HMAC
      */
-    if(_OWPReceiveBlocks(cntrl,(uint8_t *)buf,1) != 1){
+    if(_OWPReceiveBlocksIntr(cntrl,(uint8_t *)buf,1,retn_on_intr) != 1){
         OWPError(cntrl->ctx,OWPErrFATAL,errno,
                 "_OWPReadServerStart: Unable to read from socket.");
         cntrl->state = _OWPStateInvalid;
@@ -966,6 +969,7 @@ _OWPDecodeSlot(
 OWPErrSeverity
 _OWPWriteTestRequest(
         OWPControl      cntrl,
+        int             *retn_on_intr,
         struct sockaddr *sender,
         struct sockaddr *receiver,
         OWPBoolean      server_conf_sender,
@@ -1006,7 +1010,7 @@ _OWPWriteTestRequest(
     /*
      * Now - send the request! 112 octets == 7 blocks.
      */
-    if(_OWPSendBlocks(cntrl,(uint8_t *)buf,7) != 7){
+    if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,7,retn_on_intr) != 7){
         cntrl->state = _OWPStateInvalid;
         return OWPErrFATAL;
     }
@@ -1022,7 +1026,7 @@ _OWPWriteTestRequest(
             return OWPErrFATAL;
         }
         _OWPSendHMACAdd(cntrl,buf,1);
-        if(_OWPSendBlocks(cntrl,(uint8_t *)buf,1) != 1){
+        if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,retn_on_intr) != 1){
             cntrl->state = _OWPStateInvalid;
             return OWPErrFATAL;
         }
@@ -1032,7 +1036,7 @@ _OWPWriteTestRequest(
      * Send HMAC digest block
      */
     _OWPSendHMACDigestClear(cntrl,buf);
-    if(_OWPSendBlocks(cntrl,(uint8_t *)buf,1) != 1){
+    if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,retn_on_intr) != 1){
         cntrl->state = _OWPStateInvalid;
         return OWPErrFATAL;
     }
@@ -1480,8 +1484,9 @@ _OWPWriteAcceptSession(
 OWPErrSeverity
 _OWPReadAcceptSession(
         OWPControl      cntrl,
+        int             *retn_on_intr,
         OWPAcceptType   *acceptval,
-        uint16_t       *port,
+        uint16_t        *port,
         OWPSID          sid
         )
 {
@@ -1496,7 +1501,7 @@ _OWPReadAcceptSession(
     /*
      * Get the servers response.
      */
-    if(_OWPReceiveBlocks(cntrl,(uint8_t *)buf,3) != 3){
+    if(_OWPReceiveBlocksIntr(cntrl,(uint8_t *)buf,3,retn_on_intr) != 3){
         OWPError(cntrl->ctx,OWPErrFATAL,errno,
                 "_OWPReadAcceptSession:Unable to read from socket.");
         cntrl->state = _OWPStateInvalid;
@@ -1555,7 +1560,8 @@ _OWPReadAcceptSession(
  */
 OWPErrSeverity
 _OWPWriteStartSessions(
-        OWPControl  cntrl
+        OWPControl  cntrl,
+        int         *retn_on_intr
         )
 {
     char    *buf = (char *)cntrl->msg;
@@ -1578,7 +1584,7 @@ _OWPWriteStartSessions(
     _OWPSendHMACAdd(cntrl,buf,1);
     _OWPSendHMACDigestClear(cntrl,&buf[16]);
 
-    if(_OWPSendBlocks(cntrl,(uint8_t *)buf,2) != 2){
+    if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,2,retn_on_intr) != 2){
         cntrl->state = _OWPStateInvalid;
         return OWPErrFATAL;
     }
@@ -1723,6 +1729,7 @@ _OWPWriteStartAck(
 OWPErrSeverity
 _OWPReadStartAck(
         OWPControl      cntrl,
+        int             *retn_on_intr,
         OWPAcceptType   *acceptval
         )
 {
@@ -1736,7 +1743,7 @@ _OWPReadStartAck(
         return OWPErrFATAL;
     }
 
-    if(_OWPReceiveBlocks(cntrl,(uint8_t *)&buf[0],2) != 
+    if(_OWPReceiveBlocksIntr(cntrl,(uint8_t *)&buf[0],2,retn_on_intr) != 
             (_OWP_START_ACK_BLK_LEN)){
         OWPError(cntrl->ctx,OWPErrFATAL,errno,
                 "_OWPReadStartAck: Unable to read from socket.");
@@ -2468,8 +2475,9 @@ err:
 OWPErrSeverity
 _OWPWriteFetchSession(
         OWPControl  cntrl,
-        uint32_t   begin,
-        uint32_t   end,
+        int         *retn_on_intr,
+        uint32_t    begin,
+        uint32_t    end,
         OWPSID      sid
         )
 {
@@ -2492,7 +2500,7 @@ _OWPWriteFetchSession(
     _OWPSendHMACAdd(cntrl,buf,2);
     _OWPSendHMACDigestClear(cntrl,&buf[32]);
 
-    if(_OWPSendBlocks(cntrl,(uint8_t *)buf,3) != 3)
+    if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,3,retn_on_intr) != 3)
         return OWPErrFATAL;
 
     cntrl->state |= (_OWPStateFetchAck | _OWPStateFetchSession);
@@ -2659,11 +2667,12 @@ _OWPWriteFetchAck(
 OWPErrSeverity
 _OWPReadFetchAck(
         OWPControl      cntrl,
+        int             *retn_on_intr,
         OWPAcceptType   *acceptval,
-        uint8_t        *finished,
-        uint32_t       *next_seqno,
-        uint32_t       *num_skiprecs,
-        uint32_t       *num_datarecs
+        uint8_t         *finished,
+        uint32_t        *next_seqno,
+        uint32_t        *num_skiprecs,
+        uint32_t        *num_datarecs
         )
 {
     char    *buf = (char *)cntrl->msg;
@@ -2676,7 +2685,7 @@ _OWPReadFetchAck(
         return OWPErrFATAL;
     }
 
-    if(_OWPReceiveBlocks(cntrl,(uint8_t *)buf,2) != 2){
+    if(_OWPReceiveBlocksIntr(cntrl,(uint8_t *)buf,2,retn_on_intr) != 2){
         OWPError(cntrl->ctx,OWPErrFATAL,errno,
                 "_OWPReadFetchAck: Unable to read from socket.");
         cntrl->state = _OWPStateInvalid;

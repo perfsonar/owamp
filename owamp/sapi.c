@@ -242,7 +242,7 @@ OWPControlAccept(
     size_t          pf_len=0;
     int             rc;
     struct timeval  tvalstart,tvalend;
-    int             ival=0;
+    int             ival=1;
     int             *intr = &ival;
     char            remotenode[NI_MAXHOST],remoteserv[NI_MAXSERV];
     size_t          remotenodelen = sizeof(remotenode);
@@ -316,8 +316,8 @@ OWPControlAccept(
         *err_ret = OWPErrFATAL;
         goto error;
     }
-    if( (rc = _OWPWriteServerGreeting(cntrl,mode_offered,
-                    challenge,salt,ctx->pbkdf2_count,intr)) < OWPErrOK){
+    if( (rc = _OWPWriteServerGreeting(cntrl,intr,mode_offered,
+                    challenge,salt,ctx->pbkdf2_count)) < OWPErrOK){
         *err_ret = (OWPErrSeverity)rc;
         goto error;
     }
@@ -333,8 +333,8 @@ OWPControlAccept(
         goto error;
     }
 
-    if((rc = _OWPReadSetupResponse(cntrl,&cntrl->mode,rawtoken,
-                    cntrl->readIV,intr)) < OWPErrOK){
+    if((rc = _OWPReadSetupResponse(cntrl,intr,&cntrl->mode,rawtoken,
+                    cntrl->readIV)) < OWPErrOK){
         *err_ret = (OWPErrSeverity)rc;
         goto error;
     }
@@ -359,7 +359,7 @@ OWPControlAccept(
         OWPError(cntrl->ctx,OWPErrWARNING,OWPErrPOLICY,
                 "Control request to ([%s]:%s) denied from ([%s]:%s): mode not offered (%u)",
                 localnode,localserv,remotenode,remoteserv,cntrl->mode);
-        if( (rc = _OWPWriteServerStart(cntrl,OWP_CNTRL_REJECT,0,intr)) <
+        if( (rc = _OWPWriteServerStart(cntrl,intr,OWP_CNTRL_REJECT,0)) <
                 OWPErrOK){
             *err_ret = (OWPErrSeverity)rc;
         }
@@ -377,7 +377,7 @@ OWPControlAccept(
         getkey_success = _OWPCallGetPF(cntrl->ctx,cntrl->userid_buffer,
                 &pf,&pf_len,&pf_free, err_ret);
         if(!getkey_success && (*err_ret != OWPErrOK)){
-            (void)_OWPWriteServerStart(cntrl,OWP_CNTRL_FAILURE,0,intr);
+            (void)_OWPWriteServerStart(cntrl,intr,OWP_CNTRL_FAILURE,0);
             goto error;
         }
 
@@ -385,7 +385,7 @@ OWPControlAccept(
                     rawtoken,token) < 0){
             OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
                     "Encryption state problem?!?!");
-            (void)_OWPWriteServerStart(cntrl,OWP_CNTRL_FAILURE,0,intr);
+            (void)_OWPWriteServerStart(cntrl,intr,OWP_CNTRL_FAILURE,0);
             *err_ret = OWPErrFATAL;
             goto error;
         }
@@ -402,7 +402,7 @@ OWPControlAccept(
                         "Control request to ([%s]:%s) denied from ([%s]:%s):Invalid challenge encryption",
                         localnode,localserv,remotenode,remoteserv);
             }
-            (void)_OWPWriteServerStart(cntrl,OWP_CNTRL_REJECT,0,intr);
+            (void)_OWPWriteServerStart(cntrl,intr,OWP_CNTRL_REJECT,0);
             goto error;
         }
 
@@ -411,7 +411,7 @@ OWPControlAccept(
         if(I2RandomBytes(cntrl->ctx->rand_src,cntrl->writeIV,16) != 0){
             OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
                     "Unable to fetch randomness...");
-            (void)_OWPWriteServerStart(cntrl,OWP_CNTRL_FAILURE,0,intr);
+            (void)_OWPWriteServerStart(cntrl,intr,OWP_CNTRL_FAILURE,0);
             goto error;
         }
 
@@ -446,12 +446,12 @@ OWPControlAccept(
             /*
              * send mode of 0 to client, and then close.
              */
-            (void)_OWPWriteServerStart(cntrl,OWP_CNTRL_REJECT,0,intr);
+            (void)_OWPWriteServerStart(cntrl,intr,OWP_CNTRL_REJECT,0);
         }
         else{
             OWPError(ctx,*err_ret,OWPErrUNKNOWN,
                     "Policy function failed.");
-            (void)_OWPWriteServerStart(cntrl,OWP_CNTRL_FAILURE,0,intr);
+            (void)_OWPWriteServerStart(cntrl,intr,OWP_CNTRL_FAILURE,0);
         }
         goto error;
     }
@@ -459,7 +459,7 @@ OWPControlAccept(
     /*
      * Made it through the gauntlet - accept the control session!
      */
-    if( (rc = _OWPWriteServerStart(cntrl,OWP_CNTRL_ACCEPT,uptime,intr)) <
+    if( (rc = _OWPWriteServerStart(cntrl,intr,OWP_CNTRL_ACCEPT,uptime)) <
             OWPErrOK){
         *err_ret = (OWPErrSeverity)rc;
         goto error;
@@ -490,7 +490,7 @@ OWPProcessTestRequest(
     uint16_t       port;
     int             rc;
     OWPAcceptType   acceptval = OWP_CNTRL_FAILURE;
-    int             ival=0;
+    int             ival=1;
     int             *intr = &ival;
     struct sockaddr *rsaddr;
     struct sockaddr *ssaddr;
@@ -683,7 +683,7 @@ OWPProcessStartSessions(
     int             rc;
     OWPTestSession  tsession;
     OWPErrSeverity  err,err2=OWPErrOK;
-    int             ival=0;
+    int             ival=1;
     int             *intr = &ival;
 
     if(retn_on_intr){
@@ -814,7 +814,7 @@ OWPProcessFetchSession(
 
     struct DoDataState          dodata;
 
-    int                         ival=0;
+    int                         ival=1;
     int                         *intr = &ival;
 
     if(retn_on_intr){

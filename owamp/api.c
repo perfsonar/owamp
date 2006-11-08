@@ -594,7 +594,7 @@ static OWPErrSeverity
 _OWPStopSendSessions(
         OWPControl      cntrl,
         OWPAcceptType   *acceptval_ret,  /* in/out */
-        uint32_t       *num_sessions
+        uint32_t        *num_sessions
         )
 {
     OWPErrSeverity  err,err2=OWPErrOK;
@@ -668,7 +668,7 @@ _OWPStopSendSessions(
          * (IGNORE intr for this local file i/o)
          */
         if(I2Readn(sptr->endpoint->skiprecfd,sdr,8) != 8){
-            OWPError(cntrl->ctx,OWPErrWARNING,errno,"I2Readni(skiprecfd): %M");
+            OWPError(cntrl->ctx,OWPErrWARNING,errno,"I2Readn(skiprecfd): %M");
             *acceptval = OWP_CNTRL_FAILURE;
             err2 = MIN(OWPErrWARNING,err2);
             continue;

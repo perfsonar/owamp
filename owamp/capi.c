@@ -322,7 +322,7 @@ OWPControlOpen(
         OWPContext      ctx,            /* control context      */
         I2Addr          local_addr,     /* local addr or null   */
         I2Addr          server_addr,    /* server addr          */
-        uint32_t       mode_req_mask,  /* requested modes      */
+        uint32_t        mode_req_mask,  /* requested modes      */
         OWPUserID       userid,         /* userid or NULL       */
         OWPNum64        *uptime_ret,    /* server uptime - ret  */
         OWPErrSeverity  *err_ret        /* err - return         */
@@ -341,6 +341,8 @@ OWPControlOpen(
     OWPAcceptType   acceptval;
     struct timeval  tvalstart,tvalend;
     OWPNum64        uptime;
+    int             intr=1;
+    int             *retn_on_intr = &intr;
 
     *err_ret = OWPErrOK;
 
@@ -349,6 +351,14 @@ OWPControlOpen(
      */
     if( !(cntrl = _OWPControlAlloc(ctx,err_ret)))
         goto error;
+
+    /*
+     * Use application defined I/O interrupt signal if available.
+     * (Default is to fail I/O if it is interrupted.)
+     */
+    if(cntrl->retn_on_intr){
+        retn_on_intr = cntrl->retn_on_intr;
+    }
 
     /*
      * Initialize server record for address we are connecting to.
@@ -375,8 +385,8 @@ OWPControlOpen(
     /*
      * Read the server greating.
      */
-    if((rc=_OWPReadServerGreeting(cntrl,&mode_avail,challenge,salt,&count))
-            < OWPErrOK){
+    if((rc=_OWPReadServerGreeting(cntrl,retn_on_intr,&mode_avail,
+                    challenge,salt,&count)) < OWPErrOK){
         *err_ret = (OWPErrSeverity)rc;
         goto error;
     }
@@ -520,8 +530,9 @@ OWPControlOpen(
     /*
      * Write the client greeting, and see if the Server agree's to it.
      */
-    if( ((rc=_OWPWriteSetupResponse(cntrl,token)) < OWPErrOK) ||
-            ((rc=_OWPReadServerStart(cntrl,&acceptval,&uptime)) < OWPErrOK)){
+    if( ((rc=_OWPWriteSetupResponse(cntrl,retn_on_intr,token)) < OWPErrOK) ||
+            ((rc=_OWPReadServerStart(cntrl,retn_on_intr,&acceptval,
+                                     &uptime)) < OWPErrOK)){
         *err_ret = (OWPErrSeverity)rc;
         goto error;
     }
@@ -592,6 +603,7 @@ denied:
 static int
 _OWPClientRequestTestReadResponse(
         OWPControl      cntrl,
+        int             *retn_on_intr,
         I2Addr          sender,
         OWPBoolean      server_conf_sender,
         I2Addr          receiver,
@@ -606,7 +618,7 @@ _OWPClientRequestTestReadResponse(
     uint16_t        port_ret=0;
     uint8_t         *sid_ret=NULL;
 
-    if( (rc = _OWPWriteTestRequest(cntrl,
+    if( (rc = _OWPWriteTestRequest(cntrl,retn_on_intr,
                     I2AddrSAddr(sender,NULL),
                     I2AddrSAddr(receiver,NULL),
                     server_conf_sender, server_conf_receiver,
@@ -618,8 +630,8 @@ _OWPClientRequestTestReadResponse(
     if(server_conf_receiver)
         sid_ret = sid;
 
-    if((rc = _OWPReadAcceptSession(cntrl,&acceptval,&port_ret,sid_ret)) <
-            OWPErrOK){
+    if((rc = _OWPReadAcceptSession(cntrl,retn_on_intr,&acceptval,
+                    &port_ret,sid_ret)) < OWPErrOK){
         *err_ret = (OWPErrSeverity)rc;
         return 1;
     }
@@ -691,7 +703,8 @@ OWPSessionRequest(
     struct sockaddr *rsaddr;
     struct sockaddr *ssaddr;
     socklen_t       saddrlen;
-
+    int             intr=1;
+    int             *retn_on_intr=&intr;
 
     *err_ret = OWPErrOK;
 
@@ -705,6 +718,14 @@ OWPSessionRequest(
         OWPError(cntrl->ctx,*err_ret,OWPErrINVALID,
                 "OWPSessionRequest: called with invalid cntrl record");
         goto error;
+    }
+
+    /*
+     * Use application defined intr semantics if available.
+     * (Default is to fail on intrupted I/O.)
+     */
+    if(cntrl->retn_on_intr){
+        retn_on_intr = cntrl->retn_on_intr;
     }
 
     /*
@@ -871,7 +892,7 @@ foundaddr:
          * Request the server create the receiver & possibly the
          * sender.
          */
-        if((rc = _OWPClientRequestTestReadResponse(cntrl,
+        if((rc = _OWPClientRequestTestReadResponse(cntrl,retn_on_intr,
                         sender,server_conf_sender,
                         receiver,server_conf_receiver,
                         test_spec,tsession->sid,err_ret)) != 0){
@@ -953,7 +974,7 @@ foundaddr:
          * If conf_sender - make request to server
          */
         if(server_conf_sender){
-            if((rc = _OWPClientRequestTestReadResponse(cntrl,
+            if((rc = _OWPClientRequestTestReadResponse(cntrl,retn_on_intr,
                             sender,server_conf_sender,
                             receiver,server_conf_receiver,
                             test_spec,tsession->sid,err_ret)) != 0){
@@ -1056,6 +1077,8 @@ OWPStartSessions(
     OWPErrSeverity  err,err2=OWPErrOK;
     OWPTestSession  tsession;
     OWPAcceptType   acceptval;
+    int             intr=1;
+    int             *retn_on_intr=&intr;
 
     /*
      * Must pass valid cntrl record.
@@ -1067,9 +1090,17 @@ OWPStartSessions(
     }
 
     /*
+     * Use application defined intrrupt semantics if avail.
+     * (Default is to fail on intrrupted I/O.)
+     */
+    if(cntrl->retn_on_intr){
+        retn_on_intr = cntrl->retn_on_intr;
+    }
+
+    /*
      * Send the StartSessions message to the server
      */
-    if((rc = _OWPWriteStartSessions(cntrl)) < OWPErrOK){
+    if((rc = _OWPWriteStartSessions(cntrl,retn_on_intr)) < OWPErrOK){
         return _OWPFailControlSession(cntrl,rc);
     }
 
@@ -1090,7 +1121,7 @@ OWPStartSessions(
     /*
      * Read the server response.
      */
-    if(((rc = _OWPReadStartAck(cntrl,&acceptval)) < OWPErrOK) ||
+    if(((rc = _OWPReadStartAck(cntrl,retn_on_intr,&acceptval)) < OWPErrOK) ||
             (acceptval != OWP_CNTRL_ACCEPT)){
         return _OWPFailControlSession(cntrl,OWPErrFATAL);
     }
@@ -1188,6 +1219,8 @@ OWPFetchSession(
     OWPBoolean          dowrite = True;
     struct sockaddr     *saddr;
     socklen_t           saddrlen;
+    int                 intr=1;
+    int                 *retn_on_intr=&intr;
 
     *err_ret = OWPErrOK;
 
@@ -1199,6 +1232,14 @@ OWPFetchSession(
     }
 
     /*
+     * Use application defined intrrupt semantics if avail.
+     * (Default is to fail on intrrupted I/O.)
+     */
+    if(cntrl->retn_on_intr){
+        retn_on_intr = cntrl->retn_on_intr;
+    }
+
+    /*
      * Initialize file header record.
      */
     memset(&hdr,0,sizeof(hdr));
@@ -1206,14 +1247,16 @@ OWPFetchSession(
     /*
      * Make the request of the server.
      */
-    if((*err_ret = _OWPWriteFetchSession(cntrl,begin,end,sid)) < OWPErrWARNING){
+    if((*err_ret = _OWPWriteFetchSession(cntrl,retn_on_intr,
+                    begin,end,sid)) < OWPErrWARNING){
         goto failure;
     }
 
     /*
      * Read the response
      */
-    if((*err_ret = _OWPReadFetchAck(cntrl,&acceptval,&finished,&hdr.next_seqno,
+    if((*err_ret = _OWPReadFetchAck(cntrl,retn_on_intr,
+                    &acceptval,&finished,&hdr.next_seqno,
                     &hdr.num_skiprecs,&hdr.num_datarecs)) < OWPErrWARNING){
         goto failure;
     }
@@ -1230,7 +1273,8 @@ OWPFetchSession(
     /*
      * Representation of original TestReq is first.
      */
-    if((*err_ret = _OWPReadTestRequest(cntrl,NULL,&tsession,NULL)) != OWPErrOK){
+    if((*err_ret = _OWPReadTestRequest(cntrl,retn_on_intr,
+                    &tsession,NULL)) != OWPErrOK){
         goto failure;
     }
 
@@ -1285,7 +1329,7 @@ OWPFetchSession(
      * Read even AES blocks of skips first
      */
     while(toff > _OWP_RIJNDAEL_BLOCK_SIZE){
-        if(_OWPReceiveBlocks(cntrl,(uint8_t *)buf,1) != 1){
+        if(_OWPReceiveBlocksIntr(cntrl,(uint8_t *)buf,1,retn_on_intr) != 1){
             *err_ret = OWPErrFATAL;
             goto failure;
         }
@@ -1302,7 +1346,7 @@ OWPFetchSession(
      * Finish incomplete block
      */
     if(toff){
-        if(_OWPReceiveBlocks(cntrl,(uint8_t *)buf,1) != 1){
+        if(_OWPReceiveBlocksIntr(cntrl,(uint8_t *)buf,1,retn_on_intr) != 1){
             *err_ret = OWPErrFATAL;
             goto failure;
         }
@@ -1317,7 +1361,7 @@ OWPFetchSession(
     /*
      * Read sent HMAC digest and compare
      */
-    if(_OWPReceiveBlocks(cntrl,(uint8_t *)buf,1) != 1){
+    if(_OWPReceiveBlocksIntr(cntrl,(uint8_t *)buf,1,retn_on_intr) != 1){
         *err_ret = OWPErrFATAL;
         goto failure;
     }
@@ -1335,8 +1379,8 @@ OWPFetchSession(
     for(n=hdr.num_datarecs;
             n >= _OWP_FETCH_DATAREC_BLOCKS;
             n -= _OWP_FETCH_DATAREC_BLOCKS){
-        if(_OWPReceiveBlocks(cntrl,(uint8_t *)buf,_OWP_FETCH_AES_BLOCKS) !=
-                _OWP_FETCH_AES_BLOCKS){
+        if(_OWPReceiveBlocksIntr(cntrl,(uint8_t *)buf,_OWP_FETCH_AES_BLOCKS,
+                    retn_on_intr) != _OWP_FETCH_AES_BLOCKS){
             *err_ret = OWPErrFATAL;
             goto failure;
         }
@@ -1356,7 +1400,8 @@ OWPFetchSession(
          */
         int        blks = n*_OWP_DATAREC_SIZE/_OWP_RIJNDAEL_BLOCK_SIZE + 1;
 
-        if(_OWPReceiveBlocks(cntrl,(uint8_t *)buf,blks) != blks){
+        if(_OWPReceiveBlocksIntr(cntrl,(uint8_t *)buf,
+                    blks,retn_on_intr) != blks){
             *err_ret = OWPErrFATAL;
             goto failure;
         }
@@ -1373,7 +1418,7 @@ OWPFetchSession(
     /*
      * Read final block of HMAC
      */
-    if(_OWPReceiveBlocks(cntrl,(uint8_t *)buf,1) != 1){
+    if(_OWPReceiveBlocksIntr(cntrl,(uint8_t *)buf,1,retn_on_intr) != 1){
         *err_ret = OWPErrFATAL;
         goto failure;
     }

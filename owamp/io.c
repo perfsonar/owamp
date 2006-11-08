@@ -81,7 +81,7 @@ _OWPSendBlocks(
         int         num_blocks
         )
 {
-    int intr=0;
+    int intr=1;
     int *retn_on_intr = &intr;
 
     if(cntrl->retn_on_intr){
@@ -98,7 +98,7 @@ _OWPReceiveBlocks(
         int         num_blocks
         )
 {
-    int intr=0;
+    int intr=1;
     int *retn_on_intr = &intr;
 
     if(cntrl->retn_on_intr){
