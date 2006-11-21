@@ -893,6 +893,12 @@ _OWPCleanDataRecs(
         next_seqno = tptr->test_spec.npackets;
     }
 
+    if(next_seqno > tptr->test_spec.npackets){
+        OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                "_OWPCleanDataRecs: Invalid \'next_seqno\': %lu",next_seqno);
+        goto err;
+    }
+
     /*
      * First use an interpolated binary search to find the "threshold"
      * point in the file.

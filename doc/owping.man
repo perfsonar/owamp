@@ -487,6 +487,14 @@ the \fI\-Q\fR and \fI\-R\fR options.
 .IP Default:
 Unset.
 .RE
+.SH ENVIRONMENT VARIABLES
+.TS
+lb lb
+_ _
+lb li .
+OWAMP Environment Variable	Description
+OWAMP_DEBUG_TIMEOFFSET	Offset time by this amount (float)
+.TE
 .SH EXAMPLES
 .LP
 \fBowping somehost.com\fR

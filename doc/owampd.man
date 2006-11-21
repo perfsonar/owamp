@@ -248,6 +248,15 @@ owampd.conf
 owampd.limits
 .br
 owampd.pfs
+.SH ENVIRONMENT VARIABLES
+\fBOWAMP\fR uses environment variables for some debugging options.
+.TS
+lb lb
+_ _
+lb li .
+OWAMP Environment Variable	Description
+OWAMP_DEBUG_TIMEOFFSET	Offset time by this amount (float)
+.TE
 .SH SEE ALSO
 There are more details on configuring the \fBowampd\fR daemon in the
 owampd.conf(5) manual page. Details on configuring the policy

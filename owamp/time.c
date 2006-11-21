@@ -43,10 +43,14 @@
 
 #include <string.h>
 #include <assert.h>
+#include <math.h>
 #include <sys/time.h>
 #ifdef  HAVE_SYS_TIMEX_H
 #include <sys/timex.h>
 #endif
+
+static struct timeval  timeoffset;
+static int sign_timeoffset = 0;
 
 /*
  * Function:        _OWPInitNTP
@@ -88,6 +92,8 @@ _OWPInitNTP(
         OWPContext  ctx
         )
 {
+    char    *toffstr=NULL;
+
     /*
      * If the system has NTP system calls use them. Otherwise
      * timestamps will be marked UNSYNC.
@@ -120,6 +126,44 @@ _OWPInitNTP(
             "NTP syscalls unavail: Status UNSYNC (clock offset issues likely)");
 #endif  /* HAVE_SYS_TIMEX_H */
 
+    if( !(toffstr = getenv("OWAMP_DEBUG_TIMEOFFSET"))){
+        timeoffset.tv_sec = 0;
+        timeoffset.tv_usec = 0;
+    }
+    else{
+        double  td;
+        char    *estr=NULL;
+
+        td = strtod(toffstr,&estr);
+        if((toffstr == estr) || (errno == ERANGE)){
+            OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                    "Invalid OWAMP_DEBUG_TIMEOFFSET env var: %s",toffstr);
+            return 1;
+        }
+
+        if(td == 0){
+            sign_timeoffset = 0;
+        }
+        else{
+            if(td > 0){
+                sign_timeoffset = 1;
+            }
+            else{
+                sign_timeoffset = -1;
+                td = -td;
+            }
+
+            timeoffset.tv_sec = trunc(td);
+            td -= timeoffset.tv_sec;
+            td *= 1000000;
+            timeoffset.tv_usec = trunc(td);
+
+            OWPError(ctx,OWPErrDEBUG,OWPErrUNKNOWN,
+                    "OWAMP_DEBUG_TIMEOFFSET: sec=%lu, usec=%lu",
+                    timeoffset.tv_sec,timeoffset.tv_usec);
+        }
+    }
+
     return 0;
 }
 
@@ -143,6 +187,13 @@ _OWPGetTimespec(
     if(gettimeofday(&tod,NULL) != 0){
         OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"gettimeofday(): %M");
         return NULL;
+    }
+
+    if(sign_timeoffset > 0){
+        tvaladd(&tod,&timeoffset);
+    }
+    else if(sign_timeoffset < 0){
+        tvalsub(&tod,&timeoffset);
     }
 
     /* assign localtime */
