@@ -1808,129 +1808,130 @@ NEXTCMSG:
  *          = 0: successfully flushed as much as needed
  * Side Effect:    
  */
-int flush_lost(
+static int
+flush_lost(
         OWPEndpoint     ep,
-	struct timespec *ctime,
-	struct timespec *ltime,
-	OWPTimeStamp	*errest
-	)
+        struct timespec *ctime,
+        struct timespec *ltime,
+        OWPTimeStamp	*errest
+        )
 {
     OWPLostPacket       node;
     struct timespec     currtime = *ctime;
     struct timespec     lostspec = *ltime;
     struct timespec     expectspec;
 
+    /*
+     * Set expectspec to the time the oldest (begin) packet
+     * in the missing packet queue should be declared lost.
+     */
+    timespecclear(&expectspec);
+    timespecadd(&expectspec,&ep->begin->absolute);
+    timespecadd(&expectspec,&lostspec);
+
+    /*
+     * If owp_usr2, then StopSessions has been received. We
+     * need to flush all records for the test now. So, artificailly
+     * set currtime to a time greater than expectspec so the loop
+     * will continue until all packet records are flushed.
+     * XXX:
+     * This is an over-kill solution to ensure missing
+     * packet records are in the session. A better solution
+     * would only flush record up through the "Next Seqno"
+     * field passed in the StopSessions message from the
+     * sender. But, since that is not available in this
+     * process- and we have no way of knowing just how far offset the 
+     * sender/receiver clocks are, this is the temporary
+     * fix. Unneeded records will be deleted by the parent.
+     */
+    if(owp_usr2){
+        timespecclear(&currtime);
+        timespecadd(&currtime,&expectspec);
+        timespecadd(&currtime,&lostspec);
+    }
+
+    /*
+     * Flush the missing packet buffer. Output missing packet
+     * records along the way.
+     */
+    while(timespeccmp(&expectspec,&currtime,<)){
+
         /*
-         * Set expectspec to the time the oldest (begin) packet
-         * in the missing packet queue should be declared lost.
+         * If !hit - and the seq number is less than
+         * npackets, then output a "missing packet" record.
+         * (seq number could be greater than or equal to
+         * npackets if it takes longer than "timeout" for
+         * the stopsessions message to get to us. We could
+         * already have missing packet records in our
+         * queue.)
          */
+        if(!ep->begin->hit){
+            OWPDataRec      lostrec;
+
+            /*
+             * set fields in lostrec for missing packet
+             * record.
+             */
+            /* seq no */
+            lostrec.seq_no = ep->begin->seq;
+            /* presumed sent time */
+            lostrec.send.owptime = OWPNum64Add(
+                    ep->tsession->test_spec.start_time,
+                    ep->begin->relative);
+            lostrec.send.sync = 0;
+            lostrec.send.multiplier = 1;
+            lostrec.send.scale = 64;
+
+            /* special value recv time */
+            lostrec.recv = *errest;
+            lostrec.recv.owptime = OWPULongToNum64(0);
+
+            /* recv error was set above... */
+
+            lostrec.ttl = 255;
+
+            if( !OWPWriteDataRecord(ep->cntrl->ctx,
+                        ep->datafile,&lostrec)){
+                OWPError(ep->cntrl->ctx,OWPErrFATAL,
+                        OWPErrUNKNOWN,
+                        "OWPWriteDataRecord()");
+                return -1;
+            }
+        }
+
+        /*
+         * Pop the front off the queue.
+         */
+        node = ep->begin;
+
+        if(ep->begin->next){
+            ep->begin = ep->begin->next;
+        }
+        else if((ep->begin->seq+1) < ep->tsession->test_spec.npackets){
+            ep->begin = get_node(ep,ep->begin->seq+1);
+        }
+        else{
+            free_node(ep,node);
+            ep->begin = ep->end = NULL;
+            return 1;
+        }
+        free_node(ep,node);
+
         timespecclear(&expectspec);
         timespecadd(&expectspec,&ep->begin->absolute);
         timespecadd(&expectspec,&lostspec);
 
         /*
-         * If owp_usr2, then StopSessions has been received. We
-         * need to flush all records for the test now. So, artificailly
-         * set currtime to a time greater than expectspec so the loop
-         * will continue until all packet records are flushed.
-         * XXX:
-         * This is an over-kill solution to ensure missing
-         * packet records are in the session. A better solution
-         * would only flush record up through the "Next Seqno"
-         * field passed in the StopSessions message from the
-         * sender. But, since that is not available in this
-         * process- and we have no way of knowing just how far offset the 
-         * sender/receiver clocks are, this is the temporary
-         * fix. Unneeded records will be deleted by the parent.
+         * StopSessions received: fast-forward currtime
          */
         if(owp_usr2){
             timespecclear(&currtime);
             timespecadd(&currtime,&expectspec);
             timespecadd(&currtime,&lostspec);
         }
+    }
 
-        /*
-         * Flush the missing packet buffer. Output missing packet
-         * records along the way.
-         */
-        while(timespeccmp(&expectspec,&currtime,<)){
-
-            /*
-             * If !hit - and the seq number is less than
-             * npackets, then output a "missing packet" record.
-             * (seq number could be greater than or equal to
-             * npackets if it takes longer than "timeout" for
-             * the stopsessions message to get to us. We could
-             * already have missing packet records in our
-             * queue.)
-             */
-            if(!ep->begin->hit){
-                OWPDataRec      lostrec;
-
-                /*
-                 * set fields in lostrec for missing packet
-                 * record.
-                 */
-                /* seq no */
-                lostrec.seq_no = ep->begin->seq;
-                /* presumed sent time */
-                lostrec.send.owptime = OWPNum64Add(
-                        ep->tsession->test_spec.start_time,
-                        ep->begin->relative);
-                lostrec.send.sync = 0;
-                lostrec.send.multiplier = 1;
-                lostrec.send.scale = 64;
-
-                /* special value recv time */
-                lostrec.recv = *errest;
-                lostrec.recv.owptime = OWPULongToNum64(0);
-
-                /* recv error was set above... */
-
-                lostrec.ttl = 255;
-
-                if( !OWPWriteDataRecord(ep->cntrl->ctx,
-                            ep->datafile,&lostrec)){
-                    OWPError(ep->cntrl->ctx,OWPErrFATAL,
-                            OWPErrUNKNOWN,
-                            "OWPWriteDataRecord()");
-                    return -1;
-                }
-            }
-
-            /*
-             * Pop the front off the queue.
-             */
-            node = ep->begin;
-
-            if(ep->begin->next){
-                ep->begin = ep->begin->next;
-            }
-            else if((ep->begin->seq+1) < ep->tsession->test_spec.npackets){
-                ep->begin = get_node(ep,ep->begin->seq+1);
-            }
-            else{
-                free_node(ep,node);
-                ep->begin = ep->end = NULL;
-                return 1;
-            }
-            free_node(ep,node);
-
-            timespecclear(&expectspec);
-            timespecadd(&expectspec,&ep->begin->absolute);
-            timespecadd(&expectspec,&lostspec);
-
-    /*
-     * StopSessions received: fast-forward currtime
-     */
-            if(owp_usr2){
-                timespecclear(&currtime);
-                timespecadd(&currtime,&expectspec);
-                timespecadd(&currtime,&lostspec);
-            }
-        }
-
-       return 0;
+    return 0;
 }
 
 static void
@@ -2101,7 +2102,8 @@ run_receiver(
     lasterror = esterror;
     datarec.recv.sync = sync;
 
-    if( (rc = flush_lost(ep,&currtime,&lostspec,&datarec.recv)) < 0){
+    rc = flush_lost(ep,&currtime,&lostspec,&datarec.recv);
+    if(rc < 0){
         goto error;
     }
     else if(rc > 0){
@@ -2180,6 +2182,16 @@ again:
         }
 
         /*
+         * Check signals...
+         */
+        if(owp_int){
+            goto error;
+        }
+        if(owp_usr2){
+            goto test_over;
+        }
+
+        /*
          * Save that time as a timestamp
          */
         (void)OWPTimespecToTimestamp(&datarec.recv,&currtime,
@@ -2187,7 +2199,8 @@ again:
         lasterror = esterror;
         datarec.recv.sync = sync;
 
-        if( (rc = flush_lost(ep,&currtime,&lostspec,&datarec.recv)) < 0){
+        rc = flush_lost(ep,&currtime,&lostspec,&datarec.recv);
+        if(rc < 0){
             goto error;
         }
         else if(rc > 0){
@@ -2275,6 +2288,10 @@ again:
                     "run_recv: Invalid seq_no received: %lu",datarec.seq_no);
             goto error;
         }
+#if NOT
+OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                    "run_recv: seq_no received: %lu",datarec.seq_no);
+#endif
 
         /*
          * If it is no-longer in the buffer, than we ignore
@@ -2316,6 +2333,10 @@ again:
                 ep->tsession->test_spec.loss_timeout){
             goto again;
         }
+#if NOT
+OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                    "run_recv: seq_no passed 1: %lu",datarec.seq_no);
+#endif
 
         /*
          * 2.
@@ -2326,6 +2347,10 @@ again:
                 ep->tsession->test_spec.loss_timeout){
             goto again;
         }
+#if NOT
+OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                    "run_recv: seq_no passed 2: %lu",datarec.seq_no);
+#endif
 
         /*
          * Made it through all validity tests. Record the packet!
@@ -2338,6 +2363,10 @@ again:
                     "OWPWriteDataRecord()");
             goto error;
         }
+#if NOT
+OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                    "run_recv: seq_no recorded: %lu",datarec.seq_no);
+#endif
     }
 
 test_over:
