@@ -296,7 +296,7 @@ error:
         serv = OWP_CONTROL_SERVICE_NAME;
 
     OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-            "Unable to connect to \"%s:%s\"",node,serv);
+            "Unable to connect to \"[%s]:%s\"",node,serv);
 
     *err_ret = OWPErrFATAL;
 
