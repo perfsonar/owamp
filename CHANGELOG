@@ -1,3 +1,77 @@
+2006-12-05  boote  <boote@foo.local>
+
+	* conf/owampd.conf, doc/Makefile.am, doc/draft-shalunov-reordering-definition-01.txt, doc/owampd.conf.man, doc/owfetch.man, doc/owping.man, doc/owstats.man, doc/owup.man, doc/powstream.man, owamp/api.c, owamp/capi.c, owamp/endpoint.c, owamp/owamp.h, owamp/owampP.h, owamp/protocol.c, owamp/sapi.c, owamp/time.c, owampd/owampd.c, owampd/owampdP.h, owping/owping.c, owping/owpingP.h, powstream/powstream.c, powstream/powstreamP.h:
+	Features:
+	-Added 'enddelay' parameter to allow for a configurable delay before
+	sending the stop-sessions message.
+	-Added the OWAMP_DEBUG_OFFSET env var to make owamp timestamp functions
+	offset by the specified amount. Makes debugging issues from offset
+	clocks more easy to do.
+
+	Documentation:
+	-Added powstream.man documentation.
+	-Lots of spelling fixes in the man pages.
+	-Documented enddelay in man pages.
+
+2006-11-21  boote  <boote@foo.local>
+
+	* owamp/endpoint.c:
+	change recv loop to initialize properly for offset clocks.
+
+	* owamp/api.c, owamp/time.c, doc/owampd.man, doc/owping.man:
+	Added OWAMP_DEBUG_TIMEOFFSET option
+
+	Fixed stopsessions message handling to report error for bad
+	next_seqno.
+
+2006-11-15  boote  <boote@foo.local>
+
+	* I2util/config/c-attribute.m4, I2util/config/c-syslog-names.m4, I2util/config/c-syslog-perror.m4, I2util/config/randomdev.m4:
+	fix autoconf junk.
+
+	updated time offset portions of bwctl to work better with offset clocks.
+
+	jeff
+
+2006-11-08  boote  <boote@foo.local>
+
+	* owamp/capi.c, owamp/owamp.h, owamp/owampP.h, owamp/protocol.c, owamp/stats.c, owping/owping.c, test/owtvec.c:
+	solaris port: int types, header file reordering
+
+	* owamp/endpoint.c:
+	fix bug triggered by severly offset clocks: setitimer() called with negative value
+
+	* I2util/I2util/sha1.c, I2util/I2util/sha1P.h, I2util/I2util/util.h:
+	solaris port: int types, header file reordering
+
+	* conf/owampd.conf, owamp/api.c, owamp/capi.c, owamp/io.c, owamp/owampP.h, owamp/protocol.c, owamp/sapi.c:
+	owampd.conf:
+	    document default port (861)
+
+	*.c:
+	    Fixed a bug in the I/O. When I added the 'retn_on_intr' variable to the
+	    I/O functions, I forgot to go back and add it into the client side
+	    functions. (This caused the owping client to refuse to die from
+	    a cntrl-C in some cases.)
+
+2006-11-07  boote  <boote@foo.local>
+
+	* owamp/protocol.c: Using more standard EACCES errno instead of EAUTH.
+
+	* I2util/doc/Makefile.am, I2util/doc/pfstore.man, I2util/pfstore/pfstore.c, I2util/test/hmac-sha1test.c, I2util/test/pbkdf2test.c, conf/owampd.conf, doc/Makefile.am, doc/index.html, doc/owampd.conf.man, doc/owampd.keys.man, doc/owampd.limits.man, doc/owampd.man, doc/owampd.pfs.man, doc/owfetch.man, doc/owping.man, doc/owup.man, owamp/api.c, owamp/capi.c, owamp/context.c, owamp/endpoint.c, owamp/io.c, owamp/owamp.h, owamp/owampP.h, owamp/protocol.c, owamp/rijndael-api-fst.c, owamp/rijndael-api-fst.h, owamp/sapi.c, owamp/schedule.c, owamp/time.c, owampd/owampd.c, owampd/owampdP.h, owampd/policy.c, owampd/policy.h, owping/owping.c, owping/owpingP.h, powstream/powstream.c, powstream/powstreamP.h, test/owtvec.c, CHANGELOG, I2util/I2util/addr.c, I2util/I2util/conf.c, I2util/I2util/conf.h, I2util/I2util/hex.c, I2util/I2util/hex.h, I2util/I2util/pbkdf2.c, I2util/I2util/pbkdf2.h, I2util/aespasswd/aespasswd.c, NOTES, configure.ac:
+	Merging RFC version into HEAD.
+
+	* CHANGELOG, NOTES: Updating CHANGELOG for upcoming release.
+
+	Adding implementation notes on crypto functions used in implementation.
+
+	jeff
+
+	* I2util/test/hmac-sha1test.c, I2util/test/pbkdf2test.c:
+	Fixing comments to refer to correct files and references.
+
+	jeff
+
 2006-11-06  boote  <boote@foo.local>
 
 	* doc/Makefile.am, doc/index.html, doc/owampd.conf.man, doc/owampd.keys.man, doc/owampd.limits.man, doc/owampd.man, doc/owampd.pfs.man, doc/owfetch.man, doc/owping.man, doc/owup.man:
