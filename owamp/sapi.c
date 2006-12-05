@@ -241,7 +241,7 @@ OWPControlAccept(
     void            *pf_free=NULL;
     size_t          pf_len=0;
     int             rc;
-    struct timeval  tvalstart,tvalend;
+    OWPTimeStamp    timestart,timeend;
     int             ival=1;
     int             *intr = &ival;
     char            remotenode[NI_MAXHOST],remoteserv[NI_MAXSERV];
@@ -311,8 +311,8 @@ OWPControlAccept(
         goto error;
     }
 
-    if(gettimeofday(&tvalstart,NULL)!=0){
-        OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"gettimeofday(): %M");
+    if(!OWPGetTimeOfDay(ctx,&timestart)){
+        OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"OWPGetTimeOfDay(): %M");
         *err_ret = OWPErrFATAL;
         goto error;
     }
@@ -339,13 +339,12 @@ OWPControlAccept(
         goto error;
     }
 
-    if(gettimeofday(&tvalend,NULL)!=0){
-        OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"gettimeofday(): %M");
+    if(!OWPGetTimeOfDay(ctx,&timeend)){
+        OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"OWPGetTimeOfDay(): %M");
         *err_ret = OWPErrFATAL;
         goto error;
     }
-    tvalsub(&tvalend,&tvalstart);
-    OWPTimevalToNum64(&cntrl->rtt_bound,&tvalend);
+    cntrl->rtt_bound = OWPNum64Sub(timeend.owptime,timestart.owptime);
 
     /* insure that exactly one mode is chosen */
     if((cntrl->mode != OWP_MODE_OPEN) &&

@@ -92,7 +92,7 @@ session keys.
 \fB\-k\fR \fIpfsfile\fR
 .br
 Indicates that \fBowup\fR should use the pass-phrase in \fIpfsfile\fR for
-\fIusername\fB to derive the symmetric AES key used for encryption.
+\fIusername\fR to derive the symmetric AES key used for encryption.
 \fIusername\fR must have a valid entry in \fIpfsfile\fR.
 \fIpfsfile\fR can be generated as described in the pfstore(1) manual
 page.

@@ -70,10 +70,10 @@ typedef        struct {
         I2Boolean   childwait;          /* -w */
 #endif
 
-        uint32_t   numPackets;          /* -c */
+        uint32_t    numPackets;         /* -c */
         double      lossThreshold;      /* -L (seconds) */
         double      meanWait;           /* -i  (seconds) */
-        uint32_t   padding;             /* -s */
+        uint32_t    padding;            /* -s */
 
         char        *savedir;           /* -d */
         I2Boolean   printfiles;         /* -p */
@@ -81,8 +81,11 @@ typedef        struct {
                                         /* -r stderr too */
         int         verbose;            /* -v verbose */
         double      bucketWidth;        /* -b (seconds) */
-        uint32_t   numBucketPackets;    /* -N */
+        uint32_t    numBucketPackets;   /* -N */
         uint32_t    delayStart;         /* -z */
+
+        I2Boolean   setEndDelay;
+        double      endDelay;           /* -E */
 
     } opt;
 

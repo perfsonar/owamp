@@ -18,7 +18,7 @@
 #
 #	Description:
 
-dist_man1_MANS = owping.man owstats.man owfetch.man owup.man
+dist_man1_MANS = owping.man owstats.man owfetch.man owup.man powstream.man
 dist_man5_MANS = owampd.conf.man owampd.limits.man owampd.pfs.man
 dist_man8_MANS = owampd.man
 
@@ -27,7 +27,8 @@ dist_man8_MANS = owampd.man
 
 
 # EXTRA_DIST = $(man1_MANS) $(man5_MANS) $(man8_MANS)
-EXTRA_DIST = index.html details.html owamp_arch.png
+EXTRA_DIST = index.html details.html owamp_arch.png \
+	     draft-shalunov-reordering-definition-01.txt
 
 # TODO
 # Build html versions of man pages and include them in dist?

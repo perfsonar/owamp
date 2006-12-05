@@ -173,6 +173,7 @@
  */
 #define _OWP_ERR_MAXSTRING  (1024)
 #define _OWP_MAGIC_FILETYPE "OwA"
+#define _OWP_DEFAULT_FUZZTIME (1.0)
 
 /*
  * Data structures
@@ -312,6 +313,7 @@ typedef struct OWPEndpointRec{
     char                *fbuff;
 
     struct timespec     start;
+    struct timespec     enddelay;
     char                *payload;
 
     size_t              len_payload;

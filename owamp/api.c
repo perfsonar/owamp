@@ -856,8 +856,8 @@ _OWPCleanDataRecs(
     }
 
     /*
-     * Delete data records sent later than stoptime-timeout as per
-     * section 3.8 owdp-draft-14
+     * Delete data records with a computed send time later than
+     * currenttime (ie. stoptime) - timeout as per section 3.8 RFC 4656.
      *
      * To do this is somewhat non-trivial. The records in the file
      * are sorted by recv time. There is a relationship between
@@ -1584,7 +1584,7 @@ loop_err:
             if(I2CopyFile(OWPContextErrHandle(cntrl->ctx),
                         fileno(rfp),fileno(wfp),0) != 0){
                 OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                        "_OWPCleanDataRecs: Unable to copy session data: I2CopyFile(): %M");
+                        "_OWPCleanUpSessions: Unable to copy session data: I2CopyFile(): %M");
                 fclose(wfp);
                 goto err;
             }
@@ -1759,7 +1759,6 @@ OWPStopSessionsWait(
         OWPErrSeverity  *err_ret
         )
 {
-    struct timeval  currtime;
     struct timeval  reltime;
     struct timeval  *waittime = NULL;
     fd_set          readfds;
@@ -1802,28 +1801,19 @@ OWPStopSessionsWait(
     }
 
     if(wake){
-        OWPTimeStamp        wakestamp;
+        OWPTimeStamp    currstamp;
+        OWPTimeStamp    wakestamp;
 
-        /*
-         * convert abs wake time to timeval
-         */
-        wakestamp.owptime = *wake;
-        OWPTimestampToTimeval(&reltime,&wakestamp);
-
-        /*
-         * get current time.
-         */
-        if(gettimeofday(&currtime,NULL) != 0){
+        if(!OWPGetTimeOfDay(cntrl->ctx,&currstamp)){
             OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                    "gettimeofday():%M");
+                    "OWPGetTimeOfDay(): %M");
             return -1;
         }
 
-        /*
-         * compute relative wake time from current time and abs wake.
-         */
-        if(tvalcmp(&currtime,&reltime,<)){
-            tvalsub(&reltime,&currtime);
+        if(OWPNum64Cmp(currstamp.owptime,*wake) < 0){
+            wakestamp = currstamp;
+            wakestamp.owptime = OWPNum64Sub(*wake,currstamp.owptime);
+            OWPTimestampToTimeval(&reltime,&wakestamp);
         }
         else{
             tvalclear(&reltime);

@@ -1892,6 +1892,7 @@ _OWPWriteStopSessions(
         return OWPErrFATAL;
     }
 
+
     /*
      * StopSessions header
      */

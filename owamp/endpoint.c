@@ -23,6 +23,7 @@
 #include "owampP.h"
 
 #include <stdio.h>
+#include <math.h>
 #include <sys/types.h>
 #include <sys/mman.h>
 #include <sys/uio.h>
@@ -393,6 +394,8 @@ _OWPEndpointInit(
     int                     saveerr=0;
     char                    localnode[NI_MAXHOST];
     size_t                  localnodelen = sizeof(localnode);
+    double                  enddelay = _OWP_DEFAULT_FUZZTIME;
+    double                  *enddelayptr;
 
     *err_ret = OWPErrFATAL;
     *aval = OWP_CNTRL_UNAVAILABLE_TEMP;
@@ -972,6 +975,30 @@ success:
         }
     }
 
+    /*
+     * Determine 'enddelay'. This is used to add a minimal delay
+     * for the sender before it sends the stop sessions message.
+     *
+     * If clocks are offset - and the sender side is ahead of the
+     * receiver side. The sender can send the stop sessions message
+     * before the reciever, and more importantly before the reciever
+     * has waited 'timeout' after the last packet send time. In this
+     * case, the reciever is required to shorten the session by removing
+     * any packet records with a send time (relative to the receivers clock)
+     * that was sent after stoptime-timeout. (i.e. the time the stop sessions
+     * was recieved minus timeout. This ensures that a full 'timeout' period
+     * has been waited after the time each and every packet is sent so that
+     * duplicates and loss packet statistics are consistently determined.
+     */
+    if( (enddelayptr = OWPContextConfigGetV(cntrl->ctx,OWPEndDelay))){
+        enddelay = *enddelayptr;
+    }
+
+    ep->enddelay.tv_sec = trunc(enddelay);
+    enddelay -= ep->enddelay.tv_sec;
+    enddelay *= 1000000000;
+    ep->enddelay.tv_nsec = trunc(enddelay);
+
     tsession->endpoint = ep;
     *aval = OWP_CNTRL_ACCEPT;
     *err_ret = OWPErrOK;
@@ -1445,8 +1472,13 @@ SKIP_SEND:
      * (nexttime currently holds the time for the last packet sent, so
      * just add loss_timeout. Round up to the next second since I'm lazy.)
      */
+#if OLD
     nexttime.tv_sec += (int)OWPNum64ToDouble(
             ep->tsession->test_spec.loss_timeout)+1;
+#endif
+    latetime = timeout;
+    timespecadd(&latetime,&nexttime);
+    timespecadd(&latetime,&ep->enddelay);
 
     while(!owp_usr2 && !owp_int){
         if(!_OWPGetTimespec(ep->cntrl->ctx,&currtime,&esterror,&sync)){
@@ -1455,11 +1487,16 @@ SKIP_SEND:
             exit(OWP_CNTRL_FAILURE);
         }
 
-        if(timespeccmp(&nexttime,&currtime,<))
+        if(timespeccmp(&latetime,&currtime,<))
             break;
 
-        sleeptime = nexttime;
+        sleeptime = latetime;
         timespecsub(&sleeptime,&currtime);
+#if NOT
+OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                    "run_sender: end nanosleep(%lu.%lu,nil)",
+                    sleeptime.tv_sec,sleeptime.tv_nsec);
+#endif
         if(nanosleep(&sleeptime,NULL) == 0)
             break;
         if(errno != EINTR){

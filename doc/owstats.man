@@ -131,7 +131,7 @@ Because \fBowstats\fR is using a histogram to compute the median (and
 other percentiles of delay) the results can be misleading if the
 .I bucket_width
 is not appropriate. For example, if all of the delays in the sample are
-greater than the value of
+smaller than the value of
 .I bucket_width
 then the median will be reported as
 .I bucket_width,
@@ -177,7 +177,7 @@ li l .
 .PP
 This is only used for the summary statistics and the \fB\-v\fR mode of
 reporting individual records. In particular, it is not used for the
-\fB\-R\fR or \fB\-m\fR output modes.
+\fB\-R\fR or \fB\-M\fR output modes.
 .IP Default:
 Unset.
 .RE
@@ -257,7 +257,7 @@ printed at the end.
 .LP
 \fBowstats -M datafile.owp\fR
 .IP
-Print out summary statistics in a more computer parsable format.
+Print out summary statistics in a more computer pars-able format.
 .SH SEE ALSO
 owampd(8), owping(1), owfetch(1) and the \fBOWAMP\fR web site
 \%(http://e2epi.internet2.edu/owamp/).

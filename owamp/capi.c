@@ -339,7 +339,7 @@ OWPControlOpen(
     void            *pf_free=NULL;
     size_t          pf_len=0;
     OWPAcceptType   acceptval;
-    struct timeval  tvalstart,tvalend;
+    OWPTimeStamp    timestart,timeend;
     OWPNum64        uptime;
     int             intr=1;
     int             *retn_on_intr = &intr;
@@ -524,7 +524,7 @@ OWPControlOpen(
      * Get current time before sending client greeting - used
      * for very rough estimate of RTT. (upper bound)
      */
-    if(gettimeofday(&tvalstart,NULL)!=0)
+    if(!OWPGetTimeOfDay(ctx,&timestart))
         goto error;
 
     /*
@@ -550,10 +550,10 @@ OWPControlOpen(
      * Get current time after response from server and set the RTT
      * in the "rtt_bound" field of cntrl.
      */
-    if(gettimeofday(&tvalend,NULL)!=0)
+    if(!OWPGetTimeOfDay(ctx,&timeend))
         goto error;
-    tvalsub(&tvalend,&tvalstart);
-    OWPTimevalToNum64(&cntrl->rtt_bound,&tvalend);
+
+    cntrl->rtt_bound = OWPNum64Sub(timeend.owptime,timestart.owptime);
 
     if(uptime_ret){
         *uptime_ret = uptime;

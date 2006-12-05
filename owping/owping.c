@@ -794,7 +794,7 @@ main(
     char                *endptr = NULL;
     char                optstring[128];
     static char         *conn_opts = "A:k:S:u:";
-    static char         *test_opts = "c:D:fF:H:i:L:P:s:tT:z:";
+    static char         *test_opts = "c:D:E:fF:H:i:L:P:s:tT:z:";
     static char         *out_opts = "a:b:Mn:QRv";
     static char         *gen_opts = "h";
 #ifndef    NDEBUG
@@ -938,6 +938,16 @@ main(
                     exit(1);
                 }
                 ping_ctx.typeP = tlng << 24;
+                break;
+            case 'E':
+                ping_ctx.opt.endDelay = strtod(optarg,&endptr);
+                if((*endptr != '\0') ||
+                        (ping_ctx.opt.endDelay < 0.0)){
+                    usage(progname, 
+                            "Invalid \'-E\' value. Positive float expected");
+                    exit(1);
+                }
+                ping_ctx.opt.setEndDelay = True;
                 break;
             case 'F':
                 if (!(ping_ctx.opt.save_from_test = strdup(optarg))){
@@ -1149,6 +1159,17 @@ main(
                     "OWPContextConfigSetV(): Unable to set OWPTestPortRange?!");
             exit(1);
         }
+
+        /*
+         * Set OWPEndDelay
+         */
+        if(ping_ctx.opt.setEndDelay &&
+                !OWPContextConfigSetV(ctx,OWPEndDelay,
+                    (void*)&ping_ctx.opt.endDelay)){
+            I2ErrLog(eh,"Unable to set Context var: %M");
+            exit(1);
+        }
+
 
         /*
          * Set the detach processes flag.

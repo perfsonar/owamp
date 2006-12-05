@@ -141,11 +141,11 @@ _OWPInitNTP(
             return 1;
         }
 
-        if(td == 0){
+        if(td == 0.0){
             sign_timeoffset = 0;
         }
         else{
-            if(td > 0){
+            if(td > 0.0){
                 sign_timeoffset = 1;
             }
             else{
@@ -159,7 +159,8 @@ _OWPInitNTP(
             timeoffset.tv_usec = trunc(td);
 
             OWPError(ctx,OWPErrDEBUG,OWPErrUNKNOWN,
-                    "OWAMP_DEBUG_TIMEOFFSET: sec=%lu, usec=%lu",
+                    "OWAMP_DEBUG_TIMEOFFSET: sec=%c%lu, usec=%lu",
+                    (sign_timeoffset > 0)?'+':'-',
                     timeoffset.tv_sec,timeoffset.tv_usec);
         }
     }

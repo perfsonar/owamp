@@ -99,8 +99,8 @@ print_conn_args(){
         fprintf(stderr,"              [Connection Args]\n\n"
 "   -A authmode requested modes: [A]uthenticated, [E]ncrypted, [O]pen\n"
 "   -k pffile   pass-phrase file to use with Authenticated/Encrypted modes\n"
-"   -u username username to use with Authenticated/Encrypted modes\n"
 "   -S srcaddr  use this as a local address for control connection and tests\n"
+"   -u username username to use with Authenticated/Encrypted modes\n"
         );
 }
 
@@ -108,11 +108,13 @@ static void
 print_test_args(){
         fprintf(stderr,
 "              [Test Args]\n\n"
-"   -c count       number of test packets (per file)\n"
+"   -c count       number of test packets (per complete session)\n"
+"   -E endDelay    time to wait before sending stop-session message\n"
 "   -i wait        mean average time between packets (seconds)\n"
 "   -L timeout     maximum time to wait for a packet (seconds)\n"
 "   -s padding     size of the padding added to each packet (bytes)\n"
-"   -z delayStart  time to wait before starting first test (seconds)\n");
+"   -z delayStart  time to wait before starting first test (seconds)\n"
+        );
 }
 
 static void
@@ -120,13 +122,13 @@ print_output_args()
 {
     fprintf(stderr,
 "              [Output Args]\n\n"
-"   -d dir         directory to save session file in\n"
-"   -N count       number of test packets (per summary)\n"
-"   -p             print filenames to stdout, and summarize sessions\n"
 "   -b bucketWidth create summary files with buckets(seconds)\n"
-"   -h             print this message and exit\n"
-"   -e             syslog facility to log to\n"
-"   -r             syslog facility to STDERR\n"
+"   -d dir         directory to save session file in\n"
+"   -e facility    syslog facility to log to\n"
+"   -N count       number of test packets (per sub-session)\n"
+"   -p             print filenames to stdout\n"
+"   -R             Only send messages to syslog (not STDERR)\n"
+"   -v             include more verbose output\n"
            );
 }
 
@@ -136,13 +138,20 @@ usage(
         const char *msg)
 {
     if(msg) fprintf(stderr, "%s: %s\n", progname, msg);
-    fprintf(stderr,"usage: %s %s\n",progname,
-            "[arguments] testaddr [servaddr]");
-    fprintf(stderr, "\n");
-    print_conn_args();
+    fprintf(stderr,"usage: %s %s\n%s\n",progname,
+            "[arguments] testaddr [servaddr]",
+            "[arguments] are as follows: "
+            );
+
+    fprintf(stderr, "\n%s\n",
+"   -h             print this message and exit\n"
+            );
 
     fprintf(stderr, "\n");
     print_test_args();
+
+    fprintf(stderr, "\n");
+    print_conn_args();
 
     fprintf(stderr, "\n");
     print_output_args();
@@ -1028,30 +1037,30 @@ main(
         char    **argv
 )
 {
-    char                    *progname;
-    int                     lockfd;
-    char                    lockpath[PATH_MAX];
-    int                     rc;
-    OWPErrSeverity          err_ret = OWPErrOK;
-    I2ErrLogSyslogAttr      syslogattr;
-    OWPContext              ctx;
+    char                *progname;
+    int                 lockfd;
+    char                lockpath[PATH_MAX];
+    int                 rc;
+    OWPErrSeverity      err_ret = OWPErrOK;
+    I2ErrLogSyslogAttr  syslogattr;
+    OWPContext          ctx;
 
-    int                     fname_len;
-    int                     ch;
-    char                    *endptr = NULL;
-    char                    optstring[128];
-    static char             *conn_opts = "A:S:k:u:";
-    static char             *test_opts = "c:i:s:L:z:";
-    static char             *out_opts = "d:N:pe:rb:v";
-    static char             *gen_opts = "hw";
-    static char             *posixly_correct="POSIXLY_CORRECT=True";
+    int                 fname_len;
+    int                 ch;
+    char                *endptr = NULL;
+    char                optstring[128];
+    static char         *conn_opts = "A:k:S:u:";
+    static char         *test_opts = "c:E:i:L:s:z:";
+    static char         *out_opts = "b:d:e:N:pRv";
+    static char         *gen_opts = "hw";
+    static char         *posixly_correct="POSIXLY_CORRECT=True";
 
-    int                     which=0;        /* which cntrl connect used */
-    uint32_t               numSummaries;
-    uint32_t               iotime;
-    struct flock            flk;
-    struct sigaction        act;
-    OWPStats                stats = NULL;
+    int                 which=0;        /* which cntrl connect used */
+    uint32_t            numSummaries;
+    uint32_t            iotime;
+    struct flock        flk;
+    struct sigaction    act;
+    OWPStats            stats = NULL;
 
     progname = (progname = strrchr(argv[0], '/')) ? progname+1 : *argv;
 
@@ -1063,7 +1072,7 @@ main(
 
 
     syslogattr.ident = progname;
-    syslogattr.logopt = LOG_PID;
+    syslogattr.logopt = LOG_PID | LOG_PERROR;
     syslogattr.facility = LOG_USER;
     syslogattr.priority = LOG_ERR;
     syslogattr.line_info = I2MSG;
@@ -1098,8 +1107,8 @@ main(
             case 'v':
                 appctx.opt.verbose++;
                 /* fallthrough */
-            case 'r':
-                syslogattr.logopt |= LOG_PERROR;
+            case 'R':
+                syslogattr.logopt &= ~LOG_PERROR;
                 break;
             default:
                 break;
@@ -1124,9 +1133,65 @@ main(
 
     while ((ch = getopt(argc, argv, optstring)) != -1){
         switch (ch) {
+            /* test options */
+            case 'c':
+                appctx.opt.numPackets = strtoul(optarg, &endptr, 10);
+                if (*endptr != '\0') {
+                    usage(progname,"Invalid value. Positive integer expected");
+                    exit(1);
+                }
+                break;
+            case 'E':
+                appctx.opt.endDelay = strtod(optarg, &endptr);
+                if((*endptr != '\0') ||
+                        (appctx.opt.endDelay <= 0.0)){
+                    usage(progname, 
+                            "Invalid (-E) value. Positive float expected");
+                    exit(1);
+                }
+                break;
+            case 'i':
+                appctx.opt.meanWait = strtod(optarg, &endptr);
+                if (*endptr != '\0') {
+                    usage(progname, 
+                            "Invalid value. Positive float expected");
+                    exit(1);
+                }
+                break;
+            case 'L':
+                appctx.opt.lossThreshold = strtod(optarg, &endptr);
+                if((*endptr != '\0') ||
+                        (appctx.opt.lossThreshold <= 0.0)){
+                    usage(progname, 
+                            "Invalid (-L) value. Positive float expected");
+                    exit(1);
+                }
+                break;
+            case 's':
+                appctx.opt.padding = strtoul(optarg, &endptr, 10);
+                if (*endptr != '\0') {
+                    usage(progname, 
+                            "Invalid value. Positive integer expected");
+                    exit(1);
+                }
+                break;
+            case 'z':
+                appctx.opt.delayStart = strtoul(optarg,&endptr,10);
+                if(*endptr != '\0'){
+                    usage(progname,
+                            "Invalid (-z) value. Positive integer expected");
+                    exit(1);
+                }
+                break;
             /* Connection options. */
             case 'A':
                 if (!(appctx.opt.authmode = strdup(optarg))) {
+                    I2ErrLog(eh,"malloc: %M");
+                    exit(1);
+                }
+                break;
+            case 'k':
+                if (!(appctx.opt.pffile = strdup(optarg))) {
                     I2ErrLog(eh,"malloc: %M");
                     exit(1);
                 }
@@ -1143,63 +1208,18 @@ main(
                     exit(1);
                 }
                 break;
-            case 'k':
-                if (!(appctx.opt.pffile = strdup(optarg))) {
-                    I2ErrLog(eh,"malloc: %M");
-                    exit(1);
-                }
-                break;
-            case 'c':
-                appctx.opt.numPackets = strtoul(optarg, &endptr, 10);
-                if (*endptr != '\0') {
-                    usage(progname,"Invalid value. Positive integer expected");
-                    exit(1);
-                }
-                break;
-            case 'i':
-                appctx.opt.meanWait = strtod(optarg, &endptr);
-                if (*endptr != '\0') {
-                    usage(progname, 
-                            "Invalid value. Positive float expected");
-                    exit(1);
-                }
-                break;
-            case 's':
-                appctx.opt.padding = strtoul(optarg, &endptr, 10);
-                if (*endptr != '\0') {
-                    usage(progname, 
-                            "Invalid value. Positive integer expected");
-                    exit(1);
-                }
-                break;
-            case 'L':
-                appctx.opt.lossThreshold = strtod(optarg, &endptr);
-                if((*endptr != '\0') ||
-                        (appctx.opt.lossThreshold <= 0.0)){
-                    usage(progname, 
-                            "Invalid (-L) value. Positive float expected");
-                    exit(1);
-                }
-                break;
-#ifndef        NDEBUG
-            case 'w':
-                appctx.opt.childwait = True;
-                break;
-#endif
-            case 'd':
-                if (!(appctx.opt.savedir = strdup(optarg))) {
-                    I2ErrLog(eh,"malloc: %M");
-                    exit(1);
-                }
-                break;
-            case 'p':
-                appctx.opt.printfiles = True;
-                break;
+            /* Output options */
             case 'b':
                 appctx.opt.bucketWidth = strtod(optarg, &endptr);
                 if((*endptr != '\0') || (appctx.opt.bucketWidth <= 0.0)){
                     usage(progname, 
                             "Invalid (-b) value. Positive float expected");
+                    exit(1);
+                }
+                break;
+            case 'd':
+                if (!(appctx.opt.savedir = strdup(optarg))) {
+                    I2ErrLog(eh,"malloc: %M");
                     exit(1);
                 }
                 break;
@@ -1212,18 +1232,19 @@ main(
                     exit(1);
                 }
                 break;
-            case 'z':
-                appctx.opt.delayStart = strtoul(optarg,&endptr,10);
-                if(*endptr != '\0'){
-                    usage(progname,
-                            "Invalid (-z) value. Positive integer expected");
-                    exit(1);
-                }
+            case 'p':
+                appctx.opt.printfiles = True;
                 break;
+            /* undocumented debug options */
+#ifndef        NDEBUG
+            case 'w':
+                appctx.opt.childwait = True;
+                break;
+#endif
+            /* handled in prior getopt call... */
             case 'e':
-            case 'r':
+            case 'R':
             case 'v':
-                /* handled in prior getopt call... */
                 break;
                 /* Generic options.*/
             case 'h':
@@ -1426,6 +1447,16 @@ main(
      * Set the retn_on_intr flag.
      */
     if(!OWPContextConfigSetV(ctx,OWPInterruptIO,(void*)&pow_intr)){
+        I2ErrLog(eh,"Unable to set Context var: %M");
+        exit(1);
+    }
+
+    /*
+     * Set OWPEndDelay
+     */
+    if(appctx.opt.setEndDelay &&
+            !OWPContextConfigSetV(ctx,OWPEndDelay,
+                (void*)&appctx.opt.endDelay)){
         I2ErrLog(eh,"Unable to set Context var: %M");
         exit(1);
     }

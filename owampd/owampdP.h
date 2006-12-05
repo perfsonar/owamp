@@ -54,11 +54,14 @@ typedef struct {
     double          diskfudge;
     uint32_t        dieby;
     uint32_t        controltimeout;
-    uint32_t        count;
+    uint32_t        pbkdf2_count;
 #ifndef        NDEBUG
     void            *childwait;
 #endif
     I2Boolean       daemon;
+
+    I2Boolean       setEndDelay;
+    double          endDelay;
 } owampd_opts;
 
 #endif        /*        _OWAMPDP_H_        */

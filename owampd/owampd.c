@@ -1018,7 +1018,31 @@ LoadConfig(
                 rc=-rc;
                 break;
             }
-            opts.count = tlng;
+            opts.pbkdf2_count = tlng;
+        }
+        else if(!strncasecmp(key,"enddelay",9)){
+            char        *end=NULL;
+            double        tdbl;
+
+            errno = 0;
+            tdbl = strtod(val,&end);
+            if((end == val) || (errno == ERANGE)){
+                fprintf(stderr,"strtod(): %s\n",
+                        strerror(errno));
+                rc=-rc;
+                break;
+            }
+            if(tdbl >= 0.0){
+                opts.setEndDelay = True;
+                opts.endDelay = tdbl;
+            }
+            else{
+                fprintf(stderr,"Invalid enddelay \"%f\":"
+                        "positive value expected",
+                        tdbl);
+                rc=-rc;
+                break;
+            }
         }
         else{
             fprintf(stderr,"Unknown key=%s\n",key);
@@ -1275,10 +1299,20 @@ int main(
     /*
      * Setup count
      */
-    if(opts.count && !OWPContextConfigSetU32(ctx,OWPKeyDerivationCount,
-                opts.count)){
+    if(opts.pbkdf2_count && !OWPContextConfigSetU32(ctx,OWPKeyDerivationCount,
+                opts.pbkdf2_count)){
         I2ErrLog(errhand,
-                "OWPContextConfigSetV(): Can't set OWPKeyDerivationCount?!");
+                "OWPContextConfigSetU32(): Can't set OWPKeyDerivationCount?!");
+        exit(1);
+    }
+
+    /*
+     * Setup enddelay
+     */
+    if(opts.setEndDelay && !OWPContextConfigSetV(ctx,OWPEndDelay,
+                &opts.endDelay)){
+        I2ErrLog(errhand,
+                "OWPContextConfigSetV(): Can't set OWPEndDelay?!");
         exit(1);
     }
 

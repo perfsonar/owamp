@@ -223,6 +223,30 @@ the sending process has sent \fIcount\fR packets as specified by the
 0.1e (seconds)
 .RE
 .TP
+\fB\-E\fR \fIenddelay\fR
+.br
+Amount of time for a sender to wait after session completion (last packet
+send-time plus \fItimeout\fR) before sending the stop sessions message.
+
+This is important if the sender clock is running ahead of the receiver clock.
+
+A session is complete \fItimeout\fR after the send time of the final packet.
+If the sender clock is ahead of the receivers clock, the sender will declare
+the session complete before the receiver. The receiver
+is only allowed to retain records for the packets that were sent at least
+\fItimeout\fR before it receives the stop sessions message from
+the sender. Therefore, if the sender clock is running ahead of the receiver
+clock, the receiver will be forced to delete some number of the final
+packets from the session.
+
+This parameter directs the sender to wait \fIenddelay\fR after
+session completion allowing the receiver clock to be essentially \fIenddelay\fR
+later than the sender clock and still retain full sessions.
+.RS
+.IP Default:
+1.0 (seconds)
+.RE
+.TP
 \fB\-L\fR \fItimeout\fR
 .br
 Amount of time to wait for a packet to be received before declaring it
@@ -323,7 +347,7 @@ session keys.
 \fB\-k\fR \fIpfsfile\fR
 .br
 Indicates that \fBowping\fR should use the pass-phrase in \fIpfsfile\fR for
-\fIusername\fB to derive the symmetric AES key used for encryption.
+\fIusername\fR to derive the symmetric AES key used for encryption.
 \fIusername\fR must have a valid entry in \fIpfsfile\fR.
 \fIpfsfile\fR can be generated as described in the pfstore(1) manual
 page.
@@ -384,7 +408,7 @@ Because \fBowping\fR is using a histogram to compute the median (and
 other percentiles of delay) the results can be misleading if the
 .I bucket_width
 is not appropriate. For example, if all of the delays in the sample are
-greater than the value of
+smaller than the value of
 .I bucket_width
 then the median will be reported as
 .I bucket_width,
@@ -430,7 +454,7 @@ li l .
 .PP
 This is only used for the summary statistics and the \fB\-v\fR mode of
 reporting individual records. In particular, it is not used for the
-\fB\-R\fR or \fB\-m\fR output modes.
+\fB\-R\fR or \fB\-M\fR output modes.
 .IP Default:
 Unset.
 .RE

@@ -178,7 +178,7 @@ session keys.
 \fB\-k\fR \fIpfsfile\fR
 .br
 Indicates that \fBowfetch\fR should use the pass-phrase in \fIpfsfile\fR for
-\fIusername\fB to derive the symmetric AES key used for encryption.
+\fIusername\fR to derive the symmetric AES key used for encryption.
 \fIusername\fR must have a valid entry in \fIpfsfile\fR.
 \fIpfsfile\fR can be generated as described in the pfstore(1) manual
 page.
@@ -239,7 +239,7 @@ Because \fBowfetch\fR is using a histogram to compute the median (and
 other percentiles of delay) the results can be misleading if the
 .I bucket_width
 is not appropriate. For example, if all of the delays in the sample are
-greater than the value of
+smaller than the value of
 .I bucket_width
 then the median will be reported as
 .I bucket_width,
@@ -285,7 +285,7 @@ li l .
 .PP
 This is only used for the summary statistics and the \fB\-v\fR mode of
 reporting individual records. In particular, it is not used for the
-\fB\-R\fR or \fB\-m\fR output modes.
+\fB\-R\fR or \fB\-M\fR output modes.
 .IP Default:
 Unset.
 .RE
@@ -359,7 +359,7 @@ data in that file and save the session data in save.owp.
 \fBowfetch -M somehost.com abcdef0123456789abcdef0123456789 save.owp\fR
 .IP
 Contact host somehost.com. Fetch the test session identified by
-the SID abcdef0123456789abcdef0123456789. Print the machine parsable
+the SID abcdef0123456789abcdef0123456789. Print the machine pars-able
 summary statistics for that session and save the session data in save.owp.
 .LP
 \fBowfetch -v somehost.com abcdef0123456789abcdef0123456789 save.owp\fR

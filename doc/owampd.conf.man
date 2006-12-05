@@ -111,14 +111,14 @@ Fudge factor to use when determining if a buffered owp file should be kept.
 It creates a hard limit for disk usage. The soft limit is determined by
 the \fIlimitclass\fR that a connection matches [see the owampd.limits(5)
 manual page] and is applied when a test is requested. If the estimated
-filesize of the test would put the
+file-size of the test would put the
 \fIlimitclass\fR over the soft limit, then the test is denied. However, it is
 possible, due to duplicate packets, that a test session file may end up larger
 than this estimate. If that happens, and if the file is successfully saved
-to disk, then, upon completion of the test, the actual filesize is used to
+to disk, then, upon completion of the test, the actual file-size is used to
 update the disk usage in the resource broker process. At this point, the hard
 limit is applied. The hard limit is determined by multiplying the soft limit
-by the \fIdiskfudge\fR. If the final filesize causes the disk space
+by the \fIdiskfudge\fR. If the final file-size causes the disk space
 used by the \fIlimitclass\fR to be larger than the
 quota defined by the hard limit then the file is immediately deleted.
 .RS
@@ -134,6 +134,29 @@ The valid values for \fIdiskfudge\fR are 1.0-10.0.
 1.0 (hard limit is the same as the soft limit)
 .RE
 .TP
+.BI enddelay " enddelay"
+Amount of time for a sender to wait after session completion (last packet
+send-time plus \fItimeout\fR) before sending the stop sessions message.
+
+This is important if the sender clock is running ahead of the receiver clock.
+
+A session is complete \fItimeout\fR after the send time of the final packet.
+If the sender clock is ahead of the receivers clock, the sender will declare
+the session complete before the receiver. The receiver
+is only allowed to retain records for the packets that were sent at least
+\fItimeout\fR before it receives the stop sessions message from
+the sender. Therefore, if the sender clock is running ahead of the receiver
+clock, the receiver will be forced to delete some number of the final
+packets from the session.
+
+This parameter directs the sender to wait \fIenddelay\fR after
+session completion allowing the receiver clock to be essentially \fIenddelay\fR
+later than the sender clock and still retain full sessions.
+.RS
+.IP Default:
+1.0 (seconds)
+.RE
+.TP
 .BI facility " facility"
 Specify the syslog \fIfacility\fR to log messages.
 .RS
@@ -147,7 +170,7 @@ can be specified using a valid group name on the system or by using -gid.
 This option is only used if \fBowampd\fR is started as root.
 .RS
 .PP
-This option can be useful to limit logfile permissions to only users
+This option can be useful to limit log-file permissions to only users
 in this group.
 .RE
 .TP
@@ -155,6 +178,22 @@ in this group.
 Directs the \fBowampd\fR process to report source code file and line
 number information with error messages. This is a particularly useful
 option to set when sending in messages as part of a bug report.
+.TP
+.BI pbkdf2_count " pbkdf2_count"
+This indicates the count parameter for the pseudo-random key derivation
+function that is used to derive the session key from the long term
+key stored in the \fBowampd.pfs\fR file.
+.RS
+.IP Default:
+2048
+.TP
+.B rootfolly
+If present, this disables the requirement that \fBowampd\fR run with
+non-root permissions. There are legitimate reasons to run \fBowampd\fR
+as root, but it is more risky. (For example, some operating systems
+require root permissions to set the TOS bits used by the \fI\-D\fR and
+\fI\-H\fR options of \fBowping\fR.) This additional option was added
+to ensure root permissions are only used when explicitly intended.
 .TP
 .BI srcnode " nodename:port"
 Specify the address and port that \fBowampd\fR will listen for requests.
@@ -193,14 +232,6 @@ and both numbers must be valid port values. (16 bit unsigned integer values)
 .IP Default:
 0
 .RE
-.TP
-.B rootfolly
-If present, this disables the requirement that \fBowampd\fR run with
-non-root permissions. There are legitimate reasons to run \fBowampd\fR
-as root, but it is more risky. (For example, some operating systems
-require root permissions to set the TOS bits used by the \fI\-D\fR and
-\fI\-H\fR options of \fBowping\fR.) This additional option was added
-to ensure root permissions are only used when explicitly intended.
 .TP
 .BI user " user"
 Specifies the uid the \fBowampd\fR process should run as. \fIuser\fR
