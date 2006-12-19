@@ -1663,6 +1663,8 @@ OWPStatsPrintMachine(
         fprintf(output,"MAXTTL\t%u\n",minttl);
         fprintf(output,"<TTLBUCKETS>\n");
         for(i=0;i<255;i++){
+            if(!stats->ttl_count[i])
+                continue;
             fprintf(output,"\t%u\t%u\n",i,stats->ttl_count[i]);
         }
         fprintf(output,"</TTLBUCKETS>\n");

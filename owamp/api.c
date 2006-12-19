@@ -1802,7 +1802,7 @@ OWPStopSessionsWait(
 
     if(wake){
         OWPTimeStamp    currstamp;
-        OWPTimeStamp    wakestamp;
+        OWPNum64        wakenum;
 
         if(!OWPGetTimeOfDay(cntrl->ctx,&currstamp)){
             OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
@@ -1811,9 +1811,8 @@ OWPStopSessionsWait(
         }
 
         if(OWPNum64Cmp(currstamp.owptime,*wake) < 0){
-            wakestamp = currstamp;
-            wakestamp.owptime = OWPNum64Sub(*wake,currstamp.owptime);
-            OWPTimestampToTimeval(&reltime,&wakestamp);
+            wakenum = OWPNum64Sub(*wake,currstamp.owptime);
+            OWPNum64ToTimeval(&reltime,wakenum);
         }
         else{
             tvalclear(&reltime);
