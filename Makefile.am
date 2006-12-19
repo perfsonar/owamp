@@ -21,10 +21,7 @@
 SUBDIRS = @TOP_BUILD_DIRS@ owamp owampd owping conf powstream test doc
 #SUBDIRS = owamp owampd owping owdigest conf powstream scripts
 
-# uncomment this when we stop using broken automake 1.5
-# (then remove from DIST_EXTRA in subdir)
-#nobase_include_HEADERS = owamp/owamp.h
-
+EXTRA_DIST	=	LICENSE
 #EXTRA_DIST	=		bootstrap
 #MAINTAINERCLEANFILES	=	aclocal.m4 Makefile.in configure config.log \
 #				config.status
