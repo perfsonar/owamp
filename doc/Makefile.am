@@ -27,7 +27,7 @@ dist_man8_MANS = owampd.man
 
 
 # EXTRA_DIST = $(man1_MANS) $(man5_MANS) $(man8_MANS)
-EXTRA_DIST = index.html details.html owamp_arch.png \
+EXTRA_DIST = index.html details.html owamp_arch.png milestones.html \
 	     draft-shalunov-reordering-definition-01.txt
 
 # TODO
