@@ -1,4 +1,40 @@
+2007-01-02  boote  <boote@foo.local>
+
+	* doc/Makefile.am, doc/index.html, doc/milestones.html:
+	Preparing for 3.0b release
+
+	Adding doc/milestones.html document for version history information
+
+	* RELEASE.TODO:
+	Modifying release process to include editing of the new version history file.
+
+2006-12-19  boote  <boote@foo.local>
+
+	* I2util/I2util/Makefile.am, owamp/api.c, owamp/stats.c: Makefile.am:
+	    Add sha1P.h into distribution. (Now test apps can run.)
+
+	api.c:
+	    Fixed bug in relative wait time variable used to call select(2).
+	    (Was using the wrong function to convert from owptimestamp to
+	    timeval. This caused it to be off by unix_epoch.) Did not
+	    cause problems in normal operation.
+
+	* LICENSE, Makefile.am, configure.ac: configure.ac:
+	    version 3.0b
+
+	LICENSE:
+	    Grammar.
+
+	Makefile.am:
+	    Add LICENSE into dist tarball.
+
 2006-12-05  boote  <boote@foo.local>
+
+	* owamp/capi.c:
+	Correct "Unable to connect" error message so it makes sense for IPv6
+	addresses. (was host:port, now reports [host]:port)
+
+	* CHANGELOG: Prepare for 3.0a release.
 
 	* conf/owampd.conf, doc/Makefile.am, doc/draft-shalunov-reordering-definition-01.txt, doc/owampd.conf.man, doc/owfetch.man, doc/owping.man, doc/owstats.man, doc/owup.man, doc/powstream.man, owamp/api.c, owamp/capi.c, owamp/endpoint.c, owamp/owamp.h, owamp/owampP.h, owamp/protocol.c, owamp/sapi.c, owamp/time.c, owampd/owampd.c, owampd/owampdP.h, owping/owping.c, owping/owpingP.h, powstream/powstream.c, powstream/powstreamP.h:
 	Features:
