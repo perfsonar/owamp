@@ -24,19 +24,19 @@
 ."
 .TH powstream 1 "$Date$"
 .SH NAME
-powstream \- Client daemon application for continues one-way latency tests.
+powstream \- Client daemon application for continuous one-way latency tests.
 .SH SYNOPSIS
 .B powstream 
 [\fIoptions\fR] testpeer [server]
 .SH DESCRIPTION
 \fBpowstream\fR is a command line client daemon application that is used to
-initiate a continues stream of one-way latency tests from the
+initiate a continuous stream of one-way latency tests from the
 .I testpeer
 to the client host.
 .PP
 Round-trip latency measurements (ping) are
-an accepted technique to look for network problems; One-way measurements
-have the potential to be even more useful. With round-trip measurements
+an accepted technique to look for network problems; one-way measurements
+have the potential to be even more useful. With round-trip measurements,
 it is difficult to isolate the direction in which congestion is experienced.
 Traffic is often asymmetric with many sites being either primarily producers
 or consumers of data. One-way measurements allow more informative
@@ -44,20 +44,20 @@ measurements. It is much easier to isolate the effects of traffic on
 specific parts of a network.
 .PP
 .B powstream
-creates a continues stream of one-way packet samples by stitching together
+creates a continuous stream of one-way packet samples by stitching together
 multiple
 .B OWAMP
-test sessions. It was designed to allow for continues monitoring of
-one-way latencies. To create a continues stream of packets,
+test sessions. It was designed to allow for continuous monitoring of
+one-way latencies. To create a continuous stream of packets,
 .B powstream
-actually opens to control sockets to the server and effectively
+actually opens two control sockets to the server and, effectively,
 double-buffers
 .B OWAMP
-test sessions. The start-time of each subsequent sessions is defined by
+test sessions. The start-time of each subsequent session is defined by
 the computed send time of the last packet in the previous session.
 .PP
 There are special considerations for this type of
-applications that do not exist for the \fBowping\fR application.
+application that do not exist for the \fBowping\fR application.
 Specifically, it is important to reduce the amount of control communication
 that occurs to minimize any session resets that could occur due to breakdowns
 in control communication. (We really want to see periods of time where
@@ -66,7 +66,7 @@ the network is broken.) Therefore, it is important to create fairly long
 test sessions. On the other hand, it is nice to get fairly immediate feedback
 if there is packet loss. To facilitate this,
 .B powstream
-can summarizes data for smaller time periods than the actual test session
+can summarize data for smaller time periods than the actual test session
 periods it uses. (The \fI\-N\fR option is used to indicate how many packet
 records should be in a test session while the \fI\-c\fR option is used
 to indicate how many packet records should be in each data and summary
@@ -79,12 +79,12 @@ indicated by the \fI\-d\fR option. Additionally,
 .B powstream
 will output a data file and a summary file for each time period defined
 by the \fI\-N\fR option. The smaller session files should be thought of
-as preliminary data - the later, larger file will have additional information
+as preliminary data the later, larger file will have additional information
 available to it to determine the validity of the data. The larger file
-is created after the Stop-Sessions message has been received over the
-control socket from the sender. This message includes information about
-any packet records that the sender did not send therefore the preliminary
-data could show packet loss when in reality the sending process never sent
+is created after the Stop-Sessions message has been received from
+the sender over the control socket. This message includes information about
+any packet records that the sender did not send; therefore, the preliminary
+data could show packet loss when, in reality, the sending process never sent
 the expected packets.
 .PP
 .B powstream
@@ -100,7 +100,7 @@ port specification:
 .br
 IPv4 syntax where node is either a DNS name or a numeric host address string
 consisting of a dotted decimal IPv4 address. The \fI\:port\fR is an optional
-port specifier to contact servers running on a non-default port and
+specifier to contact servers running on a non-default port and
 can be left off in most cases.
 This syntax also works for IPv6 addresses specified using DNS names.
 .TP
@@ -161,7 +161,7 @@ send-time plus \fItimeout\fR) before sending the stop sessions message.
 This is important if the sender clock is running ahead of the receiver clock.
 
 A session is complete \fItimeout\fR after the send time of the final packet.
-If the sender clock is ahead of the receivers clock, the sender will declare
+If the sender clock is ahead of the receiver clock, the sender will declare
 the session complete before the receiver. The receiver
 is only allowed to retain records for the packets that were sent at least
 \fItimeout\fR before it receives the stop sessions message from
@@ -218,7 +218,7 @@ for a test packet in \fIauthenticated\fR or \fIencrypted\fR mode is 32 bytes.
 .TP
 \fB\-z\fR \fIdelayStart\fR
 .br
-Time to wait before starting the tests test. \fBpowstream\fR waits
+Time to wait before starting the test. \fBpowstream\fR waits
 approximately 10 seconds before starting the first test by default. The
 .I delayStart
 value is added to this amount.
@@ -253,7 +253,7 @@ will be selected. Authenticated and Encrypted modes require a "shared secret"
 in the form of a pass-phrase that is used to generate the AES and HMAC-SHA1
 session keys.
 .IP Default:
-"AEO".
+"AEO"
 .RE
 .TP
 \fB\-k\fR \fIpfsfile\fR
@@ -266,17 +266,17 @@ page.
 .RS
 .IP Default:
 Unset. (If the \fB\-u\fR option was specified without the \fB-k\fR, the
-user will be prompted for a \fIpassphrase\fR.)
+user will be prompted for a \fIpass-phrase\fR.)
 .RE
 .TP
 \fB\-S\fR \fIsrcaddr\fR
 .br
 Bind the local address of the client socket to \fIsrcaddr\fR. \fIsrcaddr\fR
 can be specified using a DNS name or using standard textual notations for
-the IP addresses. (IPv6 addresses are of course supported.)
+the IP addresses. (IPv6 addresses are, of course, supported.)
 .RS
 .IP Default:
-Unspecified (wild-card address selection).
+Unspecified (wild-card address selection)
 .RE
 .TP
 \fB\-u\fR \fIusername\fR
@@ -284,12 +284,12 @@ Unspecified (wild-card address selection).
 Specify the username that is used to identify the shared secret (pass-phrase)
 used to derive the AES and HMAC-SHA1 session keys for
 authenticated and encrypted modes. If the \fB\-k\fR option is specified,
-the pass-phrase is retrieved from the \fIpfsfile\fR,
+the pass-phrase is retrieved from the \fIpfsfile\fR
 otherwise \fBpowstream\fR prompts
 the user for a pass-phrase.
 .RS
 .IP Default:
-Unset.
+Unset
 .RE
 .SS Output Options:
 .TP
@@ -297,7 +297,7 @@ Unset.
 .br
 To reasonably compute the delay summary statistics, \fBpowstream\fR creates
 a histogram of the delays. (This can be used to compute percentiles of
-delay such as median.) The
+delay, such as median.) The
 .I bucket_width
 indicates the resolution of the bins in the histogram. This value
 is specified using a floating point value and the units are seconds.
@@ -311,7 +311,7 @@ The histogram is presented within the summary statistics file.
 \fB\-d\fR \fIdir\fR
 .br
 .I dir
-indicates the directory to save all raw \fIowp\fR data files and all
+indicates the directory in which to save all raw \fIowp\fR data files and all
 textual summary data files.
 .RS
 .IP Default:
@@ -321,9 +321,9 @@ textual summary data files.
 \fB\-e\fR \fIfacility\fR
 .br
 .I facility
-indicates the syslog facility
+indicates the syslog facility to which
 .B powstream
-should send all error messages to.
+should send all error messages.
 .RS
 .IP Default:
 LOG_USER
@@ -407,7 +407,7 @@ Contact somehost.com and request ongoing tests. Use a timeout
 duration of 10 seconds. Tests will have a sending rate
 of a packet approximately every 1 second, with 10800 packets per
 complete session. (Each session will last about 3 hours.) Create sub-session
-data and summary statistic files as well with 30 packets per
+data and summary statistic files, as well, with 30 packets per
 sub-session. (Each sub-session will provide a sample period of about
 30 seconds.) Save the data and summary files in the current directory
 and print each filename as it is produced.
@@ -415,7 +415,7 @@ and print each filename as it is produced.
 owampd(8), owping(1), owstats(1), owfetch(1) and the
 \%http://e2epi.internet2.edu/owamp/ web site.
 .SH ACKNOWLEDGMENTS
-This material is based in part on work supported by the National Science
-Foundation (NSF) under Grant No. ANI-0314723. Any opinions, findings and
+This material is based, in part, on work supported by the National Science
+Foundation (NSF) under Grant No. ANI-0314723. Any opinions, findings, and
 conclusions or recommendations expressed in this material are those of
 the author(s) and do not necessarily reflect the views of the NSF.
