@@ -44,7 +44,7 @@ AC_ARG_WITH(efence,
 		with_efence=$withval, with_efence=no)
 
 AC_ARG_WITH(mallocdebug,
-		AC_HELP_STRING([--with-mallocdebug=<path/libefence.a>],
+		AC_HELP_STRING([--with-mallocdebug=<path/MallocDebug.a>],
 				[yes means use -lMallocDebug]),
 		with_mallocdebug=$withval, with_mallocdebug=no)
 
