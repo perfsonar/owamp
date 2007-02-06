@@ -678,6 +678,8 @@ skip_data:
         /* note, but ignore the error */
         I2ErrLog(eh,"link(%s,%s): %M",tfname,fname);
     } else if(appctx.opt.printfiles){
+        /* Make sure file is complete */
+        fflush(fp);
         /* Now print the filename to stdout */
         fprintf(stdout,"%s\n",fname);
         fflush(stdout);
@@ -1786,6 +1788,8 @@ AGAIN:
             }
 
             if(appctx.opt.printfiles){
+                /* Make sure file is complete */
+                fflush(fp);
                 /* Now print the filename to stdout */
                 fprintf(stdout,"%s\n",fname);
                 fflush(stdout);
