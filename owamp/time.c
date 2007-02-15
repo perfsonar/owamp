@@ -581,6 +581,8 @@ OWPTimestampToTimeval(
         OWPTimeStamp    *tstamp
         )
 {
+    OWPNum64    tnum;
+
     if(!tval || !tstamp)
         return NULL;
 
@@ -589,9 +591,8 @@ OWPTimestampToTimeval(
      * of overflow since time_t is a 32bit signed quantity instead of
      * unsigned.
      */
-    tstamp->owptime = OWPNum64Sub(tstamp->owptime,
-            OWPULongToNum64(OWPJAN_1970));
-    OWPNum64ToTimeval(tval,tstamp->owptime);
+    tnum = OWPNum64Sub(tstamp->owptime, OWPULongToNum64(OWPJAN_1970));
+    OWPNum64ToTimeval(tval,tnum);
 
     return tval;
 }
@@ -728,6 +729,8 @@ OWPTimestampToTimespec(
         OWPTimeStamp    *tstamp
         )
 {
+    OWPNum64    tnum;
+
     if(!tval || !tstamp)
         return NULL;
 
@@ -736,9 +739,8 @@ OWPTimestampToTimespec(
      * of overflow since time_t is a 32bit signed quantity instead of
      * unsigned.
      */
-    tstamp->owptime = OWPNum64Sub(tstamp->owptime,
-            OWPULongToNum64(OWPJAN_1970));
-    OWPNum64ToTimespec(tval,tstamp->owptime);
+    tnum = OWPNum64Sub(tstamp->owptime, OWPULongToNum64(OWPJAN_1970));
+    OWPNum64ToTimespec(tval,tnum);
 
     return tval;
 }

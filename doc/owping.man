@@ -459,6 +459,17 @@ reporting individual records. In particular, it is not used for the
 Unset.
 .RE
 .TP
+\fB\-N\fR \fIcount\fR
+.br
+Number of test packets to put in sub-session summaries.
+
+This option is used to break down the summary statistics in smaller
+sample sizes than a complete owp file.
+.RS
+.IP Default:
+Unset.
+.RE
+.TP
 \fB\-Q\fR
 .br
 Suppress the printing of summary statistics and human readable individual

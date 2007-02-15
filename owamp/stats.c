@@ -742,7 +742,7 @@ OWPStatsCreate(
      * If this factor is too small, there will be entries in syslog and
      * it can be increased. (A dynmic allocation will happen in this event.)
      */
-#define PACKETBUFFERALLOCFACTOR   2.5
+#define PACKETBUFFERALLOCFACTOR   3.5
     d = OWPTestPacketRate(stats->ctx,&stats->hdr->test_spec) *
             OWPNum64ToDouble(stats->hdr->test_spec.loss_timeout) *
             PACKETBUFFERALLOCFACTOR;
@@ -901,6 +901,9 @@ PacketBeginFlush(
     }
 
 flush:
+
+    /* Retain the last scheduled timestamp */
+    stats->end_time = node->schedtime;
 
     if(node->next){
         stats->pbegin = node->next;
@@ -1143,7 +1146,7 @@ PrintStatsHeader(
     fprintf(output,"\n--- owping statistics from [%s]:%s to [%s]:%s ---\n",
             stats->fromhost,stats->fromserv,stats->tohost,stats->toserv);
     I2HexEncode(sid_name,stats->hdr->sid,sizeof(OWPSID));
-    fprintf(output,"SID: %s\n",sid_name);
+    fprintf(output,"SID:\t%s\n",sid_name);
 
     return;
 }
@@ -1191,12 +1194,12 @@ OWPStatsParse(
         OWPStats    stats,
         FILE        *output,
         off_t       begin_oset,
-        uint32_t   first,
-        uint32_t   last
+        uint32_t    first,
+        uint32_t    last
         )
 {
     off_t       fileend;
-    uint32_t   nrecs;
+    uint32_t    nrecs;
     long int    i;
 
     if(last == (uint32_t)~0){
@@ -1270,6 +1273,7 @@ OWPStatsParse(
                 OWPScheduleContextGenerateNextDelta(stats->sctx));
         stats->isctx++;
     }
+    stats->start_time = stats->endnum;
 
     /*
      * PacketBuffer stuff (used for dups,lost)
@@ -1435,17 +1439,77 @@ OWPStatsPrintSummary(
         uint32_t   npercentiles
         )
 {
-    long int    i;
-    uint32_t    ui;
-    uint8_t    	nttl=0;
-    uint8_t    	minttl=255;
-    uint8_t    	maxttl=0;
-    char        minval[80];
-    char        maxval[80];
-    char        n1val[80];
-    double      d1, d2;
+    long int        i;
+    uint32_t        ui;
+    uint8_t    	    nttl=0;
+    uint8_t    	    minttl=255;
+    uint8_t    	    maxttl=0;
+    char            minval[80];
+    char            maxval[80];
+    char            n1val[80];
+    double          d1, d2;
+    struct timespec sspec;
+    struct timespec espec;
+    struct timespec *sspecp,*especp;
+    struct tm       stm,etm;
+    struct tm       *stmp,*etmp;
+    char            stval[50],etval[50];
+    OWPTimeStamp    ttstamp;
 
     PrintStatsHeader(stats,output);
+
+    /*
+     * Print out timerange
+     */
+    memset(&stm,0,sizeof(stm));
+    memset(&etm,0,sizeof(etm));
+    memset(&sspec,0,sizeof(sspec));
+    memset(&espec,0,sizeof(espec));
+
+    /* set start-time string */
+    ttstamp.owptime = stats->start_time;
+    if( !(sspecp = OWPTimestampToTimespec(&sspec,&ttstamp))){
+        OWPError(stats->ctx,OWPErrWARNING,errno,
+                    "OWPStatsPrintSummary: OWPTimestampToTimespec(): Unable to convert time value");
+        strncpy(stval,"XXX",sizeof(stval));
+    }
+    else if( !(stmp = localtime_r(&sspecp->tv_sec,&stm))){
+        OWPError(stats->ctx,OWPErrWARNING,errno,
+                    "OWPStatsPrintSummary: localtime_r(): Unable to convert time value");
+        strncpy(stval,"XXX",sizeof(stval));
+    }
+    else if( !strftime(stval,sizeof(stval),"%FT%T",stmp)){
+        OWPError(stats->ctx,OWPErrWARNING,errno,
+                    "OWPStatsPrintSummary: strftime(): Unable to convert time value");
+        strncpy(stval,"XXX",sizeof(stval));
+    }
+
+    /* set end-time string */
+    ttstamp.owptime = stats->end_time;
+    if( !(especp = OWPTimestampToTimespec(&espec,&ttstamp))){
+        OWPError(stats->ctx,OWPErrWARNING,errno,
+                    "OWPStatsPrintSummary: OWPTimestampToTimespec(): Unable to convert time value");
+        strncpy(etval,"XXX",sizeof(etval));
+    }
+    else if( !(etmp = localtime_r(&especp->tv_sec,&etm))){
+        OWPError(stats->ctx,OWPErrWARNING,errno,
+                    "OWPStatsPrintSummary: localtime_r(): Unable to convert time value");
+        strncpy(etval,"XXX",sizeof(etval));
+    }
+    else if( !strftime(etval,sizeof(etval),"%FT%T",etmp)){
+        OWPError(stats->ctx,OWPErrWARNING,errno,
+                    "OWPStatsPrintSummary: strftime(): Unable to convert time value");
+        strncpy(etval,"XXX",sizeof(etval));
+    }
+
+    /*
+     * Divide the integer nanoseconds by 1 million to get 3 significant
+     * digits of the fractional seconds to the left of the decimal point.
+     */
+#define MILLION (1000000)
+    fprintf(output,"first:\t%s.%03.0f\nlast:\t%s.%03.0f\n",
+            stval,((float)sspec.tv_nsec)/MILLION,
+            etval,((float)espec.tv_nsec)/MILLION);
 
     /*
      * lost % is 0 if sent == 0.
@@ -1601,7 +1665,7 @@ OWPStatsPrintMachine(
         )
 {
     /* Version 2.0 of stats output */
-    float       version=2.0;
+    float       version=2.1;
     char        sid_name[sizeof(OWPSID)*2+1];
     uint32_t    i;
     uint8_t     nttl=0;
@@ -1618,6 +1682,9 @@ OWPStatsPrintMachine(
     fprintf(output,"SID\t%s\n",sid_name);
     fprintf(output,"FROM\t[%s]:%s\n",stats->fromaddr,stats->fromserv);
     fprintf(output,"TO\t[%s]:%s\n",stats->toaddr,stats->toserv);
+
+    fprintf(output,"START_TIME\t" OWP_TSTAMPFMT "\n",stats->start_time);
+    fprintf(output,"END_TIME\t" OWP_TSTAMPFMT "\n",stats->end_time);
 
     /*
      * Summary results

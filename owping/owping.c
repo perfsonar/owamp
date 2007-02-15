@@ -90,6 +90,7 @@ print_output_args()
             "   -b bucketwidth bin size for histogram calculations",
             "   -M             print machine (perl) readable summary",
             "   -n units       \'n\',\'u\',\'m\', or \'s\'",
+            "   -N count       number of test packets (to summarize per sub-session)\n"
             "   -Q             run the test and exit without reporting statistics",
             "   -R             print RAW data: \"SEQNO STIME SS SERR RTIME RS RERR TTL\\n\"",
             "   -v             print out individual delays"
@@ -228,13 +229,26 @@ do_stats(
         char        *to
         )
 {
-    uint32_t           num_rec;
     OWPSessionHeaderRec hdr;
     OWPStats            stats;
+    uint32_t            num_rec;
+    uint32_t            num_sum;
+    uint32_t            sum;
 
     if(!(num_rec = OWPReadDataHeader(ctx,fp,&hdr)) && !hdr.header){
         I2ErrLog(eh, "OWPReadDataHeader: Invalid file?");
         return -1;
+    }
+
+    if(!ping_ctx.opt.numBucketPackets ||
+            (ping_ctx.opt.numBucketPackets >= num_rec)){
+        num_sum = 0;
+    }
+    else{
+        num_sum = num_rec / ping_ctx.opt.numBucketPackets;
+        if(num_rec % ping_ctx.opt.numBucketPackets){
+            num_sum++;
+        }
     }
 
     /*
@@ -261,22 +275,55 @@ do_stats(
     /*
      * Parse the file to fill it.
      */
-    if( !OWPStatsParse(stats,(ping_ctx.opt.records)?output:NULL,0,0,~0)){
-        I2ErrLog(eh,"OWPStatsParse: failed");
-        OWPStatsFree(stats);
-        return -1;
-    }
+    if(!num_sum){
+        if( !OWPStatsParse(stats,(ping_ctx.opt.records)?output:NULL,0,0,~0)){
+            I2ErrLog(eh,"OWPStatsParse: failed");
+            OWPStatsFree(stats);
+            return -1;
+        }
 
-    /*
-     * Print out summary info
-     */
-    if(ping_ctx.opt.machine){
-        OWPStatsPrintMachine(stats,output);
+        /*
+         * Print out summary info
+         */
+        if(ping_ctx.opt.machine){
+            OWPStatsPrintMachine(stats,output);
+        }
+        else{
+            OWPStatsPrintSummary(stats,output,
+                    ping_ctx.opt.percentiles,
+                    ping_ctx.opt.npercentiles);
+        }
     }
     else{
-        OWPStatsPrintSummary(stats,output,
-                ping_ctx.opt.percentiles,
-                ping_ctx.opt.npercentiles);
+        for(sum=0;sum<num_sum;sum++){
+            uint32_t    begin,end;
+
+            begin = ping_ctx.opt.numBucketPackets * sum;
+            end = ping_ctx.opt.numBucketPackets * (sum+1);
+            if(end > num_rec){
+                end = ~0;
+            }
+
+            if( !OWPStatsParse(stats,
+                        (ping_ctx.opt.records)?output:NULL,stats->next_oset,
+                        begin,end)){
+                I2ErrLog(eh,"OWPStatsParse: failed");
+                OWPStatsFree(stats);
+                return -1;
+            }
+
+            /*
+             * Print out summary info
+             */
+            if(ping_ctx.opt.machine){
+                OWPStatsPrintMachine(stats,output);
+            }
+            else{
+                OWPStatsPrintSummary(stats,output,
+                        ping_ctx.opt.percentiles,
+                        ping_ctx.opt.npercentiles);
+            }
+        }
     }
 
     OWPStatsFree(stats);
@@ -795,7 +842,7 @@ main(
     char                optstring[128];
     static char         *conn_opts = "A:k:S:u:";
     static char         *test_opts = "c:D:E:fF:H:i:L:P:s:tT:z:";
-    static char         *out_opts = "a:b:Mn:QRv";
+    static char         *out_opts = "a:b:Mn:N:QRv";
     static char         *gen_opts = "h";
 #ifndef    NDEBUG
     static char         *debug_opts = "w";
@@ -855,6 +902,7 @@ main(
     ping_ctx.opt.padding = 0;
     ping_ctx.mean_wait = (float)0.1;
     ping_ctx.opt.units = 'm';
+    ping_ctx.opt.numBucketPackets = 0;
     ping_ctx.opt.bucket_width = 0.0001;
 
     /* Create options strings for this program. */
@@ -1052,6 +1100,14 @@ main(
                     exit(1);
                 }
                 ping_ctx.opt.units = optarg[0];
+                break;
+            case 'N':
+                ping_ctx.opt.numBucketPackets = strtoul(optarg, &endptr, 10);
+                if (*endptr != '\0') {
+                    usage(progname,
+                            "Invalid \"-N\" value. Positive integer expected");
+                    exit(1);
+                }
                 break;
             case 'Q':
                 ping_ctx.opt.quiet = True;

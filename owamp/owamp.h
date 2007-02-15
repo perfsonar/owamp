@@ -370,13 +370,13 @@ typedef union OWPSlotUnion{
 } OWPSlot;
 
 typedef struct{
-    OWPNum64        start_time;
-    OWPNum64        loss_timeout;
-    uint32_t       typeP;
-    uint32_t       packet_size_padding;
-    uint32_t       npackets;
-    uint32_t       nslots;
-    OWPSlot         *slots;
+    OWPNum64    start_time;
+    OWPNum64    loss_timeout;
+    uint32_t    typeP;
+    uint32_t    packet_size_padding;
+    uint32_t    npackets;
+    uint32_t    nslots;
+    OWPSlot     *slots;
 } OWPTestSpec;
 
 typedef uint32_t OWPPacketSizeT;
@@ -1360,18 +1360,18 @@ OWPIsLostRecord(
  */
 typedef struct OWPPacketRec OWPPacketRec, *OWPPacket;
 struct OWPPacketRec{
-    OWPPacket       next;
-    uint32_t       seq;        /* packet seq no */
-    OWPNum64        schedtime;   /* scheduled send time */
-    uint32_t       seen;       /* how many times seen? */
-    OWPBoolean      lost;
+    OWPPacket   next;
+    uint32_t    seq;        /* packet seq no */
+    OWPNum64    schedtime;  /* scheduled send time */
+    uint32_t    seen;       /* how many times seen? */
+    OWPBoolean  lost;
 };
 
 typedef struct OWPBucketRec OWPBucketRec, *OWPBucket;
 struct OWPBucketRec{
     OWPBucket   next;
     int         b;      /* bucket index */
-    uint32_t   n;      /* samples in this bucket */
+    uint32_t    n;      /* samples in this bucket */
 };
 
 typedef struct OWPStatsRec{
@@ -1410,23 +1410,26 @@ typedef struct OWPStatsRec{
      * TestSession information
      */
     OWPScheduleContext  sctx;
-    uint32_t           isctx;  /* index for next seq_no */
-    OWPNum64            endnum; /* current sched time for (isctx-1) */
+    uint32_t            isctx;      /* index for next seq_no */
+    OWPNum64            endnum;     /* current sched time for (isctx-1) */
+
+    OWPNum64            start_time; /* send time for first scheduled packet */
+    OWPNum64            end_time;   /* send time for last scheduled packet */
 
     /*
      * Parsing information
      */
-    uint32_t           i;      /* keeps track of current record index  */
+    uint32_t            i;      /* keeps track of current record index  */
 
-    uint32_t           first;  /* first seqno of interest (inclusive)  */
-    uint32_t           last;   /* last seqno of interest (non-inclusive)   */
+    uint32_t            first;  /* first seqno of interest (inclusive)  */
+    uint32_t            last;   /* last seqno of interest (non-inclusive)   */
 
     off_t               begin_oset; /* starting file offset                 */
     off_t               next_oset;  /* upon completing, this will have either
                                      * null, or the offset of the first seqno
                                      * greater than or equal to "last".
                                      */
-    uint32_t           sent;   /* actual number sent */
+    uint32_t            sent;   /* actual number sent */
 
     /*
      * Packet records (used to count dups/lost)

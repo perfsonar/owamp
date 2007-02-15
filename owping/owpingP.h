@@ -66,6 +66,7 @@ typedef    struct {
         float           *percentiles;       /* -a */
         uint32_t        npercentiles;
         char            units;              /* -n */
+        uint32_t        numBucketPackets;   /* -N */
         float           bucket_width;       /* -b */
 
         char            *srcaddr;           /* -S */
