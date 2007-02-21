@@ -381,7 +381,8 @@ write_session(
     OWPSessionHeaderRec hdr;
     OWPNum64            endnum;
     char                tfname[PATH_MAX];
-    char                fname[PATH_MAX];
+    char                ofname[PATH_MAX];
+    char                sfname[PATH_MAX];
     char                startname[PATH_MAX];
     char                endname[PATH_MAX];
     int                 tofd = -1;
@@ -573,15 +574,12 @@ write_session(
         /*
          * Relink the incomplete file as a complete one.
          */
-        strcpy(fname,tfname);
-        sprintf(&fname[ext_offset],"%s",OWP_FILE_EXT);
-        if(link(tfname,fname) != 0){
+        strcpy(ofname,tfname);
+        sprintf(&ofname[ext_offset],"%s",OWP_FILE_EXT);
+        if(link(tfname,ofname) != 0){
             /* note, but ignore the error */
-            I2ErrLog(eh,"link(%s,%s): %M",tfname,fname);
-        } else if(appctx.opt.printfiles){
-            /* Now print the filename to stdout */
-            fprintf(stdout,"%s\n",fname);
-            fflush(stdout);
+            I2ErrLog(eh,"link(%s,%s): %M",tfname,ofname);
+            ofname[0]='\0';
         }
     }
 
@@ -605,7 +603,7 @@ skip_data:
     if( !(stats = OWPStatsCreate(p->ctx,p->fp,&hdr,NULL,NULL,'m',
                     appctx.opt.bucketWidth))){
         I2ErrLog(eh,"OWPStatsCreate failed");
-        return;
+        goto skip_sum;
     }
 
     /*
@@ -672,17 +670,12 @@ skip_data:
     /*
      * Relink the incomplete file as a complete one.
      */
-    strcpy(fname,tfname);
-    sprintf(&fname[ext_offset],"%s",POW_SUM_EXT);
-    if(link(tfname,fname) != 0){
+    strcpy(sfname,tfname);
+    sprintf(&sfname[ext_offset],"%s",POW_SUM_EXT);
+    if(link(tfname,sfname) != 0){
         /* note, but ignore the error */
-        I2ErrLog(eh,"link(%s,%s): %M",tfname,fname);
-    } else if(appctx.opt.printfiles){
-        /* Make sure file is complete */
-        fflush(fp);
-        /* Now print the filename to stdout */
-        fprintf(stdout,"%s\n",fname);
-        fflush(stdout);
+        I2ErrLog(eh,"link(%s,%s): %M",tfname,sfname);
+        sfname[0] = '\0';
     }
 
 skip_sum:
@@ -697,6 +690,17 @@ skip_sum:
 
     if(stats){
         OWPStatsFree(stats);
+    }
+
+    /* Print complete filenames to stdout */
+    if(appctx.opt.printfiles){
+        if(strlen(ofname) > 0){
+            fprintf(stdout,"%s\n",ofname);
+        }
+        if(strlen(sfname) > 0){
+            fprintf(stdout,"%s\n",sfname);
+        }
+        fflush(stdout);
     }
 
     return;
