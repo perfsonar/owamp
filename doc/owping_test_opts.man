@@ -1,0 +1,160 @@
+.SS Test Configuration Options:
+.TP
+\fB\-c\fR \fIcount\fR
+.br
+Number of test packets to send in the test session.
+.RS
+.IP Default:
+100
+.RE
+.TP
+\fB\-D\fR \fIDSCP\fR
+.br
+Set an RFC 2474 style DSCP value for the TOS byte in the sending packets. This
+option may only be specified once and is mutually exclusive with the
+\fI\-H\fR option.
+.RS
+.IP Default:
+Unset.
+.RE
+.TP
+\fB\-f\fR | \fB\-F\fR \fIfromfile\fR
+.br
+Perform a One-way test \fBf\fRrom the target \fItestpeer\fR. The \fI\-F\fR
+form is used to save the results in \fIfromfile\fR. If no directional
+options (\fI\-f, \-F, \-t, \-T\fR) are specified, \fBowping\fR requests
+concurrent bidirectional tests, otherwise only the explicit directions are
+performed.
+.RS
+.IP Default:
+True, unless the \fI\-t\fR or \fI\-T\fR have been specified explicitly.
+.RE
+.TP
+\fB\-H\fR \fIPHB\fR
+.br
+Set an RFC 2836 style Per Hop Behavior identification code for the TOS
+byte in the sending packets. This option may only be specified once and is
+mutually exclusive with the \fI\-D\fR option.
+.TP
+\fB\-i\fR \fIsend_schedule\fR
+.br
+.I send_schedule
+indicates the scheduled delay between sent packets. This is done by
+specifying a list of \fIdelays\fR in a comma separated string (spaces are
+not allowed). Each \fIdelay\fR
+is indicated by a \fIvalue\fR and a \fItype\fR. There are two currently
+available types of \fIdelays\fR that can be specified:
+.RS
+.IP \fBf\fR
+[\fBf\fR]ixed offsets. This is used to indicate that the \fIvalue\fR is
+a real offset.
+.IP \fBe\fR
+[\fBe\fR]xponential. This is used to indicate an exponentially distributed
+pseudo-random quantity with a mean about the \fIvalue\fR given. (This
+is the default if no alpha qualifier is specified. The intent of this is
+to negate periodicity effects.)
+.PP
+When the sending process starts, it looks at the first \fIdelay\fR in the
+list and waits that long to send the first packet. It takes the next
+\fIdelay\fR from the list to determine how much longer to wait before sending
+the second packet. This process continues
+until there are no more \fIdelay\fR values specified in the list. At this
+point the sending process loops back to the beginning of the complete
+\fIsend_schedule\fR and this process begins again. This continues until
+the sending process has sent \fIcount\fR packets as specified by the
+\fB\-c\fR option.
+.IP Default:
+0.1e (seconds)
+.RE
+.TP
+\fB\-E\fR \fIenddelay\fR
+.br
+Amount of time for a sender to wait after session completion (last packet
+send-time plus \fItimeout\fR) before sending the stop sessions message.
+
+This is important if the sender clock is running ahead of the receiver clock.
+
+A session is complete \fItimeout\fR after the send time of the final packet.
+If the sender clock is ahead of the receivers clock, the sender will declare
+the session complete before the receiver. The receiver
+is only allowed to retain records for the packets that were sent at least
+\fItimeout\fR before it receives the stop sessions message from
+the sender. Therefore, if the sender clock is running ahead of the receiver
+clock, the receiver will be forced to delete some number of the final
+packets from the session.
+
+This parameter directs the sender to wait \fIenddelay\fR after
+session completion allowing the receiver clock to be essentially \fIenddelay\fR
+later than the sender clock and still retain full sessions.
+.RS
+.IP Default:
+1.0 (seconds)
+.RE
+.TP
+\fB\-L\fR \fItimeout\fR
+.br
+Amount of time to wait for a packet to be received before declaring it
+lost. As such, it is also the amount of time the test session has to
+stay active after the last packet is sent to be able to count duplicate
+packets. I.e., add this number to the duration of your session to determine
+how long to expect a test session to take.
+
+Note: The default of 2 seconds longer than a round-trip estimate was simply
+a guess for how long a typical user would be willing to wait after the end
+of the test for the results. For the \fBOWAMP\fR results to be
+statistically relevant and to be able to compare data between two sessions
+the \fItimeout\fR option should be specified.
+.RS
+.IP Default:
+2 seconds longer than the round-trip estimate. (seconds)
+.RE
+.TP
+.BI \-P " 0 | lowport-highport"
+.br
+Specify the specific port range to use on the local host for
+.I OWAMP-Test
+packets. This can be specified in two ways. First, as 0 which would indicate
+.B owping
+should allow the system to pick the port (ephemeral). Second, as a range.
+.I lowport
+must be a smaller value than
+.I highport
+and both numbers must be valid port values. (16 bit unsigned integer values)
+.RS
+.IP Default:
+0
+.RE
+.TP
+\fB\-s\fR \fIsize\fR
+.br
+Size of the padding to add to each minimally-sized test packet. The minimal
+size for a test packet in \fIopen\fR mode is 14 bytes. The minimal size
+for a test packet in \fIauthenticated\fR or \fIencrypted\fR mode is 32 bytes.
+.RS
+.IP Default:
+0 (bytes)
+.RE
+.TP
+\fB\-t\fR | \fB\-T\fR \fItofile\fR
+.br
+Perform a one-way test \fBt\fRoward the target \fItestpeer\fR. The \fI\-T\fR
+form is used to save the results in \fItofile\fR. If no directional
+options (\fI\-f, \-F, \-t, \-T\fR) are specified, \fBowping\fR requests
+concurrent bidirectional tests, otherwise only the explicit directions are
+performed.
+.RS
+.IP Default:
+True, unless the \fI\-f\fR or \fI\-F\fR have been specified explicitly.
+.RE
+.TP
+\fB\-z\fR \fIdelayStart\fR
+.br
+Time to wait before starting a test. \fBowping\fR attempts to calculate a
+reasonable minimum delay to ensure that the start of the test happens
+after completion of the setup protocol. If \fIdelayStart\fR is specified
+as a value less than this reasonable minimum delay, the reasonable minimum
+will be used instead.
+.RS
+.IP Default:
+2-3 times the round-trip estimate plus 1 (seconds)
+.RE

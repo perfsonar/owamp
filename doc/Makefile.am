@@ -30,6 +30,8 @@ dist_man8_MANS = owampd.man
 EXTRA_DIST = index.html details.html owamp_arch.png milestones.html \
 	     draft-shalunov-reordering-definition-01.txt
 
+MAINTAINERCLEANFILES = owping.man owstats.man owfetch.man owup.man
+
 # TODO
 # Build html versions of man pages and include them in dist?
 # SUFFIXES = .man .man.html
