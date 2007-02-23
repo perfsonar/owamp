@@ -209,9 +209,17 @@ AC_CHECK_FUNCS([memset socket getaddrinfo mergesort dirfd])
 AC_CHECK_DECLS([optreset])
 AC_CHECK_DECLS([fseeko])
 
-# AC_CONFIG_FILES([Makefile owamp/Makefile])
+# Build man-pages from multiple fragments
+OWPDOC_CONN_OPTS=$srcdir/doc/owping_conn_opts.man
+AC_SUBST_FILE(OWPDOC_CONN_OPTS)
+OWPDOC_TEST_OPTS=$srcdir/doc/owping_test_opts.man
+AC_SUBST_FILE(OWPDOC_TEST_OPTS)
+OWPDOC_OUT_OPTS=$srcdir/doc/owping_out_opts.man
+AC_SUBST_FILE(OWPDOC_OUT_OPTS)
+OWPDOC_REPORT=$srcdir/doc/owping_report.man
+AC_SUBST_FILE(OWPDOC_REPORT)
 
 AC_SUBST(ac_aux_dir)
-AC_OUTPUT([Makefile owamp/Makefile owampd/Makefile owping/Makefile powstream/Makefile conf/Makefile test/Makefile doc/Makefile],
+AC_OUTPUT([Makefile owamp/Makefile owampd/Makefile owping/Makefile powstream/Makefile conf/Makefile test/Makefile doc/Makefile doc/owping.man doc/owfetch.man doc/owstats.man doc/owup.man],
 	[test -z "$CONFIG_HEADERS" || echo timestamp > owamp/stamp-h.in])
 
