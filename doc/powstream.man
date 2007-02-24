@@ -67,25 +67,47 @@ test sessions. On the other hand, it is nice to get fairly immediate feedback
 if there is packet loss. To facilitate this,
 .B powstream
 can summarize data for smaller time periods than the actual test session
-periods it uses. (The \fI\-N\fR option is used to indicate how many packet
-records should be in a test session while the \fI\-c\fR option is used
-to indicate how many packet records should be in each data and summary
-file.)
+periods it uses. The \fI\-N\fR option is used to indicate how many packet
+records should be in these smaller sub-session files while
+the \fI\-c\fR option is used
+to indicate how many packet records should be in the complete
+session.
 .PP
 .B powstream
 outputs a data file and a summary file for each time period defined by
 the \fI\-c\fR option. The files will be placed in the directory
 indicated by the \fI\-d\fR option. Additionally,
 .B powstream
-will output a data file and a summary file for each time period defined
-by the \fI\-N\fR option. The smaller session files should be thought of
-as preliminary data the later, larger file will have additional information
-available to it to determine the validity of the data. The larger file
+will output a summary file for each time period defined
+by the \fI\-N\fR option. The smaller summary sub-session files should be
+thought of as preliminary data.
+The later, larger complete session files will have additional information
+available to determine the validity of the data. Specifically the larger file
 is created after the Stop-Sessions message has been received from
-the sender over the control socket. This message includes information about
+the sender host over the control socket. This message includes information about
 any packet records that the sender did not send; therefore, the preliminary
 data could show packet loss when, in reality, the sending process never sent
 the expected packets.
+.PP
+.B powstream
+saves data files and summary files for each session in the current directory,
+or the directory specified by the \fI\-d\fR option. The filesnames are in
+the format:
+.RS
+.IP ${START_TIME}_${END_TIME}.${FILETYPE}
+
+.RE
+.I STARTTIME
+and
+.I ENDTIME
+are the start and end timestamps for the session or sub-session. The
+timestamps are ASCII representation of 64 bit integers with the
+high-order 32 bits representing the number of seconds since
+Jan 1, 1900 and the low-order 32 bits representing fractional seconds.
+The
+.I FILETYPE
+is \fIowp\fR for raw data files and \fIsum\fR for textual summary
+files.
 .PP
 .B powstream
 works by
@@ -331,13 +353,13 @@ LOG_USER
 .TP
 \fB\-N\fR \fIcount\fR
 .br
-Number of test packets to put in sub-session data files and summary files.
+Number of test packets to put in sub-session summary files.
 
 .B powstream
 can use large session durations to minimize control communication during
 execution. This option is used to make
 .B powstream
-output sub-session files at shorter periods. The data should be
+output sub-session summary files at shorter periods. The data should be
 considered preliminary because it is being generated before the actual
 end of the test session. The
 .B OWAMP
@@ -349,7 +371,7 @@ show up as lost packet records in these files.
 
 This is the trade-off for getting more immediate access to the data.
 
-If this option is not set, then sub-session data and summary files will
+If this option is not set, then sub-session summary files will
 not be produced.
 
 This value must be a divisor of the value specified for the \fI\-c\fR
@@ -407,7 +429,7 @@ Contact somehost.com and request ongoing tests. Use a timeout
 duration of 10 seconds. Tests will have a sending rate
 of a packet approximately every 1 second, with 10800 packets per
 complete session. (Each session will last about 3 hours.) Create sub-session
-data and summary statistic files, as well, with 30 packets per
+summary statistic files, as well, with 30 packets per
 sub-session. (Each sub-session will provide a sample period of about
 30 seconds.) Save the data and summary files in the current directory
 and print each filename as it is produced.
