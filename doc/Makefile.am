@@ -41,7 +41,7 @@ man1:
 man1_link_target: man1
 	@list='$(man1_LINKS)'; \
 	for i in $$list; do \
-	   b=`basename -s .1 $$i`; \
+	   b=`basename $$i .1`; \
 	   if ! test -r $$i; then \
 	      if test -f $$i; then \
 	         rm -f $$i; \
