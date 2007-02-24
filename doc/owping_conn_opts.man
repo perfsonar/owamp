@@ -1,3 +1,30 @@
+." ex: set tabstop=4 ai expandtab softtabstop=4 shiftwidth=4:
+." -*- mode: c-basic-indent: 4; tab-width: 4; indent-tabs-mode: nil -*-
+." The first line of this file must contain the '"[e][r][t][v] line
+." to tell man to run the appropriate filter "t" for table.
+." vim: set filetype=nroff :
+."
+."    $Id$
+."
+."######################################################################
+."#                                                                    #
+."#                        Copyright (C)  2007                         #
+."#                            Internet2                               #
+."#                        All Rights Reserved                         #
+."#                                                                    #
+."######################################################################
+."
+."    File:        owping_conn_opts.man
+."
+."    Author:      Jeff W. Boote
+."                 Internet2
+."
+."    Date:        Sat Feb 24 03:57:37 MST 2007
+."
+."    Description:    
+."      This file is included into owping.1, owfetch.1, owup.1 and
+."      is not useful as a man-page on its own.
+."
 .SS Connection/Authentication Options:
 .TP
 \fB\-A\fR \fIauthmode\fB

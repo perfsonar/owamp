@@ -27,6 +27,10 @@
 #define    _OWPING_PATH_SEPARATOR    "/"
 #define    _OWPING_TMPFILEFMT    "owamp.XXXXXX"
 
+#define _OWPING_SUM_EXT ".sum"
+#define _OWPING_DEF_EXT ".txt"
+#define _OWPING_INC_EXT ".i"
+
 /*
  * Reasonable limits on these so dynamic memory is not needed.
  */
@@ -69,6 +73,8 @@ typedef    struct {
         uint32_t        numBucketPackets;   /* -N */
         float           bucket_width;       /* -b */
 
+        char            *savedir;           /* -d */
+        I2Boolean       printfiles;         /* -p */
         char            *srcaddr;           /* -S */
 
         OWPPortRange    portspec;           /* -P */

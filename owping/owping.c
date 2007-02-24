@@ -44,15 +44,20 @@
 /*
  * The owping context
  */
-static  ow_ping_trec    ping_ctx;
-static  I2ErrHandle     eh;
-static  char            tmpdir[PATH_MAX+1];
-static  uint8_t         *pfbuff = NULL;
-static  size_t          pfbuff_len = 0;
-static  int             owp_intr = 0;
+static ow_ping_trec ping_ctx;
+static I2ErrHandle  eh;
+static char         tmpdir[PATH_MAX+1];
+static uint8_t      *pfbuff = NULL;
+static size_t       pfbuff_len = 0;
+static int          owp_intr = 0;
 
-    static void
-print_conn_args()
+static char         dirpath[PATH_MAX];
+static uint32_t     file_oset,tstamp_oset,ext_oset;
+
+static void
+print_conn_args(
+        void
+        )
 {
     fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n",
             "              [Connection Args]",
@@ -60,11 +65,13 @@ print_conn_args()
             "   -k passphrasefile     passphrasefile to use with Authenticated/Encrypted modes",
             "   -S srcaddr     use this as a local address for control connection and tests",
             "   -u username    username to use with Authenticated/Encrypted modes"
-            );
+           );
 }
 
-    static void
-print_test_args()
+static void
+print_test_args(
+        void
+        )
 {
     fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n",
             "              [Test Args]",
@@ -78,11 +85,13 @@ print_test_args()
             "   -s padding     size of the padding added to each packet (bytes)",
             "   -t | -T file   perform one-way test to testhost [and save results to file]",
             "   -z delayStart  time to wait before executing test (seconds)"
-            );
+           );
 }
 
-    static void
-print_output_args()
+static void
+print_output_args(
+        void
+        )
 {
     fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n",
             "              [Output Args]",
@@ -97,8 +106,11 @@ print_output_args()
            );
 }
 
-    static void
-usage(const char *progname, const char *msg)
+static void
+usage(
+        const char *progname,
+        const char *msg
+        )
 {
     if(msg) fprintf(stderr, "%s: %s\n", progname, msg);
     if (!strcmp(progname, "owping")) {
@@ -109,8 +121,8 @@ usage(const char *progname, const char *msg)
                );
 
         fprintf(stderr,"\n%s\n",
-            "   -h             print this message and exit"
-            );
+                "   -h             print this message and exit"
+               );
 
         fprintf(stderr, "\n");
         print_test_args();
@@ -128,8 +140,8 @@ usage(const char *progname, const char *msg)
                 "[arguments] are as follows: "
                );
         fprintf(stderr,"\n%s\n",
-            "   -h             print this message and exit"
-            );
+                "   -h             print this message and exit"
+               );
 
         fprintf(stderr, "\n");
         print_output_args();
@@ -140,8 +152,8 @@ usage(const char *progname, const char *msg)
                 "[arguments] are as follows: "
                );
         fprintf(stderr,"\n%s\n",
-            "   -h             print this message and exit"
-            );
+                "   -h             print this message and exit"
+               );
 
         fprintf(stderr, "\n");
         print_conn_args();
@@ -154,8 +166,8 @@ usage(const char *progname, const char *msg)
                 "[arguments] are as follows: "
                );
         fprintf(stderr,"\n%s\n",
-            "   -h             print this message and exit"
-            );
+                "   -h             print this message and exit"
+               );
 
         fprintf(stderr, "\n");
         print_conn_args();
@@ -171,9 +183,9 @@ usage(const char *progname, const char *msg)
 }
 
 static void
-    FailSession(
-            OWPControl    control_handle    __attribute__((unused))
-            )
+FailSession(
+        OWPControl    control_handle    __attribute__((unused))
+        )
 {
     /*
      * Session denied - report error, close connection, and exit.
@@ -223,7 +235,6 @@ printraw(
 int
 do_stats(
         OWPContext    ctx,
-        FILE        *output,
         FILE        *fp,
         char        *from,
         char        *to
@@ -234,28 +245,23 @@ do_stats(
     uint32_t            num_rec;
     uint32_t            num_sum;
     uint32_t            sum;
+    char                tfname[PATH_MAX];
+    char                sfname[PATH_MAX];
+    char                startname[PATH_MAX];
+    char                endname[PATH_MAX];
+    FILE                *tfp;
+    char                *ext;
 
     if(!(num_rec = OWPReadDataHeader(ctx,fp,&hdr)) && !hdr.header){
         I2ErrLog(eh, "OWPReadDataHeader: Invalid file?");
         return -1;
     }
 
-    if(!ping_ctx.opt.numBucketPackets ||
-            (ping_ctx.opt.numBucketPackets >= num_rec)){
-        num_sum = 0;
-    }
-    else{
-        num_sum = num_rec / ping_ctx.opt.numBucketPackets;
-        if(num_rec % ping_ctx.opt.numBucketPackets){
-            num_sum++;
-        }
-    }
-
     /*
      * If raw data is requested, no summary information is needed.
      */
     if(ping_ctx.opt.raw){
-        if(OWPParseRecords(ctx,fp,num_rec,hdr.version,printraw,output)
+        if(OWPParseRecords(ctx,fp,num_rec,hdr.version,printraw,stdout)
                 < OWPErrWARNING){
             I2ErrLog(eh,"OWPParseRecords(): %M");
             return -1;
@@ -273,12 +279,47 @@ do_stats(
     }
 
     /*
-     * Parse the file to fill it.
+     * How many summaries?
+     */
+    if(!ping_ctx.opt.numBucketPackets ||
+            (ping_ctx.opt.numBucketPackets >= num_rec)){
+        num_sum = 0;
+    }
+    else{
+        num_sum = num_rec / ping_ctx.opt.numBucketPackets;
+        if(num_rec % ping_ctx.opt.numBucketPackets){
+            num_sum++;
+        }
+    }
+
+    /*
+     * Parse the data, and generate the summaries.
      */
     if(!num_sum){
-        if( !OWPStatsParse(stats,(ping_ctx.opt.records)?output:NULL,0,0,~0)){
+        /*
+         * Create temporary sum-session file.
+         */
+        if(ping_ctx.opt.printfiles){
+            strcpy(tfname,dirpath);
+            sprintf(startname,OWP_TSTAMPFMT,hdr.test_spec.start_time);
+            sprintf(&tfname[file_oset],"%s%s",startname,_OWPING_INC_EXT);
+            if( !(tfp = fopen(tfname,"w"))){
+                I2ErrLog(eh,"OWStatsParse: fopen(%s): %M",tfname);
+                return -1;
+            }
+        }
+        else{
+            tfp = stdout;
+        }
+
+        if( !OWPStatsParse(stats,(ping_ctx.opt.records?tfp:NULL),0,0,~0)){
             I2ErrLog(eh,"OWPStatsParse: failed");
             OWPStatsFree(stats);
+            if(ping_ctx.opt.printfiles){
+                /* ignore errors */
+                fclose(tfp);
+                unlink(tfname);
+            }
             return -1;
         }
 
@@ -286,12 +327,37 @@ do_stats(
          * Print out summary info
          */
         if(ping_ctx.opt.machine){
-            OWPStatsPrintMachine(stats,output);
+            OWPStatsPrintMachine(stats,tfp);
+            ext = _OWPING_SUM_EXT;
         }
         else{
-            OWPStatsPrintSummary(stats,output,
+            OWPStatsPrintSummary(stats,tfp,
                     ping_ctx.opt.percentiles,
                     ping_ctx.opt.npercentiles);
+            ext = _OWPING_DEF_EXT;
+        }
+
+        sprintf(startname,OWP_TSTAMPFMT,stats->start_time);
+        sprintf(endname,OWP_TSTAMPFMT,stats->end_time);
+
+        /*
+         * relink output file to correct name
+         */
+        if(ping_ctx.opt.printfiles){
+            fclose(tfp);
+            strcpy(sfname,dirpath);
+            sprintf(&sfname[file_oset],"%s%s%s%s",
+                    startname,OWP_NAME_SEP,endname,ext);
+
+            if(link(tfname,sfname) != 0){
+                I2ErrLog(eh,"OWStatsParse: link(%s,%s): %M",tfname,sfname);
+                OWPStatsFree(stats);
+                unlink(tfname);
+                return -1;
+            }
+            unlink(tfname);
+            fprintf(stdout,"%s\n",sfname);
+            fflush(stdout);
         }
     }
     else{
@@ -304,9 +370,24 @@ do_stats(
                 end = ~0;
             }
 
-            if( !OWPStatsParse(stats,
-                        (ping_ctx.opt.records)?output:NULL,stats->next_oset,
-                        begin,end)){
+            /*
+             * Create temporary sum-session file.
+             */
+            if(ping_ctx.opt.printfiles){
+                strcpy(tfname,dirpath);
+                sprintf(startname,OWP_TSTAMPFMT,hdr.test_spec.start_time);
+                sprintf(&tfname[file_oset],"%s%s",startname,_OWPING_INC_EXT);
+                if( !(tfp = fopen(tfname,"w"))){
+                    I2ErrLog(eh,"OWStatsParse: fopen(%s): %M",tfname);
+                    return -1;
+                }
+            }
+            else{
+                tfp = stdout;
+            }
+
+            if( !OWPStatsParse(stats,(ping_ctx.opt.records?tfp:NULL),
+                        stats->next_oset,begin,end)){
                 I2ErrLog(eh,"OWPStatsParse: failed");
                 OWPStatsFree(stats);
                 return -1;
@@ -316,12 +397,37 @@ do_stats(
              * Print out summary info
              */
             if(ping_ctx.opt.machine){
-                OWPStatsPrintMachine(stats,output);
+                OWPStatsPrintMachine(stats,tfp);
+                ext = _OWPING_SUM_EXT;
             }
             else{
-                OWPStatsPrintSummary(stats,output,
+                OWPStatsPrintSummary(stats,tfp,
                         ping_ctx.opt.percentiles,
                         ping_ctx.opt.npercentiles);
+                ext = _OWPING_DEF_EXT;
+            }
+
+            sprintf(startname,OWP_TSTAMPFMT,stats->start_time);
+            sprintf(endname,OWP_TSTAMPFMT,stats->end_time);
+
+            /*
+             * relink output file to correct name
+             */
+            if(ping_ctx.opt.printfiles){
+                fclose(tfp);
+                strcpy(sfname,dirpath);
+                sprintf(&sfname[file_oset],"%s%s%s%s",
+                        startname,OWP_NAME_SEP,endname,ext);
+
+                if(link(tfname,sfname) != 0){
+                    I2ErrLog(eh,"OWStatsParse: link(%s,%s): %M",tfname,sfname);
+                    OWPStatsFree(stats);
+                    unlink(tfname);
+                    return -1;
+                }
+                unlink(tfname);
+                fprintf(stdout,"%s\n",sfname);
+                fflush(stdout);
             }
         }
     }
@@ -842,11 +948,12 @@ main(
     char                optstring[128];
     static char         *conn_opts = "A:k:S:u:";
     static char         *test_opts = "c:D:E:fF:H:i:L:P:s:tT:z:";
-    static char         *out_opts = "a:b:Mn:N:QRv";
+    static char         *out_opts = "a:b:d:Mn:N:pQRv";
     static char         *gen_opts = "h";
 #ifndef    NDEBUG
     static char         *debug_opts = "w";
 #endif
+    int                 fname_len;
 
     ia.line_info = (I2NAME | I2MSG);
 #ifndef    NDEBUG
@@ -1088,6 +1195,12 @@ main(
                     exit(1);
                 }
                 break;
+            case 'd':
+                if (!(ping_ctx.opt.savedir = strdup(optarg))) {
+                    I2ErrLog(eh,"malloc: %M");
+                    exit(1);
+                }
+                break;
             case 'v':
                 ping_ctx.opt.records = True;
                 break;
@@ -1108,6 +1221,9 @@ main(
                             "Invalid \"-N\" value. Positive integer expected");
                     exit(1);
                 }
+                break;
+            case 'p':
+                ping_ctx.opt.printfiles = True;
                 break;
             case 'Q':
                 ping_ctx.opt.quiet = True;
@@ -1141,14 +1257,50 @@ main(
     argc -= optind;
     argv += optind;
 
-    if(ping_ctx.opt.raw || ping_ctx.opt.machine){
+    if(ping_ctx.opt.raw){
         ping_ctx.opt.quiet = True;
     }
 
     if(ping_ctx.opt.records && ping_ctx.opt.quiet){
-        I2ErrLog(eh,"Ignoring \'-v\'");
+        I2ErrLog(eh,"Ignoring \'-v\', \'-Q\' set");
         ping_ctx.opt.records = False;
     }
+
+    if(ping_ctx.opt.machine && ping_ctx.opt.quiet){
+        I2ErrLog(eh,"Ignoring \'-M\', \'-Q\' set");
+        ping_ctx.opt.machine = False;
+    }
+
+
+    if(ping_ctx.opt.records && ping_ctx.opt.machine){
+        I2ErrLog(eh,"Ignoring \'-v\', \'-M\' set");
+        ping_ctx.opt.records = False;
+    }
+
+    /*
+     * Check savedir option. make sure it will not make fnames
+     * exceed PATH_MAX. Also set file_oset, tstamp_oset, and ext_oset
+     * to the appropriate values.
+     */
+    fname_len = (2 * OWP_TSTAMPCHARS) + strlen(OWP_NAME_SEP) +
+        MAX(strlen(_OWPING_DEF_EXT),strlen(_OWPING_SUM_EXT)) +
+        strlen(_OWPING_INC_EXT);
+    assert((fname_len+1)<PATH_MAX);
+    if(ping_ctx.opt.savedir){
+        if((strlen(ping_ctx.opt.savedir) + strlen(OWP_PATH_SEPARATOR) +
+                    fname_len + 1) > PATH_MAX){
+            usage(progname,"-d: pathname too long.");
+            exit(1);
+        }
+        strcpy(dirpath,ping_ctx.opt.savedir);
+        strcat(dirpath,OWP_PATH_SEPARATOR);
+    }
+    else{
+        dirpath[0] = '\0';
+    }
+    file_oset = strlen(dirpath);
+    tstamp_oset = file_oset + OWP_TSTAMPCHARS;
+    ext_oset = tstamp_oset + OWP_TSTAMPCHARS + strlen(OWP_NAME_SEP);
 
     memset(&setact,0,sizeof(setact));
     setact.sa_handler = signal_catch;
@@ -1159,7 +1311,6 @@ main(
         I2ErrLog(eh,"sigaction(): %M");
         exit(1);
     }
-
 
     /*
      * Handle 3 possible cases (owping, owfetch, owstats) one by one.
@@ -1490,8 +1641,7 @@ main(
         }
 
         if(ping_ctx.opt.to && (ping_ctx.opt.save_to_test ||
-                    !ping_ctx.opt.quiet || ping_ctx.opt.raw ||
-                    ping_ctx.opt.machine)){
+                    !ping_ctx.opt.quiet || ping_ctx.opt.raw)){
             FILE    *tofp;
 
             if( !(tofp = owp_fetch_sid(ping_ctx.opt.save_to_test,
@@ -1500,9 +1650,8 @@ main(
                 I2HexEncode(sname,tosid,sizeof(OWPSID));
                 I2ErrLog(eh,"Unable to fetch data for sid(%s)",sname);
             }
-            else if(!ping_ctx.opt.quiet || ping_ctx.opt.raw ||
-                    ping_ctx.opt.machine){
-                if( do_stats(ctx,stdout,tofp,local,remote)){
+            else if(!ping_ctx.opt.quiet || ping_ctx.opt.raw){
+                if( do_stats(ctx,tofp,local,remote)){
                     I2ErrLog(eh, "do_stats(\"to\" session): %M");
                 }
             }
@@ -1513,9 +1662,8 @@ main(
 
         if(owp_intr > 1) exit(2);
 
-        if(fromfp && (!ping_ctx.opt.quiet || ping_ctx.opt.raw ||
-                    ping_ctx.opt.machine)){
-            if( do_stats(ctx,stdout,fromfp,remote,local)){
+        if(fromfp && (!ping_ctx.opt.quiet || ping_ctx.opt.raw)){
+            if( do_stats(ctx,fromfp,remote,local)){
                 I2ErrLog(eh, "do_stats(\"from\" session): %M");
             }
         }
@@ -1536,7 +1684,7 @@ main(
             exit(1);
         }
 
-        if ( do_stats(ctx,stdout,fp,NULL,NULL)){
+        if ( do_stats(ctx,fp,NULL,NULL)){
             I2ErrLog(eh,"do_stats() failed.");
             exit(1);
         }
@@ -1584,9 +1732,8 @@ main(
             if(!(fp = owp_fetch_sid(fname,ping_ctx.cntrl,sid))){
                 I2ErrLog(eh,"Unable to fetch sid(%s)",sname);
             }
-            else if((!ping_ctx.opt.quiet || ping_ctx.opt.raw ||
-                    ping_ctx.opt.machine) &&
-                    do_stats(ctx,stdout,fp,NULL,NULL)){
+            else if((!ping_ctx.opt.quiet || ping_ctx.opt.raw) &&
+                    do_stats(ctx,fp,NULL,NULL)){
                 I2ErrLog(eh,"do_stats() failed.");
             }
             else if(fclose(fp)){

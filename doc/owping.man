@@ -84,7 +84,7 @@ seconds to and from the \fItestpeer\fR. Then, the receivers on each host
 will wait a reasonable period after that to count possible duplicate packets.
 (See the \fI\-L\fR option.) Upon completion of the sessions, summary statistics
 are printed to STDOUT.
-@OWPDOC_REPORT@
+.so man1/owping_report.1
 .SH OPTIONS
 .TP
 \fB\-h\fR
@@ -94,9 +94,9 @@ Print a usage message and exit.
 .IP Default:
 Unset.
 .RE
-@OWPDOC_TEST_OPTS@
-@OWPDOC_CONN_OPTS@
-@OWPDOC_OUT_OPTS@
+.so man1/owping_test_opts.1
+.so man1/owping_conn_opts.1
+.so man1/owping_out_opts.1
 .SH ENVIRONMENT VARIABLES
 .TS
 lb lb
