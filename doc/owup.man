@@ -59,7 +59,7 @@ Print a usage message and exit.
 .IP Default:
 Unset.
 .RE
-@OWPDOC_CONN_OPTS@
+.so man1/owping_conn_opts.1
 .SH EXAMPLES
 .LP
 \fBowup somehost.com
