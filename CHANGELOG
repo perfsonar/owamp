@@ -1,5 +1,12 @@
 2007-02-24  boote  <boote@foo.local>
 
+	* doc/index.html: Updating supported system list.
+
+	* doc/Makefile.am:
+	use old-style basename in rule so solaris will still work.
+
+	* CHANGELOG: prepare for release 3.0c
+
 	* doc/milestones.html: Adding milestones for the latest release.
 
 	* doc/index.html: preparing for 3.0c release
