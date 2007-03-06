@@ -75,7 +75,7 @@ to actually save the session data.
 If no options are specified, \fBowfetch\fR retrieves the buffered session
 data from \fIservhost\fR, saves the data to the \fIsavefile\fR,
 and prints summary statistics.
-.so man1/owping_report.1
+.so owping_report.man
 .SH OPTIONS
 .TP
 \fB\-h\fR
@@ -85,8 +85,8 @@ Print a usage message and exit.
 .IP Default:
 Unset.
 .RE
-.so man1/owping_conn_opts.1
-.so man1/owping_out_opts.1
+.so owping_conn_opts.man
+.so owping_out_opts.man
 .SH EXAMPLES
 .LP
 \fBowfetch somehost.com abcdef0123456789abcdef0123456789 save.owp\fR

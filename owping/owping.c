@@ -896,6 +896,217 @@ FAILED:
     return False;
 }
 
+static OWPBoolean
+parse_typeP(
+        char        *tspec
+        )
+{
+    char            *tstr,*endptr;
+    unsigned long   tlng;
+    uint8_t         tosbyte = 0;
+
+    if(!tspec) return False;
+
+    tstr = tspec;
+    endptr = NULL;
+    while(isspace((int)*tstr)) tstr++;
+    tlng = strtoul(optarg,&endptr,0);
+
+    /*
+     * Try interpreting as hex DSCP value.
+     * Verify user only sets
+     * last 6 bits (DSCP must fit in 6 bits - RFC 2474.)
+     */
+    if((*endptr == '\0') || !(tlng & ~0x3F)){
+        /* save in tosbyte - uses high-order 6 bits instead of low */
+        tosbyte = tlng << 2;
+        tstr = endptr;
+    }
+
+    /*
+     * It is useful to define some symbolic constants for the -D (DSCP)
+     * value. RFC 4594 seemed a reasonable collection of these useful
+     * constants.
+     *
+     * Table of constants from RFC 4594:
+     *
+     *
+   *********************************************************************
+
+    ------------------------------------------------------------------
+   |   Service     |  DSCP   |    DSCP     |       Application        |
+   |  Class Name   |  Name   |    Value    |        Examples          |
+   |===============+=========+=============+==========================|
+   |Network Control|  CS6    |   110000    | Network routing          |
+   |---------------+---------+-------------+--------------------------|
+   | Telephony     |   EF    |   101110    | IP Telephony bearer      |
+   |---------------+---------+-------------+--------------------------|
+   |  Signaling    |  CS5    |   101000    | IP Telephony signaling   |
+   |---------------+---------+-------------+--------------------------|
+   | Multimedia    |AF41,AF42|100010,100100|   H.323/V2 video         |
+   | Conferencing  |  AF43   |   100110    |  conferencing (adaptive) |
+   |---------------+---------+-------------+--------------------------|
+   |  Real-Time    |  CS4    |   100000    | Video conferencing and   |
+   |  Interactive  |         |             | Interactive gaming       |
+   |---------------+---------+-------------+--------------------------|
+   | Multimedia    |AF31,AF32|011010,011100| Streaming video and      |
+   | Streaming     |  AF33   |   011110    |   audio on demand        |
+   |---------------+---------+-------------+--------------------------|
+   |Broadcast Video|  CS3    |   011000    |Broadcast TV & live events|
+   |---------------+---------+-------------+--------------------------|
+   | Low-Latency   |AF21,AF22|010010,010100|Client/server transactions|
+   |   Data        |  AF23   |   010110    | Web-based ordering       |
+   |---------------+---------+-------------+--------------------------|
+   |     OAM       |  CS2    |   010000    |         OAM&P            |
+   |---------------+---------+-------------+--------------------------|
+   |High-Throughput|AF11,AF12|001010,001100|  Store and forward       |
+   |    Data       |  AF13   |   001110    |     applications         |
+   |---------------+---------+-------------+--------------------------|
+   |    Standard   | DF (CS0)|   000000    | Undifferentiated         |
+   |               |         |             | applications             |
+   |---------------+---------+-------------+--------------------------|
+   | Low-Priority  |  CS1    |   001000    | Any flow that has no BW  |
+   |     Data      |         |             | assurance                |
+    ------------------------------------------------------------------
+
+                Figure 3. DSCP to Service Class Mapping
+   *********************************************************************
+     *
+     * Mapping this to the full binary tos byte, and including CS? and
+     * EF symbolic names...
+     *
+     *
+     * Symbolic constants           6-bit DSCP
+     *
+     * none/default/CS0             000 000
+     * CS1                          001 000
+     * AF11                         001 010
+     * AF12                         001 100
+     * AF13                         001 110
+     * CS2                          010 000
+     * AF21                         010 010
+     * AF22                         010 100
+     * AF23                         010 110
+     * CS3                          011 000
+     * AF31                         011 010
+     * AF32                         011 100
+     * AF33                         011 110
+     * CS4                          100 000
+     * AF41                         100 010
+     * AF42                         100 100
+     * AF43                         100 110
+     * CS5                          101 000
+     * EF                           101 110
+     * CS6                          110 000
+     * CS7                          111 000
+     */
+
+    else if(!strncasecmp(tstr,"none",5)){
+        /* standard */
+        tstr += 4;
+    }
+    else if(!strncasecmp(tstr,"default",8)){
+        /* standard */
+        tstr += 7;
+    }
+    else if(!strncasecmp(tstr,"df",3)){
+        /* standard */
+        tstr += 2;
+    }
+    else if(!strncasecmp(tstr,"ef",3)){
+        /* Expedited Forwarding */
+        tosbyte = 0xB8;
+        tstr += 2;
+    }
+    else if((toupper(tstr[0]) == 'C') && (toupper(tstr[1]) == 'S')){
+        switch(tstr[2]){
+            case '0':
+                break;
+            case '1':
+                tosbyte = 0x20;
+                break;
+            case '2':
+                tosbyte = 0x40;
+                break;
+            case '3':
+                tosbyte = 0x60;
+                break;
+            case '4':
+                tosbyte = 0x80;
+                break;
+            case '5':
+                tosbyte = 0xA0;
+                break;
+            case '6':
+                tosbyte = 0xC0;
+                break;
+            case '7':
+                tosbyte = 0xE0;
+                break;
+            default:
+                goto FAILED;
+                break;
+        }
+        /* forward tstr to end of accepted pattern */
+        tstr += 3;
+    }
+    else if(toupper(tstr[0] == 'A') && (toupper(tstr[1]) == 'F')){
+        switch(tstr[2]){
+            case '1':
+                tosbyte = 0x20;
+                break;
+            case '2':
+                tosbyte = 0x40;
+                break;
+            case '3':
+                tosbyte = 0x60;
+                break;
+            case '4':
+                tosbyte = 0x80;
+                break;
+            default:
+                goto FAILED;
+                break;
+        }
+        switch(tstr[3]){
+            case '1':
+                tosbyte |= 0x08;
+                break;
+            case '2':
+                tosbyte |= 0x10;
+                break;
+            case '3':
+                tosbyte |= 0x18;
+                break;
+            default:
+                goto FAILED;
+                break;
+        }
+        /* forward tstr to end of accepted pattern */
+        tstr += 4;
+    }
+
+    /*
+     * Forward past any whitespace and make sure arg is clean.
+     */
+    while(isspace((int)*tstr)) tstr++;
+    if(*tstr != '\0'){
+        goto FAILED;
+    }
+
+    /*
+     * Set pType - only 6 bits should be set in tosbyte (high-order)
+     * pType of OWAMP expects them in the low-order 6 bits of the
+     * high-order byte. So, shift 24 left, and 2 right == 22.
+     */
+    ping_ctx.typeP = tosbyte << 22;
+    return True;
+
+FAILED:
+    I2ErrLogP(eh,EINVAL,"Invalid DSCP value (-D): \"%s\": %M",tspec);
+    return False;
+}
+
 /*
  * Signal handler installed so HUP/TERM signals will be noticed.
  */
@@ -947,7 +1158,7 @@ main(
     char                *endptr = NULL;
     char                optstring[128];
     static char         *conn_opts = "A:k:S:u:";
-    static char         *test_opts = "c:D:E:fF:H:i:L:P:s:tT:z:";
+    static char         *test_opts = "c:D:E:fF:i:L:P:s:tT:z:";
     static char         *out_opts = "a:b:d:Mn:N:pQRv";
     static char         *gen_opts = "h";
 #ifndef    NDEBUG
@@ -1037,8 +1248,6 @@ main(
 
     while((ch = getopt(argc, argv, optstring)) != -1){
         switch (ch) {
-            uint32_t   tlng;
-
             /* Connection options. */
 
             case 'A':
@@ -1079,20 +1288,12 @@ main(
             case 'D':
                 if(ping_ctx.typeP){
                     usage(progname,
-                            "Invalid option \'-D\'. Can only set one \'-D\' or \'-H\'.");
+                            "Invalid option \'-D\'. Can only set one \'-D\'");
                     exit(1);
                 }
-                tlng = strtoul(optarg,&endptr,0);
-                /*
-                 * Validate int conversion and verify user only sets
-                 * last 6 bits (DSCP must fit in 6 bits - RFC 2474.)
-                 */
-                if((*endptr != '\0') || (tlng & ~0x3F)){
-                    usage(progname,
-                            "Invalid value for option \'-D\'. DSCP value expected");
+                if(!parse_typeP(optarg)){
                     exit(1);
                 }
-                ping_ctx.typeP = tlng << 24;
                 break;
             case 'E':
                 ping_ctx.opt.endDelay = strtod(optarg,&endptr);
@@ -1112,27 +1313,6 @@ main(
                 /* fall through */
             case 'f':
                 ping_ctx.opt.from = True;
-                break;
-            case 'H':
-                if(ping_ctx.typeP){
-                    usage(progname,
-                            "Invalid option \'-H\'. Can only set one \'-H\' or \'-D\'.");
-                    exit(1);
-                }
-                tlng = strtoul(optarg,&endptr,0);
-                /*
-                 * Validate int conversion and verify user only sets
-                 * last 16 bits (PHB must fit in 16 bits - RFC 2836.)
-                 */
-                if((*endptr != '\0') || (tlng & ~0xFFFF)){
-                    usage(progname,
-                            "Invalid value for option \'-H\'. PHB value expected");
-                    exit(1);
-                }
-                /* set second bit to specify PHB per owamp spec. */
-                ping_ctx.typeP = 0x40000000;
-                /* copy 16 bit PHB into next 16 bits of typeP. */
-                ping_ctx.typeP |= (tlng << 14);
                 break;
             case 'T':
                 if (!(ping_ctx.opt.save_to_test = strdup(optarg))) {

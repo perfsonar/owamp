@@ -32,7 +32,7 @@ owstats \- Command line application used to parse \fBOWAMP\fR data files.
 \fBowstats\fR is a command line application that is used to parse \fBOWAMP\fR
 data files. It is used to display the results in a number of different
 textual formats.
-.so man1/owping_report.1
+.so owping_report.man
 .SH OPTIONS
 .TP
 \fB\-h\fR
@@ -42,7 +42,7 @@ Print a usage message and exit.
 .IP Default:
 Unset.
 .RE
-.so man1/owping_out_opts.1
+.so owping_out_opts.man
 .SH EXAMPLES
 .LP
 \fBowstats datafile.owp\fR

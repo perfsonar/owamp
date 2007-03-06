@@ -912,9 +912,12 @@ success:
 
             /*
              * TODO: Decoding of typeP will need to change if
-             * the code can ever support PHB (RFC 2836). (Need
-             * support in the socket API to do this...)
-             * Will need to look at first two bits and do
+             * the code can ever support PHB directly(RFC 2836). (Need
+             * support in the socket API to do this... Not sure it really
+             * makes sense - DSCP values really map to these at the
+             * router... Perhaps the owamp spec should not have 16 bits for
+             * this.) In any case, if this is ever to happen directly in
+             * owamp, this code will need to look at first two bits and do
              * something different (copy more than
              * the next 6 bits).
              *
