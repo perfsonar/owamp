@@ -158,9 +158,12 @@ Wide range of statistical output formats and information.
 
 <ul>
 <li>
+<p>
 OWAMP prefers a synchronized clock for measurements to be meaningful.
 But, more importantly, the clock needs to be stable. If the system clock
-is stepped during an OWAMP session, the results can be misleading. OWAMP
+is stepped during an OWAMP session, the results can be misleading.
+</p>
+<p>OWAMP
 prefers that NTP (ntpd) be running to synchronize the system clock. NTP must
 be setup correctly on the system for NTP to calculate a reasonable estimate
 of the time error and for it to stabilize the clock. NTP<b> <font color="#FF0000">MUST</font></b><font color="#000000">
@@ -168,6 +171,18 @@ be configured with no fewer than 4 clocks for this purpose. (See <a href="detail
 for more specific information on configuring NTP.)</font>
 Some measurements will still be meaningful if the clocks are not synchronized.
 For example, jitter measurements are still valid.
+</p>
+<p>
+It is worth noting that <i>OWAMP</i> should be run on real hardware.
+Virtualization packages such as vmware, xen, linux "kvm", parallels will
+exhibit clock instability that will make most <i>OWAMP</i> measurements
+chaotic.
+</p>
+<p>
+Additionally, it possible power-management features of most PC hardware
+should be disabled. (Speeding up and slowing down the processor makes for
+a very instable clock.)
+</p>
 </li>
 <li>
 <i>OWAMP</i> uses NTP-specific system calls to fetch time

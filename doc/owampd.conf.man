@@ -179,13 +179,14 @@ Directs the \fBowampd\fR process to report source code file and line
 number information with error messages. This is a particularly useful
 option to set when sending in messages as part of a bug report.
 .TP
-.BI pbkdf2_count " pbkdf2_count"
+.BI pbkdf2_count " count"
 This indicates the count parameter for the pseudo-random key derivation
 function that is used to derive the session key from the long term
 key stored in the \fBowampd.pfs\fR file.
 .RS
 .IP Default:
 2048
+.RE
 .TP
 .B rootfolly
 If present, this disables the requirement that \fBowampd\fR run with
