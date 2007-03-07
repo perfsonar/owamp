@@ -917,7 +917,7 @@ parse_typeP(
      * Verify user only sets
      * last 6 bits (DSCP must fit in 6 bits - RFC 2474.)
      */
-    if((*endptr == '\0') || !(tlng & ~0x3F)){
+    if((*endptr == '\0') && !(tlng & ~0x3F)){
         /* save in tosbyte - uses high-order 6 bits instead of low */
         tosbyte = tlng << 2;
         tstr = endptr;

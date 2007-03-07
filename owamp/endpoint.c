@@ -939,9 +939,8 @@ success:
                 goto error;
             }
             /*
-             * TODO: Verify this works! (I am highly suspicious
-             * of using IP_TOS for IPv6... I have seen IP_CLASS
-             * as a possible replacement...)
+             * TODO: When I find a kernel that actually has IPV6_TCLASS
+             * make sure it works. (This looks like the RFC 3542 way...)
              */
             switch(saddr->sa_family){
                 case AF_INET:
@@ -951,7 +950,15 @@ success:
 #ifdef        AF_INET6
                 case AF_INET6:
                     optlevel = IPPROTO_IPV6;
+/*
+ * Look for RFC 3542 sockopts - have no systems with them, but look
+ * for them anyway...
+ */
+#ifdef  IPV6_TCLASS
+                    optname = IPV6_TCLASS;
+#else
                     optname = IP_TOS;
+#endif
                     break;
 #endif
                 default:
@@ -971,7 +978,7 @@ success:
                         "setsockopt(%s,%s=%d): %M",
                         ((optlevel==IPPROTO_IP)?
                          "IPPROTO_IP":"IPPROTO_IPV6"),
-                        ((optname==IP_TOS)?"IP_TOS":"IP_CLASS"),
+                        ((optname==IP_TOS)?"IP_TOS":"IPV6_TCLASS"),
                         sopt);
                 goto error;
             }
