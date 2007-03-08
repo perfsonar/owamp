@@ -193,6 +193,7 @@ TTL	TTL IP field.
 The timestamps are ASCII representation of 64 bit integers with the
 high-order 32 bits representing the number of seconds since Jan 1, 1900
 and the low-order 32 bits representing fractional seconds.
+Lost packet records are indicated with a RECVTIME of 0 (zero).
 The sequence
 number is simply an integer. The error estimates are printed as floating-point
 numbers using scientific notation. TTL is the IP field from the packet.
