@@ -550,7 +550,7 @@ ConfigGetU32(
 
     *u32 = val.u32;
 
-    return False;
+    return True;
 }
 
 static OWPFunc ConfigGetF(
