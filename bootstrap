@@ -39,17 +39,17 @@ case "$1" in
 		;;
 esac
 
-if test -x I2util/bootstrap; then
-	echo
-	echo "## I2util/bootstrap"
-	echo
-	cd I2util
-	./bootstrap
-	cd ..
-	echo
-	echo "## Finished I2util/bootstrap"
-	echo
-fi
+#if test -x I2util/bootstrap; then
+#	echo
+#	echo "## I2util/bootstrap"
+#	echo
+#	cd I2util
+#	./bootstrap
+#	cd ..
+#	echo
+#	echo "## Finished I2util/bootstrap"
+#	echo
+#fi
 
 set -x
 aclocal -I config

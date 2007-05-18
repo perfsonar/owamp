@@ -83,51 +83,24 @@ elif test "$with_mallocdebug" != "no"; then
 fi
 AC_SUBST(MALLOCDEBUGLIBS)
 
+#
+# --with-I2Util should probably only be used by developers. Instead
+# install the library.
+#
 AC_ARG_WITH(I2util,
-		AC_HELP_STRING([--with-I2util=<dir>],
-				[defaults to building I2util under owamp if exists]),
-		with_I2util=$withval, with_I2util=yes)
+            AC_HELP_STRING([--with-I2util=<path>],
+                           [defaults to using installed I2util, use <path> to indicate path to build tree ]),
+                           with_I2util=$withval, with_I2util=yes)
 
-#
-# find I2util
-#
-I2UTILLDFLAGS=""
-I2UTILLIBS=""
-I2UTILLIBDEPS=""
-I2UTILINCS=""
-if test "$with_I2util" != "no"; then
-	# first, check for directory given.
-	if test "$with_I2util" != "yes"; then
-		I2util_dir=`dirname $with_I2util`
-		case $I2util_dir in
-			/*) ;; # already an absolute path
-			*) I2util_dir="`pwd`/$I2util_dir" ;;
-		esac
-		I2UTILINCS="-I$I2util_dir/include $I2UTILINCS"
-		I2UTILLDFLAGS="-L$I2util_dir/lib $I2UTILLDFLAGS"
-		I2UTILLIBDEPS="$I2util_dir/lib/libI2util.a"
-	# now, check for sub-build/sub-configure
-	elif test -d I2util/I2util; then
-		AC_CONFIG_SUBDIRS(I2util)
-		TOP_BUILD_DIRS="I2util $TOP_BUILD_DIRS"
-		I2util_dir='${top_srcdir}/I2util'
-		I2UTILINCS="-I$I2util_dir $I2UTILINCS"
-		I2UTILLDFLAGS="-L$I2util_dir/I2util $I2UTILLDFLAGS"
-		I2UTILLIBDEPS="$I2util_dir/I2util/libI2util.a"
-		
-	# now, check for installed I2util
-	elif test -d /usr/local/I2util; then
-		I2UTILINCS="-I/usr/local/I2util/include $I2UTILINCS"
-		I2UTILLDFLAGS="-L/usr/local/I2util/lib $I2UTILLDFLAGS"
-		I2UTILLIBDEPS="/usr/local/I2util/lib/libI2util.a"
-	fi
-
-	if test -z "$I2UTILLDFLAGS"; then
-		AC_MSG_ERROR([couldn't find I2util library])
-	else
-		I2UTILLIBS="$I2UTILLDFLAGS -lI2util"
-	fi
+if test -n "$with_I2util" -a "$with_I2util" != "yes" -a -d "$with_I2util"; then 
+    # Path given for libthrulay
+    LDFLAGS="$LDFLAGS -L$with_I2util/I2util"
+    CFLAGS="$CFLAGS -I$with_I2util"
+    OWPLIBDEPS="$OWPLIBDEPS $with_I2util/I2util/libI2util.a"
 fi
+
+AC_SEARCH_LIBS(I2AddrByNode,I2util, ,AC_MSG_ERROR([Couldn't find I2util]))
+AC_CHECK_HEADERS([I2util/util.h I2util/conf.h], ,AC_MSG_ERROR([Couldn't find I2util header files]), [AC_INCLUDES_DEFAULT])
 
 OWPINCS='-I${top_srcdir}'
 
@@ -136,9 +109,6 @@ OWPLDFLAGS="-L$OWP_dir"
 OWPLIBS="$OWPLDFLAGS -lowamp"
 OWPLIBDEPS="$OWP_dir/libowamp.a"
 
-AC_SUBST(I2UTILINCS)
-AC_SUBST(I2UTILLIBS)
-AC_SUBST(I2UTILLIBDEPS)
 AC_SUBST(OWPINCS)
 AC_SUBST(OWPLIBS)
 AC_SUBST(OWPLIBDEPS)
