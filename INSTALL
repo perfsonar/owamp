@@ -20,8 +20,9 @@ then
 	* copy owampd.conf to a config directory. (/inst/root/etc?)
 
 There is currently no build process to help build the owampd configuration
-file - or to build "init.d" scripts. There are the start of some of these
-things in the $owamp/scripts and $owamp/conf directories.
+file - or to build "init.d" scripts. There are some example configuration
+files in the $owamp/conf directory - I highly recommend you edit them
+before using them.
 
 To run the daemon:
 
