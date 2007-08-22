@@ -3029,7 +3029,7 @@ OWPReadDataHeader(
     if(phrec.num_datarecs > ((phrec.sbuf.st_size - phrec.hdr_len)/
                 hdr_ret->rec_size)){
         OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                "OWPReadDataHeader: num_datarecs field too large.");
+                "OWPReadDataHeader: num_datarecs field larger than filesize.");
         return 0;
     }
 
