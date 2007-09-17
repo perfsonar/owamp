@@ -1665,9 +1665,10 @@ OWPStatsPrintMachine(
         )
 {
     /* Version 2.0 of stats output */
-    float       version=2.1;
+    float       version=2.2;
     char        sid_name[sizeof(OWPSID)*2+1];
     uint32_t    i;
+    long int    j;
     uint8_t     nttl=0;
     uint8_t     minttl=255;
     uint8_t     maxttl=0;
@@ -1739,6 +1740,19 @@ OWPStatsPrintMachine(
     }
 
     fprintf(output,"\n");
+
+    /*
+     * Reordering histogram
+     */
+    fprintf(output,"<NREORDERING>\n");
+    for(j=0;((j<stats->rlistlen) && (stats->rn[j]));j++){
+        fprintf(output,"\t%u\t%f\n",(uint32_t)j+1,
+                stats->rn[j]/(stats->rnumseqno - j - 1));
+    }
+    if((j==0) || (j >= stats->rlistlen)){
+        fprintf(output,"\t%u\t%f\n",(uint32_t)j+1,0.0);
+    }
+    fprintf(output,"</NREORDERING>\n");
 
     return True;
 }
