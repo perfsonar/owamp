@@ -574,7 +574,7 @@ OWPProcessTestRequest(
             goto error;
         }
 
-        /* receiver first (sid comes from there) */
+        /* receiver first */
         if(!_OWPEndpointInit(cntrl,tsession,tsession->receiver,NULL,
                     &acceptval,&err_ret)){
             goto error;
@@ -637,6 +637,12 @@ OWPProcessTestRequest(
         port = I2AddrPort(tsession->sender);
     }
 
+    /*
+     * This portion could technically be above with the rest
+     * of the conf_receiver portion since this implementation
+     * does not currently support (conf_receiver && conf_sender),
+     * but is broken out so the logic is preserved.
+     */
     if(tsession->conf_receiver){
         if(!_OWPEndpointInitHook(cntrl,tsession,&acceptval,&err_ret)){
             goto error;

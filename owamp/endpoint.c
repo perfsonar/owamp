@@ -362,9 +362,9 @@ error:
 
 /*
  * The endpoint init function is responsible for opening a socket, and
- * allocating a local port number.
- * If this is a recv endpoint, it is also responsible for allocating a
- * session id.
+ * allocating a local port number. (And attempting to allocate all recv
+ * side memory/file resources that are required so failure is not as likely
+ * during an actual test.)
  */
 OWPBoolean
 _OWPEndpointInit(
@@ -457,6 +457,7 @@ _OWPEndpointInit(
     /*
      * Determine what port to try:
      */
+    /* type punning */
 
     /* first - see if saddr specifies a port directly... */
     switch(saddr->sa_family){
@@ -544,7 +545,7 @@ _OWPEndpointInit(
          * loop and report failure. (Or if the error is not EADDRINUSE
          * this is a permenent failure.)
          */
-        if(!portrange || (errno != EADDRINUSE)){
+        if(!portrange || !range || (errno != EADDRINUSE)){
             *aval = OWP_CNTRL_FAILURE;
             goto bind_fail;
         }
