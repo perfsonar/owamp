@@ -173,7 +173,7 @@ AC_SEARCH_LIBS(socketpair, socket)
 AC_SEARCH_LIBS(nanosleep, rt)
 AC_SEARCH_LIBS(ceil,m)
 
-AC_CHECK_FUNCS([memset socket getaddrinfo mergesort dirfd])
+AC_CHECK_FUNCS([memset socket bind connect getaddrinfo mergesort dirfd])
 
 # Checks for variable/function declarations.
 AC_CHECK_DECLS([optreset])
