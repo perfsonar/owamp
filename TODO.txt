@@ -1,0 +1,76 @@
+Check datadir is writable on startup: fail if not
+option to SO_BINDTODEVICE
+Modify to treat I2util as independent package
+Fix version string in help message (Now reports I2util version)
+Document missing packet format for -R output
+Powstream: Add -D option
+Add 'make check' tests to owamp
+test all owamp client apps
+Port owamp 3.0a to FreeBSD
+Add crypto NOTES
+version option
+Copyright/License in distribution
+owamp: memory debug check
+owamp: methodological errors included in timestamp?
+Add version flag (not -h)
+have owup report server version
+Autoconf: Update AC_CHECK_HEADERS (see bwctl)
+Test DSCP (-D) - tcpdump to view diffserv bits
+powstream: Modify -i to do full schedule (like owping)
+owampd: add delete_on_cntrl_close option
+Modify AcceptType values to new spec terms
+owampd: full disk problem not clear
+powstream -h: Add defaults into output
+ContextCreate - varargs (see bwctl)
+Document SIGNALS for owampd/owping (powstream?)
+ContextCreate var for no NTP sync warnings
+Release: versions page (what's new with each release.)
+
+-----------------------------
+Detect owampd.keys/owampd.limits changes
+
+    chi-owamp>
+    chi-owamp> /usr/local/esnet/ami/bin/owampd -c /usr/local/esnet/ami/etc -Z
+    owampd[94592]: FILE=policy.c, LINE=956, verify_datadir: Directory "/home/owamp/data/hierarchy/root/box/sand" expect at "/home/owamp/data/hierarchy/root/sand"
+    owampd[94592]: FILE=policy.c, LINE=1123, InitializeDiskUsage: Invalid datadir directory: /home/owamp/data
+    owampd[94592]: FILE=owampd.c, LINE=1381, PolicyInit failed. Exiting...
+
+---------------------------------
+
+owampd: owampd.limits - add a more compact way of assigning a whole list of users to a group(user class)
+owampd: owampd.limits file - add limit option for "reject=on"
+owampd: NTP sanity check - check N peers, etc...
+
+--------------------------
+OWAMP Paper
+
+Review 1:
+        + Additional Calibration tests on other architectures
+        * Show that unaccounted for errors are not accountable AND
+                show that they are insignificant.
+        * Data from more "generic" end systems. (not on abilene, no GPS)
+        * Better motivation explaination.
+        * What does quiescent mean? "one of the tests?"
+        * Discuss the effects of "caching".
+        * Discuss/measure ICMP processing time.
+        * More references on NTP precision.
+        * Fix figure/table references.
+        * Explain Labels/captions for plot axis.
+        * Make Fig 2 (context switches) less confusing.
+
+Review 2:
+        * Discuss deployment issues. (feasibility of wide acceptance)
+        * Possibility/performance of porting to major router vendor product.
+        * More detailed discussion of the OWAMP implementation.
+Review 3:
+        * Rewrite fully.
+        * Add roles picture for Section II(Protocol design)
+        * Fix figure/table refs. (III-B-1 vs 2)
+        * Add NTP error references.
+                Attila Pasztor and Darryl Veitch, Precision Based Timeing Without GPS,
+ACM SIGMETRICS, A, Marina Del Rey, LA, June 2002
+        * Apply owamp to unstable path.
+
+---------------------------
+Diagnostic message in denied response messages
+
