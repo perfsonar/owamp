@@ -1807,6 +1807,13 @@ recvfromttl(
                  * defined.
                  *
                  * Gotta love standards...
+                 *
+                 * (Looking at opendarwin kernel sources leads me to
+                 * believe that IP_RECVTTL is a uchar and actual
+                 * documentation in the CMSG man page on Linux
+                 * tells me IP_TTL should be treated as an int. But,
+                 * I have never really found the 'definitive' standard
+                 * for this stuff. oh well...)
                  */
 #ifdef  IP_RECVTTL
                 if(cmdmsgptr->cmsg_level == IPPROTO_IP &&
@@ -1818,7 +1825,7 @@ recvfromttl(
 #endif
                 if(cmdmsgptr->cmsg_level == IPPROTO_IP &&
                         cmdmsgptr->cmsg_type == IP_TTL){
-                    *ttl = *(uint8_t *)CMSG_DATA(cmdmsgptr);
+                    *ttl = *(int *)CMSG_DATA(cmdmsgptr);
                     goto NEXTCMSG;
                 }
                 break;
