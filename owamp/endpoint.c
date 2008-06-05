@@ -1609,8 +1609,8 @@ alloc_node(
     if(!ep->freelist){
         uint32_t   i;
 
-        OWPError(ep->cntrl->ctx,OWPErrWARNING,OWPErrUNKNOWN,
-                "alloc_node: Allocating nodes for lost-packet-buffer!");
+        OWPError(ep->cntrl->ctx,OWPErrDEBUG,OWPErrUNKNOWN,
+                "alloc_node: Pre-alloc buffer too small. Allocating additional nodes for lost-packet-buffer.");
         if(!(node = calloc(ep->numalist,sizeof(OWPLostPacketRec)))){
             OWPError(ep->cntrl->ctx,OWPErrFATAL,errno,
                     "calloc(): %M");
