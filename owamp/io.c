@@ -296,11 +296,12 @@ _OWPSendHMACDigestClear(
 {
     uint8_t hmacd[I2HMAC_SHA1_DIGEST_SIZE];
 
+    memset(digest,0,_OWP_RIJNDAEL_BLOCK_SIZE);
+
     if( !(cntrl->mode & OWP_MODE_DOCIPHER)){
         return;
     }
 
-    memset(digest,0,_OWP_RIJNDAEL_BLOCK_SIZE);
     memset(hmacd,0,sizeof(hmacd));
 
     I2HMACSha1Finish(cntrl->send_hmac_ctx,hmacd);
