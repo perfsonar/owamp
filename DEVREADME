@@ -1,0 +1,6 @@
+It is expected that I2util will be either installed as part of
+the base system (probably /usr/local or similar) or that it will
+be checked out and build before owamp in which case the following
+shows how to build owamp:
+
+./configure --with-I2util=/Users/boote/dev/I2util/trunk
