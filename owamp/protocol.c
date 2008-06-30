@@ -2619,15 +2619,18 @@ _OWPWriteFetchAck(
         return OWPErrFATAL;
     }
 
+    /* initialize */
+    memset(&buf[0],0,32);
+
     buf[0] = acceptval & 0xff;
     buf[1] = finished & 0xff;
 
-#ifndef        NDEBUG
-    memset(&buf[1],0,2);        /* Unused        */
-#endif
 
-    *(uint32_t*)&buf[4] = htonl(next_seqno);
-    *(uint32_t*)&buf[8] = htonl(num_skiprecs);
+    if(finished){
+        *(uint32_t*)&buf[4] = htonl(next_seqno);
+        *(uint32_t*)&buf[8] = htonl(num_skiprecs);
+    }
+
     *(uint32_t*)&buf[12] = htonl(num_datarecs);
 
     _OWPSendHMACAdd(cntrl,buf,1);
