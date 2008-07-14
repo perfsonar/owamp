@@ -355,6 +355,8 @@ _OWPWriteServerStart(
         cntrl->state = _OWPStateRequest;
     }
     else{
+        /* encryption not valid - reset to clear mode and reject */
+        cntrl->mode = OWP_MODE_OPEN;
         memset(&buf[0],0,16);
         cntrl->state = _OWPStateInvalid;
     }
@@ -410,6 +412,14 @@ _OWPReadServerStart(
     }
 
     memcpy(cntrl->readIV,&buf[16],16);
+
+    /*
+     * If the session is not accepted, there is no key available
+     * for ReceiveBlocksIntr to decode, so turn off encryption here.
+     */
+    if(*acceptval != OWP_CNTRL_ACCEPT){
+        cntrl->mode = OWP_MODE_OPEN;
+    }
 
     /*
      * Now read encrypted blocks (In encrypted modes, everything after
