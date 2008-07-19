@@ -1469,11 +1469,11 @@ _OWPWriteAcceptSession(
         return OWPErrFATAL;
     }
 
+    memset(&buf[0],0,_OWP_MAX_MSG_SIZE);
     buf[0] = acceptval & 0xff;
     *(uint16_t *)&buf[2] = htons(port);
     if(sid)
         memcpy(&buf[4],sid,16);
-    memset(&buf[20],0,12);
 
     /*
      * Add this block to HMAC, and then put the digest in the message.
