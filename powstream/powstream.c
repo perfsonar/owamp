@@ -397,6 +397,12 @@ write_session(
     if(!p->fp || !p->session_started || (aval != OWP_CNTRL_ACCEPT))
         return;
 
+    /*
+     * XXX: if "send", truncate testfp, refill it using full Fetch of
+     * data. (Must be before the ControlClose below in case the server
+     * deletes the data on 'close'.)
+     */
+
     (void)OWPReadDataHeader(p->ctx,p->fp,&hdr);
     if( !hdr.header){
         I2ErrLog(eh,"OWPReadDataHeader(session data [%" PRIu64 ",%" PRIu64 ")",
@@ -957,6 +963,13 @@ SetupSession(
 
     if(sig_check())
         return 1;
+
+    /*
+     * XXX: If "sender", call OWPSessionRequest with no fp - still create
+     * testfp above because Fetch will be called in sessionsum loop and
+     * testfp will be used to fill it.
+     */
+
     /*
      * Make the actual request for the test specifying the testfp
      * to hold the results.
@@ -1055,6 +1068,9 @@ main(
     int                 ch;
     char                *endptr = NULL;
     char                optstring[128];
+    /*
+     * XXX: Add -t and -f options
+     */
     static char         *conn_opts = "A:k:S:u:";
     static char         *test_opts = "c:E:i:L:s:z:";
     static char         *out_opts = "b:d:e:N:pRv";
@@ -1676,6 +1692,15 @@ AGAIN:
 
             /* Time's up! Get to work.        */
             p->session_started = True;
+
+            /*
+             * XXX: If "sender", trunc testfp, then Fetch records for
+             * just this sub-session from remote side into the file.
+             * -- initialize special 'send' control pointer if needed
+             * (if can't - don't fail on the error. This allows long-lived
+             * sessions to survive temporary network problems and show
+             * the loss! - just goto 'cleanup')
+             */
 
             /*
              * This section reads the packet records
