@@ -27,9 +27,9 @@
 #
 #	Options:
 # Process this file with autoconf to produce a configure script.
-AC_INIT(owamp, 3.0c, owamp-bugs@internet2.edu)
+AC_INIT(owamp, 3.0d, owamp-bugs@internet2.edu)
 AC_CONFIG_AUX_DIR(config)
-AM_INIT_AUTOMAKE(owamp, 3.0c, [no-define])
+AM_INIT_AUTOMAKE(owamp, 3.0d, [no-define])
 AC_CONFIG_SRCDIR(owamp/context.c)
 AM_CONFIG_HEADER(owamp/config.h)
 
@@ -180,6 +180,6 @@ AC_CHECK_DECLS([optreset])
 AC_CHECK_DECLS([fseeko])
 
 AC_SUBST(ac_aux_dir)
-AC_OUTPUT([Makefile owamp/Makefile owampd/Makefile owping/Makefile powstream/Makefile conf/Makefile test/Makefile doc/Makefile],
+AC_OUTPUT([Makefile owamp/Makefile owampd/Makefile owping/Makefile powstream/Makefile conf/Makefile test/Makefile doc/Makefile owamp.spec],
 	[test -z "$CONFIG_HEADERS" || echo timestamp > owamp/stamp-h.in])
 

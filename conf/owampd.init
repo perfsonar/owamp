@@ -1,0 +1,108 @@
+#!/bin/bash
+#
+# Init file for OWAMP daemon
+#
+# chkconfig: 2345 60 20
+# description: OWAMP daemon
+#
+# processname: owampd 
+#
+
+
+OWAMPDBINDIR=/usr/bin
+CONFDIR=/etc/owampd
+OWAMPDVARDIR=/var/run
+PIDFILE=${OWAMPDVARDIR}/owampd.pid
+
+OWAMPD="${OWAMPDBINDIR}/owampd -c ${CONFDIR} -R ${OWAMPDVARDIR}"
+
+ERROR=0
+ARGV="$@"
+if [ "x$ARGV" = "x" ] ; then 
+    ARGS="help"
+fi
+
+for ARG in $@ $ARGS
+do
+    # check for pidfile
+    if [ -f $PIDFILE ] ; then
+	PID=`cat $PIDFILE`
+	if [ "x$PID" != "x" ] && kill -0 $PID 2>/dev/null ; then
+	    STATUS="owampd (pid $PID) running"
+	    RUNNING=1
+	else
+	    STATUS="owampd (pid $PID?) not running"
+	    RUNNING=0
+	fi
+    else
+	STATUS="owampd (no pid file) not running"
+	RUNNING=0
+    fi
+
+    case $ARG in
+    start)
+	if [ $RUNNING -eq 1 ]; then
+	    echo "$0 $ARG: owampd (pid $PID) already running"
+	    continue
+	fi
+
+	echo $OWAMPD
+
+	if $OWAMPD ; then
+	    echo "$0 $ARG: owampd started"
+	else
+	    echo "$0 $ARG: owampd could not be started"
+	    ERROR=3
+	fi
+	;;
+    stop)
+	if [ $RUNNING -eq 0 ]; then
+	    echo "$0 $ARG: $STATUS"
+	    continue
+	fi
+	if kill $PID ; then
+	    echo "$0 $ARG: owampd stopped"
+	else
+	    echo "$0 $ARG: owampd could not be stopped"
+	    ERROR=4
+	fi
+	;;
+    restart)
+    	$0 stop; echo "waiting..."; sleep 10; $0 start;
+	;;
+#	if [ $RUNNING -eq 0 ]; then
+#	    echo "$0 $ARG: owampd not running, trying to start"
+#	    if $OWAMPD ; then
+#		echo "$0 $ARG: owampd started"
+#	    else
+#		echo "$0 $ARG: owampd could not be started"
+#		ERROR=5
+#	    fi
+#	else
+#	    if kill -HUP $PID ; then
+#	       echo "$0 $ARG: owampd restarted"
+#	    else
+#	       echo "$0 $ARG: owampd could not be restarted"
+#	       ERROR=6
+#	    fi
+#	fi
+#	;;
+    *)
+	echo "usage: $0 (start|stop|restart|help)"
+	cat <<EOF
+
+start      - start owampd
+stop       - stop owampd
+restart    - restart owampd if running by sending a SIGHUP or start if 
+             not running
+help       - this screen
+
+EOF
+	ERROR=2
+    ;;
+
+    esac
+
+done
+
+exit $ERROR
