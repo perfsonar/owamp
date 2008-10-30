@@ -32,17 +32,15 @@ SOELIM=soelim
 
 CLEANFILES	= owping.man owstats.man owfetch.man owup.man
 
-SUFFIXES = .man .man.html .ms
+SUFFIXES = .man .ms
 
 .ms.man:
 	$(SOELIM) $< > $@
 
-# TODO
-# Build html versions of man pages and include them in dist?
-# SUFFIXES = .man .man.html
-# .man.man.html:
-#	man2html -blah_args 
-# dist-hook:
-
+if HAVE_MAN2HTML
+SUFFIXES += .man.html
 .man.man.html:
-	cp $< $@
+	man2html -r $< > $@
+
+EXTRA_DIST += owampd.conf.man.html owampd.limits.man.html owampd.man.html owampd.pfs.man.html owfetch.man.html owping_conn_opts.man.html owping.man.html owping_out_opts.man.html owping_report.man.html owping_test_opts.man.html owstats.man.html owup.man.html powstream.man.html
+endif

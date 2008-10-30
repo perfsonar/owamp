@@ -1,0 +1,4 @@
+# Do not delete or edit this file unless you REALLY know what you are doing!
+# Use this file with "svn propset svn:externals -F externals.txt ."
+# -jeff
+I2util    http://anonsvn.internet2.edu/svn/I2util/branches/BWCTL_1_3rc1

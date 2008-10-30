@@ -23,7 +23,7 @@ AM_CFLAGS	= $(OWP_PREFIX_CFLAGS)
 
 bin_PROGRAMS	= owping
 owping_SOURCES	= owping.c owpingP.h
-owping_LDADD	= $(OWPLIBS) $(I2UTILLIBS) $(MALLOCDEBUGLIBS)
+owping_LDADD	= $(OWPLIBS) $(MALLOCDEBUGLIBS) -lI2util
 owping_DEPENDENCIES = $(OWPLIBDEPS) $(I2UTILLIBDEPS)
 # Unfortunately, automake doesn't follow the BSD tradition here...
 RM = rm -f

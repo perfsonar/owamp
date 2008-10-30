@@ -25,5 +25,5 @@ INCLUDES	= $(OWPINCS) $(I2UTILINCS)
 
 bin_PROGRAMS	= owampd
 owampd_SOURCES	= owampdP.h owampd.c policy.h policy.c fts.h fts.c
-owampd_LDADD	= $(OWPLIBS) $(I2UTILLIBS) $(MALLOCDEBUGLIBS)
+owampd_LDADD	= $(OWPLIBS) $(MALLOCDEBUGLIBS) -lI2util
 owampd_DEPENDENCIES = $(OWPLIBDEPS) $(I2UTILLIBDEPS)

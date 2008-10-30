@@ -1068,9 +1068,6 @@ main(
     int                 ch;
     char                *endptr = NULL;
     char                optstring[128];
-    /*
-     * XXX: Add -t and -f options
-     */
     static char         *conn_opts = "A:k:S:u:";
     static char         *test_opts = "c:E:i:L:s:z:";
     static char         *out_opts = "b:d:e:N:pRv";
