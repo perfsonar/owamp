@@ -2312,8 +2312,16 @@ GetSessionFinishedType(
     }
     phdr->finished = GetSessionFinishedType(ctx,ntohl(finished));
 
-    if(phdr->version < 3)
+    if(phdr->version < 3){
+        phdr->oset_skiprecs = NULL;
+        phdr->num_skiprecs = 0;
+        phdr->oset_datarecs = phdr->hdr_len;
+        phdr->num_datarecs = (phdr->sbuf.st_size - phdr->hdr_len)/
+            phdr->rec_size;
+        phdr->next_seqno = 0;
+
         return True;
+    }
 
     /*
      * Next Seqno
@@ -3033,12 +3041,6 @@ OWPReadDataHeader(
         return 0;
     }
 
-    if(phrec.version < 3){
-        hdr_ret->num_datarecs = (phrec.sbuf.st_size - phrec.hdr_len)/
-            hdr_ret->rec_size;
-        return hdr_ret->num_datarecs;
-    }
-
     hdr_ret->next_seqno = phrec.next_seqno;
     hdr_ret->num_skiprecs = phrec.num_skiprecs;
     hdr_ret->oset_skiprecs = phrec.oset_skiprecs;
@@ -3083,14 +3085,14 @@ OWPReadDataHeaderSlots(
 {
     int                         err;
     _OWPSessionHeaderInitialRec phrec;
-    uint32_t                   fileslots;
-    uint32_t                   i;
-    off_t                       slot_off = 152; /* see above layout of bytes */
+    uint32_t                    fileslots;
+    uint32_t                    i;
+    off_t                       slot_off;
     off_t                       hdr_off;
 
     /* buffer for Slots 32 bit aligned */
-    uint32_t                   msg[16/sizeof(uint32_t)];
-    uint32_t                   zero[16/sizeof(uint32_t)];
+    uint32_t                    msg[16/sizeof(uint32_t)];
+    uint32_t                    zero[16/sizeof(uint32_t)];
 
     /*
      * validate array.
@@ -3105,7 +3107,7 @@ OWPReadDataHeaderSlots(
     }
 
     /*
-     * this function is currently only supported for version 2 files.
+     * this function is currently only supported for version >=2
      */
     if(phrec.version < 2){
         OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
@@ -3114,13 +3116,20 @@ OWPReadDataHeaderSlots(
         errno = ENOSYS;
         return False;
     }
+    else if(phrec.version == 2){
+        slot_off = 132; /* see above layout of bytes */
+        hdr_off = phrec.hdr_len;
+    }
+    else{
+        slot_off = 152; /* see above layout of bytes */
 
-    /*
-     * Find offset to the end of the "header".
-     */
-    hdr_off = MIN(phrec.oset_skiprecs,phrec.oset_datarecs);
-    if(!hdr_off){
-        hdr_off = MAX(phrec.oset_skiprecs,phrec.oset_datarecs);
+        /*
+         * Find offset to the end of the "header".
+         */
+        hdr_off = MIN(phrec.oset_skiprecs,phrec.oset_datarecs);
+        if(!hdr_off){
+            hdr_off = MAX(phrec.oset_skiprecs,phrec.oset_datarecs);
+        }
     }
 
     /*
