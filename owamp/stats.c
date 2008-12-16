@@ -1055,7 +1055,7 @@ IterateSummarizeSession(
     /*
      * j-reordering. See:
      * http://www.internet2.edu/~shalunov/ippm/\
-     *                          draft-shalunov-reordering-definition-01.txt
+     *                          draft-shalunov-reordering-definition-02.txt
      */
 #define rseqindex(x)    ((x) >= 0? x: x + stats->rlistlen)
     for(i=0;i < MIN(stats->rnumseqno,stats->rlistlen) &&
@@ -1638,7 +1638,7 @@ OWPStatsPrintSummary(
      */
     for(i=0;((i<stats->rlistlen) && (stats->rn[i]));i++){
         fprintf(output,"%ld-reordering = %f%%\n",i+1,
-                100.0*stats->rn[i]/(stats->rnumseqno - i - 1));
+                100.0*stats->rn[i]/(stats->rnumseqno));
     }
     if(i==0){
         fprintf(output,"no reordering\n");
@@ -1665,7 +1665,7 @@ OWPStatsPrintMachine(
         )
 {
     /* Version 2.0 of stats output */
-    float       version=2.2;
+    float       version=2.3;
     char        sid_name[sizeof(OWPSID)*2+1];
     uint32_t    i;
     long int    j;
@@ -1746,11 +1746,11 @@ OWPStatsPrintMachine(
      */
     fprintf(output,"<NREORDERING>\n");
     for(j=0;((j<stats->rlistlen) && (stats->rn[j]));j++){
-        fprintf(output,"\t%u\t%f\n",(uint32_t)j+1,
-                stats->rn[j]/(stats->rnumseqno - j - 1));
+        fprintf(output,"\t%u\t%u\n",(uint32_t)j+1,
+                stats->rn[j]);
     }
     if((j==0) || (j >= stats->rlistlen)){
-        fprintf(output,"\t%u\t%f\n",(uint32_t)j+1,0.0);
+        fprintf(output,"\t%u\t%u\n",(uint32_t)j+1,0);
     }
     fprintf(output,"</NREORDERING>\n");
 

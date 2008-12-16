@@ -82,7 +82,8 @@ option is used.
 \fB\-M\fR
 .br
 Print summary information in a more computer pars-able format. Specifically,
-values are printed out in a key/value style. Units are seconds for all values.
+values are printed out in a key/value style. Units are seconds for all time
+values.
 
 The \fI\-M\fR option is ignored if \fI\-Q\fR is set.
 .RS

@@ -85,4 +85,4 @@ Reordering
 Finally \fBOWAMP\fR reports the amount of re-ordering it observed. A
 description of the metric used to report this can be found at:
 .br
-\%http://www.internet2.edu/~shalunov/ippm/draft-shalunov-reordering-definition-01.txt
+\%http://www.internet2.edu/~shalunov/ippm/draft-shalunov-reordering-definition-02.txt

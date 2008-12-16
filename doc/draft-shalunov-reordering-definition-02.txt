@@ -4,13 +4,12 @@
 
 
 
-                                                      Stanislav Shalunov
-Internet Draft                                                 Internet2
-Expiration Date: April 2003
-                                                            October 2002
+Internet Draft                                        Stanislav Shalunov
+Expiration Date: September 2003                                Internet2
+                                                              March 2003
 
                Definition of IP Packet Reordering Metric
-             <draft-shalunov-reordering-definition-01.txt>
+             <draft-shalunov-reordering-definition-02.txt>
 
 
 1. Status of this Memo
@@ -26,7 +25,7 @@ Expiration Date: April 2003
    Internet-Drafts are draft documents valid for a maximum of six months
    and may be updated, replaced, or obsoleted by other documents at any
    time.  It is inappropriate to use Internet-Drafts as reference
-   material or to cite them other than as "work in progress."
+   material or to cite them other than as `work in progress.'
 
    The list of current Internet-Drafts can be accessed at
    http://www.ietf.org/ietf/1id-abstracts.txt
@@ -42,8 +41,8 @@ Expiration Date: April 2003
 2. Abstract
 
    Various pieces of network testing equipment currently often report a
-   characteristic that is referred to as a "degree (or percentage) of
-   packet reordering".  The way this metric is computed is often
+   characteristic that is referred to as a `degree (or percentage) of
+   packet reordering.'  The way this metric is computed is often
    undocumented and it differs between vendors.  Having a useful numeric
    measure of the degree of packet reordering is important for
    applications such as TCP and VoIP on different ends of the spectrum.
@@ -55,9 +54,10 @@ Expiration Date: April 2003
 
 
 
+
 Stanislav Shalunov                                              [Page 1]
 
-INTERNET-DRAFT  Definition of IP Packet Reordering Metric   October 2002
+INTERNET-DRAFT  Definition of IP Packet Reordering Metric     March 2003
 
 
 3. N-Reordering Metric Definition
@@ -78,12 +78,12 @@ INTERNET-DRAFT  Definition of IP Packet Reordering Metric   October 2002
 
    Note: This definition is illustrated by C code in Appendix A.
 
-   Claim: If a packet is n-reordered and 0 < n' < n, then the packet is
-   also n'-reordered.
+   Claim 1: If a packet is n-reordered and 0 < n' < n, then the packet
+   is also n'-reordered.
 
    Let m be the number of n-reordered packets in the sample.
 
-   Definition 2: The degree of n-reordering of the sample is m/(l-n).
+   Definition 2: The degree of n-reordering of the sample is m/l.
 
    Definition 3: The degree of reordering of the sample is its degree of
    1-reordering.
@@ -113,46 +113,122 @@ INTERNET-DRAFT  Definition of IP Packet Reordering Metric   October 2002
 
 Stanislav Shalunov                                              [Page 2]
 
-INTERNET-DRAFT  Definition of IP Packet Reordering Metric   October 2002
+INTERNET-DRAFT  Definition of IP Packet Reordering Metric     March 2003
 
 
 4. Examples
 
    This section is non-normative.
 
-   For sample size 2 and received packets with sequence numbers <2, 1>
-   the degree of 0-reordering is 0.5 (or 50%).  The degree of N-
-   reordering for N > 0 is 0.  (Informally, an application that
-   processes packets as they arrive and has a reordering buffer of size
-   0, one packet--or 50% of packets sent--will be as good as lost; for
-   any larger reordering buffer size, no packets will be as good as
-   lost.)
+   Several examples can be helpful.  The reader is encouraged to compile
+   the program in Appendix A and to try different inputs (on a POSIX
+   system, one convenient way to supply test inputs to the program is to
+   running a command similar to the following in the command shell:
+   `echo 1 2 3 4 5 6 7 8 9 10 | fmt 1 | ./reord').
 
-   For sample size 5 and received packets with sequence numbers <1, 4,
-   3, 2, 5> the degree of 0-reordering is 0.4; the degree of
-   1-reordering is 0.2; the degree of N-reordering for N > 1 is 0.
+   In the following, we first specify the sample and then describe the
+   degrees of reordering and give some comments.
 
-   For sample size 5 and received packets with sequence numbers <1, 4,
-   3, 2> the degrees of N-reordering are the same as in previous example
-   for all non-negative integers N.
+   In this example, no reordering is observed:
+       1 2 3 4 5 6 7 8 9 10
+       no reordering
 
-   For sample size 5 and received packets with sequence numbers <5, 4,
-   3, 2, 1> the degree of 0-reordering is 0.8; the degree of
-   1-reordering is 0.6; the degree of 2-reordering is 0.4; the degree of
-   3-reordering is 0.2; the degree of N-reordering for N > 3 is 0.
+   Gaps in sequence numbers (which might or might not indicate losses)
+   are not counted as reordering:
+       1 3 4 5 6 7 8 9 10
+       no reordering
+
+   In fact, the reordering metric could be applied to any strictly
+   monotically increasing progression of sequence numbers (consecutive
+   numbering is just a convenience for easier writing of the
+   definition):
+       0 1000 2000 3000 4000 5000 6000 7000 8000 9000
+       no reordering
+
+   A single transposition of adjacent packets:
+       1 2 4 3 5 6 7 8 9 10
+       1-reordering = 10.000000%
+       no 2-reordering
+   (Notice that since there is no 2-reordering, there is also no
+   3-reordering and, in general, no n-reordering for any n>2, according
+   to claim 1.)
+
+   Two transpositions in different parts of the sequence:
+       1 2 4 3 5 6 8 7 9 10
+       1-reordering = 20.000000%
+       no 2-reordering
+
+   A single packet `delayed by two places':
+       1 2 4 5 3 6 7 8 9 10
+       1-reordering = 10.000000%
+       2-reordering = 10.000000%
+       no 3-reordering
+   (In the sequence above, packet with sequence number 3 is 2-reordered
+
+
+
+Stanislav Shalunov                                              [Page 3]
+
+INTERNET-DRAFT  Definition of IP Packet Reordering Metric     March 2003
+
+
+   -- and, of course, 1-reordered according to claim 1.)
+
+   A single packet `delayed by three places':
+       1 2 4 5 6 3 7 8 9 10
+       1-reordering = 10.000000%
+       2-reordering = 10.000000%
+       3-reordering = 10.000000%
+       no 4-reordering
+   A single packet (with sequence number 3) is delayed by three places
+   here.  Note how if these were TCP packets, the receiver would have
+   sent three duplicate ACKs on seeing packets with numbers 4, 5, and 6.
+
+   The definition is geared towards counting `late' packets (primarily
+   because TCP tolerates early packets much better than late packets).
+   In the following sequence, a packet is `three places early':
+       1 2 3 4 8 5 6 7 9 10
+       1-reordering = 10.000000%
+       no 2-reordering
+   In other (informal) words, the reordering definition recovers quickly
+   from seeing early packets.
+
+   Note that since definition 2 contains division by l (rather than l-n)
+   it is never possible to have 100% degree of n-reordering for any n:
+       10 9 8 7 6 5 4 3 2 1
+       1-reordering = 90.000000%
+       2-reordering = 80.000000%
+       3-reordering = 70.000000%
+       4-reordering = 60.000000%
+       5-reordering = 50.000000%
+       6-reordering = 40.000000%
+       7-reordering = 30.000000%
+       8-reordering = 20.000000%
+       9-reordering = 10.000000%
+       no 10-reordering
 
 
 5. RFC 2330 Considerations
 
-   Within the framework of [RFC2330], the N-reordering metrics can only
+   Within the framework of [RFC2330], the n-reordering metrics can only
    be interpreted in a meaningful fashion if, along with the metrics
    themselves and sample size, type of each packet and time when each
    packet was sent is reported.
 
 
-6. Area of Applicability and Choice of Parameter Values
 
-   This section is non-normative.
+
+
+
+
+
+
+Stanislav Shalunov                                              [Page 4]
+
+INTERNET-DRAFT  Definition of IP Packet Reordering Metric     March 2003
+
+
+6. Area of Applicability and Choice of Parameter Values
 
    Different applications will require different parameter values to
    obtain a metric that will be relevant to them.
@@ -162,15 +238,8 @@ INTERNET-DRAFT  Definition of IP Packet Reordering Metric   October 2002
    meaningful.  Namely, the sum of loss and 0-reordering will be the
    percentage of packets that the application cannot play back.
 
-   For bulk TCP, 2- or 3-reordering (plus loss) of its traffic will be
-   more meaningful (because of Fast Retransmit).
-
-
-
-Stanislav Shalunov                                              [Page 3]
-
-INTERNET-DRAFT  Definition of IP Packet Reordering Metric   October 2002
-
+   For bulk TCP, 3-reordering (plus loss) of its traffic will be more
+   meaningful (because of Fast Retransmit).
 
    If the metrics were to be computed with simulated traffic so that
    behavior of real applications with their real traffic could be
@@ -210,22 +279,9 @@ INTERNET-DRAFT  Definition of IP Packet Reordering Metric   October 2002
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-Stanislav Shalunov                                              [Page 4]
+Stanislav Shalunov                                              [Page 5]
 
-INTERNET-DRAFT  Definition of IP Packet Reordering Metric   October 2002
+INTERNET-DRAFT  Definition of IP Packet Reordering Metric     March 2003
 
 
 10. Appendix A
@@ -270,7 +326,7 @@ main()
                 ring[r] = s;
         }
         for (j = 0; j < MAX_N && m[j]; j++)
-                printf("%d-reordering = %f%%\n", j+1, 100.0*m[j]/(l-j-1));
+                printf("%d-reordering = %f%%\n", j+1, 100.0*m[j]/l);
         if (j == 0) printf("no reordering\n");
         else if (j < MAX_N) printf("no %d-reordering\n", j+1);
         else printf("only up to %d-reordering is handled\n", MAX_N);
@@ -279,23 +335,26 @@ main()
 
 
 
-Stanislav Shalunov                                              [Page 5]
+Stanislav Shalunov                                              [Page 6]
 
-INTERNET-DRAFT  Definition of IP Packet Reordering Metric   October 2002
+INTERNET-DRAFT  Definition of IP Packet Reordering Metric     March 2003
 
 
 11. References
 
 
-   [RFC2330] V. Paxson, G. Almes, J. Mahdavi, M. Mathis, "Framework for
-        IP Performance Metrics", RFC 2330, May 1998.
+   [RFC2330] V. Paxson, G. Almes, J. Mahdavi, M. Mathis, `Framework for
+        IP Performance Metrics,' RFC 2330, May 1998.
 
 
 12. Author's Address
 
    Stanislav Shalunov <shalunov@internet2.edu>
 
-   Expiration date: April 2003
+   See http://www.internet2.edu/~shalunov/ for current snail mail address
+   and telephone number.
+
+   Expiration date: September 2003
 
 
 
@@ -332,7 +391,4 @@ INTERNET-DRAFT  Definition of IP Packet Reordering Metric   October 2002
 
 
 
-
-
-
-Stanislav Shalunov                                              [Page 6]
+Stanislav Shalunov                                              [Page 7]
