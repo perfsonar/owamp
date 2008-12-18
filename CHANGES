@@ -1,0 +1,11 @@
+A "functional" summary of changes to the code base are placed in
+this file. The complete set of change logs from Subversion can
+be seen in ChangeLog. The section from just the latest release
+can be seen in the main index.html bwctl documentation page in
+the doc dir.
+
+version 3.1a
+* Minor protocol compliance fixes
+* RPM support
+* Documentation updates
+* Add packet reordering to -M output
