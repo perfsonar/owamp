@@ -84,7 +84,11 @@ fi
 %{_bindir}/owstats
 %{_bindir}/owup
 %{_bindir}/powstream
-%{_mandir}/man1/*
+%{_mandir}/man1/owfetch.1.gz
+%{_mandir}/man1/owping.1.gz
+%{_mandir}/man1/owstats.1.gz
+%{_mandir}/man1/owup.1.gz
+%{_mandir}/man1/powstream.1.gz
 
 %files server
 %defattr(-,root,root,0755)
