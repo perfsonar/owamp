@@ -732,6 +732,8 @@ OWPStatsCreate(
                 "OWPStatsCreate: Unable to create schedule context");
         goto error;
     }
+    stats->isctx = 0;
+    stats->endnum = stats->hdr->test_spec.start_time;
 
     /*
      * pre-allocate packet records. Generally, the packet rate and the

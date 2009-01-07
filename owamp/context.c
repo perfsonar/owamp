@@ -885,6 +885,43 @@ _OWPCallCheckTestPolicy(
 }
 
 /*
+ * Function:        _OWPCallCheckFetchPolicy
+ *
+ * Description:
+ *         Calls the check_test_func that is defined by the application.
+ *         If the application didn't define the check_test_func, then provide
+ *         the default response of True(allowed).
+ */
+OWPBoolean
+_OWPCallCheckFetchPolicy(
+        OWPControl      cntrl,          /* control handle           */
+        struct sockaddr *local,         /* local endpoint           */
+        struct sockaddr *remote,        /* remote endpoint          */
+        socklen_t       sa_len,         /* saddr lens               */
+        uint32_t        begin,
+        uint32_t        end,
+        OWPSID          sid,
+        void            **closure,
+        OWPErrSeverity  *err_ret        /* error - return           */
+        )
+{
+    OWPCheckFetchPolicyFunc  func;
+
+    *err_ret = OWPErrOK;
+
+    func = (OWPCheckFetchPolicyFunc)OWPContextConfigGetF(cntrl->ctx,
+            OWPCheckFetchPolicy);
+    /*
+     * Default action is to allow anything.
+     */
+    if(!func){
+        return True;
+    }
+
+    return func(cntrl,local,remote,sa_len,begin,end,sid,closure,err_ret);
+}
+
+/*
  * Function:        _OWPCallTestComplete
  *
  * Description:
@@ -933,13 +970,12 @@ _OWPCallTestComplete(
  *         to the way owampd saves/fetches session data.)
  *
  *         The "closure" pointer is a pointer to the value that is returned
- *         from the CheckTestPolicy function. This is the way resource
- *         requests/releases can be adjusted based upon actual use.
+ *         from the CheckTestPolicy or CheckFetchPolicy function. This is
+ *         the way resource requests/releases can be adjusted based upon
+ *         actual use.
+ *
  *         (keeping policy separate from function is challenging... I hope
  *         it is worth it...)
- *
- *         "closure" will be NULL if this function is being called in the
- *         "FetchSession" context.
  *
  */
 FILE *

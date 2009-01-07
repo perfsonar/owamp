@@ -801,8 +801,12 @@ OWPProcessFetchSession(
     char                        *buf = (char *)cntrl->msg;
     OWPErrSeverity              err;
     OWPAcceptType               acceptval = OWP_CNTRL_REJECT;
-    uint32_t                   begin;
-    uint32_t                   end;
+    void                        *closure = NULL;
+    struct sockaddr             *lsaddr;
+    struct sockaddr             *rsaddr;
+    socklen_t                   saddrlen;
+    uint32_t                    begin;
+    uint32_t                    end;
     OWPSID                      sid;
 
     FILE                        *fp;
@@ -811,10 +815,11 @@ OWPProcessFetchSession(
     _OWPSessionHeaderInitialRec fhdr;
     struct flock                flk;
     int                         lock_tries=0;
+    int                         finish_tries=0;
 
-    uint32_t                   sendrecs;
-    uint32_t                   next_seqno = 0;
-    uint32_t                   num_skiprecs = 0;
+    uint32_t                    sendrecs;
+    uint32_t                    next_seqno = 0;
+    uint32_t                    num_skiprecs = 0;
     off_t                       tr_size;
 
     struct DoDataState          dodata;
@@ -833,10 +838,21 @@ OWPProcessFetchSession(
         return _OWPFailControlSession(cntrl, err);
     }
 
+    lsaddr = I2AddrSAddr(cntrl->local_addr,&saddrlen);
+    rsaddr = I2AddrSAddr(cntrl->remote_addr,&saddrlen);
+    if(!_OWPCallCheckFetchPolicy(cntrl,
+                    lsaddr,rsaddr,saddrlen,begin,end,sid,&closure,&err)){
+        if(err < OWPErrOK){
+            return _OWPFailControlSession(cntrl,err);
+        }
+        OWPError(cntrl->ctx,OWPErrWARNING,OWPErrPOLICY,"Fetch not allowed");
+        goto reject;
+    }
+    
     /*
      * Try and open the file containing sid information.
      */
-    if( !(fp = _OWPCallOpenFile(cntrl,NULL,sid,fname))){
+    if( !(fp = _OWPCallOpenFile(cntrl,closure,sid,fname))){
         goto reject;
     }
 
@@ -870,18 +886,6 @@ read_file:
     }
 
     /*
-     * If a "complete" session was requested, and the test did not
-     * terminate normally - we MUST deny here.
-     */
-    if((begin == 0) && (end == 0xFFFFFFFF) &&
-            (fhdr.finished != OWP_SESSION_FINISHED_NORMAL)){
-        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrWARNING,
-                "OWPProcessFetchSession(\"%s\"): Request for complete session, but session not yet terminated!",
-                fname);
-        goto reject;
-    }
-
-    /*
      * If the session is not complete, then the file needs be locked before
      * trusting headers. If num_datarecs is still 0 when it is locked, then use
      * the filesize to determine the number of records. Read the file
@@ -903,12 +907,13 @@ read_file:
              * (Counter here to give up after 5 tries - escalating
              * wait times.)
              */
-            if(errno == EACCES){
+            if((errno == EACCES) || (errno == EAGAIN)){
                 if(lock_tries > 4){
                     OWPError(cntrl->ctx,OWPErrFATAL,errno,
                             "Repeat lock failures: fcntl(\"%s\"): %M",fname);
                     goto failed;
                 }
+                fflush(fp);
                 sleep(1<<lock_tries);
                 lock_tries++;
                 goto read_file;
@@ -932,12 +937,45 @@ read_file:
         }
 
         /*
+         * If a "complete" session was requested, and the test did not
+         * terminate normally - we MUST deny here.
+         * Add a delay in to handle possible race conditions.
+         */
+        if((begin == 0) && (end == 0xFFFFFFFF) &&
+                (fhdr.finished != OWP_SESSION_FINISHED_NORMAL)){
+            if(finish_tries > 4){
+                OWPError(cntrl->ctx,OWPErrFATAL,EBUSY,
+                        "OWPProcessFetchSession(\"%s\"): Request for complete session, but session not yet terminated!",
+                        fname);
+                goto reject;
+            }
+            fflush(fp);
+
+            OWPError(cntrl->ctx,OWPErrINFO,EAGAIN,
+                    "OWPProcessFetchSession(\"%s\"): Session not yet terminated, waiting for session finish",
+                    fname);
+            // unlock the file since we'll need to retry
+            memset(&flk,0,sizeof(flk));
+            flk.l_start = 0;
+            flk.l_len = 0;
+            flk.l_whence = SEEK_SET;
+            flk.l_type = F_UNLCK;
+            fcntl(fileno(fp), F_SETLK, &flk);
+
+            sleep(1<<finish_tries);
+            finish_tries++;
+
+            goto read_file;
+        }
+
+
+        /*
          * If the file doesn't have the number of recs set, then records
          * continue to the end of the file.
          */
         if(!fhdr.num_datarecs){
             fhdr.num_datarecs = (fhdr.sbuf.st_size - fhdr.oset_datarecs) / 
-                                                            fhdr.rec_size;
+                fhdr.rec_size;
         }
     }
 
@@ -1021,7 +1059,7 @@ read_file:
     acceptval = OWP_CNTRL_ACCEPT;
     if((err = _OWPWriteFetchAck(cntrl,intr,acceptval,fhdr.finished,next_seqno,
                     num_skiprecs,sendrecs)) < OWPErrOK){
-        _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
+        _OWPCallCloseFile(cntrl,closure,fp,OWP_CNTRL_FAILURE);
         return _OWPFailControlSession(cntrl,err);
     }
 
@@ -1053,13 +1091,13 @@ read_file:
      * TestRequestPreamble is 7 blocks long (last one is HMAC).
      */
     if(fread(buf,7*_OWP_RIJNDAEL_BLOCK_SIZE,1,fp) != 1){
-        _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
+        _OWPCallCloseFile(cntrl,closure,fp,OWP_CNTRL_FAILURE);
         return _OWPFailControlSession(cntrl,OWPErrFATAL);
     }
     _OWPSendHMACAdd(cntrl,buf,6);
     _OWPSendHMACDigestClear(cntrl,&buf[96]);
     if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,7,intr) != 7){
-        _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
+        _OWPCallCloseFile(cntrl,closure,fp,OWP_CNTRL_FAILURE);
         return _OWPFailControlSession(cntrl,OWPErrFATAL);
     }
     tr_size -= (_OWP_RIJNDAEL_BLOCK_SIZE*7);
@@ -1073,19 +1111,19 @@ read_file:
     while(tr_size > _OWP_RIJNDAEL_BLOCK_SIZE){
         if(fread(buf,1,_OWP_RIJNDAEL_BLOCK_SIZE,fp) !=
                 _OWP_RIJNDAEL_BLOCK_SIZE){
-            _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
+            _OWPCallCloseFile(cntrl,closure,fp,OWP_CNTRL_FAILURE);
             return _OWPFailControlSession(cntrl,OWPErrFATAL);
         }
         _OWPSendHMACAdd(cntrl,buf,1);
         if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,intr) != 1){
-            _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
+            _OWPCallCloseFile(cntrl,closure,fp,OWP_CNTRL_FAILURE);
             return _OWPFailControlSession(cntrl,OWPErrFATAL);
         }
         tr_size -= _OWP_RIJNDAEL_BLOCK_SIZE;
     }
     _OWPSendHMACDigestClear(cntrl,buf);
     if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,intr) != 1){
-        _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
+        _OWPCallCloseFile(cntrl,closure,fp,OWP_CNTRL_FAILURE);
         return _OWPFailControlSession(cntrl,OWPErrFATAL);
     }
 
@@ -1094,7 +1132,7 @@ read_file:
         /* set file pointer to beginning of skips */
         if(fseeko(fp,fhdr.oset_skiprecs,SEEK_SET)){
             OWPError(cntrl->ctx,OWPErrFATAL,errno,"fseeko(): %M");
-            _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
+            _OWPCallCloseFile(cntrl,closure,fp,OWP_CNTRL_FAILURE);
             return _OWPFailControlSession(cntrl,OWPErrFATAL);
         }
 
@@ -1109,12 +1147,12 @@ read_file:
         while(tr_size > _OWP_RIJNDAEL_BLOCK_SIZE){
             if(fread(buf,1,_OWP_RIJNDAEL_BLOCK_SIZE,fp) !=
                     _OWP_RIJNDAEL_BLOCK_SIZE){
-                _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
+                _OWPCallCloseFile(cntrl,closure,fp,OWP_CNTRL_FAILURE);
                 return _OWPFailControlSession(cntrl,OWPErrFATAL);
             }
             _OWPSendHMACAdd(cntrl,buf,1);
             if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,intr) != 1){
-                _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
+                _OWPCallCloseFile(cntrl,closure,fp,OWP_CNTRL_FAILURE);
                 return _OWPFailControlSession(cntrl,OWPErrFATAL);
             }
             tr_size -= _OWP_RIJNDAEL_BLOCK_SIZE;
@@ -1128,12 +1166,12 @@ read_file:
             memset(buf,0,_OWP_RIJNDAEL_BLOCK_SIZE);
 
             if(fread(buf,1,tr_size,fp) != (size_t)tr_size){
-                _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
+                _OWPCallCloseFile(cntrl,closure,fp,OWP_CNTRL_FAILURE);
                 return _OWPFailControlSession(cntrl,OWPErrFATAL);
             }
             _OWPSendHMACAdd(cntrl,buf,1);
             if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,intr) != 1){
-                _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
+                _OWPCallCloseFile(cntrl,closure,fp,OWP_CNTRL_FAILURE);
                 return _OWPFailControlSession(cntrl,OWPErrFATAL);
             }
         }
@@ -1143,7 +1181,7 @@ read_file:
     /* now send HMAC Block (between skips & data */
     _OWPSendHMACDigestClear(cntrl,buf);
     if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,intr) != 1){
-        _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
+        _OWPCallCloseFile(cntrl,closure,fp,OWP_CNTRL_FAILURE);
         return _OWPFailControlSession(cntrl,err);
     }
 
@@ -1156,7 +1194,7 @@ read_file:
     /* set file pointer to beginning of data */
     if(fseeko(fp,fhdr.oset_datarecs,SEEK_SET)){
         OWPError(cntrl->ctx,OWPErrFATAL,errno,"fseeko(): %M");
-        _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
+        _OWPCallCloseFile(cntrl,closure,fp,OWP_CNTRL_FAILURE);
         return _OWPFailControlSession(cntrl,err);
     }
 
@@ -1167,7 +1205,7 @@ read_file:
     if( (OWPParseRecords(cntrl->ctx,fp,fhdr.num_datarecs,fhdr.version,
                     DoDataRecords,&dodata) != OWPErrOK) ||
             (dodata.count != sendrecs)){
-        _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
+        _OWPCallCloseFile(cntrl,closure,fp,OWP_CNTRL_FAILURE);
         return _OWPFailControlSession(cntrl,err);
     }
 
@@ -1188,7 +1226,7 @@ read_file:
          */
         _OWPSendHMACAdd(cntrl,buf,blks);
         if( (_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,blks,intr) != blks)){
-            _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_FAILURE);
+            _OWPCallCloseFile(cntrl,closure,fp,OWP_CNTRL_FAILURE);
             return _OWPFailControlSession(cntrl,err);
         }
     }
@@ -1197,7 +1235,7 @@ final:
     /*
      * We are done reading from the file - close it.
      */
-    _OWPCallCloseFile(cntrl,NULL,fp,OWP_CNTRL_ACCEPT);
+    _OWPCallCloseFile(cntrl,closure,fp,OWP_CNTRL_ACCEPT);
 
     /* now send final HMAC Block */
     _OWPSendHMACDigestClear(cntrl,buf);
@@ -1217,7 +1255,7 @@ failed:
     acceptval = OWP_CNTRL_FAILURE;
 reject:
     if(fp){
-        _OWPCallCloseFile(cntrl,NULL,fp,acceptval);
+        _OWPCallCloseFile(cntrl,closure,fp,acceptval);
     }
 
     if( (err = _OWPWriteFetchAck(cntrl,intr,acceptval,0,0,0,0)) < OWPErrOK){

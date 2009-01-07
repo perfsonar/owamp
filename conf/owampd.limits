@@ -157,7 +157,8 @@
 
 # setup the root node with unlimited disk and bandwidth
 limit root with disk=0,\
-		bandwidth=0
+		bandwidth=0,\
+                delete_on_fetch=on
 
 # limit box with parent=root,disk=1,bandwidth=1,allow_open_mode=off
 limit box with parent=root,bandwidth=1m

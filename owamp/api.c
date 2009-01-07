@@ -1304,7 +1304,7 @@ GetMaxRecv(
  * Returns:    
  * Side Effect:    
  */
-OWPBoolean
+static OWPBoolean
 _OWPCleanUpSessions(
         OWPControl      cntrl,
         int             *intr __attribute__((unused)),
@@ -2965,11 +2965,10 @@ OWPReadDataHeader(
         )
 {
     _OWPSessionHeaderInitialRec phrec;
-    int                         err;
+    int         err;
 
     /* buffer for TestRequest 32 bit aligned */
-    uint32_t                   msg[_OWP_TEST_REQUEST_PREAMBLE_SIZE /
-        sizeof(uint32_t)];
+    uint32_t    msg[_OWP_TEST_REQUEST_PREAMBLE_SIZE / sizeof(uint32_t)];
 
     hdr_ret->header = 0;
 

@@ -238,6 +238,19 @@ for a test packet in \fIauthenticated\fR or \fIencrypted\fR mode is 32 bytes.
 0 (bytes)
 .RE
 .TP
+\fB\-t\fR
+.br
+Indicates that \fBpowstream\fR should set up sender-side \fBOWAMP\fR
+test sessions instead of the default receiver-side sessions.
+This mode of operation is more problematic because intermediate summary
+data must be fetched from the remote server on regular intervals using
+an additional socket connection instead of just summarizing portions
+of a local data file.
+.RS
+.IP Default:
+unset
+.RE
+.TP
 \fB\-z\fR \fIdelayStart\fR
 .br
 Time to wait before starting the test. \fBpowstream\fR waits

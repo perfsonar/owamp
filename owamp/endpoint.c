@@ -199,6 +199,8 @@ EndpointFree(
         ep->skiprecfd = -1;
     }
     if(ep->datafile){
+        fflush(ep->datafile);
+        fsync(fileno(ep->datafile));
         fclose(ep->datafile);
         ep->datafile = NULL;
     }
@@ -208,6 +210,8 @@ EndpointFree(
     }
 
     if(ep->userfile){
+        fflush(ep->userfile);
+        fsync(fileno(ep->userfile));
         _OWPCallCloseFile(ep->cntrl,ep->tsession->closure,ep->userfile,
                 aval);
         ep->userfile = NULL;
@@ -2023,7 +2027,7 @@ run_receiver(
      * get the real starttime.
      */
     memset(&hdr,0,sizeof(hdr));
-    hdr.finished = OWP_SESSION_FINISHED_ERROR;
+    hdr.finished = finished;
     memcpy(&hdr.sid,ep->tsession->sid,sizeof(hdr.sid));
 
     if( !(lsaddr = I2AddrSAddr(ep->tsession->sender,&lsaddrlen))){

@@ -1175,6 +1175,7 @@ OWPDPolicyInstall(
     OWPGetPFFunc                getpf = OWPDGetPF;
     OWPCheckControlPolicyFunc   checkcontrolfunc = OWPDCheckControlPolicy;
     OWPCheckTestPolicyFunc      checktestfunc = OWPDCheckTestPolicy;
+    OWPCheckFetchPolicyFunc     checkfetchfunc = OWPDCheckFetchPolicy;
     OWPTestCompleteFunc         testcompletefunc = OWPDTestComplete;
     OWPOpenFileFunc             openfilefunc = OWPDOpenFile;
     OWPCloseFileFunc            closefilefunc = OWPDCloseFile;
@@ -1317,6 +1318,10 @@ OWPDPolicyInstall(
     }
     if(!OWPContextConfigSetF(ctx,OWPCheckTestPolicy,
                 (OWPFunc)checktestfunc)){
+        return NULL;
+    }
+    if(!OWPContextConfigSetF(ctx,OWPCheckFetchPolicy,
+                (OWPFunc)checkfetchfunc)){
         return NULL;
     }
     if(!OWPContextConfigSetF(ctx,OWPTestComplete,
@@ -2246,23 +2251,45 @@ OWPDCheckControlPolicy(
  */
 #define OWPDPOLICY_KEYLEN   64
 #define OWPDPOLICY_FILEINFO "OWPDPOLICY_FILEINFO"
-typedef struct OWPDFileInfoRec{
+typedef struct OWPDFileInformationRec{
+    OWPDPolicyNode  node;   /* node specific to file, not connection */
     FILE            *fp;
     char            filepath[PATH_MAX+1];
     char            linkpath[PATH_MAX+1];
-    OWPDPolicyNode  node;
-} OWPDFileInfoRec, *OWPDFileInfo;
+} OWPDFileInformationRec, *OWPDFileInformation;
+
+/*
+ * Enum used to keep track of the 'type' of the structure union
+ */
+typedef enum {OWPDINFO_INVALID=0,OWPDINFO_FETCH,OWPDINFO_TEST} OWPDInfoType;
 
 /*
  * This structure is returned in the "closure" pointer of the CheckTestPolicy
  * pointer - and provided to the Open/Close file functions as well as the
  * TestComplete function.
  */
-typedef struct OWPDTestInfoRec{
-    OWPDPolicyNode  node;
-    OWPDFileInfo    finfo;
-    OWPDLimRec      res[2];        /* 0=bandwidth,1=disk */
-} OWPDTestInfoRec, *OWPDTestInfo;
+typedef struct OWPDInfoTestRec{
+    OWPDInfoType        itype;
+    OWPDPolicyNode      node;
+    OWPDFileInformation finfo;
+    OWPDLimRec          res[2];        /* 0=bandwidth,1=disk */
+} OWPDInfoTestRec, *OWPDInfoTest;
+
+typedef struct OWPDInfoFetchRec{
+    OWPDInfoType        itype;
+    OWPDPolicyNode      node;
+    OWPDFileInformation finfo;
+    uint32_t            begin;
+    uint32_t            end;
+} OWPDInfoFetchRec, *OWPDInfoFetch;
+
+union OWPDInfoRequestUnion{
+    OWPDInfoType        itype;
+    OWPDInfoTestRec     test;
+    OWPDInfoFetchRec    fetch;
+};
+
+typedef union OWPDInfoRequestUnion OWPDInfoRequestRec, *OWPDInfoRequest;
 
 OWPBoolean
 OWPDCheckTestPolicy(
@@ -2278,7 +2305,7 @@ OWPDCheckTestPolicy(
 {
     OWPContext      ctx = OWPGetContext(cntrl);
     OWPDPolicyNode  node;
-    OWPDTestInfo    tinfo;
+    OWPDInfoTest    tinfo;
     OWPDMesgT       ret;
 
     *err_ret = OWPErrOK;
@@ -2295,12 +2322,13 @@ OWPDCheckTestPolicy(
     }
 
 
-    if(!(tinfo = calloc(1,sizeof(OWPDTestInfoRec)))){
-        OWPError(ctx,OWPErrFATAL,errno,"calloc(1,OWPDTestInfoRec): %M");
+    if(!(tinfo = calloc(1,sizeof(OWPDInfoTestRec)))){
+        OWPError(ctx,OWPErrFATAL,errno,"calloc(1,OWPDInfoTestRec): %M");
         *err_ret = OWPErrFATAL;
         return False;
     }
 
+    tinfo->itype = OWPDINFO_TEST;
     tinfo->node = node;
 
     /*
@@ -2348,6 +2376,59 @@ done:
     return False;
 }
 
+OWPBoolean
+OWPDCheckFetchPolicy(
+        OWPControl      cntrl,
+        struct sockaddr *local_sa_addr      __attribute__((unused)),
+        struct sockaddr *remote_sa_addr     __attribute__((unused)),
+        socklen_t       sa_len              __attribute__((unused)),
+        uint32_t        begin,
+        uint32_t        end,
+        OWPSID          sid                 __attribute__((unused)),
+        void            **closure,
+        OWPErrSeverity  *err_ret
+        )
+{
+    OWPContext      ctx = OWPGetContext(cntrl);
+    OWPDPolicyNode  node;
+    OWPDInfoFetch   fetch;
+
+    *err_ret = OWPErrOK;
+
+    /*
+     * Fetch the "user class" for this connection.
+     */
+    if(!(node = (OWPDPolicyNode)OWPControlConfigGetV(cntrl,
+                    OWPDPOLICY_NODE))){
+        OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
+                "OWPDCheckTestPolicy: OWPDPOLICY_NODE not set");
+        *err_ret = OWPErrFATAL;
+        return False;
+    }
+
+    /*
+     * Could implement something here that only allowed the user-class
+     * that created the data to fetch it, but for now this function
+     * is only used to keep track of what was actually requested so
+     * the CloseFile function can properly implement delete_on_fetch
+     * functionality. (Only delete the file if the entire file is
+     * requested.)
+     */
+    if(!(fetch = calloc(1,sizeof(OWPDInfoFetchRec)))){
+        OWPError(ctx,OWPErrFATAL,errno,"calloc(1,OWPDInfoFetchRec): %M");
+        *err_ret = OWPErrFATAL;
+        return False;
+    }
+
+    fetch->itype = OWPDINFO_FETCH;
+    fetch->node = node;
+    fetch->begin = begin;
+    fetch->end = end;
+
+    *closure = fetch;
+    return True;
+}
+
 extern void
 OWPDTestComplete(
         OWPControl      cntrl       __attribute__((unused)),
@@ -2355,8 +2436,17 @@ OWPDTestComplete(
         OWPAcceptType   aval        __attribute__((unused))
         )
 {
-    OWPDTestInfo    tinfo = (OWPDTestInfo)closure;
+    OWPDInfoRequest rinfo = (OWPDInfoRequest)closure;
+    OWPDInfoTest    tinfo = NULL;
     int             i;
+
+    if(!rinfo || (rinfo->itype != OWPDINFO_TEST)){
+        OWPError(OWPGetContext(cntrl),OWPErrFATAL,OWPErrINVALID,
+                "OWPDTestComplete: Invalid closure");
+        return;
+    }
+
+    tinfo = &rinfo->test;
 
     for(i=0;i<2;i++){
         if(!tinfo->res[i].limit){
@@ -2364,6 +2454,11 @@ OWPDTestComplete(
         }
         (void)OWPDQuery(tinfo->node->policy,OWPDMESGRELEASE,
                         tinfo->res[i]);
+    }
+
+    if(tinfo->finfo){
+        OWPError(OWPGetContext(cntrl),OWPErrWARNING,OWPErrUNKNOWN,
+                "OWPDTestComplete: finfo not closed?");
     }
 
     free(tinfo);
@@ -2394,41 +2489,42 @@ OWPDOpenFile(
         char        fname_ret[PATH_MAX+1]
         )
 {
-    OWPContext      ctx = OWPGetContext(cntrl);
-    OWPDTestInfo    tinfo = (OWPDTestInfo)closure;
-    OWPDFileInfo    finfo;
-    OWPDPolicyNode  node;
-    char            sid_name[sizeof(OWPSID)*2+1];
-    char            key_name[OWPDPOLICY_KEYLEN];
+    OWPContext          ctx = OWPGetContext(cntrl);
+    OWPDInfoRequest     rinfo = (OWPDInfoRequest)closure;
+    OWPDInfoTest        tinfo = NULL;
+    OWPDInfoFetch       xinfo;
+    OWPDFileInformation finfo;
+    OWPDPolicyNode      node;
+    char                sid_name[sizeof(OWPSID)*2+1];
 
-    if(tinfo){
-        node = tinfo->node;
-    }
-    else if(!(node = (OWPDPolicyNode)OWPControlConfigGetV(cntrl,
-                    OWPDPOLICY_NODE))){
+    if(!rinfo || (rinfo->itype == OWPDINFO_INVALID)){
         OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
-                "OWPDOpenFile: OWPDPOLICY_NODE not set");
+                "OWPDOpenFile: closure not set");
         return NULL;
     }
-
-    if(!(finfo = (calloc(1,sizeof(*finfo))))){
-        OWPError(ctx,OWPErrFATAL,errno,"calloc(OWPDFileInfo): %M");
-        return NULL;
-    }
-
-    /*
-     * Now place pathname to catalog dir in finfo->linkpath.
-     */
-    strcpy(finfo->linkpath,node->policy->datadir);
-    strcat(finfo->linkpath,OWP_PATH_SEPARATOR);
-    strcat(finfo->linkpath,OWP_CATALOG_DIR);
 
     /*
      * Hex Encode the sid.
      */
     I2HexEncode(sid_name,sid,sizeof(OWPSID));
 
-    if(tinfo){
+    if(!(finfo = (calloc(1,sizeof(*finfo))))){
+        OWPError(ctx,OWPErrFATAL,errno,"calloc(OWPDFileInformation): %M");
+        return NULL;
+    }
+
+    if(rinfo->itype == OWPDINFO_TEST){
+        tinfo = &rinfo->test;
+
+        node = tinfo->node;
+
+        /*
+         * Now place pathname to catalog dir in finfo->linkpath.
+         */
+        strcpy(finfo->linkpath,node->policy->datadir);
+        strcat(finfo->linkpath,OWP_PATH_SEPARATOR);
+        strcat(finfo->linkpath,OWP_CATALOG_DIR);
+
         finfo->node = tinfo->node;
 
         /*
@@ -2489,12 +2585,22 @@ OWPDOpenFile(
          */
         tinfo->finfo = finfo;
     }
-    else{
+    else if(rinfo->itype == OWPDINFO_FETCH){
         int     len1,len2;
         char    tc;
         char    *dname;
         I2Datum key,val;
 
+        xinfo = &rinfo->fetch;
+
+        node = xinfo->node;
+
+        /*
+         * Now place pathname to catalog dir in finfo->linkpath.
+         */
+        strcpy(finfo->linkpath,node->policy->datadir);
+        strcat(finfo->linkpath,OWP_PATH_SEPARATOR);
+        strcat(finfo->linkpath,OWP_CATALOG_DIR);
         strcat(finfo->linkpath,OWP_PATH_SEPARATOR);
         strcat(finfo->linkpath,sid_name);
         strcat(finfo->linkpath,OWP_FILE_EXT);
@@ -2600,21 +2706,13 @@ OWPDOpenFile(
             strcpy(fname_ret,finfo->linkpath);
         }
 
-        /*
-         * finfo is stored in the ControlConfig hash for later
-         * in the "fetch-session" mode.
-         *
-         * key_name char buffer is used for a "name" for this finfo.
-         * key_name is plenty large for "FILE:$fd" (Even if fd is 32 bit
-         * MAXINT).
-         */
-        snprintf(key_name,sizeof(key_name),"%s%d",OWPDPOLICY_FILEINFO,
-                fileno(finfo->fp));
-        if(!OWPControlConfigSetV(cntrl,key_name,finfo)){
-            goto error;
-        }
+        xinfo->finfo = finfo;
     }
-
+    else{
+        OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
+                "OWPDOpenFile: invalid closure");
+        goto error;
+    }
 
     return finfo->fp;
 
@@ -2655,25 +2753,33 @@ OWPDCloseFile(
         OWPControl      cntrl,
         void            *closure,
         FILE            *fp,
-        OWPAcceptType   aval        __attribute__((unused))
+        OWPAcceptType   aval
         )
 {
-    OWPDTestInfo    tinfo = (OWPDTestInfo)closure;
-    OWPDFileInfo    finfo;
-    char            key_name[OWPDPOLICY_KEYLEN];
-    OWPContext      ctx = OWPGetContext(cntrl);
-    struct stat     sbuf;
-    OWPDMesgT       mesg,ret;
-    OWPDLimRec      lim;
+    OWPDInfoRequest     rinfo = (OWPDInfoRequest)closure;
+    OWPDInfoTest        tinfo = NULL;
+    OWPDInfoFetch       xinfo = NULL;
+    OWPDFileInformation finfo = NULL;
+    OWPContext          ctx = OWPGetContext(cntrl);
+    struct stat         sbuf;
+    OWPDMesgT           mesg,ret;
+    OWPDLimRec          lim;
+
+    if(!rinfo || (rinfo->itype == OWPDINFO_INVALID)){
+        OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
+                "OWPDCloseFile: closure not set");
+        return;
+    }
 
     /*
-     * if tinfo - this file was the result of a receive test endpoint.
+     * File was from a TestRequest
      */
-    if(tinfo){
+    if(rinfo->itype == OWPDINFO_TEST){
         /*
          * This was a receive endpoint. revise resource
          * request to reality.
          */
+        tinfo = &rinfo->test;
         finfo = tinfo->finfo;
         tinfo->finfo = NULL;
 
@@ -2750,29 +2856,22 @@ OWPDCloseFile(
     /*
      * otherwise - this is a fetch-session target file.
      */
-    else{
-        snprintf(key_name,sizeof(key_name),"%s%d",OWPDPOLICY_FILEINFO,
-                fileno(fp));
-        if((finfo =(OWPDFileInfo)OWPControlConfigGetV(cntrl,key_name))){
-            /*
-             * Delete the finfo record from the hash
-             */
-            (void)OWPControlConfigDelete(cntrl,key_name);
-        }
-        else{
-            OWPError(ctx,OWPErrWARNING,OWPErrINVALID,
-                    "OWPDCloseFile: OWPDPOLICY_FILEINFO(%d) unset",fileno(fp));
-            goto end;
-        }
+    else if(rinfo->itype == OWPDINFO_FETCH){
+        xinfo = &rinfo->test;
+        finfo = xinfo->finfo;
+        xinfo->finfo = NULL;
 
         /*
          * Check for the delete_on_fetch option...
          *
-         * finfo->node is not necessarily the same node as from
-         * this control connection. It was determined based upon
-         * the filepath in the OpenFile func.
+         * Only delete if this fetch was successful for the complete session,
+         * and the delete_on_fetch option is specified for the
+         * files limit_class definition.
+         *
          */
-        if(GetLimit(finfo->node,OWPDLimDeleteOnFetch)){
+        if((xinfo->begin == 0) && (xinfo->end == 0xFFFFFFFF) &&
+                (aval == OWP_CNTRL_ACCEPT) &&
+                GetLimit(finfo->node,OWPDLimDeleteOnFetch)){
             /*
              * stat the file to determine the size so the resources
              * associated with this file can be released.
@@ -2804,6 +2903,12 @@ end:
     if(tinfo){
         tinfo->res[1].limit = 0;
         tinfo->res[1].value = 0;
+    }
+    if(finfo){
+        free(finfo);
+    }
+    if(xinfo){
+        free(xinfo);
     }
     if(fclose(fp) != 0){
         OWPError(ctx,OWPErrFATAL,errno,"fclose(): %M");

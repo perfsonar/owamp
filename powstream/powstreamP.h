@@ -74,6 +74,7 @@ typedef        struct {
         double      lossThreshold;      /* -L (seconds) */
         double      meanWait;           /* -i  (seconds) */
         uint32_t    padding;            /* -s */
+        OWPBoolean  sender;             /* -t */
 
         char        *savedir;           /* -d */
         I2Boolean   printfiles;         /* -p */
@@ -92,9 +93,11 @@ typedef        struct {
     char            *remote_test;
     char            *remote_serv;
 
-    uint32_t       auth_mode;
+    uint32_t        auth_mode;
 
     OWPContext      lib_ctx;
+
+    OWPControl      cntrl;
 
 } powapp_trec, *powapp_t;
 

@@ -389,6 +389,8 @@ write_session(
     FILE                *fp = NULL;
     OWPBoolean          dotf = False;
     OWPStats            stats = NULL;
+    int                 rc;
+    OWPErrSeverity      ec;
 
     /*
      * If this session does not have a started session, or the
@@ -398,10 +400,47 @@ write_session(
         return;
 
     /*
-     * XXX: if "send", truncate testfp, refill it using full Fetch of
-     * data. (Must be before the ControlClose below in case the server
-     * deletes the data on 'close'.)
+     * If sender session - data needs to be fetched from the remote server.
      */
+    if(appctx.opt.sender){
+        uint32_t    num_rec;
+
+        /*
+         * If there is no file or cntrl record to fetch the data
+         * give up.
+         */
+        if(!p->testfp || !appctx.cntrl)
+            return;
+
+        /*
+         * Move file pointer to beginning and set file size to zero
+         * before Fetching data.
+         */
+        if(fseeko(p->testfp,0,SEEK_SET) != 0){
+            I2ErrLog(eh,"fseeko(): %M");
+            return;
+        }
+        if((rc = ftruncate(fileno(p->testfp),0)) != 0){
+            I2ErrLog(eh,"write_session(): ftruncate(): %M");
+            return;
+        }
+
+        /*
+         * Fetch the data and put it in testfp
+         */
+        num_rec = OWPFetchSession(appctx.cntrl,p->testfp,
+                0,(uint32_t)0xFFFFFFFF,p->sid,&ec);
+        if(!num_rec){
+            if(ec >= OWPErrWARNING){
+                /*
+                 * Server denied request - report error
+                 */
+                I2ErrLog(eh,"write_session(): OWPFetchSession(): Server denied request for full session data");
+            }
+
+            return;
+        }
+    }
 
     (void)OWPReadDataHeader(p->ctx,p->fp,&hdr);
     if( !hdr.header){
@@ -724,15 +763,21 @@ ResetSession(
             (void)OWPStopSessions(p->cntrl,&pow_intr,&aval);
     }
 
+    /*
+     * Output "early-terminated" owp file - must be before the ControlClose
+     * for 'sender' sessions so OWPFetchSession can be called.
+     */
+    write_session(p,aval,True);
+
+    if(appctx.cntrl){
+        OWPControlClose(appctx.cntrl);
+        appctx.cntrl = NULL;
+    }
+
     if(p->cntrl){
         OWPControlClose(p->cntrl);
         p->cntrl = NULL;
     }
-
-    /*
-     * Output "early-terminated" owp file
-     */
-    write_session(p,aval,True);
 
     if(p->fp){
         fclose(p->fp);
@@ -756,12 +801,6 @@ CloseSessions()
 {
     ResetSession(&pcntrl[0],&pcntrl[1]);
     ResetSession(&pcntrl[1],&pcntrl[0]);
-    if(pcntrl[0].cntrl)
-        OWPControlClose(pcntrl[0].cntrl);
-    if(pcntrl[1].cntrl)
-        OWPControlClose(pcntrl[1].cntrl);
-    pcntrl[0].cntrl = NULL;
-    pcntrl[1].cntrl = NULL;
 
     return;
 }
@@ -837,6 +876,29 @@ SetupSession(
 
     if(p->numPackets)
         return 0;
+
+    /*
+     * First open a 'fetch' connection if we don't have one.
+     */
+    while(appctx.opt.sender && !appctx.cntrl){
+
+        if(!(appctx.cntrl = OWPControlOpen(ctx,
+                        I2AddrByNode(eh, appctx.opt.srcaddr),
+                        I2AddrByNode(eh, appctx.remote_serv),
+                        appctx.auth_mode,appctx.opt.identity,
+                        NULL,&err))){
+            if(sig_check()) return 1;
+            stime = MIN(sessionTime,SETUP_ESTIMATE);
+            I2ErrLog(eh,"OWPControlOpen(): %M:Retry in-%d seconds",
+                    stime);
+            while((stime = sleep(stime))){
+                if(sig_check()) return 1;
+            }
+            if(sig_check()) return 1;
+        }
+    }
+    if(sig_check())
+        return 1;
 
     /*
      * First open a connection if we don't have one.
@@ -965,24 +1027,34 @@ SetupSession(
         return 1;
 
     /*
-     * XXX: If "sender", call OWPSessionRequest with no fp - still create
-     * testfp above because Fetch will be called in sessionsum loop and
-     * testfp will be used to fill it.
-     */
-
-    /*
      * Make the actual request for the test specifying the testfp
-     * to hold the results.
+     * to hold the results if receiver. (testfp still used to hold
+     * data that is fetched using OWPFetchSession for sender sessions)
      */
     tspec.start_time = *p->nextSessionStart;
-    if(!OWPSessionRequest(p->cntrl,I2AddrByNode(eh,appctx.remote_test),
-                True, NULL, False,(OWPTestSpec*)&tspec,p->testfp,p->sid,&err)){
-        I2ErrLog(eh,"OWPSessionRequest: Failed");
-        if(err == OWPErrFATAL){
-            OWPControlClose(p->cntrl);
-            p->cntrl = NULL;
+    if(appctx.opt.sender){
+        if(!OWPSessionRequest(p->cntrl,NULL,False,
+                    I2AddrByNode(eh,appctx.remote_test),True,
+                    (OWPTestSpec*)&tspec,NULL,p->sid,&err)){
+            I2ErrLog(eh,"OWPSessionRequest: Failed");
+            if(err == OWPErrFATAL){
+                OWPControlClose(p->cntrl);
+                p->cntrl = NULL;
+            }
+            goto file_clean;
         }
-        goto file_clean;
+    }
+    else{
+        if(!OWPSessionRequest(p->cntrl,I2AddrByNode(eh,appctx.remote_test),
+                    True, NULL, False,(OWPTestSpec*)&tspec,p->testfp,
+                    p->sid,&err)){
+            I2ErrLog(eh,"OWPSessionRequest: Failed");
+            if(err == OWPErrFATAL){
+                OWPControlClose(p->cntrl);
+                p->cntrl = NULL;
+            }
+            goto file_clean;
+        }
     }
     if(sig_check())
         return 1;
@@ -1069,7 +1141,7 @@ main(
     char                *endptr = NULL;
     char                optstring[128];
     static char         *conn_opts = "A:k:S:u:";
-    static char         *test_opts = "c:E:i:L:s:z:";
+    static char         *test_opts = "c:E:i:L:s:tz:";
     static char         *out_opts = "b:d:e:N:pRv";
     static char         *gen_opts = "hw";
     static char         *posixly_correct="POSIXLY_CORRECT=True";
@@ -1125,7 +1197,7 @@ main(
                 break;
             case 'v':
                 appctx.opt.verbose++;
-                /* fallthrough */
+                break;
             case 'R':
                 syslogattr.logopt &= ~LOG_PERROR;
                 break;
@@ -1193,6 +1265,9 @@ main(
                             "Invalid value. Positive integer expected");
                     exit(1);
                 }
+                break;
+            case 't':
+                appctx.opt.sender = True;
                 break;
             case 'z':
                 appctx.opt.delayStart = strtoul(optarg,&endptr,10);
@@ -1509,7 +1584,7 @@ main(
     while(1){
         pow_cntrl       p,q;
         OWPAcceptType   aval;
-        uint32_t       sum;
+        uint32_t        sum;
         OWPNum64        stopnum;
         OWPNum64        startnum,lastnum;
         char            tfname[PATH_MAX];
@@ -1691,13 +1766,69 @@ AGAIN:
             p->session_started = True;
 
             /*
-             * XXX: If "sender", trunc testfp, then Fetch records for
+             * If "sender" then Fetch records for
              * just this sub-session from remote side into the file.
              * -- initialize special 'send' control pointer if needed
              * (if can't - don't fail on the error. This allows long-lived
              * sessions to survive temporary network problems and show
              * the loss! - just goto 'cleanup')
              */
+            if(appctx.opt.sender){
+                /*
+                 * Delete the stats record if it exists - this will
+                 * effectively create a new file, so the stats record
+                 * is no longer valid.
+                 */
+                if(stats){
+                    OWPStatsFree(stats);
+                    stats = NULL;
+                }
+
+                /*
+                 * Move file pointer to beginning and set file size to zero
+                 * before Fetching data.
+                 */
+                if(fseeko(p->testfp,0,SEEK_SET) != 0){
+                    I2ErrLog(eh,"fseeko(): %M");
+                    break;
+                }
+                if((rc = ftruncate(fileno(p->testfp),0)) != 0){
+                    I2ErrLog(eh,"write_session(): ftruncate(): %M");
+                    break;
+                }
+                /*
+                 * Refresh read-only file pointer due to above trunc
+                 */
+                if(fflush(p->fp) != 0){
+                    I2ErrLog(eh,"fflush(): %M");
+                    break;
+                }
+
+                /*
+                 * Fetch the data and put it in testfp
+                 */
+                nrecs = OWPFetchSession(appctx.cntrl,p->testfp,
+                        appctx.opt.numBucketPackets*sum,
+                        (appctx.opt.numBucketPackets*(sum+1))-1,
+                        p->sid,&err_ret);
+                if(!nrecs){
+                    if(err_ret >= OWPErrWARNING){
+                        /*
+                         * Server denied request - report error
+                         */
+                        I2ErrLog(eh,"write_session(): OWPFetchSession(): Server denied request for session data seq_no[%llu-%llu]",
+                                appctx.opt.numBucketPackets*sum,
+                                appctx.opt.numBucketPackets*(sum+1));
+                    }
+                    /*
+                     * If this fails - continue to next summary
+                     * so we see packet loss during temporary network
+                     * failures.
+                     */
+                    continue;
+                }
+
+            }
 
             /*
              * This section reads the packet records

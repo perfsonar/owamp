@@ -149,15 +149,15 @@ typedef enum{
 } OWPDPidType;
 
 typedef struct{
-    OWPDPidType     id_type;
-    uint8_t        mask_len;
-    size_t          addrsize;
-    uint8_t        addrval[16];
+    OWPDPidType id_type;
+    uint8_t     mask_len;
+    size_t      addrsize;
+    uint8_t     addrval[16];
 } OWPDPidNetmask;
 
 typedef struct{
-    OWPDPidType     id_type;
-    OWPUserID       userid;
+    OWPDPidType id_type;
+    OWPUserID   userid;
 } OWPDPidUser;
 
 typedef union OWPDPidUnion{
@@ -336,6 +336,19 @@ OWPDCheckTestPolicy(
         struct sockaddr *remote_saddr,
         socklen_t       sa_len,
         OWPTestSpec     *test_spec,
+        void            **closure,
+        OWPErrSeverity  *err_ret
+        );
+
+extern OWPBoolean
+OWPDCheckFetchPolicy(
+        OWPControl      cntrl,
+        struct sockaddr *local_saddr,
+        struct sockaddr *remote_saddr,
+        socklen_t       sa_len,
+        uint32_t        begin,
+        uint32_t        end,
+        OWPSID          sid,
         void            **closure,
         OWPErrSeverity  *err_ret
         );

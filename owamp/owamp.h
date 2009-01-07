@@ -576,12 +576,6 @@ typedef OWPBoolean (*OWPCheckControlPolicyFunc)(
  * purpose of this pointer is to keep track of resources that are "reserved"
  * from this function - allowing the other functions to "free" or modify
  * those resource reservations.
- *
- * NOTE: Even if the application does not use the "closure" pointer to keep
- * track of resources - it should set the closure to a non-NULL value upon
- * return so the OpenFile function knows the file is being opened for
- * writing (a receiver context) and not being opened for reading (a fetch
- * context).
  */
 #define OWPCheckTestPolicy        "OWPCheckTestPolicy"
 typedef OWPBoolean (*OWPCheckTestPolicyFunc)(
@@ -591,6 +585,38 @@ typedef OWPBoolean (*OWPCheckTestPolicyFunc)(
         struct sockaddr *remote_sa_addr,
         socklen_t       sa_len,
         OWPTestSpec     *test_spec,
+        void            **closure,
+        OWPErrSeverity  *err_ret
+        );
+
+/*
+ * This function will be called by OWPProcessFetchSession to implement
+ * the 'policy' decision if the fetch request should be allowed.
+ * If err_ret returns OWPErrFATAL, OWPProcessFetchSession
+ * will not continue, and return OWPErrFATAL as well.
+ *
+ * Only the IP address values will be set in the sockaddr structures -
+ * i.e. port numbers will not be valid.
+ *
+ * If an application doesn't set this, all data that is buffered
+ * that can be found, will be returned.
+ *
+ * The application can use the "closure" pointer to store data that will
+ * be passed onto the Open/Close and TestComplete functions. The intended
+ * purpose of this pointer is to keep track of resources that are "reserved"
+ * from this function - allowing the other functions to "free" or modify
+ * those resource reservations.
+ *
+ */
+#define OWPCheckFetchPolicy        "OWPCheckFetchPolicy"
+typedef OWPBoolean (*OWPCheckFetchPolicyFunc)(
+        OWPControl      cntrl,
+        struct sockaddr *local_sa_addr,
+        struct sockaddr *remote_sa_addr,
+        socklen_t       sa_len,
+        uint32_t        begin,
+        uint32_t        end,
+        OWPSID          sid,
         void            **closure,
         OWPErrSeverity  *err_ret
         );
@@ -1507,11 +1533,11 @@ OWPStatsCreate(
 
 extern OWPBoolean
 OWPStatsParse(
-        OWPStats    stats,
-        FILE        *output,
-        off_t       begin_oset,
-        uint32_t   first,
-        uint32_t   last
+        OWPStats    stats,          /* Stats record */
+        FILE        *output,        /* Print packet records here */
+        off_t       begin_oset,     /* Hint:start offset - multistage parsing */
+        uint32_t   first,           /* first seq num inclusive */
+        uint32_t   last             /* last seq num non-inclusive */
         );
 
 extern OWPBoolean

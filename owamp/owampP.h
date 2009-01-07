@@ -844,6 +844,19 @@ _OWPCallCheckTestPolicy(
         OWPErrSeverity  *err_ret        /* error - return           */
         );
 
+extern OWPBoolean
+_OWPCallCheckFetchPolicy(
+        OWPControl      cntrl,          /* control handle           */
+        struct sockaddr *local,         /* local endpoint           */
+        struct sockaddr *remote,        /* remote endpoint          */
+        socklen_t       sa_len,         /* saddr sizes              */
+        uint32_t        begin,          /* first seq_no             */
+        uint32_t        end,            /* last seq_no              */
+        OWPSID          sid,            /* sid                      */
+        void            **closure,      /* app data/per test        */
+        OWPErrSeverity  *err_ret        /* error - return           */
+        );
+
 extern void
 _OWPCallTestComplete(
         OWPTestSession  tsession,
@@ -946,7 +959,7 @@ _OWPGetTimespec(
         OWPContext      ctx,
         struct timespec *ts,
         uint32_t       *esterr,
-        uint8_t        *sync
+        uint8_t        *synchronized
         );
 
 /*
