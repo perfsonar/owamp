@@ -27,7 +27,7 @@
 owstats \- Command line application used to parse \fBOWAMP\fR data files.
 .SH SYNOPSIS
 .B owstats 
-[\fIoptions\fR] datafile.owp
+[\fIoptions\fR] datafile.owp [datafile2.owp ...]
 .SH DESCRIPTION
 \fBowstats\fR is a command line application that is used to parse \fBOWAMP\fR
 data files. It is used to display the results in a number of different
@@ -67,6 +67,10 @@ printed at the end.
 \fBowstats -M datafile.owp\fR
 .IP
 Print out summary statistics in a more computer pars-able format.
+.LP
+\fBowstats datafile1.owp datafile2.owp datafile3.owp\fR
+.IP
+Print out summary statistics for multiple files.
 .SH SEE ALSO
 owampd(8), owping(1), owfetch(1) and the \fBOWAMP\fR web site
 \%(http://e2epi.internet2.edu/owamp/).

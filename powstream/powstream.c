@@ -108,6 +108,7 @@ static void
 print_test_args(){
         fprintf(stderr,
 "              [Test Args]\n\n"
+"   -t             sets the tests direction from client to server\n"
 "   -c count       number of test packets (per complete session)\n"
 "   -E endDelay    time to wait before sending stop-session message\n"
 "   -i wait        mean average time between packets (seconds)\n"

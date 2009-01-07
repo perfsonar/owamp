@@ -136,7 +136,7 @@ usage(
     } else if (!strcmp(progname, "owstats")) {
         fprintf(stderr,
                 "usage: %s %s\n%s\n",
-                progname, "[arguments] sessionfile",
+                progname, "[arguments] sessionfile [sessionfile]*",
                 "[arguments] are as follows: "
                );
         fprintf(stderr,"\n%s\n",
@@ -1857,19 +1857,23 @@ main(
     }
 
     if (!strcmp(progname, "owstats")) {
-        FILE        *fp;
+        int i;
 
-        if(!(fp = fopen(argv[0],"rb"))){
-            I2ErrLog(eh,"fopen(%s): %M",argv[0]);
-            exit(1);
+        for(i = 0; i < argc; i++) {
+            FILE        *fp;
+
+            if(!(fp = fopen(argv[i],"rb"))){
+                I2ErrLog(eh,"fopen(%s): %M",argv[0]);
+                exit(1);
+            }
+
+            if ( do_stats(ctx,fp,NULL,NULL)){
+                I2ErrLog(eh,"do_stats() failed.");
+                exit(1);
+            }
+
+            fclose(fp);
         }
-
-        if ( do_stats(ctx,fp,NULL,NULL)){
-            I2ErrLog(eh,"do_stats() failed.");
-            exit(1);
-        }
-
-        fclose(fp);
 
         exit(0);
     }

@@ -951,9 +951,6 @@ read_file:
             }
             fflush(fp);
 
-            OWPError(cntrl->ctx,OWPErrINFO,EAGAIN,
-                    "OWPProcessFetchSession(\"%s\"): Session not yet terminated, waiting for session finish",
-                    fname);
             // unlock the file since we'll need to retry
             memset(&flk,0,sizeof(flk));
             flk.l_start = 0;
