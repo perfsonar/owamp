@@ -103,6 +103,7 @@ lb lb
 _ _
 lb li .
 OWAMP Environment Variable	Description
+
 OWAMP_DEBUG_TIMEOFFSET	Offset time by this amount (float)
 .TE
 .SH EXAMPLES
