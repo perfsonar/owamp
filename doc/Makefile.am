@@ -24,7 +24,7 @@ dist_man5_MANS = owampd.conf.man owampd.limits.man owampd.pfs.man
 dist_man8_MANS = owampd.man
 
 EXTRA_DIST = index.html details.html owamp_arch.png milestones.html \
-	     draft-shalunov-reordering-definition-02.txt \
+	     draft-shalunov-reordering-definition-02.txt owamp_infosheet.pdf \
 	     owping_conn_opts.man owping_report.man owping_out_opts.man \
 	     owping_test_opts.man owping.ms owstats.ms owfetch.ms owup.ms
 
