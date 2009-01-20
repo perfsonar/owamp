@@ -40,7 +40,7 @@ SUFFIXES = .man .ms
 if HAVE_MAN2HTML
 SUFFIXES += .man.html
 .man.man.html:
-	man2html -r $< > $@
+	man2html -r $< | grep -v Content-type | sed -e 's/..\/man[0-9]\///g' | sed -e 's/\.[0-9]\.html/.man.html/g' | sed -e 's/\.\.\///g' > $@
 
 EXTRA_DIST += owampd.conf.man.html owampd.limits.man.html owampd.man.html owampd.pfs.man.html owfetch.man.html owping_conn_opts.man.html owping.man.html owping_out_opts.man.html owping_report.man.html owping_test_opts.man.html owstats.man.html owup.man.html powstream.man.html
 endif
