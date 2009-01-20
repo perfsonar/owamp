@@ -1583,6 +1583,7 @@ int main(
     if(mypid > 0){
 
         /* Record pid.  */
+        ftruncate(pid_fd, 0);
         fprintf(pid_fp, "%lld\n", (long long)mypid);
         if (fflush(pid_fp) < 0) {
             I2ErrLogP(errhand, errno, "fflush: %M");
