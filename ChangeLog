@@ -1,4 +1,74 @@
 ------------------------------------------------------------------------
+r1046 | aaron | 2009-01-20 17:08:40 -0500 (Tue, 20 Jan 2009) | 3 lines
+
+Update the man2html part of the Makefile and use the newly tagged I2util external
+
+
+------------------------------------------------------------------------
+r1045 | aaron | 2009-01-20 08:01:46 -0500 (Tue, 20 Jan 2009) | 8 lines
+
+Truncate the PID file before printing the PID to it. This fixes an issue where a high PID process would get restarted and the new instance would have a low PID. The pid file would then look like:
+
+283
+8
+
+This would not work all that well.
+
+
+------------------------------------------------------------------------
+r1041 | aaron | 2009-01-12 09:46:23 -0500 (Mon, 12 Jan 2009) | 3 lines
+
+man2html seems to ignore the first line of a table, so move the environmental variable descriptions down a line so that it'll show.
+
+
+------------------------------------------------------------------------
+r1040 | aaron | 2009-01-12 07:54:12 -0500 (Mon, 12 Jan 2009) | 3 lines
+
+Add infosheet to the doc directory. 
+
+
+------------------------------------------------------------------------
+r1039 | aaron | 2009-01-07 14:38:08 -0500 (Wed, 07 Jan 2009) | 5 lines
+
+Silence a warning on a race condition (an error occurs if it's not just a simple race condition, so it shouldn't be an issue).
+Add a line in the help describing the "-t" command
+Allow you to specify more than one file for owstats and have them processed in order (modifies the man page to that effect).
+
+
+------------------------------------------------------------------------
+r1038 | aaron | 2009-01-07 12:33:42 -0500 (Wed, 07 Jan 2009) | 3 lines
+
+Merge in the changes from the powstream_sender branch.
+
+
+------------------------------------------------------------------------
+r1037 | aaron | 2008-12-18 15:08:07 -0500 (Thu, 18 Dec 2008) | 3 lines
+
+Minor spec file updates
+
+
+------------------------------------------------------------------------
+r1036 | aaron | 2008-12-18 13:20:47 -0500 (Thu, 18 Dec 2008) | 5 lines
+
+Update the documentation with the new fixes
+Use "ChangeLog" instead of "CHANGELOG" to make it more like bwctl
+Add a "CHANGES" file like bwctl has
+
+
+------------------------------------------------------------------------
+r1035 | aaron | 2008-12-18 13:04:21 -0500 (Thu, 18 Dec 2008) | 3 lines
+
+Put in a dependency for the owamp-server on the I2util rpm since it has utilities (pfstore) that are needed for the server
+
+
+------------------------------------------------------------------------
+r1034 | aaron | 2008-12-18 09:48:09 -0500 (Thu, 18 Dec 2008) | 4 lines
+
+Update doc/Makefile.am to make sure that the new reordering document, as well as the various .ms files are included.
+Document the default port in the example conf file
+
+
+------------------------------------------------------------------------
 r1033 | boote | 2008-12-16 13:38:51 -0500 (Tue, 16 Dec 2008) | 5 lines
 
 Modified human readable reordering to use 02 definition (%reordering relative
