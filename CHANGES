@@ -9,3 +9,4 @@ version 3.1a
 * RPM support
 * Documentation updates
 * Add packet reordering to -M output
+* Enable powstream to do both inbound and outbound tests
