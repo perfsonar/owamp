@@ -4,7 +4,7 @@ be seen in ChangeLog. The section from just the latest release
 can be seen in the main index.html bwctl documentation page in
 the doc dir.
 
-version 3.1a
+version 3.1
 * Minor protocol compliance fixes
 * RPM support
 * Documentation updates
