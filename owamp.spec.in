@@ -1,7 +1,7 @@
 Name: owamp
 Summary: owamp - one-way delay tester
 Version: @VERSION@
-Release: 1
+Release: 2
 License: Internet2 License (modified BSD-like)
 Group: *Development/Libraries*
 URL: http://e2epi.internet2.edu/owamp/
@@ -54,7 +54,7 @@ make
 %install
 %makeinstall
 %{__install} -D -p -m 0755 conf/owampd.init %{buildroot}%{_sysconfdir}/rc.d/init.d/owampd
-%{__install} -D -p -m 0755 conf/owampd.limits %{buildroot}%{_sysconfdir}/owampd/bwctld.limits
+%{__install} -D -p -m 0755 conf/owampd.limits %{buildroot}%{_sysconfdir}/owampd/owampd.limits
 %{__install} -D -p -m 0755 conf/owampd.conf %{buildroot}%{_sysconfdir}/owampd/owampd.conf
 
 %clean
@@ -104,5 +104,8 @@ fi
 #%{_includedir}/owamp/*
 
 %changelog
+* Fri Feb 02 2009 aaron@internet2.edu 1.0-2
+- Fix the example owampd.limits location
+
 * Fri Aug 22 2008 aaron@internet2.edu 1.0-1
 - Initial RPM
