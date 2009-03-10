@@ -197,8 +197,9 @@ and both numbers must be valid port values. (16 bit unsigned integer values)
 \fB\-s\fR \fIsize\fR
 .br
 Size of the padding to add to each minimally-sized test packet. The minimal
-size for a test packet in \fIopen\fR mode is 14 bytes. The minimal size
-for a test packet in \fIauthenticated\fR or \fIencrypted\fR mode is 32 bytes.
+UDP payload for a test packet in \fIopen\fR mode is 14 bytes. The minimal
+UDP payload
+for a test packet in \fIauthenticated\fR or \fIencrypted\fR mode is 48 bytes.
 .RS
 .IP Default:
 0 (bytes)
