@@ -1852,11 +1852,9 @@ main(
             I2ErrLog(eh,"close(): %M");
         }
 
-        exit(0);
-
     }
 
-    if (!strcmp(progname, "owstats")) {
+    else if (!strcmp(progname, "owstats")) {
         int i;
 
         for(i = 0; i < argc; i++) {
@@ -1875,10 +1873,9 @@ main(
             fclose(fp);
         }
 
-        exit(0);
     }
 
-    if (!strcmp(progname, "owfetch")) {
+    else if (!strcmp(progname, "owfetch")) {
         int i;
         if((argc%2 == 0) || (argc < 3)){
             usage(progname, NULL);
@@ -1927,10 +1924,9 @@ main(
             if(owp_intr) exit(2);
         }
 
-        exit(0);
     }
 
-    if (!strcmp(progname, "owup")) {
+    else if (!strcmp(progname, "owup")) {
         struct timeval  tval;
         OWPTimeStamp    tstamp;
         struct tm       trec,*tptr;
@@ -1979,8 +1975,10 @@ main(
         /* %03d format string used - need to convert usec's to msec's */
         fprintf(stderr,buf,tval.tv_usec/1000);
 
-        exit(0);
     }
+
+    /* Free all free-able memory and close open sockets. */
+    OWPContextFree(ctx);
 
     exit(0);
 }
