@@ -55,7 +55,7 @@ make
 %makeinstall
 %{__install} -D -p -m 0755 conf/owampd.init %{buildroot}%{_sysconfdir}/rc.d/init.d/owampd
 %{__install} -D -p -m 0755 conf/owampd.limits %{buildroot}%{_sysconfdir}/owampd/owampd.limits
-%{__install} -D -p -m 0755 conf/owampd.conf %{buildroot}%{_sysconfdir}/owampd/owampd.conf
+%{__install} -D -p -m 0755 conf/owampd.rpm.conf %{buildroot}%{_sysconfdir}/owampd/owampd.conf
 
 %clean
 rm -rf $RPM_BUILD_ROOT 
