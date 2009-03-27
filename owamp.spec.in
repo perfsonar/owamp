@@ -1,7 +1,7 @@
 Name: owamp
 Summary: owamp - one-way delay tester
 Version: @VERSION@
-Release: 2
+Release: 4
 License: Internet2 License (modified BSD-like)
 Group: *Development/Libraries*
 URL: http://e2epi.internet2.edu/owamp/
@@ -61,19 +61,26 @@ make
 rm -rf $RPM_BUILD_ROOT 
 
 %post server
-/sbin/chkconfig --add owampd
-/usr/sbin/useradd -r -s /bin/nologin -d /tmp owamp || :
+if [ "$1" = "1" ]; then
+	/sbin/chkconfig --add owampd
+	/usr/sbin/useradd -r -s /bin/nologin -d /tmp owamp || :
+	mkdir -p /var/lib/owamp
+	chown owamp:owamp /var/lib/owamp
+fi
 
 %preun server
-if [ $1 -eq 0 ]; then
+if [ "$1" = "0" ]; then
     /sbin/chkconfig --del owampd
     /sbin/service owampd stop
 fi
 
 %postun server
-/usr/sbin/userdel owamp || :
-if [ $1 -ge 1 ]; then
-    /sbin/service owampd stop
+if [ "$1" = "0" ]; then
+	/usr/sbin/userdel owamp || :
+fi
+
+if [ "$1" = "1" ]; then
+    /sbin/service owampd restart
 fi
 
 %files client
@@ -104,6 +111,12 @@ fi
 #%{_includedir}/owamp/*
 
 %changelog
+* Thu Mar 26 2009 aaron@internet2.edu 1.0-4
+- Make upgrading work more seamlessly
+
+* Thu Mar 26 2009 aaron@internet2.edu 1.0-3
+- Make sure that /var/lib/owamp is created on install
+
 * Fri Feb 02 2009 aaron@internet2.edu 1.0-2
 - Fix the example owampd.limits location
 
