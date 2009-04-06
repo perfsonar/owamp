@@ -2818,7 +2818,7 @@ OWPDCloseFile(
          */
         else if(sbuf.st_size < (off_t)tinfo->res[1].value){
             mesg = OWPDMESGRELEASE;
-            lim.limit = tinfo->res[1].value - sbuf.st_size;
+            lim.value = tinfo->res[1].value - sbuf.st_size;
         }
         /*
          * Ugh. Need to request more... Use "CLAIM" so the
@@ -2826,7 +2826,7 @@ OWPDCloseFile(
          */
         else if(sbuf.st_size > (off_t)tinfo->res[1].value){
             mesg = OWPDMESGCLAIM;
-            lim.limit = sbuf.st_size - tinfo->res[1].value;
+            lim.value = sbuf.st_size - tinfo->res[1].value;
         }
         /*
          * resource is exactly correct - skip resource broker.
