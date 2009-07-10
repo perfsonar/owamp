@@ -282,12 +282,12 @@ do_stats(
      * How many summaries?
      */
     if(!ping_ctx.opt.numBucketPackets ||
-            (ping_ctx.opt.numBucketPackets >= num_rec)){
+            (ping_ctx.opt.numBucketPackets >= hdr.test_spec.npackets)){
         num_sum = 0;
     }
     else{
-        num_sum = num_rec / ping_ctx.opt.numBucketPackets;
-        if(num_rec % ping_ctx.opt.numBucketPackets){
+        num_sum = hdr.test_spec.npackets / ping_ctx.opt.numBucketPackets;
+        if(hdr.test_spec.npackets % ping_ctx.opt.numBucketPackets){
             num_sum++;
         }
     }
@@ -366,7 +366,7 @@ do_stats(
 
             begin = ping_ctx.opt.numBucketPackets * sum;
             end = ping_ctx.opt.numBucketPackets * (sum+1);
-            if(end > num_rec){
+            if(end > hdr.test_spec.npackets){
                 end = ~0;
             }
 
