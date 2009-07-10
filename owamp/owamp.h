@@ -1179,20 +1179,20 @@ typedef enum{
  */
 typedef struct OWPSessionHeaderRec{
     OWPBoolean              header;         /* RO: TestSession header?  */
-    uint32_t               version;        /* RO: File version         */
-    uint32_t               rec_size;       /* RO: data record size     */
+    uint32_t                version;        /* RO: File version         */
+    uint32_t                rec_size;       /* RO: data record size     */
     OWPSessionFinishedType  finished;       /* RW: is session finished?
                                                0:no,1:yes,2:unknown     */
 
-    uint32_t               next_seqno;     /* RW: next seq for sender  */
-    uint32_t               num_skiprecs;   /* RW: nskips               */
-    uint32_t               num_datarecs;   /* RW: nrecs                */
+    uint32_t                next_seqno;     /* RW: next seq for sender  */
+    uint32_t                num_skiprecs;   /* RW: nskips               */
+    uint32_t                num_datarecs;   /* RW: nrecs                */
 
     off_t                   oset_skiprecs;  /* RO: file offset to skips */
     off_t                   oset_datarecs;  /* RO: file offset to data  */
     struct stat             sbuf;           /* RO: sbuf of file         */
 
-    uint8_t                ipvn;           /* RO: ipvn of addrs        */
+    uint8_t                 ipvn;           /* RO: ipvn of addrs        */
     socklen_t               addr_len;       /* RO: saddr_len of saddrs  */
     struct sockaddr_storage addr_sender;    /* RW                       */
     struct sockaddr_storage addr_receiver;  /* RW                       */
