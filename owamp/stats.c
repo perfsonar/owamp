@@ -1667,7 +1667,7 @@ OWPStatsPrintMachine(
         )
 {
     /* Version 2.0 of stats output */
-    float       version=2.3;
+    float       version=2.4;
     char        sid_name[sizeof(OWPSID)*2+1];
     uint32_t    i;
     long int    j;
@@ -1688,6 +1688,9 @@ OWPStatsPrintMachine(
 
     fprintf(output,"START_TIME\t" OWP_TSTAMPFMT "\n",stats->start_time);
     fprintf(output,"END_TIME\t" OWP_TSTAMPFMT "\n",stats->end_time);
+
+    fprintf(output,"SESSION_PACKET_COUNT\t%u\n",stats->hdr->test_spec.npackets);
+    fprintf(output,"SAMPLE_PACKET_COUNT\t%u\n", stats->last - stats->first);
 
     /*
      * Summary results
