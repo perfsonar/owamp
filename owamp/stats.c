@@ -1691,6 +1691,8 @@ OWPStatsPrintMachine(
 
     fprintf(output,"SESSION_PACKET_COUNT\t%u\n",stats->hdr->test_spec.npackets);
     fprintf(output,"SAMPLE_PACKET_COUNT\t%u\n", stats->last - stats->first);
+    fprintf(output,"SESSION_FINISHED\t%d\n",
+            (stats->hdr->finished == OWP_SESSION_FINISHED_NORMAL)?1:0);
 
     /*
      * Summary results
