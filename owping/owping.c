@@ -78,7 +78,6 @@ print_test_args(
             "   -c count       number of test packets",
             "   -D DSCP        RFC 2474 style DSCP value for TOS byte",
             "   -f | -F file   perform one-way test from testhost [and save results to file]",
-            "   -H PHB         RFC 2836 style Per Hop Behavior value for TOS byte",
             "   -i wait        mean average time between packets (seconds)",
             "   -L timeout     maximum time to wait for a packet before declaring it lost (seconds)",
             "   -P portrange   port range for recievers to use",

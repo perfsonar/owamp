@@ -1689,6 +1689,18 @@ OWPStatsPrintMachine(
     fprintf(output,"START_TIME\t" OWP_TSTAMPFMT "\n",stats->start_time);
     fprintf(output,"END_TIME\t" OWP_TSTAMPFMT "\n",stats->end_time);
 
+    /*
+     * If typeP is specified as a DSCP code-byte, then output it too.
+     * (If any bits are set outside of the low-order 6 bits of the
+     * high-order byte, then it is not a DSCP.)
+     */
+    if( !(stats->hdr->test_spec.typeP & ~0x3F000000)){
+        uint8_t dscp = stats->hdr->test_spec.typeP >> 24;
+        fprintf(output,"DSCP\t0x%2.2x\n",dscp);
+    }
+    fprintf(output,"LOSS_TIMEOUT\t%u\n",stats->hdr->test_spec.loss_timeout);
+    fprintf(output,"PACKET_PADDING\t%u\n",
+            stats->hdr->test_spec.packet_size_padding);
     fprintf(output,"SESSION_PACKET_COUNT\t%u\n",stats->hdr->test_spec.npackets);
     fprintf(output,"SAMPLE_PACKET_COUNT\t%u\n", stats->last - stats->first);
     fprintf(output,"SESSION_FINISHED\t%d\n",
