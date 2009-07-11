@@ -1683,8 +1683,12 @@ OWPStatsPrintMachine(
      */
     fprintf(output,"SUMMARY\t%.2f\n",version);
     fprintf(output,"SID\t%s\n",sid_name);
-    fprintf(output,"FROM\t[%s]:%s\n",stats->fromaddr,stats->fromserv);
-    fprintf(output,"TO\t[%s]:%s\n",stats->toaddr,stats->toserv);
+    fprintf(output,"FROM_HOST\t%s\n",stats->fromhost);
+    fprintf(output,"FROM_ADDR\t%s\n",stats->fromaddr);
+    fprintf(output,"FROM_PORT\t%s\n",stats->fromserv);
+    fprintf(output,"TO_HOST\t%s\n",stats->tohost);
+    fprintf(output,"TO_ADDR\t%s\n",stats->toaddr);
+    fprintf(output,"TO_PORT\t%s\n",stats->toserv);
 
     fprintf(output,"START_TIME\t" OWP_TSTAMPFMT "\n",stats->start_time);
     fprintf(output,"END_TIME\t" OWP_TSTAMPFMT "\n",stats->end_time);
@@ -1703,6 +1707,7 @@ OWPStatsPrintMachine(
             stats->hdr->test_spec.packet_size_padding);
     fprintf(output,"SESSION_PACKET_COUNT\t%u\n",stats->hdr->test_spec.npackets);
     fprintf(output,"SAMPLE_PACKET_COUNT\t%u\n", stats->last - stats->first);
+    fprintf(output,"BUCKET_WIDTH\t%g\n",stats->bucketwidth);
     fprintf(output,"SESSION_FINISHED\t%d\n",
             (stats->hdr->finished == OWP_SESSION_FINISHED_NORMAL)?1:0);
 
@@ -1726,7 +1731,6 @@ OWPStatsPrintMachine(
      * Delay histogram
      */
     if(stats->sent > stats->lost){
-        fprintf(output,"BUCKETWIDTH\t%g\n",stats->bucketwidth);
         fprintf(output,"<BUCKETS>\n");
         I2HashIterate(stats->btable,BucketBufferPrint,output);
         fprintf(output,"</BUCKETS>\n");
