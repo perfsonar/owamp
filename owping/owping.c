@@ -73,7 +73,7 @@ print_test_args(
         void
         )
 {
-    fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n",
+    fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n",
             "              [Test Args]",
             "   -c count       number of test packets",
             "   -D DSCP        RFC 2474 style DSCP value for TOS byte",
