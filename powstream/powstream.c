@@ -846,7 +846,7 @@ sig_check()
         CloseSessions();
     }
     if(pow_exit){
-        I2ErrLog(eh,"SIGTERM/SIGINT: Exiting.");
+        I2ErrLog(eh,"SIGTERM/SIGINT Caught: Exiting.");
         exit(0);
     }
     if(pow_reset){
@@ -871,9 +871,11 @@ SetupSession(
     OWPTimeStamp    currtime;
     unsigned int    stime;
     int             fd;
-    uint64_t       i;
+    uint64_t        i;
     char            fname[PATH_MAX];
     static int      first_time=1;
+    uint64_t        doprint;
+    uint64_t        doprintthresh;
 
     if(p->numPackets)
         return 0;
@@ -881,6 +883,8 @@ SetupSession(
     /*
      * First open a 'fetch' connection if we don't have one.
      */
+    doprint = 0;
+    doprintthresh = 0;
     while(appctx.opt.sender && !appctx.cntrl){
 
         if(!(appctx.cntrl = OWPControlOpen(ctx,
@@ -888,14 +892,25 @@ SetupSession(
                         I2AddrByNode(eh, appctx.remote_serv),
                         appctx.auth_mode,appctx.opt.identity,
                         NULL,&err))){
+
             if(sig_check()) return 1;
             stime = MIN(sessionTime,SETUP_ESTIMATE);
-            I2ErrLog(eh,"OWPControlOpen(): %M:Retry in-%d seconds",
-                    stime);
+
+            doprint++;
+            if(log10((double)doprint) >= (double)doprintthresh){
+                I2ErrLog(eh,"OWPControlOpen(%s): %M: Retry every %d seconds",
+                        appctx.remote_serv,stime);
+                doprintthresh++;
+            }
+
             while((stime = sleep(stime))){
                 if(sig_check()) return 1;
             }
             if(sig_check()) return 1;
+        }
+        else if(doprint){
+                I2ErrLog(eh,"OWPControlOpen(%s): Connection recovered",
+                        appctx.remote_serv);
         }
     }
     if(sig_check())
@@ -904,6 +919,8 @@ SetupSession(
     /*
      * First open a connection if we don't have one.
      */
+    doprint = 0;
+    doprintthresh = 0;
     while(!p->cntrl){
 
         if(stop){
@@ -941,12 +958,20 @@ SetupSession(
                         NULL,&err))){
             if(sig_check()) return 1;
             stime = MIN(sessionTime,SETUP_ESTIMATE);
-            I2ErrLog(eh,"OWPControlOpen(): %M:Retry in-%d seconds",
-                    stime);
+            doprint++;
+            if(log10((double)doprint) >= (double)doprintthresh){
+                I2ErrLog(eh,"OWPControlOpen(%s): %M: Retry every %d seconds",
+                        appctx.remote_serv,stime);
+                doprintthresh++;
+            }
             while((stime = sleep(stime))){
                 if(sig_check()) return 1;
             }
             if(sig_check()) return 1;
+        }
+        else if(doprint){
+                I2ErrLog(eh,"OWPControlOpen(%s): Connection recovered",
+                        appctx.remote_serv);
         }
     }
     if(sig_check())

@@ -1666,8 +1666,8 @@ OWPStatsPrintMachine(
         FILE        *output
         )
 {
-    /* Version 2.0 of stats output */
-    float       version=2.4;
+    /* Version 3.0 of stats output */
+    float       version=3.0;
     char        sid_name[sizeof(OWPSID)*2+1];
     uint32_t    i;
     long int    j;

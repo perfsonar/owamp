@@ -1588,7 +1588,8 @@ main(
                 ping_ctx.auth_mode,ping_ctx.opt.identity,
                 NULL,&err_ret);
         if (!ping_ctx.cntrl){
-            I2ErrLog(eh, "Unable to open control connection.");
+            I2ErrLog(eh, "Unable to open control connection to %s.",
+                    ping_ctx.remote_serv);
             exit(1);
         }
 
@@ -1896,7 +1897,8 @@ main(
                 ping_ctx.auth_mode,ping_ctx.opt.identity,
                 NULL,&err_ret);
         if (!ping_ctx.cntrl){
-            I2ErrLog(eh, "Unable to open control connection.");
+            I2ErrLog(eh, "Unable to open control connection to %s.",
+                    ping_ctx.remote_serv);
             exit(1);
         }
 
@@ -1949,7 +1951,8 @@ main(
                 ping_ctx.auth_mode,ping_ctx.opt.identity,
                 &tstamp.owptime,&err_ret);
         if (!ping_ctx.cntrl){
-            I2ErrLog(eh, "Unable to open control connection.");
+            I2ErrLog(eh, "Unable to open control connection to %s.",
+                    ping_ctx.remote_serv);
             exit(1);
         }
         (void)OWPControlClose(ping_ctx.cntrl);

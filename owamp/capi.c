@@ -279,6 +279,12 @@ _OWPClientConnect(
 
 error:
     /*
+     * ifdef out for now... This should be detected by client tools
+     * that call OWPControlOpen and reported from there - otherwise
+     * retries put out too many error messages.
+     */
+#if NOT
+    /*
      * Unable to connect! If we have a server name report it in
      * the error message.
      */
@@ -296,6 +302,7 @@ error:
 
     OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
             "Unable to connect to \"[%s]:%s\"",node,serv);
+#endif
 
     *err_ret = OWPErrFATAL;
 
