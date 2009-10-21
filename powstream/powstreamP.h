@@ -75,6 +75,7 @@ typedef        struct {
         double      meanWait;           /* -i  (seconds) */
         uint32_t    padding;            /* -s */
         OWPBoolean  sender;             /* -t */
+        OWPPortRangeRec port_range;     /* -P */
 
         char        *savedir;           /* -d */
         I2Boolean   printfiles;         /* -p */

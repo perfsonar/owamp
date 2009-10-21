@@ -547,8 +547,12 @@ OWPControlOpen(
      * TODO: enumerate reason for rejection
      */
     if(acceptval != OWP_CNTRL_ACCEPT){
+        char nodename_buf[255];
+        size_t nodename_buflen;
+
+        nodename_buflen = sizeof(nodename_buf);
         OWPError(cntrl->ctx,OWPErrWARNING,OWPErrPOLICY,
-                "Server denied access");
+                "Server denied access: %s", I2AddrNodeName(server_addr, nodename_buf, &nodename_buflen));
         goto denied;
     }
 
@@ -623,6 +627,8 @@ _OWPClientRequestTestReadResponse(
     OWPAcceptType   acceptval;
     uint16_t        port_ret=0;
     uint8_t         *sid_ret=NULL;
+    char            nodename_buf[255];
+    int             nodename_buflen;
 
     if( (rc = _OWPWriteTestRequest(cntrl,retn_on_intr,
                     I2AddrSAddr(sender,NULL),
@@ -663,7 +669,8 @@ _OWPClientRequestTestReadResponse(
     /*
      * TODO: enumerate failure reasons
      */
-    OWPError(cntrl->ctx,OWPErrWARNING,OWPErrPOLICY,"Server denied test");
+    nodename_buflen = sizeof(nodename_buf);
+    OWPError(cntrl->ctx,OWPErrWARNING,OWPErrPOLICY, "Server denied test: %s", I2AddrNodeName(cntrl->remote_addr, nodename_buf, &nodename_buflen));
 
     *err_ret = OWPErrOK;
     return 1;
@@ -1451,4 +1458,87 @@ OWPFetchSession(
 failure:
     (void)_OWPFailControlSession(cntrl,*err_ret);
     return 0;
+}
+
+/*
+ * Function:        OWPParsePortRange
+ *
+ * Description:        
+ *         Fills in the passed OWPPortRangeRec with the values from the passed
+ *         in port range string. A valid port range string consists of either
+ *         "0", a specific port or a range like "min-max". It returns False on
+ *         failure and True on success. If failure is returned, the contents of
+ *         the OWPPortRangeRec are unspecified.
+ *
+ * In Args:        
+ *
+ * Out Args:        
+ *
+ * Scope:        
+ * Returns:        
+ * Side Effect:        
+ */
+I2Boolean
+OWPParsePortRange (
+        char    *pspec,
+        OWPPortRangeRec   *portspec
+        )
+{
+    char    *tstr,*endptr;
+    long    tint;
+
+    if(!pspec) return False;
+
+    tstr = pspec;
+    endptr = NULL;
+
+    while(isspace((int)*tstr)) tstr++;
+    tint = strtol(tstr,&endptr,10);
+    if(!endptr || (tstr == endptr) || (tint < 0) || (tint > (int)0xffff)){
+        goto failed;
+    }
+    portspec->low = (uint16_t)tint;
+
+    while(isspace((int)*endptr)) endptr++;
+
+    switch(*endptr){
+        case '\0':
+            /* only allow a single value if it is 0 */
+            if(!portspec->low){
+                goto failed;
+            }
+            portspec->high = portspec->low;
+            goto done;
+            break;
+        case '-':
+            endptr++;
+            break;
+        default:
+            goto failed;
+    }
+
+    tstr = endptr;
+    endptr = NULL;
+    while(isspace((int)*tstr)) tstr++;
+    tint = strtol(tstr,&endptr,10);
+    if(!endptr || (tstr == endptr) || (tint < 0) || (tint > (int)0xffff)){
+        goto failed;
+    }
+    portspec->high = (uint16_t)tint;
+
+    if(portspec->high < portspec->low){
+        goto failed;
+    }
+
+done:
+    /*
+     * If ephemeral is specified, shortcut by not setting.
+     */
+    if(!portspec->high && !portspec->low)
+        return True;
+
+    return True;
+
+failed:
+    return False;
 }

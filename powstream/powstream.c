@@ -113,6 +113,7 @@ print_test_args(){
 "   -E endDelay    time to wait before sending stop-session message\n"
 "   -i wait        mean average time between packets (seconds)\n"
 "   -L timeout     maximum time to wait for a packet (seconds)\n"
+"   -P portrange   test port range to use (must contain at least 2 ports)\n"
 "   -s padding     size of the padding added to each packet (bytes)\n"
 "   -z delayStart  time to wait before starting first test (seconds)\n"
         );
@@ -1167,7 +1168,7 @@ main(
     char                *endptr = NULL;
     char                optstring[128];
     static char         *conn_opts = "A:k:S:u:";
-    static char         *test_opts = "c:E:i:L:s:tz:";
+    static char         *test_opts = "c:E:i:L:s:tz:P:";
     static char         *out_opts = "b:d:e:N:pRv";
     static char         *gen_opts = "hw";
     static char         *posixly_correct="POSIXLY_CORRECT=True";
@@ -1200,6 +1201,7 @@ main(
     appctx.opt.lossThreshold = 10.0;
     appctx.opt.meanWait = 0.1;
     appctx.opt.bucketWidth = 0.0001; /* 100 usecs */
+    appctx.opt.port_range.high = appctx.opt.port_range.low = 0; /* Ephemeral Ports */
 
     /*
      * Fix getopt if the brain-dead GNU version is being used.
@@ -1326,6 +1328,20 @@ main(
                 if (!(appctx.opt.identity = strdup(optarg))) {
                     I2ErrLog(eh,"malloc: %M");
                     exit(1);
+                }
+                break;
+            case 'P':
+                if(!OWPParsePortRange(optarg, &appctx.opt.port_range)){
+                    I2ErrLog(eh,
+                            "Invalid test port range specified.");
+                    exit(1);
+                }
+                if (appctx.opt.port_range.high && appctx.opt.port_range.low) {
+                        if ((appctx.opt.port_range.high - appctx.opt.port_range.low + 1) < 2) {
+                            I2ErrLog(eh,
+                                    "Invalid test port range specified: must contain at least 2 ports.");
+                            exit(1);
+                        }
                 }
                 break;
             /* Output options */
@@ -1560,6 +1576,16 @@ main(
             (sigaction(SIGINT,&act,NULL) != 0) ||
             (sigaction(SIGHUP,&act,NULL) != 0)){
         I2ErrLog(eh,"sigaction(): %M");
+        exit(1);
+    }
+
+    /*
+     * Setup portrange
+     */
+    if(!OWPContextConfigSetV(ctx,OWPTestPortRange,
+                (void*) &appctx.opt.port_range)){
+        I2ErrLog(eh,
+                "OWPContextConfigSetV(): Unable to set OWPTestPortRange.");
         exit(1);
     }
 
@@ -2026,3 +2052,5 @@ cleanup:
 
     exit(0);
 }
+
+

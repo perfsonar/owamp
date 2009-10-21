@@ -1377,6 +1377,11 @@ OWPIsLostRecord(
         OWPDataRec      *rec
         );
 
+extern I2Boolean
+OWPParsePortRange (
+        char    *pspec,
+        OWPPortRangeRec   *portspec
+        );
 /*
  * TODO: This needs lots of clean-up to be a good public interface.
  * Most of these fields do not really need to be exposed.

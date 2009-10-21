@@ -828,74 +828,6 @@ FAILED:
 }
 
 static OWPBoolean
-parse_ports(
-        char        *pspec
-        )
-{
-    char        *tstr,*endptr;
-    long        tint;
-
-    if(!pspec) return False;
-
-    tstr = pspec;
-    endptr = NULL;
-    while(isspace((int)*tstr)) tstr++;
-    tint = strtol(tstr,&endptr,10);
-    if(!endptr || (tstr == endptr) || (tint < 0) || (tint > (int)0xffff)){
-        goto FAILED;
-    }
-    ping_ctx.portrec.low = (uint16_t)tint;
-
-    while(isspace((int)*endptr)) endptr++;
-
-    switch(*endptr){
-        case '\0':
-            /* only allow a single value if it is 0 */
-            if(ping_ctx.portrec.low){
-                goto FAILED;
-            }
-            ping_ctx.portrec.high = ping_ctx.portrec.low;
-            goto DONE;
-            break;
-        case '-':
-            endptr++;
-            break;
-        default:
-            goto FAILED;
-    }
-
-    tstr = endptr;
-    endptr = NULL;
-    while(isspace((int)*tstr)) tstr++;
-    tint = strtol(tstr,&endptr,10);
-    if(!endptr || (tstr == endptr) || (tint < 0) || (tint > (int)0xffff)){
-        goto FAILED;
-    }
-    ping_ctx.portrec.high = (uint16_t)tint;
-
-    if(ping_ctx.portrec.high < ping_ctx.portrec.low){
-        goto FAILED;
-    }
-
-DONE:
-    /*
-     * If ephemeral is specified, shortcut but not setting.
-     */
-    if(!ping_ctx.portrec.high && !ping_ctx.portrec.low)
-        return True;
-
-    /*
-     * Set.
-     */
-    ping_ctx.opt.portspec = &ping_ctx.portrec;
-    return True;
-
-FAILED:
-    I2ErrLogP(eh,EINVAL,"Invalid port-range (-P): \"%s\": %M",pspec);
-    return False;
-}
-
-static OWPBoolean
 parse_typeP(
         char        *tspec
         )
@@ -1347,11 +1279,22 @@ main(
                 }
                 break;
             case 'P':
-                if(!parse_ports(optarg)){
+                if(!OWPParsePortRange(optarg, &ping_ctx.portrec)){
                     usage(progname,
                             "Invalid test port range specified.");
                     exit(1);
                 }
+
+                if (ping_ctx.portrec.high && ping_ctx.portrec.low) {
+                        if ((ping_ctx.portrec.high - ping_ctx.portrec.low + 1) < 2) {
+                            I2ErrLog(eh,
+                                    "Invalid test port range specified: must contain at least 2 ports.");
+                            exit(1);
+                        }
+                }
+
+                ping_ctx.opt.portspec = &ping_ctx.portrec;
+
                 break;
             case 'z':
                 ping_ctx.opt.delayStart = strtod(optarg,&endptr);

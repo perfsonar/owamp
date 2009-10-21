@@ -512,7 +512,7 @@ _OWPEndpointInit(
             goto error;
         }
 
-        range = portrange->high - portrange->low;
+        range = portrange->high - portrange->low + 1;
         p = port = portrange->low + ((double)r / 0xffffffff * range);
     }
 

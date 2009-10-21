@@ -1,4 +1,123 @@
 ------------------------------------------------------------------------
+r1068 | boote | 2009-07-11 19:26:55 -0400 (Sat, 11 Jul 2009) | 3 lines
+
+Modifying owamp 'trunk' to use I2util 'trunk'.
+
+
+------------------------------------------------------------------------
+r1067 | boote | 2009-07-11 19:11:09 -0400 (Sat, 11 Jul 2009) | 6 lines
+
+Modifying the -M output even more. Now, it will give hostname/address/port
+as distinct different parameters in the output. This makes them easier
+to parse - and makes it easier to save both hostname and address
+in a database without making the central database do lots of work... like pS-B
+perhaps?
+
+------------------------------------------------------------------------
+r1066 | boote | 2009-07-11 16:34:16 -0400 (Sat, 11 Jul 2009) | 15 lines
+
+Adding nearly all test params as output to the -M format. (Don't do the
+schedule, because that *could* be complex and I'm not sure it is a
+good idea. pS-B will only support a single 'interval' value for now
+anyway.)
+
+Also removed references to the outdated -H parameter to owping.
+
+In my testing, I was shocked that IPV6_TCLASS Diff-serv bits are still not
+supported in MacOS. So I looked around, and even though this made RFC
+status in 2003, FreeBSD didn't even get this until last year - and Linux
+was only the year before that. So, if we are going to try using
+scavenger service for testing, we will need to carefully check if
+the OSs support it or not.
+
+
+------------------------------------------------------------------------
+r1065 | boote | 2009-07-10 18:50:41 -0400 (Fri, 10 Jul 2009) | 7 lines
+
+Sure enough, more is needed from -M still - SESSION_FINISHED added.
+
+This makes it possible to know if the specific data has been 'validated'
+by the StopSessions message in the owamp protocol or not, or if this is
+only the preliminary data.
+
+
+------------------------------------------------------------------------
+r1064 | boote | 2009-07-10 18:25:31 -0400 (Fri, 10 Jul 2009) | 10 lines
+
+Adding two new -M output fields:
+
+SESSION_PACKET_COUNT
+SAMPLE_PACKET_COUNT
+
+It turns out it is useful to put some amount of the parameters from the
+test request in the output data. Especially since it is being sampled,
+by owstats... I may need to add more of these to fully generalize
+the powcollector implementation, but this is enough for a first shot.
+
+------------------------------------------------------------------------
+r1063 | boote | 2009-07-10 17:27:06 -0400 (Fri, 10 Jul 2009) | 7 lines
+
+Corrected an owstats but I found while hacking on pS-B/owamp.
+
+The number of summary sessions owstats puts out (-N) should be relative
+to the requested number of packets in the session - and not be
+affected by how many 'lost' packets there were.
+
+
+------------------------------------------------------------------------
+r1062 | boote | 2009-07-10 17:24:59 -0400 (Fri, 10 Jul 2009) | 3 lines
+
+Corrected formatting
+
+
+------------------------------------------------------------------------
+r1061 | aaron | 2009-04-06 08:48:10 -0400 (Mon, 06 Apr 2009) | 6 lines
+
+Bugfix for issue 4. When duplicate packets are found, the file size is checked
+on close and if too big, deleted. The limit structure that gets compared  to
+the configured limits was being constructed improperly and causing the file to
+be deleted no matter if there were no limits or if diskfudge was set.
+
+
+------------------------------------------------------------------------
+r1060 | aaron | 2009-03-27 14:16:35 -0400 (Fri, 27 Mar 2009) | 5 lines
+
+Upgrading owamp would remove the owamp user, with this change, the owamp user
+will only get removed when they remove the RPM as opposed to upgrade it. The
+user creation and whatnot will only happen on initial install now.
+
+
+------------------------------------------------------------------------
+r1059 | aaron | 2009-03-23 13:21:04 -0400 (Mon, 23 Mar 2009) | 3 lines
+
+Minor change to the default rpm configuration (sets the directories explicitly)
+
+
+------------------------------------------------------------------------
+r1058 | boote | 2009-03-10 20:35:15 -0400 (Tue, 10 Mar 2009) | 3 lines
+
+Freeing memory and closing sockets before exiting.
+
+
+------------------------------------------------------------------------
+r1057 | boote | 2009-03-10 19:40:27 -0400 (Tue, 10 Mar 2009) | 3 lines
+
+Clarify -s option.
+
+
+------------------------------------------------------------------------
+r1056 | aaron | 2009-02-02 22:51:30 -0500 (Mon, 02 Feb 2009) | 3 lines
+
+Fix the example owampd.limits path
+
+
+------------------------------------------------------------------------
+r1053 | aaron | 2009-01-23 12:39:59 -0500 (Fri, 23 Jan 2009) | 3 lines
+
+Update the ChangeLog file
+
+
+------------------------------------------------------------------------
 r1052 | aaron | 2009-01-23 12:35:41 -0500 (Fri, 23 Jan 2009) | 3 lines
 
 Change the version # to 3.1
