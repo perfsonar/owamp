@@ -86,6 +86,8 @@ typedef        struct {
         uint32_t    numBucketPackets;   /* -N */
         uint32_t    delayStart;         /* -z */
 
+        uint32_t    retryDelay;         /* -I */
+
         I2Boolean   setEndDelay;
         double      endDelay;           /* -E */
 
@@ -97,14 +99,12 @@ typedef        struct {
     uint32_t        auth_mode;
 
     OWPContext      lib_ctx;
-
-    OWPControl      cntrl;
-
 } powapp_trec, *powapp_t;
 
 typedef struct pow_cntrl_rec{
     OWPContext          ctx;
     OWPControl          cntrl;
+    OWPControl          fetch;
     OWPScheduleContext  sctx;
     OWPSID              sid;
     OWPNum64            *nextSessionStart;
@@ -112,6 +112,8 @@ typedef struct pow_cntrl_rec{
     OWPNum64            nextSessionEndNum;
     OWPNum64            currentSessionStartNum;
     OWPNum64            currentSessionEndNum;
+    OWPTimeStamp        prev_runtime;
+
     FILE                *fp;
     FILE                *testfp;
     char                fname[PATH_MAX];

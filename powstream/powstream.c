@@ -97,10 +97,11 @@ static uint32_t        file_offset,tstamp_offset,ext_offset;
 static void
 print_conn_args(){
         fprintf(stderr,"              [Connection Args]\n\n"
-"   -A authmode requested modes: [A]uthenticated, [E]ncrypted, [O]pen\n"
-"   -k pffile   pass-phrase file to use with Authenticated/Encrypted modes\n"
-"   -S srcaddr  use this as a local address for control connection and tests\n"
-"   -u username username to use with Authenticated/Encrypted modes\n"
+"   -A authmode    requested modes: [A]uthenticated, [E]ncrypted, [O]pen\n"
+"   -k pffile      pass-phrase file to use with Authenticated/Encrypted modes\n"
+"   -S srcaddr     use this as a local address for control connection and tests\n"
+"   -u username    username to use with Authenticated/Encrypted modes\n"
+"   -I retryDelay  time to wait between failed connections (default: 10 seconds)\n"
         );
 }
 
@@ -411,7 +412,7 @@ write_session(
          * If there is no file or cntrl record to fetch the data
          * give up.
          */
-        if(!p->testfp || !appctx.cntrl)
+        if(!p->testfp || !p->fetch)
             return;
 
         /*
@@ -430,7 +431,7 @@ write_session(
         /*
          * Fetch the data and put it in testfp
          */
-        num_rec = OWPFetchSession(appctx.cntrl,p->testfp,
+        num_rec = OWPFetchSession(p->fetch,p->testfp,
                 0,(uint32_t)0xFFFFFFFF,p->sid,&ec);
         if(!num_rec){
             if(ec >= OWPErrWARNING){
@@ -771,9 +772,9 @@ ResetSession(
      */
     write_session(p,aval,True);
 
-    if(appctx.cntrl){
-        OWPControlClose(appctx.cntrl);
-        appctx.cntrl = NULL;
+    if(p->fetch){
+        OWPControlClose(p->fetch);
+        p->fetch = NULL;
     }
 
     if(p->cntrl){
@@ -875,20 +876,81 @@ SetupSession(
     uint64_t        i;
     char            fname[PATH_MAX];
     static int      first_time=1;
-    uint64_t        doprint;
-    uint64_t        doprintthresh;
 
     if(p->numPackets)
         return 0;
 
+    // reset the session if we're here.
+    if(p->fetch){
+        OWPControlClose(p->fetch);
+        p->fetch = NULL;
+    }
+
+    if(p->cntrl){
+        OWPControlClose(p->cntrl);
+        p->cntrl = NULL;
+    }
+
+    if(p->fp){
+        fclose(p->fp);
+        p->fp = NULL;
+    }
+    if(p->testfp){
+        fclose(p->testfp);
+        p->testfp = NULL;
+    }
+    p->numPackets = 0;
+    p->call_stop = False;
+    p->session_started = False;
+    p->nextSessionStart = NULL;
+    q->nextSessionStart = NULL;
+
+
+    if(appctx.opt.retryDelay > 0 && OWPNum64Cmp(p->prev_runtime.owptime, OWPULongToNum64(0)) > 0) {
+        double diff;
+        struct timespec ts, nts;
+
+        if(!OWPGetTimeOfDay(ctx,&currtime)){
+            I2ErrLog(eh,"OWPGetTimeOfDay: %M");
+            exit(1);
+        }
+
+        OWPNum64ToTimespec(&ts, OWPNum64Sub(OWPNum64Add(p->prev_runtime.owptime, OWPULongToNum64(appctx.opt.retryDelay)), currtime.owptime));
+
+        if (ts.tv_sec > 0 || (ts.tv_sec == 0 && ts.tv_nsec > 0)) {
+                I2ErrLog(eh,"OWPControlOpen(%s): Waiting %d.%d seconds before retrying",
+                        appctx.remote_serv,ts.tv_sec,ts.tv_nsec);
+        }
+
+        if (nanosleep(&ts, &nts) != 0) {
+            if (sig_check()) return 1;
+
+            ts.tv_sec  = nts.tv_sec;
+            ts.tv_nsec = nts.tv_nsec;
+        }
+    }
+
+    if(!OWPGetTimeOfDay(ctx,&currtime)){
+        I2ErrLog(eh,"OWPGetTimeOfDay: %M");
+        exit(1);
+    }
+
+    if(stop != NULL && OWPNum64Cmp(currtime.owptime,*stop) > 0){
+        if(p->nextSessionStart){
+            q->nextSessionStart = &q->nextSessionStartNum;
+            *q->nextSessionStart = *p->nextSessionStart;
+        }else
+            q->nextSessionStart = NULL;
+        return 0;
+    }
+
+    OWPGetTimeOfDay(ctx,&p->prev_runtime);
+
     /*
      * First open a 'fetch' connection if we don't have one.
      */
-    doprint = 0;
-    doprintthresh = 0;
-    while(appctx.opt.sender && !appctx.cntrl){
-
-        if(!(appctx.cntrl = OWPControlOpen(ctx,
+    if (appctx.opt.sender){
+        if(!(p->fetch = OWPControlOpen(ctx,
                         I2AddrByNode(eh, appctx.opt.srcaddr),
                         I2AddrByNode(eh, appctx.remote_serv),
                         appctx.auth_mode,appctx.opt.identity,
@@ -897,33 +959,18 @@ SetupSession(
             if(sig_check()) return 1;
             stime = MIN(sessionTime,SETUP_ESTIMATE);
 
-            doprint++;
-            if(log10((double)doprint) >= (double)doprintthresh){
-                I2ErrLog(eh,"OWPControlOpen(%s): %M: Retry every %d seconds",
-                        appctx.remote_serv,stime);
-                doprintthresh++;
-            }
+            I2ErrLog(eh,"OWPControlOpen(%s): Couldn't open 'fetch' connection to server: %M",
+                    appctx.remote_serv);
 
-            while((stime = sleep(stime))){
-                if(sig_check()) return 1;
-            }
-            if(sig_check()) return 1;
-        }
-        else if(doprint){
-                I2ErrLog(eh,"OWPControlOpen(%s): Connection recovered",
-                        appctx.remote_serv);
-        }
+            goto error_out;
+         }
     }
+
     if(sig_check())
         return 1;
 
-    /*
-     * First open a connection if we don't have one.
-     */
-    doprint = 0;
-    doprintthresh = 0;
-    while(!p->cntrl){
-
+#if 0
+        // XXX: we may need to be able to force an end by a certain time.
         if(stop){
             if(!OWPGetTimeOfDay(ctx,&currtime)){
                 I2ErrLog(eh,"OWPGetTimeOfDay: %M");
@@ -939,48 +986,38 @@ SetupSession(
                 return 0;
             }
         }
+#endif
 
-        if(!p->sctx){
-            if(!(p->sctx = OWPScheduleContextCreate(ctx,p->sid,&tspec))){
-                I2ErrLog(eh,"OWPScheduleContextCreate: %M");
-                while((stime = sleep(stime))){
-                    if(sig_check())
-                        return 1;
-                }
-                continue;
-            }
-        }
-
-
-        if(!(p->cntrl = OWPControlOpen(ctx,
-                        I2AddrByNode(eh, appctx.opt.srcaddr),
-                        I2AddrByNode(eh, appctx.remote_serv),
-                        appctx.auth_mode,appctx.opt.identity,
-                        NULL,&err))){
-            if(sig_check()) return 1;
-            stime = MIN(sessionTime,SETUP_ESTIMATE);
-            doprint++;
-            if(log10((double)doprint) >= (double)doprintthresh){
-                I2ErrLog(eh,"OWPControlOpen(%s): %M: Retry every %d seconds",
-                        appctx.remote_serv,stime);
-                doprintthresh++;
-            }
-            while((stime = sleep(stime))){
-                if(sig_check()) return 1;
-            }
-            if(sig_check()) return 1;
-        }
-        else if(doprint){
-                I2ErrLog(eh,"OWPControlOpen(%s): Connection recovered",
-                        appctx.remote_serv);
+    /*
+     * First open a connection if we don't have one. XXX: we should now always
+     * create a new connection, but need to verify that fact.
+     */
+    if(!p->sctx){
+        if(!(p->sctx = OWPScheduleContextCreate(ctx,p->sid,&tspec))){
+            I2ErrLog(eh,"OWPScheduleContextCreate: %M");
+            goto fetch_clean;
         }
     }
+
+
+    if(!(p->cntrl = OWPControlOpen(ctx,
+                    I2AddrByNode(eh, appctx.opt.srcaddr),
+                    I2AddrByNode(eh, appctx.remote_serv),
+                    appctx.auth_mode,appctx.opt.identity,
+                    NULL,&err))){
+        if(sig_check()) return 1;
+
+        I2ErrLog(eh,"OWPControlOpen(%s): Couldn't open 'control' connection to server: %M",
+                appctx.remote_serv);
+        goto sctx_clean;
+    }
+
     if(sig_check())
         return 1;
 
     if(!OWPGetTimeOfDay(ctx,&currtime)){
         I2ErrLogP(eh,errno,"OWPGetTimeOfDay: %M");
-        exit(1);
+        goto cntrl_clean;
     }
     currtime.owptime = OWPNum64Add(currtime.owptime,
             OWPULongToNum64(SETUP_ESTIMATE));
@@ -1013,7 +1050,7 @@ SetupSession(
      */
     if((fd = mkstemp(fname)) < 0){
         I2ErrLog(eh,"mkstemp(%s): %M",fname);
-        return 0;
+        goto cntrl_clean;
     }
 
     /*
@@ -1023,7 +1060,7 @@ SetupSession(
         I2ErrLog(eh,"fdopen(%s:(%d)): %M",fname,fd);
         while((close(fd) != 0) && errno==EINTR);
         (void)unlink(fname);
-        return 0;
+        goto cntrl_clean;
     }
 
     /*
@@ -1036,7 +1073,7 @@ SetupSession(
         while((fclose(p->fp) != 0) && errno==EINTR);
         p->fp = NULL;
         (void)unlink(fname);
-        return 0;
+        goto cntrl_clean;
     }
 
     /*
@@ -1050,6 +1087,7 @@ SetupSession(
         goto file_clean;
     }
 
+    // XXX: this could be bad?
     if(sig_check())
         return 1;
 
@@ -1064,10 +1102,12 @@ SetupSession(
                     I2AddrByNode(eh,appctx.remote_test),True,
                     (OWPTestSpec*)&tspec,NULL,p->sid,&err)){
             I2ErrLog(eh,"OWPSessionRequest: Failed");
+            /*
             if(err == OWPErrFATAL){
                 OWPControlClose(p->cntrl);
                 p->cntrl = NULL;
             }
+            */
             goto file_clean;
         }
     }
@@ -1076,10 +1116,12 @@ SetupSession(
                     True, NULL, False,(OWPTestSpec*)&tspec,p->testfp,
                     p->sid,&err)){
             I2ErrLog(eh,"OWPSessionRequest: Failed");
+            /*
             if(err == OWPErrFATAL){
                 OWPControlClose(p->cntrl);
                 p->cntrl = NULL;
             }
+            */
             goto file_clean;
         }
     }
@@ -1137,16 +1179,28 @@ SetupSession(
 
     return 0;
 
-cntrl_clean:
-    OWPControlClose(p->cntrl);
-    p->cntrl = NULL;
-
 file_clean:
     while((fclose(p->fp) != 0) && errno==EINTR);
     p->fp = NULL;
     while((fclose(p->testfp) != 0) && errno==EINTR);
     p->testfp = NULL;
-    return 0;
+
+cntrl_clean:
+    OWPControlClose(p->cntrl);
+    p->cntrl = NULL;
+
+sctx_clean:
+    OWPScheduleContextFree(p->sctx);
+    p->sctx = NULL;
+
+fetch_clean:
+    if (p->fetch){
+        OWPControlClose(p->fetch);
+	p->fetch = NULL;
+    }
+
+error_out:
+    return -1;
 }
 
 int
@@ -1167,7 +1221,7 @@ main(
     int                 ch;
     char                *endptr = NULL;
     char                optstring[128];
-    static char         *conn_opts = "A:k:S:u:";
+    static char         *conn_opts = "A:k:S:u:I:";
     static char         *test_opts = "c:E:i:L:s:tz:P:";
     static char         *out_opts = "b:d:e:N:pRv";
     static char         *gen_opts = "hw";
@@ -1198,6 +1252,7 @@ main(
     /* Set default options. */
     memset(&appctx,0,sizeof(appctx));
     appctx.opt.numPackets = 300;
+    appctx.opt.retryDelay = 10;
     appctx.opt.lossThreshold = 10.0;
     appctx.opt.meanWait = 0.1;
     appctx.opt.bucketWidth = 0.0001; /* 100 usecs */
@@ -1266,6 +1321,13 @@ main(
                         (appctx.opt.endDelay <= 0.0)){
                     usage(progname, 
                             "Invalid (-E) value. Positive float expected");
+                    exit(1);
+                }
+                break;
+            case 'I':
+                appctx.opt.retryDelay = strtoul(optarg, &endptr, 10);
+                if (*endptr != '\0') {
+                    usage(progname,"Invalid (-I) value. Positive integer expected");
                     exit(1);
                 }
                 break;
@@ -1656,6 +1718,7 @@ NextConnection:
         which %= 2;
         q = &pcntrl[which];
 
+	/* If the sessions haven't been initialized, do the init phase */
         if(!p->numPackets){
             (void)SetupSession(ctx,q,p,NULL);
             goto NextConnection;
@@ -1692,7 +1755,7 @@ NextConnection:
                 goto NextConnection;
             p->session_started = True;
 wait_again:
-            rc = OWPStopSessionsWait(p->cntrl,NULL,&pow_intr,&aval,&err_ret);
+	    rc = OWPStopSessionsWait(p->cntrl,NULL,&pow_intr,&aval,&err_ret);
             if(rc<0){
                 /* error - reset sessions and start over. */
                 p->call_stop = False;
@@ -1727,7 +1790,7 @@ wait_again:
         }
 
         for(sum=0;sum<numSummaries;sum++){
-            uint32_t           nrecs;
+            uint32_t            nrecs;
             OWPSessionHeaderRec hdr;
             OWPNum64            localstop;
             FILE                *fp=NULL;
@@ -1749,7 +1812,6 @@ wait_again:
              * offset of the lastnum from the previous session.)
              */
             for(nrecs=0;nrecs<appctx.opt.numBucketPackets;nrecs++){
-
                 lastnum = OWPNum64Add(lastnum,
                         OWPScheduleContextGenerateNextDelta(p->sctx));
 
@@ -1859,7 +1921,7 @@ AGAIN:
                 /*
                  * Fetch the data and put it in testfp
                  */
-                nrecs = OWPFetchSession(appctx.cntrl,p->testfp,
+                nrecs = OWPFetchSession(p->fetch,p->testfp,
                         appctx.opt.numBucketPackets*sum,
                         (appctx.opt.numBucketPackets*(sum+1))-1,
                         p->sid,&err_ret);
