@@ -909,25 +909,27 @@ SetupSession(
     if(appctx.opt.retryDelay > 0 && OWPNum64Cmp(p->prev_runtime.owptime, OWPULongToNum64(0)) > 0) {
         double diff;
         struct timespec ts, nts;
+        OWPNum64 next_runtime;
 
         if(!OWPGetTimeOfDay(ctx,&currtime)){
             I2ErrLog(eh,"OWPGetTimeOfDay: %M");
             exit(1);
         }
 
-        OWPNum64ToTimespec(&ts, OWPNum64Sub(OWPNum64Add(p->prev_runtime.owptime, OWPULongToNum64(appctx.opt.retryDelay)), currtime.owptime));
+        next_runtime = OWPNum64Add(p->prev_runtime.owptime, OWPULongToNum64(appctx.opt.retryDelay));
+        if (OWPNum64Cmp(next_runtime, currtime.owptime) > 0) {
+            OWPNum64ToTimespec(&ts, OWPNum64Sub(next_runtime, currtime.owptime));
 
-        if (ts.tv_sec > 0 || (ts.tv_sec == 0 && ts.tv_nsec > 0)) {
-                I2ErrLog(eh,"OWPControlOpen(%s): Waiting %d.%d seconds before retrying",
-                        appctx.remote_serv,ts.tv_sec,ts.tv_nsec);
+            I2ErrLog(eh,"OWPControlOpen(%s): Waiting %d.%d seconds before retrying",
+                    appctx.remote_serv,ts.tv_sec,ts.tv_nsec);
+            while (nanosleep(&ts, &nts) == -1 && errno == EINTR) {
+                if (sig_check()) return 1;
+
+                ts.tv_sec  = nts.tv_sec;
+                ts.tv_nsec = nts.tv_nsec;
+            }
         }
 
-        if (nanosleep(&ts, &nts) != 0) {
-            if (sig_check()) return 1;
-
-            ts.tv_sec  = nts.tv_sec;
-            ts.tv_nsec = nts.tv_nsec;
-        }
     }
 
     if(!OWPGetTimeOfDay(ctx,&currtime)){
