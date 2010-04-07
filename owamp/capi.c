@@ -628,7 +628,7 @@ _OWPClientRequestTestReadResponse(
     uint16_t        port_ret=0;
     uint8_t         *sid_ret=NULL;
     char            nodename_buf[255];
-    int             nodename_buflen;
+    size_t          nodename_buflen;
 
     if( (rc = _OWPWriteTestRequest(cntrl,retn_on_intr,
                     I2AddrSAddr(sender,NULL),
