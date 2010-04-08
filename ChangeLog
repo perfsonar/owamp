@@ -1,4 +1,99 @@
 ------------------------------------------------------------------------
+r1083 | aaron | 2010-04-07 16:09:06 -0400 (Wed, 07 Apr 2010) | 16 lines
+
+We saw some issues in the field where powstream was displaying that it was
+going to sleep for negative time durations, and then would try to do so using
+nanosleep.
+
+There was code to only print out the sleep message if the duration was > 0,
+but, on some hosts, the comparison time_t of with 0 claim the time value was >
+0, no matter what the actual value was. To make matters worse, when the
+timespec containing the negative seconds value was passed to nanosleep, it
+would sleep for an indeterminate amount of time. My guess is that it treated 
+the seconds value as unsigned and was sleep for a ridiculous number of seconds.
+
+This patch changes how the nanosleep time gets calculated. The check for the
+next runtime is calculated using the OWPNum time values instead of the timespec
+values. Also, nanosleep is only called if the next runtime is later than now.
+
+
+------------------------------------------------------------------------
+r1082 | aaron | 2010-04-07 14:36:12 -0400 (Wed, 07 Apr 2010) | 3 lines
+
+64-bit issue
+
+
+------------------------------------------------------------------------
+r1081 | aaron | 2010-02-15 10:13:22 -0500 (Mon, 15 Feb 2010) | 22 lines
+
+Pull the changes from the powstream_loopissue branch into trunk:
+
+r1080:
+
+Bump the -rc version # 
+
+r1078:
+
+Switch to a per-cntrl fetch option, and reset the session in SetupSession. I'm
+not positive this doesn't screw with the semantics, but I'm committing so
+others can read it while I'm testing to make sure I'm not breaking something.
+
+r1076:
+
+On error, powstream kept opening new fetch connections, but not closing the old fds.
+
+r1074:
+
+Change powstream to have it pause before between retrying tests. This is just a first cut.
+
+
+
+------------------------------------------------------------------------
+r1075 | aaron | 2010-01-21 09:54:41 -0500 (Thu, 21 Jan 2010) | 3 lines
+
+Bump the -rc level to -rc2.
+
+
+------------------------------------------------------------------------
+r1072 | aaron | 2009-10-21 15:08:02 -0400 (Wed, 21 Oct 2009) | 9 lines
+
+Commit some changes that have been in the local repository:
+
+1. Create a generic function OWPParsePortRange that parses ports ranges and fills in an OWPPortRangeRec.
+2. Modify owping to use the above function instead of its own parse_ports
+3. Modify powstream to support a "-P" option for specifying port ranges, similar to owping
+4. Bump the spec file release version back down to 1 since the version is now 3.2rc1
+5. Have "Server denied access" error print out the hostname
+
+
+------------------------------------------------------------------------
+r1071 | boote | 2009-07-16 17:08:22 -0400 (Thu, 16 Jul 2009) | 12 lines
+
+Modified powstream to back-off on how often it reports 'cant connect'
+error messages. It still retries every ~10 seconds, but now uses
+exp backoff for reporting it. Also modified the OWPControlOpen to
+not print an error message when it fails - client code should
+be checking the return value. (This fixes issue 4.)
+
+Also modified the error prints that I came across to report the
+host/port they are attempting to reach.
+
+Also fixed the bootstrap script to correctly call the I2utils bootstrap.
+
+
+------------------------------------------------------------------------
+r1070 | aaron | 2009-07-15 16:17:44 -0400 (Wed, 15 Jul 2009) | 3 lines
+
+Bump the version # to 3.1rc2
+
+
+------------------------------------------------------------------------
+r1069 | aaron | 2009-07-14 18:39:32 -0400 (Tue, 14 Jul 2009) | 3 lines
+
+Fix the "-h" output on owping. fprintf had one too many arguments.
+
+
+------------------------------------------------------------------------
 r1068 | boote | 2009-07-11 19:26:55 -0400 (Sat, 11 Jul 2009) | 3 lines
 
 Modifying owamp 'trunk' to use I2util 'trunk'.
