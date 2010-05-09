@@ -56,8 +56,7 @@ simply due to the resolution of the median measurement.)
 Jitter
 .br
 An estimate of how "stable" the delay samples are. \fBOWAMP\fR reports
-the interquartile range for this. (The 95th percentile of delay - 50th
-percentile of delay).
+the the 95th percentile of delay - 50th percentile of delay.
 .TP
 Additional percentiles
 .br
