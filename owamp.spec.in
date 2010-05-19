@@ -29,7 +29,7 @@ server.
 %package server
 Summary: owamp server
 Group: Applications/Network
-Requires: I2util
+Requires: I2util, chkconfig, initscripts, shadow-utils, coreutils
 %description server
 owamp server
 
