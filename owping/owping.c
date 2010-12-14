@@ -80,7 +80,7 @@ print_test_args(
             "   -f | -F file   perform one-way test from testhost [and save results to file]",
             "   -i wait        mean average time between packets (seconds)",
             "   -L timeout     maximum time to wait for a packet before declaring it lost (seconds)",
-            "   -P portrange   port range for recievers to use",
+            "   -P portrange   port range to use during the test",
             "   -s padding     size of the padding added to each packet (bytes)",
             "   -t | -T file   perform one-way test to testhost [and save results to file]",
             "   -z delayStart  time to wait before executing test (seconds)"

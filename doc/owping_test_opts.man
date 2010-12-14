@@ -180,7 +180,7 @@ the \fItimeout\fR option should be specified.
 .TP
 .BI \-P " 0 | lowport-highport"
 .br
-Specify the specific port range to use on the local host for
+Specify the specific port range to use for
 .I OWAMP-Test
 packets. This can be specified in two ways. First, as 0 which would indicate
 .B owping
