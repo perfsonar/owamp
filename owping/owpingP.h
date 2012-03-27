@@ -47,6 +47,9 @@ typedef    struct {
     struct  {
         /* Flags */
 
+        I2Boolean       v4only;             /* -4 */
+        I2Boolean       v6only;             /* -6 */
+
         I2Boolean       records;            /* -v */
         I2Boolean       quiet;              /* -Q */
         I2Boolean       raw;                /* -R */

@@ -698,6 +698,16 @@ typedef void (*OWPCloseFileFunc)(
  */
 #define OWPEndDelay "OWPEndDelay"
 
+/*
+ * Use IPv4 addresses only.
+ */
+#define OWPIPv4Only "OWPIPv4Only"
+
+/*
+ * Use IPv6 addresses only.
+ */
+#define OWPIPv6Only "OWPIPv6Only"
+
 extern OWPContext
 OWPContextCreate(
         I2ErrHandle eh

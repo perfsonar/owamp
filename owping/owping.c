@@ -59,12 +59,14 @@ print_conn_args(
         void
         )
 {
-    fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n",
+    fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n",
             "              [Connection Args]",
             "   -A authmode    requested modes: [A]uthenticated, [E]ncrypted, [O]pen",
             "   -k passphrasefile     passphrasefile to use with Authenticated/Encrypted modes",
             "   -S srcaddr     use this as a local address for control connection and tests",
-            "   -u username    username to use with Authenticated/Encrypted modes"
+            "   -u username    username to use with Authenticated/Encrypted modes",
+            "   -4             connect using IPv4 addresses only",
+            "   -6             connect using IPv6 addresses only"
            );
 }
 
@@ -1088,7 +1090,7 @@ main(
     int                 ch;
     char                *endptr = NULL;
     char                optstring[128];
-    static char         *conn_opts = "A:k:S:u:";
+    static char         *conn_opts = "64A:k:S:u:";
     static char         *test_opts = "c:D:E:fF:i:L:P:s:tT:z:";
     static char         *out_opts = "a:b:d:Mn:N:pQRv";
     static char         *gen_opts = "h";
@@ -1138,6 +1140,7 @@ main(
     ctx = ping_ctx.lib_ctx;
 
     /* Set default options. */
+    ping_ctx.opt.v4only = ping_ctx.opt.v6only =
     ping_ctx.opt.records = ping_ctx.opt.from = ping_ctx.opt.to =
     ping_ctx.opt.quiet = ping_ctx.opt.raw = ping_ctx.opt.machine = False;
     ping_ctx.opt.childwait = NULL;
@@ -1181,6 +1184,12 @@ main(
         switch (ch) {
             /* Connection options. */
 
+            case '4':
+                ping_ctx.opt.v4only = True;
+                break;
+            case '6':
+                ping_ctx.opt.v6only = True;
+                break;
             case 'A':
                 if(!(ping_ctx.opt.authmode = strdup(optarg))){
                     I2ErrLog(eh,"malloc: %M");
@@ -1378,6 +1387,28 @@ main(
     }
     argc -= optind;
     argv += optind;
+
+    /*
+     * Restrict INET address families
+     */
+    if(ping_ctx.opt.v4only){
+        if(ping_ctx.opt.v6only){
+            I2ErrLog(eh,"-4 and -6 flags cannot be set together");
+            exit(1);
+        }
+        if( !OWPContextConfigSetV(ctx,OWPIPv4Only,(void*)True)){
+            I2ErrLog(eh,
+                    "OWPContextConfigSetV(): Unable to set OWPIPv4Only?!");
+            exit(1);
+        }
+    }
+    if(ping_ctx.opt.v6only){
+        if( !OWPContextConfigSetV(ctx,OWPIPv6Only,(void*)True)){
+            I2ErrLog(eh,
+                    "OWPContextConfigSetV(): Unable to set OWPIPv6Only?!");
+            exit(1);
+        }
+    }
 
     if(ping_ctx.opt.raw){
         ping_ctx.opt.quiet = True;

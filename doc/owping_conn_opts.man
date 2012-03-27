@@ -27,6 +27,22 @@
 ."
 .SS Connection/Authentication Options:
 .TP
+\fB\-4\fR
+.br
+Forces OWAMP clients to use IPv4 addresses only.
+.RS
+.IP Default:
+Unset. OWAMP will use IPv4 or IPv6 address, but tries IPv6 first. 
+.RE
+.TP
+\fB\-6\fR
+.br
+Forces OWAMP clients to use IPv6 addresses only.
+.RS
+.IP Default:
+Unset. OWAMP will use IPv4 or IPv6 address, but tries IPv6 first. 
+.RE
+.TP
 \fB\-A\fR \fIauthmode\fB
 .br
 Specify the authentication modes the client is willing to use for

@@ -97,6 +97,8 @@ static uint32_t        file_offset,tstamp_offset,ext_offset;
 static void
 print_conn_args(){
         fprintf(stderr,"              [Connection Args]\n\n"
+"   -4             use IPv4 only\n"
+"   -6             use IPv6 only\n"
 "   -A authmode    requested modes: [A]uthenticated, [E]ncrypted, [O]pen\n"
 "   -k pffile      pass-phrase file to use with Authenticated/Encrypted modes\n"
 "   -S srcaddr     use this as a local address for control connection and tests\n"
@@ -1100,8 +1102,8 @@ SetupSession(
      */
     tspec.start_time = *p->nextSessionStart;
     if(appctx.opt.sender){
-        if(!OWPSessionRequest(p->cntrl,NULL,False,
-                    I2AddrByNode(eh,appctx.remote_test),True,
+        if(!OWPSessionRequest(p->cntrl,NULL,(OWPBoolean)False,
+                    I2AddrByNode(eh,appctx.remote_test),(OWPBoolean)True,
                     (OWPTestSpec*)&tspec,NULL,p->sid,&err)){
             I2ErrLog(eh,"OWPSessionRequest: Failed");
             /*
@@ -1223,7 +1225,7 @@ main(
     int                 ch;
     char                *endptr = NULL;
     char                optstring[128];
-    static char         *conn_opts = "A:k:S:u:I:";
+    static char         *conn_opts = "46A:k:S:u:I:";
     static char         *test_opts = "c:E:i:L:s:tz:P:";
     static char         *out_opts = "b:d:e:N:pRv";
     static char         *gen_opts = "hw";
@@ -1309,6 +1311,12 @@ main(
 
     while ((ch = getopt(argc, argv, optstring)) != -1){
         switch (ch) {
+            case '4':
+                appctx.opt.v4only = True;
+                break;
+            case '6':
+                appctx.opt.v6only = True;
+                break;
             /* test options */
             case 'c':
                 appctx.opt.numPackets = strtoul(optarg, &endptr, 10);
@@ -1605,6 +1613,28 @@ main(
     strcpy(pcntrl[0].fname,dirpath);
     strcpy(pcntrl[1].fname,dirpath);
     pcntrl[0].ctx = pcntrl[1].ctx = ctx;
+
+    /*
+     * Restrict INET address families
+     */
+    if(appctx.opt.v4only){
+        if(appctx.opt.v6only){
+            I2ErrLog(eh,"-4 and -6 flags cannot be set together");
+            exit(1);
+        }
+        if( !OWPContextConfigSetV(ctx,OWPIPv4Only,(void*)True)){
+            I2ErrLog(eh,
+                    "OWPContextConfigSetV(): Unable to set OWPIPv4Only?!");
+            exit(1);
+        }
+    }
+    if(appctx.opt.v6only){
+        if( !OWPContextConfigSetV(ctx,OWPIPv6Only,(void*)True)){
+            I2ErrLog(eh,
+                    "OWPContextConfigSetV(): Unable to set OWPIPv6Only?!");
+            exit(1);
+        }
+    }
 
     /*
      * Add time for file buffering. 

@@ -253,28 +253,32 @@ _OWPClientConnect(
      * Also check policy for allowed connection before calling
      * connect.
      */
+    if( !(OWPBoolean)OWPContextConfigGetV(cntrl->ctx,OWPIPv4Only)){
 #ifdef        AF_INET6
-    for(ai=fai;ai;ai=ai->ai_next){
+        for(ai=fai;ai;ai=ai->ai_next){
 
-        if(ai->ai_family != AF_INET6) continue;
+            if(ai->ai_family != AF_INET6) continue;
 
-        if( (rc = TryAddr(cntrl,ai,local_addr,server_addr)) == 0)
-            return 0;
-        if(rc < 0)
-            goto error;
+            if( (rc = TryAddr(cntrl,ai,local_addr,server_addr)) == 0)
+                return 0;
+            if(rc < 0)
+                goto error;
+        }
     }
 #endif
     /*
      * Now try IPv4 addresses.
      */
-    for(ai=fai;ai;ai=ai->ai_next){
+    if( !(OWPBoolean)OWPContextConfigGetV(cntrl->ctx,OWPIPv6Only)){
+        for(ai=fai;ai;ai=ai->ai_next){
 
-        if(ai->ai_family != AF_INET) continue;
+            if(ai->ai_family != AF_INET) continue;
 
-        if( (rc = TryAddr(cntrl,ai,local_addr,server_addr)) == 0)
-            return 0;
-        if(rc < 0)
-            goto error;
+            if( (rc = TryAddr(cntrl,ai,local_addr,server_addr)) == 0)
+                return 0;
+            if(rc < 0)
+                goto error;
+        }
     }
 
 error:
@@ -802,22 +806,26 @@ OWPSessionRequest(
      * (We prefer IPV6 over others, so loop over IPv6 addrs first...)
      * We only support AF_INET and AF_INET6.
      */
+    if( !(OWPBoolean)OWPContextConfigGetV(cntrl->ctx,OWPIPv4Only)){
 #ifdef        AF_INET6
-    for(rai = frai;rai;rai = rai->ai_next){
-        if(rai->ai_family != AF_INET6) continue;
-        for(sai = fsai;sai;sai = sai->ai_next){
-            if(rai->ai_family != sai->ai_family) continue;
-            if(rai->ai_socktype != sai->ai_socktype) continue;
-            goto foundaddr;
+        for(rai = frai;rai;rai = rai->ai_next){
+            if(rai->ai_family != AF_INET6) continue;
+            for(sai = fsai;sai;sai = sai->ai_next){
+                if(rai->ai_family != sai->ai_family) continue;
+                if(rai->ai_socktype != sai->ai_socktype) continue;
+                goto foundaddr;
+            }
         }
-    }
 #endif
-    for(rai = frai;rai;rai = rai->ai_next){
-        if(rai->ai_family != AF_INET) continue;
-        for(sai = fsai;sai;sai = sai->ai_next){
-            if(rai->ai_family != sai->ai_family) continue;
-            if(rai->ai_socktype != sai->ai_socktype) continue;
-            goto foundaddr;
+    }
+    if( !(OWPBoolean)OWPContextConfigGetV(cntrl->ctx,OWPIPv6Only)){
+        for(rai = frai;rai;rai = rai->ai_next){
+            if(rai->ai_family != AF_INET) continue;
+            for(sai = fsai;sai;sai = sai->ai_next){
+                if(rai->ai_family != sai->ai_family) continue;
+                if(rai->ai_socktype != sai->ai_socktype) continue;
+                goto foundaddr;
+            }
         }
     }
 

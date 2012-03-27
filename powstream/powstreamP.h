@@ -62,6 +62,9 @@ typedef        struct {
     struct  {
         /* Flags */
 
+        OWPBoolean  v4only;             /* -4 */
+        OWPBoolean  v6only;             /* -6 */
+
         char        *srcaddr;           /* -S */
         char        *authmode;          /* -A */
         char        *identity;          /* -u */
