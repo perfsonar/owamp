@@ -1438,6 +1438,9 @@ typedef struct OWPStatsRec{
     float               scale_factor;
     char                scale_abrv[3];
 
+    unsigned long       rec_limit; /* limits the number of records to print */
+    OWPBoolean          display_unix_ts; /* If set, prints timestamps in unix format */
+
     /*
      * data file information
      */

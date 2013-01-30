@@ -94,7 +94,7 @@ print_output_args(
         void
         )
 {
-    fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n",
+    fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n",
             "              [Output Args]",
             "   -a alpha       report an additional percentile level for the delays",
             "   -b bucketwidth bin size for histogram calculations",
@@ -103,7 +103,8 @@ print_output_args(
             "   -N count       number of test packets (to summarize per sub-session)\n"
             "   -Q             run the test and exit without reporting statistics",
             "   -R             print RAW data: \"SEQNO STIME SS SERR RTIME RS RERR TTL\\n\"",
-            "   -v             print out individual delays"
+            "   -v[N]          print out individual delays. You can supply an optional N here to limit the print to the first N packets",
+            "   -U             Adds UNIX timestamps when printing individual delays"
            );
 }
 
@@ -278,6 +279,14 @@ do_stats(
         I2ErrLog(eh,"OWPStatsCreate: failed");
         return -1;
     }
+
+    /* Set the limits here */
+    if (ping_ctx.opt.rec_limit > 0)
+      stats->rec_limit = ping_ctx.opt.rec_limit;
+
+    /* Set the timestamp flag here */
+    if (ping_ctx.opt.display_unix_ts == True)
+      stats->display_unix_ts = True;
 
     /*
      * How many summaries?
@@ -1092,7 +1101,7 @@ main(
     char                optstring[128];
     static char         *conn_opts = "64A:k:S:u:";
     static char         *test_opts = "c:D:E:fF:i:L:P:s:tT:z:";
-    static char         *out_opts = "a:b:d:Mn:N:pQRv";
+    static char         *out_opts = "a:b:d:Mn:N:pQRv::U";
     static char         *gen_opts = "h";
 #ifndef    NDEBUG
     static char         *debug_opts = "w";
@@ -1334,6 +1343,15 @@ main(
                 break;
             case 'v':
                 ping_ctx.opt.records = True;
+
+		if (optarg != NULL) {
+		  ping_ctx.opt.rec_limit = strtoul(optarg, &endptr, 10);
+		  if (*endptr != '\0') {
+                    usage(progname,
+			  "Invalid \"-v\" value. Positive integer expected");
+                    exit(1);
+		  }
+		};
                 break;
             case 'M':
                 ping_ctx.opt.machine = True;
@@ -1369,6 +1387,9 @@ main(
                     exit(1);
                 }
                 break;
+	case 'U':
+	  ping_ctx.opt.display_unix_ts = True;
+	  break;
 #ifndef    NDEBUG
             case 'w':
                 ping_ctx.opt.childwait = (void*)True;

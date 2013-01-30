@@ -51,9 +51,11 @@ typedef    struct {
         I2Boolean       v6only;             /* -6 */
 
         I2Boolean       records;            /* -v */
+        unsigned long   rec_limit;          /* -vN */
         I2Boolean       quiet;              /* -Q */
         I2Boolean       raw;                /* -R */
         I2Boolean       machine;            /* -M */
+        I2Boolean       display_unix_ts;    /* -U */
 
         I2Boolean       to;                 /* -t */
         I2Boolean       from;               /* -f */

@@ -1091,10 +1091,23 @@ IterateSummarizeSession(
      */
     if(stats->output){
         if(rec->send.sync && rec->recv.sync){
-            fprintf(stats->output,
-                    "seq_no=%-10u delay=%.3g %s\t(sync, err=%.3g %s)\n",
-                    rec->seq_no, d*stats->scale_factor, stats->scale_abrv,
-                    derr*stats->scale_factor,stats->scale_abrv);
+	  if (stats->display_unix_ts == True) {
+	    /* print using unix timestamp */
+	    fprintf(stats->output,
+		    "seq_no=%d delay=%e %s (sync, err=%.3g %s) sent=%f recv=%f\n",
+		    rec->seq_no, d*stats->scale_factor, stats->scale_abrv,
+		    derr*stats->scale_factor, stats->scale_abrv,
+		    OWPNum64ToDouble(rec->send.owptime),
+		    OWPNum64ToDouble(rec->recv.owptime)
+		    );
+	  } 
+	  else {
+	    /* print the default */
+	    fprintf(stats->output,
+		    "seq_no=%-10u delay=%.3g %s\t(sync, err=%.3g %s)\n",
+		    rec->seq_no, d*stats->scale_factor, stats->scale_abrv,
+		    derr*stats->scale_factor,stats->scale_abrv);
+	  }
         }
         else{
             fprintf(stats->output,
@@ -1259,6 +1272,9 @@ OWPStatsParse(
 
     /* determine how many records to look through */
     nrecs = (fileend - stats->begin_oset) / stats->hdr->rec_size;
+
+    if ((stats->rec_limit > 0) && (stats->rec_limit < nrecs))
+      nrecs = stats->rec_limit;
 
     /*
      * Initialize statistics variables
