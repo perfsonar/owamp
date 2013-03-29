@@ -1260,7 +1260,8 @@ main(
     appctx.opt.lossThreshold = 10.0;
     appctx.opt.meanWait = 0.1;
     appctx.opt.bucketWidth = 0.0001; /* 100 usecs */
-    appctx.opt.port_range.high = appctx.opt.port_range.low = 0; /* Ephemeral Ports */
+    appctx.opt.port_range.low  = 8760;
+    appctx.opt.port_range.high = 8960;
 
     /*
      * Fix getopt if the brain-dead GNU version is being used.
@@ -1403,17 +1404,22 @@ main(
                 }
                 break;
             case 'P':
-                if(!OWPParsePortRange(optarg, &appctx.opt.port_range)){
-                    I2ErrLog(eh,
-                            "Invalid test port range specified.");
-                    exit(1);
+                if (strcmp(optarg, "0") == 0) {
+                    appctx.opt.port_range.high = appctx.opt.port_range.low = 0; /* Ephemeral Ports */
                 }
-                if (appctx.opt.port_range.high && appctx.opt.port_range.low) {
-                        if ((appctx.opt.port_range.high - appctx.opt.port_range.low + 1) < 2) {
-                            I2ErrLog(eh,
-                                    "Invalid test port range specified: must contain at least 2 ports.");
-                            exit(1);
-                        }
+                else {
+                    if(!OWPParsePortRange(optarg, &appctx.opt.port_range)){
+                        I2ErrLog(eh,
+                                "Invalid test port range specified.");
+                        exit(1);
+                    }
+                    if (appctx.opt.port_range.high && appctx.opt.port_range.low) {
+                            if ((appctx.opt.port_range.high - appctx.opt.port_range.low + 1) < 2) {
+                                I2ErrLog(eh,
+                                        "Invalid test port range specified: must contain at least 2 ports.");
+                                exit(1);
+                            }
+                    }
                 }
                 break;
             /* Output options */

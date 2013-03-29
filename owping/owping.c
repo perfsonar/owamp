@@ -1166,6 +1166,11 @@ main(
     ping_ctx.opt.numBucketPackets = 0;
     ping_ctx.opt.bucket_width = 0.0001;
 
+    ping_ctx.opt.portspec = &ping_ctx.portrec;
+
+    ping_ctx.opt.portspec->low  = 8760;
+    ping_ctx.opt.portspec->high = 8960;
+
     /* Create options strings for this program. */
     if (!strcmp(progname, "owping")) {
         strcpy(optstring, conn_opts);
@@ -1297,21 +1302,27 @@ main(
                 }
                 break;
             case 'P':
-                if(!OWPParsePortRange(optarg, &ping_ctx.portrec)){
-                    usage(progname,
-                            "Invalid test port range specified.");
-                    exit(1);
+                if (strcmp(optarg, "0") == 0) {
+                    ping_ctx.opt.portspec->low  = 0;
+                    ping_ctx.opt.portspec->high = 0;
                 }
+                else {
+                    if(!OWPParsePortRange(optarg, &ping_ctx.portrec)){
+                        usage(progname,
+                                "Invalid test port range specified.");
+                        exit(1);
+                    }
 
-                if (ping_ctx.portrec.high && ping_ctx.portrec.low) {
-                        if ((ping_ctx.portrec.high - ping_ctx.portrec.low + 1) < 2) {
-                            I2ErrLog(eh,
-                                    "Invalid test port range specified: must contain at least 2 ports.");
-                            exit(1);
-                        }
+                    if (ping_ctx.portrec.high && ping_ctx.portrec.low) {
+                            if ((ping_ctx.portrec.high - ping_ctx.portrec.low + 1) < 2) {
+                                I2ErrLog(eh,
+                                        "Invalid test port range specified: must contain at least 2 ports.");
+                                exit(1);
+                            }
+                    }
+    
+                    ping_ctx.opt.portspec = &ping_ctx.portrec;
                 }
-
-                ping_ctx.opt.portspec = &ping_ctx.portrec;
 
                 break;
             case 'z':
