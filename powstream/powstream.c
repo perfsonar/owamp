@@ -103,7 +103,7 @@ print_conn_args(){
 "   -k pffile      pass-phrase file to use with Authenticated/Encrypted modes\n"
 "   -S srcaddr     use this as a local address for control connection and tests\n"
 "   -u username    username to use with Authenticated/Encrypted modes\n"
-"   -I retryDelay  time to wait between failed connections (default: 10 seconds)\n"
+"   -I retryDelay  time to wait between failed connections (default: 60 seconds)\n"
         );
 }
 
@@ -1256,7 +1256,7 @@ main(
     /* Set default options. */
     memset(&appctx,0,sizeof(appctx));
     appctx.opt.numPackets = 300;
-    appctx.opt.retryDelay = 10;
+    appctx.opt.retryDelay = 60;
     appctx.opt.lossThreshold = 10.0;
     appctx.opt.meanWait = 0.1;
     appctx.opt.bucketWidth = 0.0001; /* 100 usecs */
