@@ -1093,12 +1093,13 @@ IterateSummarizeSession(
         if(rec->send.sync && rec->recv.sync){
 	  if (stats->display_unix_ts == True) {
 	    /* print using unix timestamp */
+	    double epochdiff = (OWPULongToNum64(OWPJAN_1970))>>32;
 	    fprintf(stats->output,
 		    "seq_no=%d delay=%e %s (sync, err=%.3g %s) sent=%f recv=%f\n",
 		    rec->seq_no, d*stats->scale_factor, stats->scale_abrv,
 		    derr*stats->scale_factor, stats->scale_abrv,
-		    OWPNum64ToDouble(rec->send.owptime),
-		    OWPNum64ToDouble(rec->recv.owptime)
+		    OWPNum64ToDouble(rec->send.owptime) - epochdiff,
+		    OWPNum64ToDouble(rec->recv.owptime) - epochdiff
 		    );
 	  } 
 	  else {
