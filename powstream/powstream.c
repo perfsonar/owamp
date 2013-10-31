@@ -904,8 +904,6 @@ SetupSession(
     p->numPackets = 0;
     p->call_stop = False;
     p->session_started = False;
-    p->nextSessionStart = NULL;
-    q->nextSessionStart = NULL;
 
 
     if(appctx.opt.retryDelay > 0 && OWPNum64Cmp(p->prev_runtime.owptime, OWPULongToNum64(0)) > 0) {
