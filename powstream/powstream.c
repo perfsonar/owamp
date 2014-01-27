@@ -101,7 +101,7 @@ print_conn_args(){
 "   -6             use IPv6 only\n"
 "   -A authmode    requested modes: [A]uthenticated, [E]ncrypted, [O]pen\n"
 "   -k pffile      pass-phrase file to use with Authenticated/Encrypted modes\n"
-"   -S srcaddr     use this as a local address for control connection and tests\n"
+"   -S srcaddr     specify the local address or interface for control connection and tests\n"
 "   -u username    username to use with Authenticated/Encrypted modes\n"
 "   -I retryDelay  time to wait between failed connections (default: 60 seconds)\n"
         );
@@ -953,7 +953,7 @@ SetupSession(
      */
     if (appctx.opt.sender){
         if(!(p->fetch = OWPControlOpen(ctx,
-                        I2AddrByNode(eh, appctx.opt.srcaddr),
+                        appctx.opt.srcaddr,
                         I2AddrByNode(eh, appctx.remote_serv),
                         appctx.auth_mode,appctx.opt.identity,
                         NULL,&err))){
@@ -1003,7 +1003,7 @@ SetupSession(
 
 
     if(!(p->cntrl = OWPControlOpen(ctx,
-                    I2AddrByNode(eh, appctx.opt.srcaddr),
+                    appctx.opt.srcaddr,
                     I2AddrByNode(eh, appctx.remote_serv),
                     appctx.auth_mode,appctx.opt.identity,
                     NULL,&err))){

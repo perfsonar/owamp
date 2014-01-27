@@ -63,7 +63,7 @@ print_conn_args(
             "              [Connection Args]",
             "   -A authmode    requested modes: [A]uthenticated, [E]ncrypted, [O]pen",
             "   -k passphrasefile     passphrasefile to use with Authenticated/Encrypted modes",
-            "   -S srcaddr     use this as a local address for control connection and tests",
+            "   -S srcaddr     specify the local address or interface for control connection and tests",
             "   -u username    username to use with Authenticated/Encrypted modes",
             "   -4             connect using IPv4 addresses only",
             "   -6             connect using IPv6 addresses only"
@@ -1314,7 +1314,8 @@ main(
                     }
 
                     if (ping_ctx.portrec.high && ping_ctx.portrec.low) {
-                            if ((ping_ctx.portrec.high - ping_ctx.portrec.low + 1) < 2) {
+                            //if ((ping_ctx.portrec.high - ping_ctx.portrec.low + 1) < 2) {
+                            if ((ping_ctx.portrec.high - ping_ctx.portrec.low + 1) < 1) {
                                 I2ErrLog(eh,
                                         "Invalid test port range specified: must contain at least 2 ports.");
                                 exit(1);
@@ -1589,7 +1590,7 @@ main(
          */
 
         ping_ctx.cntrl = OWPControlOpen(ctx, 
-                I2AddrByNode(eh, ping_ctx.opt.srcaddr),
+                ping_ctx.opt.srcaddr,
                 I2AddrByNode(eh, ping_ctx.remote_serv),
                 ping_ctx.auth_mode,ping_ctx.opt.identity,
                 NULL,&err_ret);
@@ -1800,13 +1801,8 @@ main(
             /*
              * First determine local address.
              */
-            if(ping_ctx.opt.srcaddr){
-                laddr = I2AddrByNode(eh,ping_ctx.opt.srcaddr);
-            }
-            else{
-                laddr = I2AddrByLocalSockFD(eh,OWPControlFD(ping_ctx.cntrl),
-                        False);
-            }
+            laddr = I2AddrByLocalSockFD(eh,OWPControlFD(ping_ctx.cntrl), False);
+
             lsize = sizeof(localbuf);
             I2AddrNodeName(laddr,localbuf,&lsize);
             if(lsize > 0){
@@ -1898,7 +1894,7 @@ main(
          * Open connection to owampd.
          */
         ping_ctx.cntrl = OWPControlOpen(ctx, 
-                I2AddrByNode(eh, ping_ctx.opt.srcaddr),
+                ping_ctx.opt.srcaddr,
                 I2AddrByNode(eh, ping_ctx.remote_serv),
                 ping_ctx.auth_mode,ping_ctx.opt.identity,
                 NULL,&err_ret);
@@ -1952,7 +1948,7 @@ main(
          * Open connection to owampd.
          */
         ping_ctx.cntrl = OWPControlOpen(ctx, 
-                I2AddrByNode(eh, ping_ctx.opt.srcaddr),
+                ping_ctx.opt.srcaddr,
                 I2AddrByNode(eh, ping_ctx.remote_serv),
                 ping_ctx.auth_mode,ping_ctx.opt.identity,
                 &tstamp.owptime,&err_ret);

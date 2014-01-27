@@ -987,4 +987,9 @@ _OWPDecodeTimeStampErrEstimate(
         uint8_t         buf[2]
         );
 
+extern OWPBoolean
+_OWPIsInterface(
+        const char *interface
+        );
+
 #endif        /* OWAMPP_H */

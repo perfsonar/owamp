@@ -24,6 +24,7 @@
 #include <owamp/owampP.h>
 #include <I2util/util.h>
 
+#include <ifaddrs.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
@@ -55,67 +56,93 @@ static OWPBoolean
 _OWPClientBind(
         OWPControl      cntrl,
         int             fd,
-        I2Addr          local_addr,
+        const char      *local_addr,
         struct addrinfo *remote_addrinfo,
         OWPErrSeverity  *err_ret
         )
 {
     struct addrinfo *fai;
     struct addrinfo *ai;
+    OWPBoolean      retval = False;
 
     *err_ret = OWPErrOK;
 
-    if( !I2AddrSetSocktype(local_addr,SOCK_STREAM) ||
-            !I2AddrSetProtocol(local_addr,IPPROTO_TCP) ||
-            !(fai = I2AddrAddrInfo(local_addr,NULL,NULL))){
-        *err_ret = OWPErrFATAL;
-        return False;
-    }
+    if (_OWPIsInterface(local_addr)) {
+        struct ifaddrs *ifaddr, *ifa;
 
-    /*
-     * Now that we have a valid addrinfo list for this address, go
-     * through each of those addresses and try to bind the first
-     * one that matches addr family and socktype.
-     */
-    for(ai=fai;ai;ai = ai->ai_next){
-        if(ai->ai_family != remote_addrinfo->ai_family)
-            continue;
-        if(ai->ai_socktype != remote_addrinfo->ai_socktype)
-            continue;
-
-        if(bind(fd,ai->ai_addr,ai->ai_addrlen) == 0){
-            if( I2AddrSetSAddr(local_addr,ai->ai_addr,ai->ai_addrlen)){
-                return True;
-            }
-            OWPError(cntrl->ctx,OWPErrFATAL,errno,
-                    "I2AddrSetSAddr(): failed to set saddr");
-            return False;
-        }else{
-            switch(errno){
-                /* report these errors */
-                case EAGAIN:
-                case EBADF:
-                case ENOTSOCK:
-                case EADDRNOTAVAIL:
-                case EADDRINUSE:
-                case EACCES:
-                case EFAULT:
-                    OWPError(cntrl->ctx,OWPErrFATAL,errno,
-                            "bind(): %M");
-                    break;
-                    /* ignore all others */
-                default:
-                    break;
-            }
+        if (getifaddrs(&ifaddr) == -1) {
             return False;
         }
 
+        for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+
+            if (strcmp(ifa->ifa_name, local_addr) != 0)
+                continue;
+
+            if (ifa->ifa_addr == NULL)
+                continue;
+
+            if (remote_addrinfo->ai_family != ifa->ifa_addr->sa_family)
+                continue;
+
+	    // This is a hacky method of getting the addrlen. It should match
+	    // the remote_addrinfo's addrlen.
+            if (bind(fd,ifa->ifa_addr,remote_addrinfo->ai_addrlen) == 0){
+                retval = True;
+                break;
+            }
+        }
+
+        freeifaddrs(ifaddr);
+    }
+    else {
+        struct addrinfo hints;
+        struct addrinfo *result;
+
+        memset(&hints, 0, sizeof(struct addrinfo));
+        hints.ai_family = remote_addrinfo->ai_family;
+        hints.ai_socktype = remote_addrinfo->ai_socktype;
+        hints.ai_flags = 0;    /* For wildcard IP address */
+        hints.ai_protocol = remote_addrinfo->ai_protocol;
+        hints.ai_canonname = NULL;
+        hints.ai_addr = NULL;
+        hints.ai_next = NULL;
+ 
+        if (getaddrinfo(local_addr, NULL, &hints, &result) != 0) {
+            OWPError(cntrl->ctx,OWPErrFATAL,errno,
+                    "getaddrinfo(): %s: %M", local_addr);
+            return False;
+        }
+
+        for(ai=result;ai;ai = ai->ai_next){
+            if(bind(fd,ai->ai_addr,ai->ai_addrlen) == 0){
+                retval = True;
+                break;
+            }
+            else{
+                switch(errno){
+                    /* report these errors */
+                    case EAGAIN:
+                    case EBADF:
+                    case ENOTSOCK:
+                    case EADDRNOTAVAIL:
+                    case EADDRINUSE:
+                    case EACCES:
+                    case EFAULT:
+                        OWPError(cntrl->ctx,OWPErrFATAL,errno,
+                                "bind(): %M");
+                        break;
+                        /* ignore all others */
+                    default:
+                        break;
+                }
+            }
+         }
+ 
+        freeaddrinfo(result);
     }
 
-    /*
-     * None found.
-     */
-    return False;
+    return retval;
 }
 
 /*
@@ -142,7 +169,7 @@ static int
 TryAddr(
         OWPControl      cntrl,
         struct addrinfo *ai,
-        I2Addr          local_addr,
+        const char      *local_addr,
         I2Addr          server_addr
        )
 {
@@ -176,7 +203,14 @@ TryAddr(
                 I2AddrSetFD(server_addr,fd,True)){
 
             cntrl->remote_addr = server_addr;
-            cntrl->local_addr = local_addr;
+
+            if( !(cntrl->local_addr = I2AddrByLocalSockFD(
+                            OWPContextErrHandle(cntrl->ctx),
+                            fd,False))){
+                OWPError(cntrl->ctx,OWPErrFATAL,errno, "I2AddrByLocalSockFD() failed");
+                goto cleanup;
+            }
+
             cntrl->sockfd = fd;
             return 0;
         }
@@ -215,7 +249,7 @@ cleanup:
 static int
 _OWPClientConnect(
         OWPControl      cntrl,
-        I2Addr          local_addr,
+        const char      *local_addr,
         I2Addr          server_addr,
         OWPErrSeverity  *err_ret
         )
@@ -330,7 +364,7 @@ error:
 OWPControl
 OWPControlOpen(
         OWPContext      ctx,            /* control context      */
-        I2Addr          local_addr,     /* local addr or null   */
+        const char      *local_addr,    /* local addr or null   */
         I2Addr          server_addr,    /* server addr          */
         uint32_t        mode_req_mask,  /* requested modes      */
         OWPUserID       userid,         /* userid or NULL       */
@@ -590,8 +624,6 @@ error:
 denied:
     if(pf_free)
         free(pf_free);
-    if(cntrl->local_addr != local_addr)
-        I2AddrFree(local_addr);
     if(cntrl->remote_addr != server_addr)
         I2AddrFree(server_addr);
     OWPControlClose(cntrl);
@@ -1549,4 +1581,30 @@ done:
 
 failed:
     return False;
+}
+
+OWPBoolean
+_OWPIsInterface(
+        const char *interface
+        )
+{
+    OWPBoolean retval;
+    struct ifaddrs *ifaddr, *ifa;
+
+    if (getifaddrs(&ifaddr) == -1) {
+        return False;
+    }
+
+    retval = False;
+
+    for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+        if (strcmp(ifa->ifa_name, interface) == 0) {
+            retval = True;
+            break;
+        }
+    }
+
+    freeifaddrs(ifaddr);
+
+    return retval;
 }

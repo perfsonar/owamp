@@ -783,10 +783,10 @@ parse_ports(
 
     switch(*endptr){
         case '\0':
-            /* only allow a single value if it is 0 */
-            if(portrec.low){
-                goto failed;
-            }
+            ///* only allow a single value if it is 0 */
+            //if(portrec.low){
+            //    goto failed;
+            //}
             portrec.high = portrec.low;
             goto done;
             break;
