@@ -1,13 +1,13 @@
 Name: owamp
 Summary: owamp - one-way delay tester
 Version: @VERSION@
-Release: 5
+Release: 7
 License: Apache License v2.0
 Group: *Development/Libraries*
 URL: http://e2epi.internet2.edu/owamp/
 Source: %{name}-%{version}.tar.gz
 Packager: Aaron Brown <aaron@internet2.edu>
-BuildRequires: libtool
+BuildRequires: libtool, I2util
 Requires: owamp-client, owamp-server, I2util
 BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-buildroot
 
@@ -29,7 +29,7 @@ server.
 %package server
 Summary: owamp server
 Group: Applications/Network
-Requires: I2util, chkconfig, initscripts, shadow-utils, coreutils
+Requires: chkconfig, initscripts, shadow-utils, coreutils
 %description server
 owamp server
 
@@ -48,7 +48,7 @@ owamp server
 %setup -q
 
 %build
-%configure
+%configure --with-I2util=no
 make
 
 %install
