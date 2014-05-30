@@ -116,8 +116,7 @@ _OWPInitNTP(
 #ifdef        STA_NANO
         if( !(ntp_conf.status & STA_NANO)){
             OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                    "_OWPInitNTP: STA_NANO must be set! - try \"ntptime -N\"");
-            return 1;
+                    "NTP: STA_NANO should be set. Make sure ntpd is running, and your NTP configuration is good.");
         }
 #endif
     }
