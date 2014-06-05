@@ -1121,7 +1121,7 @@ int main(
     opts.daemon = 1;
     opts.user = opts.group = NULL;
     opts.diskfudge = 1.0;
-    opts.dieby = 30;
+    opts.dieby = 5;
     opts.controltimeout = 1800;
     opts.portspec = NULL;
 
