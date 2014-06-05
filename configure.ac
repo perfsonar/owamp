@@ -35,6 +35,10 @@ AM_CONFIG_HEADER(owamp/config.h)
 
 TOP_BUILD_DIRS=""
 
+AC_ARG_ENABLE(debug,
+                [  --enable-debug         turn on debugging],
+                [CFLAGS="-g -Wall -DDEBUG $CFLAGS"])
+
 #
 # add configure options.
 #
