@@ -1,26 +1,3 @@
-#
-#      $Id$
-#
-#########################################################################
-#									#
-#			   Copyright (C)  2003				#
-#	University Corporation for Advanced Internet Development	#
-#			   All Rights Reserved				#
-#									#
-#########################################################################
-#
-#	File:		owampd.limits
-#
-#	Author:		Jeff W. Boote
-#			Internet2
-#
-#	Date:		Thu Mar 06 16:04:09 MST 2003
-#
-#	Description:	
-#		This is an example "limits" file for the owampd
-#		process.
-#
-#	Basics:
 #	This file is used to define policy for the owampd process. There
 #	are two parts to this policy. 1) authentication. 2) authorization.
 #	The authentication is done by assigning a "user class" to each
@@ -160,13 +137,12 @@ limit root with disk=0,\
 		bandwidth=0,\
                 delete_on_fetch=on
 
-# limit box with parent=root,disk=1,bandwidth=1,allow_open_mode=off
-limit box with parent=root,bandwidth=1m
-limit sand with parent=box,\
-		disk=10M,\
-		bandwidth=100k,\
-		delete_on_fetch=on
+# Limit non-authorized users to 10G of disk storage, and 1M of bandwidth
+# (overall for all non-authorized users). Unspecified values default to
+# parent permissions
+limit regular with parent=root,\
+		disk=10G,\
+		bandwidth=1M
 
-assign default sand
-assign net ::/127 root
-assign net 127.0.0.1/32 root
+# Default everything to regular user access
+assign default regular
