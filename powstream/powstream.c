@@ -56,7 +56,6 @@ int optreset;
  */
 #define        MAX_PADDING_SIZE        0xFFFF
 
-
 /*
  * The powstream context
  */
@@ -93,6 +92,15 @@ static int              pow_error = SIGCONT;
  */
 static char             dirpath[PATH_MAX];
 static uint32_t        file_offset,tstamp_offset,ext_offset;
+
+static uint32_t FetchSession(
+        pow_cntrl       p,
+        uint32_t        begin,
+        uint32_t        end,
+        OWPErrSeverity  *err_ret
+        );
+
+static int sig_check();
 
 static void
 print_conn_args(){
@@ -358,6 +366,52 @@ GetMaxSend(
     return 0;
 }
 
+static uint32_t
+FetchSession(
+        pow_cntrl       p,
+        uint32_t        begin,
+        uint32_t        end,
+        OWPErrSeverity  *err_ret
+        )
+{
+    OWPErrSeverity err;
+    uint32_t       num_rec;
+
+    if (p->fetch == NULL) {
+        p->fetch = OWPControlOpen(p->ctx,
+                        appctx.opt.srcaddr,
+                        I2AddrByNode(eh, appctx.remote_serv),
+                        appctx.auth_mode,appctx.opt.identity,
+                        NULL,&err);
+        if (!p->fetch) {
+            I2ErrLog(eh,"OWPControlOpen(%s): Couldn't open 'fetch' connection to server: %M",
+                    appctx.remote_serv);
+            goto error_out;
+        }
+
+        if(sig_check()) {
+            *err_ret = OWPErrINVALID;
+            return 0;
+        }
+    }
+
+    num_rec = OWPFetchSession(p->fetch,p->testfp,
+                begin, end,p->sid,err_ret);
+    if (!num_rec) {
+        goto error_out;
+    }
+ 
+    return num_rec;
+
+error_out:
+    if (p->fetch)
+        OWPControlClose(p->fetch);
+
+    p->fetch = NULL;
+
+    return 0;
+}
+
 /*
  * Function:    write_session
  *
@@ -433,8 +487,7 @@ write_session(
         /*
          * Fetch the data and put it in testfp
          */
-        num_rec = OWPFetchSession(p->fetch,p->testfp,
-                0,(uint32_t)0xFFFFFFFF,p->sid,&ec);
+        num_rec = FetchSession(p,0,(uint32_t)0xFFFFFFFF,&ec);
         if(!num_rec){
             if(ec >= OWPErrWARNING){
                 /*
@@ -873,7 +926,6 @@ SetupSession(
 {
     OWPErrSeverity  err;
     OWPTimeStamp    currtime;
-    unsigned int    stime;
     int             fd;
     uint64_t        i;
     char            fname[PATH_MAX];
@@ -907,7 +959,6 @@ SetupSession(
 
 
     if(appctx.opt.retryDelay > 0 && OWPNum64Cmp(p->prev_runtime.owptime, OWPULongToNum64(0)) > 0) {
-        double diff;
         struct timespec ts, nts;
         OWPNum64 next_runtime;
 
@@ -947,26 +998,6 @@ SetupSession(
     }
 
     OWPGetTimeOfDay(ctx,&p->prev_runtime);
-
-    /*
-     * First open a 'fetch' connection if we don't have one.
-     */
-    if (appctx.opt.sender){
-        if(!(p->fetch = OWPControlOpen(ctx,
-                        appctx.opt.srcaddr,
-                        I2AddrByNode(eh, appctx.remote_serv),
-                        appctx.auth_mode,appctx.opt.identity,
-                        NULL,&err))){
-
-            if(sig_check()) return 1;
-            stime = MIN(sessionTime,SETUP_ESTIMATE);
-
-            I2ErrLog(eh,"OWPControlOpen(%s): Couldn't open 'fetch' connection to server: %M",
-                    appctx.remote_serv);
-
-            goto error_out;
-         }
-    }
 
     if(sig_check())
         return 1;
@@ -1957,10 +1988,10 @@ AGAIN:
                 /*
                  * Fetch the data and put it in testfp
                  */
-                nrecs = OWPFetchSession(p->fetch,p->testfp,
+                nrecs = FetchSession(p,
                         appctx.opt.numBucketPackets*sum,
                         (appctx.opt.numBucketPackets*(sum+1))-1,
-                        p->sid,&err_ret);
+                        &err_ret);
                 if(!nrecs){
                     if(err_ret >= OWPErrWARNING){
                         /*
@@ -2150,5 +2181,3 @@ cleanup:
 
     exit(0);
 }
-
-
