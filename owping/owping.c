@@ -524,7 +524,7 @@ owp_fetch_sid(
          * server denied request...
          */
         I2ErrLog(eh,
-                "owp_fetch_sid:Server denied request for to session data");
+                "owp_fetch_sid:Server denied request for to session data - is your clock synchronized via NTP properly?");
         return NULL;
     }
 
