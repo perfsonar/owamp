@@ -32,6 +32,7 @@
 #undef PACKAGE_STRING
 #undef PACKAGE_TARNAME
 #undef PACKAGE_VERSION
+#undef PATCH_LEVEL
 
 #include <owamp/config.h>
 #endif        /* HAVE_CONFIG_H */

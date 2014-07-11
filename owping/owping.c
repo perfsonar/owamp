@@ -179,7 +179,12 @@ usage(
                 "usage: %s is not a known name for this program.\n",progname);
     }
 
-    fprintf(stderr, "Distribution: %s\n", PACKAGE_STRING);
+    if (PATCH_LEVEL) {
+        fprintf(stderr, "\nVersion: %s-%d\n\n", PACKAGE_VERSION, PATCH_LEVEL);
+    }
+    else {
+        fprintf(stderr, "\nVersion: %s\n\n", PACKAGE_VERSION);
+    }
 
     return;
 }
