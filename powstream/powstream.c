@@ -465,10 +465,9 @@ write_session(
         uint32_t    num_rec;
 
         /*
-         * If there is no file or cntrl record to fetch the data
-         * give up.
+         * If there is no file to fetch the data give up.
          */
-        if(!p->testfp || !p->fetch)
+        if(!p->testfp)
             return;
 
         /*
@@ -1607,6 +1606,10 @@ main(
                 " lossThreshold(%g) is too large a fraction"
                 " of approx summary session duration(%lu)",
                 appctx.opt.lossThreshold,sessionTime);
+    }
+
+    if(sessionTime < appctx.opt.retryDelay) {
+        appctx.opt.retryDelay = sessionTime;
     }
 
     /*
