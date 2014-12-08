@@ -1,0 +1,10 @@
+usr/bin/owfetch
+usr/bin/owping
+usr/bin/owstats
+usr/bin/owup
+usr/bin/powstream
+usr/share/man/man1/owfetch.1
+usr/share/man/man1/owping.1
+usr/share/man/man1/owstats.1
+usr/share/man/man1/owup.1
+usr/share/man/man1/powstream.1

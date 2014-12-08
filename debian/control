@@ -1,0 +1,34 @@
+Source: owamp
+Section: net
+Priority: optional
+Maintainer: Valentin Vidic <Valentin.Vidic@CARNet.hr>
+Build-Depends: debhelper (>= 9), dh-autoreconf, dh-exec, libi2util-dev
+Standards-Version: 3.9.3
+Homepage: http://software.internet2.edu/owamp/
+Vcs-Git: https://code.google.com/p/perfsonar-ps.owamp/
+Vcs-Browser: https://code.google.com/p/perfsonar-ps/source/browse/?repo=owamp
+
+Package: owamp-client
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: OWAMP command line client utilities
+ OWAMP is a client/server package that allows one to measure the
+ latency between hosts. Unlike ping, which can only measure the
+ bidirectional delay, OWAMP enables you to measure the unidirectional
+ delay between two hosts.  It is an implementation of the One-Way Active
+ Measurement Protocol as defined by RFC4656.
+ .
+ This package contains command line client utilities for performing
+ measurements with an owamp server.
+
+Package: owamp-server
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, adduser, ntp | time-daemon
+Description: OWAMP server
+ OWAMP is a client/server package that allows one to measure the
+ latency between hosts. Unlike ping, which can only measure the
+ bidirectional delay, OWAMP enables you to measure the unidirectional
+ delay between two hosts.  It is an implementation of the One-Way Active
+ Measurement Protocol as defined by RFC4656.
+ .
+ This package contains the owamp server.

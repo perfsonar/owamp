@@ -1,0 +1,739 @@
+Description: Fix manpage warnings
+
+--- a/doc/owping_conn_opts.man
++++ b/doc/owping_conn_opts.man
+@@ -1,30 +1,30 @@
+-." ex: set tabstop=4 ai expandtab softtabstop=4 shiftwidth=4:
+-." -*- mode: c-basic-indent: 4; tab-width: 4; indent-tabs-mode: nil -*-
+-." The first line of this file must contain the '"[e][r][t][v] line
+-." to tell man to run the appropriate filter "t" for table.
+-." vim: set filetype=nroff :
+-."
+-."    $Id$
+-."
+-."######################################################################
+-."#                                                                    #
+-."#                        Copyright (C)  2007                         #
+-."#                            Internet2                               #
+-."#                        All Rights Reserved                         #
+-."#                                                                    #
+-."######################################################################
+-."
+-."    File:        owping_conn_opts.man
+-."
+-."    Author:      Jeff W. Boote
+-."                 Internet2
+-."
+-."    Date:        Sat Feb 24 03:57:37 MST 2007
+-."
+-."    Description:    
+-."      This file is included into owping.1, owfetch.1, owup.1 and
+-."      is not useful as a man-page on its own.
+-."
++.\" ex: set tabstop=4 ai expandtab softtabstop=4 shiftwidth=4:
++.\" -*- mode: c-basic-indent: 4; tab-width: 4; indent-tabs-mode: nil -*-
++.\" The first line of this file must contain the '"[e][r][t][v] line
++.\" to tell man to run the appropriate filter "t" for table.
++.\" vim: set filetype=nroff :
++.\"
++.\"    $Id$
++.\"
++.\"######################################################################
++.\"#                                                                    #
++.\"#                        Copyright (C)  2007                         #
++.\"#                            Internet2                               #
++.\"#                        All Rights Reserved                         #
++.\"#                                                                    #
++.\"######################################################################
++.\"
++.\"    File:        owping_conn_opts.man
++.\"
++.\"    Author:      Jeff W. Boote
++.\"                 Internet2
++.\"
++.\"    Date:        Sat Feb 24 03:57:37 MST 2007
++.\"
++.\"    Description:    
++.\"      This file is included into owping.1, owfetch.1, owup.1 and
++.\"      is not useful as a man-page on its own.
++.\"
+ .SS Connection/Authentication Options:
+ .TP
+ \fB\-4\fR
+--- a/doc/owampd.man
++++ b/doc/owampd.man
+@@ -1,26 +1,26 @@
+-." The first line of this file must contain the '"[e][r][t][v] line
+-." to tell man to run the appropriate filter "t" for table.
+-." vim: set filetype=nroff :
+-."
+-."	$Id$
+-."
+-."######################################################################
+-."#									#
+-."#			   Copyright (C)  2004				#
+-."#	     			Internet2				#
+-."#			   All Rights Reserved				#
+-."#									#
+-."######################################################################
+-."
+-."	File:		owampd.8
+-."
+-."	Author:		Jeff Boote
+-."			Internet2
+-."
+-."	Date:		Fri May  7 15:24:16 MDT 2004
+-."
+-."	Description:	
+-."
++.\" The first line of this file must contain the '"[e][r][t][v] line
++.\" to tell man to run the appropriate filter "t" for table.
++.\" vim: set filetype=nroff :
++.\"
++.\"	$Id$
++.\"
++.\"######################################################################
++.\"#									#
++.\"#			   Copyright (C)  2004				#
++.\"#	     			Internet2				#
++.\"#			   All Rights Reserved				#
++.\"#									#
++.\"######################################################################
++.\"
++.\"	File:		owampd.8
++.\"
++.\"	Author:		Jeff Boote
++.\"			Internet2
++.\"
++.\"	Date:		Fri May  7 15:24:16 MDT 2004
++.\"
++.\"	Description:	
++.\"
+ .de TQ
+ .br
+ .ns
+--- a/doc/owampd.limits.man
++++ b/doc/owampd.limits.man
+@@ -1,27 +1,27 @@
+ '\"t
+-." The first line of this file must contain the '"[e][r][t][v] line
+-." to tell man to run the appropriate filter "t" for table.
+-." vim: set filetype=nroff :
+-."
+-."	$Id$
+-."
+-."######################################################################
+-."#									#
+-."#			   Copyright (C)  2004				#
+-."#	     			Internet2				#
+-."#			   All Rights Reserved				#
+-."#									#
+-."######################################################################
+-."
+-."	File:		owampd.limits.man
+-."
+-."	Author:		Jeff Boote
+-."			Internet2
+-."
+-."	Date:		Wed May 12 10:45:09 MDT 2004
+-."
+-."	Description:	
+-."
++.\" The first line of this file must contain the '"[e][r][t][v] line
++.\" to tell man to run the appropriate filter "t" for table.
++.\" vim: set filetype=nroff :
++.\"
++.\"	$Id$
++.\"
++.\"######################################################################
++.\"#									#
++.\"#			   Copyright (C)  2004				#
++.\"#	     			Internet2				#
++.\"#			   All Rights Reserved				#
++.\"#									#
++.\"######################################################################
++.\"
++.\"	File:		owampd.limits.man
++.\"
++.\"	Author:		Jeff Boote
++.\"			Internet2
++.\"
++.\"	Date:		Wed May 12 10:45:09 MDT 2004
++.\"
++.\"	Description:	
++.\"
+ .TH owampd.limits 5 "$Date$"
+ .SH NAME
+ owampd.limits \- One-way latency server policy configuration file
+--- a/doc/owping_out_opts.man
++++ b/doc/owping_out_opts.man
+@@ -1,30 +1,30 @@
+-." ex: set tabstop=4 ai expandtab softtabstop=4 shiftwidth=4:
+-." -*- mode: c-basic-indent: 4; tab-width: 4; indent-tabs-mode: nil -*-
+-." The first line of this file must contain the '"[e][r][t][v] line
+-." to tell man to run the appropriate filter "t" for table.
+-." vim: set filetype=nroff :
+-."
+-."    $Id$
+-."
+-."######################################################################
+-."#                                                                    #
+-."#                        Copyright (C)  2007                         #
+-."#                            Internet2                               #
+-."#                        All Rights Reserved                         #
+-."#                                                                    #
+-."######################################################################
+-."
+-."    File:        owping_out_opts.man
+-."
+-."    Author:      Jeff W. Boote
+-."                 Internet2
+-."
+-."    Date:        Sat Feb 24 04:03:02 MST 2007
+-."
+-."    Description:    
+-."      This file is included into owping.1, owfetch.1, owstats.1 and
+-."      is not useful as a man-page on its own.
+-."
++.\" ex: set tabstop=4 ai expandtab softtabstop=4 shiftwidth=4:
++.\" -*- mode: c-basic-indent: 4; tab-width: 4; indent-tabs-mode: nil -*-
++.\" The first line of this file must contain the '"[e][r][t][v] line
++.\" to tell man to run the appropriate filter "t" for table.
++.\" vim: set filetype=nroff :
++.\"
++.\"    $Id$
++.\"
++.\"######################################################################
++.\"#                                                                    #
++.\"#                        Copyright (C)  2007                         #
++.\"#                            Internet2                               #
++.\"#                        All Rights Reserved                         #
++.\"#                                                                    #
++.\"######################################################################
++.\"
++.\"    File:        owping_out_opts.man
++.\"
++.\"    Author:      Jeff W. Boote
++.\"                 Internet2
++.\"
++.\"    Date:        Sat Feb 24 04:03:02 MST 2007
++.\"
++.\"    Description:    
++.\"      This file is included into owping.1, owfetch.1, owstats.1 and
++.\"      is not useful as a man-page on its own.
++.\"
+ .SH Output Options:
+ .TP
+ \fB\-a\fR \fIpercentile_list\fR
+--- a/doc/owampd.conf.man
++++ b/doc/owampd.conf.man
+@@ -1,26 +1,26 @@
+-." The first line of this file must contain the '"[e][r][t][v] line
+-." to tell man to run the appropriate filter "t" for table.
+-." vim: set filetype=nroff :
+-."
+-."	$Id$
+-."
+-."######################################################################
+-."#									#
+-."#			   Copyright (C)  2004				#
+-."#	     			Internet2				#
+-."#			   All Rights Reserved				#
+-."#									#
+-."######################################################################
+-."
+-."	File:		owampd.conf.man
+-."
+-."	Author:		Jeff Boote
+-."			Internet2
+-."
+-."	Date:		Tue May 11 14:15:18 MDT 2004
+-."
+-."	Description:	
+-."
++.\" The first line of this file must contain the '"[e][r][t][v] line
++.\" to tell man to run the appropriate filter "t" for table.
++.\" vim: set filetype=nroff :
++.\"
++.\"	$Id$
++.\"
++.\"######################################################################
++.\"#									#
++.\"#			   Copyright (C)  2004				#
++.\"#	     			Internet2				#
++.\"#			   All Rights Reserved				#
++.\"#									#
++.\"######################################################################
++.\"
++.\"	File:		owampd.conf.man
++.\"
++.\"	Author:		Jeff Boote
++.\"			Internet2
++.\"
++.\"	Date:		Tue May 11 14:15:18 MDT 2004
++.\"
++.\"	Description:	
++.\"
+ .TH owampd.conf 5 "$Date$"
+ .SH NAME
+ owampd.conf \- One-way latency daemon configuration file.
+--- a/doc/owampd.pfs.man
++++ b/doc/owampd.pfs.man
+@@ -1,26 +1,26 @@
+-." The first line of this file must contain the '"[e][r][t][v] line
+-." to tell man to run the appropriate filter "t" for table.
+-." vim: set filetype=nroff :
+-."
+-."	$Id$
+-."
+-."######################################################################
+-."#									#
+-."#			   Copyright (C)  2006				#
+-."#	     			Internet2				#
+-."#			   All Rights Reserved				#
+-."#									#
+-."######################################################################
+-."
+-."	File:		owampd.pfs.man
+-."
+-."	Author:		Jeff Boote
+-."			Internet2
+-."
+-."	Date:		Sun Nov  5 14:53:10 MST 2006
+-."
+-."	Description:	
+-."
++.\" The first line of this file must contain the '"[e][r][t][v] line
++.\" to tell man to run the appropriate filter "t" for table.
++.\" vim: set filetype=nroff :
++.\"
++.\"	$Id$
++.\"
++.\"######################################################################
++.\"#									#
++.\"#			   Copyright (C)  2006				#
++.\"#	     			Internet2				#
++.\"#			   All Rights Reserved				#
++.\"#									#
++.\"######################################################################
++.\"
++.\"	File:		owampd.pfs.man
++.\"
++.\"	Author:		Jeff Boote
++.\"			Internet2
++.\"
++.\"	Date:		Sun Nov  5 14:53:10 MST 2006
++.\"
++.\"	Description:	
++.\"
+ .TH owampd.pfs 5 "$Date$"
+ .SH NAME
+ owampd.pfs \- One-way latency server pass-phrase store
+--- a/doc/owping_report.man
++++ b/doc/owping_report.man
+@@ -1,30 +1,30 @@
+-." ex: set tabstop=4 ai expandtab softtabstop=4 shiftwidth=4:
+-." -*- mode: c-basic-indent: 4; tab-width: 4; indent-tabs-mode: nil -*-
+-." The first line of this file must contain the '"[e][r][t][v] line
+-." to tell man to run the appropriate filter "t" for table.
+-." vim: set filetype=nroff :
+-."
+-."    $Id$
+-."
+-."######################################################################
+-."#                                                                    #
+-."#                        Copyright (C)  2007                         #
+-."#                            Internet2                               #
+-."#                        All Rights Reserved                         #
+-."#                                                                    #
+-."######################################################################
+-."
+-."    File:        owping_report.man
+-."
+-."    Author:      Jeff W. Boote
+-."                 Internet2
+-."
+-."    Date:        Sat Feb 24 04:09:01 MST 2007
+-."
+-."    Description:    
+-."      This file is included into owping.1, owfetch.1, owstats.1 and
+-."      is not useful as a man-page on its own.
+-."
++.\" ex: set tabstop=4 ai expandtab softtabstop=4 shiftwidth=4:
++.\" -*- mode: c-basic-indent: 4; tab-width: 4; indent-tabs-mode: nil -*-
++.\" The first line of this file must contain the '"[e][r][t][v] line
++.\" to tell man to run the appropriate filter "t" for table.
++.\" vim: set filetype=nroff :
++.\"
++.\"    $Id$
++.\"
++.\"######################################################################
++.\"#                                                                    #
++.\"#                        Copyright (C)  2007                         #
++.\"#                            Internet2                               #
++.\"#                        All Rights Reserved                         #
++.\"#                                                                    #
++.\"######################################################################
++.\"
++.\"    File:        owping_report.man
++.\"
++.\"    Author:      Jeff W. Boote
++.\"                 Internet2
++.\"
++.\"    Date:        Sat Feb 24 04:09:01 MST 2007
++.\"
++.\"    Description:    
++.\"      This file is included into owping.1, owfetch.1, owstats.1 and
++.\"      is not useful as a man-page on its own.
++.\"
+ .PP
+ \fBOWAMP\fR supports three reporting formats. A textual summary that was
+ designed to be as similar to the results that \fBping\fR produces as
+@@ -83,5 +83,5 @@
+ .br
+ Finally \fBOWAMP\fR reports the amount of re-ordering it observed. A
+ description of the metric used to report this can be found at:
+-.br
+-\%http://www.internet2.edu/performance/owamp/draft-shalunov-reordering-definition-02.txt.html
++.nf
++http://www.internet2.edu/performance/owamp/draft-shalunov-reordering-definition-02.txt.html
+--- a/doc/powstream.man
++++ b/doc/powstream.man
+@@ -1,27 +1,27 @@
+ '\"t
+-." The first line of this file must contain the '"[e][r][t][v] line
+-." to tell man to run the appropriate filter "t" for table.
+-." vim: set filetype=nroff :
+-."
+-."	$Id$
+-."
+-."######################################################################
+-."#									#
+-."#			   Copyright (C)  2004				#
+-."#	     			Internet2				#
+-."#			   All Rights Reserved				#
+-."#									#
+-."######################################################################
+-."
+-."	File:		powstream.1
+-."
+-."	Author:		Jeff Boote
+-."			Internet2
+-."
+-."	Date:		Sun Dec  3 09:16:52 MST 2006
+-."
+-."	Description:	
+-."
++.\" The first line of this file must contain the '"[e][r][t][v] line
++.\" to tell man to run the appropriate filter "t" for table.
++.\" vim: set filetype=nroff :
++.\"
++.\"	$Id$
++.\"
++.\"######################################################################
++.\"#									#
++.\"#			   Copyright (C)  2004				#
++.\"#	     			Internet2				#
++.\"#			   All Rights Reserved				#
++.\"#									#
++.\"######################################################################
++.\"
++.\"	File:		powstream.1
++.\"
++.\"	Author:		Jeff Boote
++.\"			Internet2
++.\"
++.\"	Date:		Sun Dec  3 09:16:52 MST 2006
++.\"
++.\"	Description:	
++.\"
+ .TH powstream 1 "$Date$"
+ .SH NAME
+ powstream \- Client daemon application for continuous one-way latency tests.
+--- a/doc/owping_test_opts.man
++++ b/doc/owping_test_opts.man
+@@ -1,31 +1,31 @@
+ '\"t
+-." ex: set tabstop=4 ai expandtab softtabstop=4 shiftwidth=4:
+-." -*- mode: c-basic-indent: 4; tab-width: 4; indent-tabs-mode: nil -*-
+-." The first line of this file must contain the '"[e][r][t][v] line
+-." to tell man to run the appropriate filter "t" for table.
+-." vim: set filetype=nroff :
+-."
+-."    $Id$
+-."
+-."######################################################################
+-."#                                                                    #
+-."#                        Copyright (C)  2007                         #
+-."#                            Internet2                               #
+-."#                        All Rights Reserved                         #
+-."#                                                                    #
+-."######################################################################
+-."
+-."    File:        owping_test_opts.man
+-."
+-."    Author:      Jeff W. Boote
+-."                 Internet2
+-."
+-."    Date:        Sat Feb 24 04:09:22 MST 2007
+-."
+-."    Description:    
+-."      This file is included into owping.1, owfetch.1, owstats.1 and
+-."      is not useful as a man-page on its own.
+-."
++.\" ex: set tabstop=4 ai expandtab softtabstop=4 shiftwidth=4:
++.\" -*- mode: c-basic-indent: 4; tab-width: 4; indent-tabs-mode: nil -*-
++.\" The first line of this file must contain the '"[e][r][t][v] line
++.\" to tell man to run the appropriate filter "t" for table.
++.\" vim: set filetype=nroff :
++.\"
++.\"    $Id$
++.\"
++.\"######################################################################
++.\"#                                                                    #
++.\"#                        Copyright (C)  2007                         #
++.\"#                            Internet2                               #
++.\"#                        All Rights Reserved                         #
++.\"#                                                                    #
++.\"######################################################################
++.\"
++.\"    File:        owping_test_opts.man
++.\"
++.\"    Author:      Jeff W. Boote
++.\"                 Internet2
++.\"
++.\"    Date:        Sat Feb 24 04:09:22 MST 2007
++.\"
++.\"    Description:    
++.\"      This file is included into owping.1, owfetch.1, owstats.1 and
++.\"      is not useful as a man-page on its own.
++.\"
+ .SS Test Configuration Options:
+ .TP
+ \fB\-c\fR \fIcount\fR
+@@ -70,15 +70,15 @@
+ _
+ CS3	011000	Broadcast Video	TV & live events
+ _
+-AF31	011010	Multimedia Streaming	Streaming video and audio
+-AF32	011100	\^	\^
+-AF33	011110	\^	\^
++AF31	011010	Multimedia Streaming	
++AF32	011100	\^	Streaming video
++AF33	011110	\^	and audio
+ _
+ CS4	100000	Real-Time Interactive	Video conf and gaming
+ _
+-AF41	100010	Multimedia Conferencing	H.323 video conferencing
+-AF42	100100	\^	\^
+-AF43	100110	\^	\^
++AF41	100010	Multimedia Conferencing	
++AF42	100100	\^	H.323 video
++AF43	100110	\^	conferencing
+ _
+ CS5	101000	Signaling	Video conf and gaming
+ _
+--- a/doc/owping.ms
++++ b/doc/owping.ms
+@@ -1,27 +1,24 @@
+-'\"t
+-." The first line of this file must contain the '"[e][r][t][v] line
+-." to tell man to run the appropriate filter "t" for table.
+-." vim: set filetype=nroff :
+-."
+-."	$Id$
+-."
+-."######################################################################
+-."#									#
+-."#			   Copyright (C)  2004				#
+-."#	     			Internet2				#
+-."#			   All Rights Reserved				#
+-."#									#
+-."######################################################################
+-."
+-."	File:		owping.1
+-."
+-."	Author:		Jeff Boote
+-."			Internet2
+-."
+-."	Date:		Wed Apr 28 08:48:05 MDT 2004
+-."
+-."	Description:	
+-."
++.\" vim: set filetype=nroff :
++.\"
++.\"	$Id$
++.\"
++.\"######################################################################
++.\"#									#
++.\"#			   Copyright (C)  2004				#
++.\"#	     			Internet2				#
++.\"#			   All Rights Reserved				#
++.\"#									#
++.\"######################################################################
++.\"
++.\"	File:		owping.1
++.\"
++.\"	Author:		Jeff Boote
++.\"			Internet2
++.\"
++.\"	Date:		Wed Apr 28 08:48:05 MDT 2004
++.\"
++.\"	Description:	
++.\"
+ .TH owping 1 "$Date$"
+ .SH NAME
+ owping \- Client application to request one-way latency tests.
+--- a/doc/owfetch.ms
++++ b/doc/owfetch.ms
+@@ -1,27 +1,24 @@
+-'\"t
+-." The first line of this file must contain the '"[e][r][t][v] line
+-." to tell man to run the appropriate filter "t" for table.
+-." vim: set filetype=nroff :
+-."
+-."	$Id$
+-."
+-."######################################################################
+-."#									#
+-."#			   Copyright (C)  2004				#
+-."#	     			Internet2				#
+-."#			   All Rights Reserved				#
+-."#									#
+-."######################################################################
+-."
+-."	File:		owfetch.1
+-."
+-."	Author:		Jeff Boote
+-."			Internet2
+-."
+-."	Date:		Wed Apr 28 08:48:05 MDT 2004
+-."
+-."	Description:	
+-."
++.\" vim: set filetype=nroff :
++.\"
++.\"	$Id$
++.\"
++.\"######################################################################
++.\"#									#
++.\"#			   Copyright (C)  2004				#
++.\"#	     			Internet2				#
++.\"#			   All Rights Reserved				#
++.\"#									#
++.\"######################################################################
++.\"
++.\"	File:		owfetch.1
++.\"
++.\"	Author:		Jeff Boote
++.\"			Internet2
++.\"
++.\"	Date:		Wed Apr 28 08:48:05 MDT 2004
++.\"
++.\"	Description:	
++.\"
+ .TH owfetch 1 "$Date$"
+ .SH NAME
+ owfetch \- Client application to fetch buffered \fBOWAMP\fR session data.
+--- a/doc/owup.ms
++++ b/doc/owup.ms
+@@ -1,27 +1,24 @@
+-'\"t
+-." The first line of this file must contain the '"[e][r][t][v] line
+-." to tell man to run the appropriate filter "t" for table.
+-." vim: set filetype=nroff :
+-."
+-."	$Id$
+-."
+-."######################################################################
+-."#									#
+-."#			   Copyright (C)  2006				#
+-."#	     			Internet2				#
+-."#			   All Rights Reserved				#
+-."#									#
+-."######################################################################
+-."
+-."	File:		owup.1
+-."
+-."	Author:		Jeff Boote
+-."			Internet2
+-."
+-."	Date:		Thu May 11 17:25:22 MDT 2006
+-."
+-."	Description:	
+-."
++.\" vim: set filetype=nroff :
++.\"
++.\"	$Id$
++.\"
++.\"######################################################################
++.\"#									#
++.\"#			   Copyright (C)  2006				#
++.\"#	     			Internet2				#
++.\"#			   All Rights Reserved				#
++.\"#									#
++.\"######################################################################
++.\"
++.\"	File:		owup.1
++.\"
++.\"	Author:		Jeff Boote
++.\"			Internet2
++.\"
++.\"	Date:		Thu May 11 17:25:22 MDT 2006
++.\"
++.\"	Description:	
++.\"
+ .TH owup 1 "$Date$"
+ .SH NAME
+ owup \- Client application to query the server for uptime information
+--- a/doc/owstats.ms
++++ b/doc/owstats.ms
+@@ -1,27 +1,24 @@
+-'\"t
+-." The first line of this file must contain the '"[e][r][t][v] line
+-." to tell man to run the appropriate filter "t" for table.
+-." vim: set filetype=nroff :
+-."
+-."	$Id$
+-."
+-."######################################################################
+-."#									#
+-."#			   Copyright (C)  2004				#
+-."#	     			Internet2				#
+-."#			   All Rights Reserved				#
+-."#									#
+-."######################################################################
+-."
+-."	File:		owstats.man
+-."
+-."	Author:		Jeff Boote
+-."			Internet2
+-."
+-."	Date:		Wed Apr 28 08:48:05 MDT 2004
+-."
+-."	Description:	
+-."
++.\" vim: set filetype=nroff :
++.\"
++.\"	$Id$
++.\"
++.\"######################################################################
++.\"#									#
++.\"#			   Copyright (C)  2004				#
++.\"#	     			Internet2				#
++.\"#			   All Rights Reserved				#
++.\"#									#
++.\"######################################################################
++.\"
++.\"	File:		owstats.man
++.\"
++.\"	Author:		Jeff Boote
++.\"			Internet2
++.\"
++.\"	Date:		Wed Apr 28 08:48:05 MDT 2004
++.\"
++.\"	Description:	
++.\"
+ .TH owstats 1 "$Date$"
+ .SH NAME
+ owstats \- Command line application used to parse \fBOWAMP\fR data files.
