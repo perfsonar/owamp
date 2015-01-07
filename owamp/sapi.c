@@ -373,6 +373,7 @@ OWPControlAcceptCommon(
 
     /* insure that exactly one mode is chosen */
     if((cntrl->mode != OWP_MODE_OPEN) &&
+            (!twoway || (cntrl->mode != TWP_MODE_MIXED)) &&
             (cntrl->mode != OWP_MODE_AUTHENTICATED) &&
             (cntrl->mode != OWP_MODE_ENCRYPTED)){
         *err_ret = OWPErrFATAL;
@@ -390,7 +391,7 @@ OWPControlAcceptCommon(
         goto error;
     }
 
-    if(cntrl->mode & (OWP_MODE_AUTHENTICATED|OWP_MODE_ENCRYPTED)){
+    if(cntrl->mode & OWP_MODE_DOCIPHER_CNTRL){
         OWPBoolean  getkey_success;
 
         /*
@@ -685,7 +686,7 @@ OWPProcessTestRequest(
          * (control-client MUST be receiver if openmode.)
          */
 
-        if(!(cntrl->mode & OWP_MODE_DOCIPHER)){
+        if(!(cntrl->mode & OWP_MODE_DOCIPHER_CNTRL)){
             struct sockaddr *csaddr;
             socklen_t       csaddrlen;
             char            remotenode[NI_MAXHOST];

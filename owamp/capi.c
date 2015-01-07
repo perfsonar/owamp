@@ -453,7 +453,7 @@ OWPControlOpenCommon(
     /*
      * retrieve pf if needed
      */
-    if(userid && (mode_avail & OWP_MODE_DOCIPHER)){
+    if(userid && (mode_avail & OWP_MODE_DOCIPHER_CNTRL)){
         strncpy(cntrl->userid_buffer,userid,
                 sizeof(cntrl->userid_buffer)-1);
         if(_OWPCallGetPF(cntrl->ctx,cntrl->userid_buffer,
@@ -469,7 +469,7 @@ OWPControlOpenCommon(
      * If no pf, then remove auth/crypt modes
      */
     if(!pf)
-        mode_avail &= ~OWP_MODE_DOCIPHER;
+        mode_avail &= ~OWP_MODE_DOCIPHER_CNTRL;
 
     /*
      * Pick "highest" level mode still available to this server.
@@ -492,6 +492,15 @@ OWPControlOpenCommon(
         cntrl->mode = OWP_MODE_AUTHENTICATED;
     }
     else if((*err_ret == OWPErrOK) &&
+            twoway && (mode_avail & TWP_MODE_MIXED) &&
+            _OWPCallCheckControlPolicy(cntrl,TWP_MODE_MIXED,
+                cntrl->userid,
+                I2AddrSAddr(cntrl->local_addr,NULL),
+                I2AddrSAddr(cntrl->remote_addr,NULL),
+                err_ret)){
+        cntrl->mode = TWP_MODE_MIXED;
+    }
+    else if((*err_ret == OWPErrOK) &&
             (mode_avail & OWP_MODE_OPEN) &&
             _OWPCallCheckControlPolicy(cntrl,OWP_MODE_OPEN,cntrl->userid,
                 I2AddrSAddr(cntrl->local_addr,NULL),
@@ -511,7 +520,7 @@ OWPControlOpenCommon(
     /*
      * Initialize all the encryption values as necessary.
      */
-    if(cntrl->mode & OWP_MODE_DOCIPHER){
+    if(cntrl->mode & OWP_MODE_DOCIPHER_CNTRL){
         /*
          * Create "token" for SetUpResponse message.
          * Section 3.1 of owamp spec:

@@ -1364,7 +1364,7 @@ run_sender(
          * ready for the next block in the case of encrypted mode.
          */
 RETRY:
-        if(ep->cntrl->mode & OWP_MODE_DOCIPHER){
+        if(ep->cntrl->mode & OWP_MODE_DOCIPHER_TEST){
             /*
              * Initialize HMAC for this packet, and first block to it.
              */
@@ -2360,7 +2360,7 @@ again:
         /*
          * Decrypt the packet if needed.
          */
-        if(ep->cntrl->mode & OWP_MODE_DOCIPHER){
+        if(ep->cntrl->mode & OWP_MODE_DOCIPHER_TEST){
             uint8_t iv[16];
             int     r;
             uint8_t hmacd[I2HMAC_SHA1_DIGEST_SIZE];
@@ -2608,6 +2608,7 @@ run_reflector(
     seq = (uint32_t*)&ep->payload[0];
     switch(ep->cntrl->mode){
     case OWP_MODE_OPEN:
+    case TWP_MODE_MIXED:
         tstamp = &ep->payload[4];
         tstamperr = &ep->payload[12];
         hmac = NULL;
@@ -2814,7 +2815,7 @@ again:
         /*
          * Decrypt the packet if needed.
          */
-        if(ep->cntrl->mode & OWP_MODE_DOCIPHER){
+        if(ep->cntrl->mode & OWP_MODE_DOCIPHER_TEST){
             uint8_t iv[16];
             int     r;
             uint8_t hmacd[I2HMAC_SHA1_DIGEST_SIZE];
@@ -2920,7 +2921,7 @@ RETRY:
          * of one block is identical to ECB of one block. Then iv is
          * ready for the next block in the case of encrypted mode.
          */
-        if(ep->cntrl->mode & OWP_MODE_DOCIPHER){
+        if(ep->cntrl->mode & OWP_MODE_DOCIPHER_TEST){
             /*
              * Initialize HMAC for this packet, and first block to it.
              */
@@ -3142,6 +3143,7 @@ run_tw_test(
 
     switch(ep->cntrl->mode){
         case OWP_MODE_OPEN:
+        case TWP_MODE_MIXED:
             seq = (uint32_t*)&ep->payload[0];
             tstamp = &ep->payload[4];
             tstamperr = &ep->payload[12];
@@ -3175,6 +3177,7 @@ run_tw_test(
 
     switch(ep->cntrl->mode){
     case OWP_MODE_OPEN:
+    case TWP_MODE_MIXED:
         reply_seq = (uint32_t*)&ep->payload[0];
         reply_tstamp = &ep->payload[4];
         reply_tstamperr = &ep->payload[12];
@@ -3265,7 +3268,7 @@ run_tw_test(
          * ready for the next block in the case of encrypted mode.
          */
 RETRY:
-        if(ep->cntrl->mode & OWP_MODE_DOCIPHER){
+        if(ep->cntrl->mode & OWP_MODE_DOCIPHER_TEST){
             /*
              * Initialize HMAC for this packet, and first block to it.
              */
@@ -3498,7 +3501,7 @@ RECEIVE:
             /*
              * Decrypt the packet if needed.
              */
-            if(ep->cntrl->mode & OWP_MODE_DOCIPHER){
+            if(ep->cntrl->mode & OWP_MODE_DOCIPHER_TEST){
                 uint8_t iv[16];
                 int     r;
                 uint8_t hmacd[I2HMAC_SHA1_DIGEST_SIZE];
@@ -3742,7 +3745,7 @@ _OWPEndpointInitHook(
     /*
      * Initialize crypto if needed
      */
-    if(ep->cntrl->mode & OWP_MODE_DOCIPHER){
+    if(ep->cntrl->mode & OWP_MODE_DOCIPHER_TEST){
         uint8_t     iv[16];
         keyInstance sidkey;
         int         r;

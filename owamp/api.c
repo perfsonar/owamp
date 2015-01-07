@@ -368,6 +368,7 @@ OWPTestPayloadSize(
 
     switch (mode) {
         case OWP_MODE_OPEN:
+        case TWP_MODE_MIXED:
             msg_size = 14;
             break;
         case OWP_MODE_AUTHENTICATED:
@@ -389,6 +390,7 @@ OWPTestTWPayloadSize(
 
     switch (mode) {
         case OWP_MODE_OPEN:
+        case TWP_MODE_MIXED:
             msg_size = 41;
             break;
         case OWP_MODE_AUTHENTICATED:

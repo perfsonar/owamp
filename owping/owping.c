@@ -56,8 +56,10 @@ static uint32_t     file_oset,tstamp_oset,ext_oset;
 
 #ifdef TWAMP
 #define NWPControlOpen TWPControlOpen
+#define NWP_DEFAULT_OFFERED_MODE TWP_DEFAULT_OFFERED_MODE
 #else
 #define NWPControlOpen OWPControlOpen
+#define NWP_DEFAULT_OFFERED_MODE OWP_DEFAULT_OFFERED_MODE
 #endif
 
 #define OWP_PADDING_UNSET (~0)
@@ -69,10 +71,19 @@ print_conn_args(
 {
     fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n",
             "              [Connection Args]",
+#ifdef TWAMP
+            "   -A authmode    requested modes: [A]uthenticated, [E]ncrypted, [M]ixed, [O]pen",
+            "   -k passphrasefile     passphrasefile to use with Authenticated/Encrypted/Mixed modes",
+#else
             "   -A authmode    requested modes: [A]uthenticated, [E]ncrypted, [O]pen",
             "   -k passphrasefile     passphrasefile to use with Authenticated/Encrypted modes",
+#endif
             "   -S srcaddr     specify the local address or interface for control connection and tests",
+#ifdef TWAMP
+            "   -u username    username to use with Authenticated/Encrypted/Mixed modes",
+#else
             "   -u username    username to use with Authenticated/Encrypted modes",
+#endif
             "   -4             connect using IPv4 addresses only",
             "   -6             connect using IPv6 addresses only"
            );
@@ -750,6 +761,11 @@ DONE:
                 case 'E':
                     pctx->auth_mode |= OWP_MODE_ENCRYPTED;
                     break;
+#ifdef TWAMP
+                case 'M':
+                    pctx->auth_mode |= TWP_MODE_MIXED;
+                    break;
+#endif
                 default:
                     I2ErrLogP(eh,EINVAL,"Invalid -authmode %c",*s);
                     usage(progname, NULL);
@@ -763,8 +779,7 @@ DONE:
          * Default to all modes.
          * If identity not set - library will ignore A/E.
          */
-        pctx->auth_mode = OWP_MODE_OPEN|OWP_MODE_AUTHENTICATED|
-            OWP_MODE_ENCRYPTED;
+        pctx->auth_mode = NWP_DEFAULT_OFFERED_MODE;
     }
 }
 

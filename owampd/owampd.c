@@ -51,11 +51,13 @@
 #define NWPServerSockCreate TWPServerSockCreate
 #define NWPControlAccept TWPControlAccept
 #define OWP_DFLT_CONTROL_TIMEOUT 900
+#define NWP_DEFAULT_OFFERED_MODE TWP_DEFAULT_OFFERED_MODE
 #else
 #define NWAMPD_FILE_PREFIX "owampd-server"
 #define NWPServerSockCreate OWPServerSockCreate
 #define NWPControlAccept OWPControlAccept
 #define OWP_DFLT_CONTROL_TIMEOUT 1800
+#define NWP_DEFAULT_OFFERED_MODE OWP_DEFAULT_OFFERED_MODE
 #endif
 
 #define OWAMPD_PID_FILE  NWAMPD_FILE_PREFIX".pid"
@@ -91,7 +93,11 @@ usage(
     fprintf(stderr, "\nWhere \"options\" are:\n\n");
 
     fprintf(stderr,
+#ifdef TWAMP
+            "   -a authmode       Default supported authmodes:[E]ncrypted,[A]uthenticated,[M]ixed,[O]pen\n"
+#else
             "   -a authmode       Default supported authmodes:[E]ncrypted,[A]uthenticated,[O]pen\n"
+#endif
             "   -c confdir        Configuration directory\n"
             "   -d datadir        Data directory\n"
             "   -e facility       Syslog \"facility\" to log errors\n"
@@ -1658,6 +1664,11 @@ int main(
                 case 'E':
                     opts.auth_mode |= OWP_MODE_ENCRYPTED;
                     break;
+#ifdef TWAMP
+                case 'M':
+                    opts.auth_mode |= TWP_MODE_MIXED;
+                    break;
+#endif
                 default:
                     I2ErrLogP(errhand,EINVAL,
                             "Invalid -authmode %c",*s);
@@ -1671,8 +1682,7 @@ int main(
         /*
          * Default to all modes.
          */
-        opts.auth_mode = OWP_MODE_OPEN|OWP_MODE_AUTHENTICATED|
-            OWP_MODE_ENCRYPTED;
+        opts.auth_mode = NWP_DEFAULT_OFFERED_MODE;
     }
 
     /*

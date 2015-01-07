@@ -201,7 +201,7 @@ _OWPWriteSetupResponse(
     memset(&buf[0],0,164);
 
     *(uint32_t *)&buf[0] = htonl(cntrl->mode);
-    if(cntrl->mode & OWP_MODE_DOCIPHER){
+    if(cntrl->mode & OWP_MODE_DOCIPHER_CNTRL){
         memcpy(&buf[4],cntrl->userid,80);
         memcpy(&buf[84],token,64);
         memcpy(&buf[148],cntrl->writeIV,16);

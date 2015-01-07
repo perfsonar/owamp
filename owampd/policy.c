@@ -2208,13 +2208,13 @@ OWPDCheckControlPolicy(
      * Determine userclass and send that to the parent.
      * (First try based on userid.)
      */
-    if(((mode & OWP_MODE_DOCIPHER) && userid) &&
+    if(((mode & OWP_MODE_DOCIPHER_CNTRL) && userid) &&
             !(node = GetNodeFromUserID(policy,userid))){
         OWPError(policy->ctx,OWPErrDEBUG,OWPErrUNKNOWN,
                 "OWPDCheckControlPolicy: No policy match for userid(%s) - using netmask match",userid);
     }
 
-    if((mode & OWP_MODE_DOCIPHER) && userid){
+    if((mode & OWP_MODE_DOCIPHER_CNTRL) && userid){
         key.dptr = (void*)userid;
         key.dsize = strlen(userid);
 

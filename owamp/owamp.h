@@ -153,6 +153,7 @@
 
 /* Default mode offered by the server */
 #define OWP_DEFAULT_OFFERED_MODE         (OWP_MODE_OPEN|OWP_MODE_AUTHENTICATED|OWP_MODE_ENCRYPTED)
+#define TWP_DEFAULT_OFFERED_MODE         (OWP_DEFAULT_OFFERED_MODE|TWP_MODE_MIXED)
 
 /*
  * IANA 'blessed' port numbers for OWAMP & TWAMP
@@ -331,7 +332,15 @@ typedef char        OWPUserID[OWP_USERID_LEN+1];        /* add 1 for '\0' */
 #define OWP_MODE_OPEN           (01)
 #define OWP_MODE_AUTHENTICATED  (02)
 #define OWP_MODE_ENCRYPTED      (04)
-#define OWP_MODE_DOCIPHER       (OWP_MODE_AUTHENTICATED|OWP_MODE_ENCRYPTED)
+#define TWP_MODE_MIXED          (010)
+/*
+ * Modes for which test sessions are authenticated or encrypted
+ */
+#define OWP_MODE_DOCIPHER_TEST  (OWP_MODE_AUTHENTICATED|OWP_MODE_ENCRYPTED)
+/*
+ * Modes for which control sessions are authenticated or encrypted
+ */
+#define OWP_MODE_DOCIPHER_CNTRL (OWP_MODE_DOCIPHER_TEST|TWP_MODE_MIXED)
 
 typedef uint32_t        OWPSessionMode;
 
