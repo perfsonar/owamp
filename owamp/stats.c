@@ -1719,7 +1719,7 @@ OWPStatsPrintMachine(
         uint8_t dscp = stats->hdr->test_spec.typeP >> 24;
         fprintf(output,"DSCP\t0x%2.2x\n",dscp);
     }
-    fprintf(output,"LOSS_TIMEOUT\t%u\n",stats->hdr->test_spec.loss_timeout);
+    fprintf(output,"LOSS_TIMEOUT\t%"PRIu64"\n",stats->hdr->test_spec.loss_timeout);
     fprintf(output,"PACKET_PADDING\t%u\n",
             stats->hdr->test_spec.packet_size_padding);
     fprintf(output,"SESSION_PACKET_COUNT\t%u\n",stats->hdr->test_spec.npackets);
