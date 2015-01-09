@@ -124,12 +124,14 @@ typedef struct OWPDLimRec{
 /* disk             uint (bytes)    */
 /* delete_on_fetch  on/(off)        */
 /* allow_open_mode  (on)/off        */
+/* test_sessions    uint            */
 
 #define OWPDLimParent           0
 #define OWPDLimBandwidth        1
 #define OWPDLimDisk             3
 #define OWPDLimDeleteOnFetch    4
 #define OWPDLimAllowOpenMode    5
+#define OWPDLimTestSessions     6
 
 struct OWPDPolicyNodeRec{
     OWPDPolicy      policy;

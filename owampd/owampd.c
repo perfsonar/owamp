@@ -58,6 +58,7 @@ static I2ErrHandle          errhand=NULL;
 static I2Table              fdtable=NULL;
 static I2Table              pidtable=NULL;
 static OWPNum64             uptime;
+static uint32_t             control_sessions = 0;
 
 #if defined HAVE_DECL_OPTRESET && !HAVE_DECL_OPTRESET
 int optreset;
@@ -196,6 +197,8 @@ AllocChldState(
         return NULL;
     }
 
+    control_sessions++;
+
     return cstate;
 }
 
@@ -231,7 +234,7 @@ FreeChldState(
     /*
      * TODO: Release bandwidth resources here if there are any left.
      */
-
+    control_sessions--;
 
     /*
      * TODO: If exit was not normal... Should we be looking at
@@ -467,6 +470,26 @@ ACCEPT:
                         "accept(): %M");
                 return;
                 break;
+        }
+    }
+
+    if (opts.maxcontrolsessions &&
+        (control_sessions + 1 > opts.maxcontrolsessions)) {
+        /*
+         * Go ahead and reap before declaring this to have exceeded
+         * the max control sessions since it could make more free
+         * connections.
+         */
+        ReapChildren(maxfd,readfds);
+        if (control_sessions + 1 > opts.maxcontrolsessions) {
+            OWPError(policy->ctx,OWPErrWARNING,OWPErrPOLICY,
+                     "Resource usage exceeds limits %s "
+                     "(used = %" PRIu32 ", limit = %" PRIu32 ")",
+                     "maxcontrolsessions",
+                     control_sessions,opts.maxcontrolsessions);
+            OWPError(policy->ctx,OWPErrFATAL,OWPErrUNKNOWN,"socketpair(): %M");
+            (void)close(connfd);
+            return;
         }
     }
 
@@ -1049,6 +1072,21 @@ LoadConfig(
                 break;
             }
         }
+        else if(!strncasecmp(key,"maxcontrolsessions",
+                             strlen("maxcontrolsessions"))){
+            char            *end=NULL;
+            uint32_t        tlng;
+
+            errno = 0;
+            tlng = strtoul(val,&end,10);
+            if((end == val) || (errno == ERANGE)){
+                fprintf(stderr,"strtoul(): %s\n",
+                        strerror(errno));
+                rc=-rc;
+                break;
+            }
+            opts.maxcontrolsessions = tlng;
+        }
         else{
             fprintf(stderr,"Unknown key=%s\n",key);
             rc = -rc;
@@ -1129,6 +1167,7 @@ int main(
     opts.dieby = 5;
     opts.controltimeout = 1800;
     opts.portspec = NULL;
+    opts.maxcontrolsessions = 0;
 
     if(!getcwd(opts.cwd,sizeof(opts.cwd))){
         perror("getcwd()");

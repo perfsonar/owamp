@@ -100,6 +100,7 @@ bandwidth	integer (bits/sec)	0 (unlimited)
 disk	integer (bytes)	0 (unlimited)
 delete_on_fetch	on/off	off
 parent	already defined \fIlimitclassname\fR	null
+test_sessions	integer sessions	0 (unlimited)
 .TE
 .TP
 .I allow_open_mode
@@ -133,6 +134,14 @@ the file will be deleted.
 .I delete_on_fetch
 Indicates that buffered data files should be automatically be deleted
 by the \fBowampd\fR server as soon as they are fetched.
+.TP
+.I test_sessions
+This limits the number of test sessions that can be
+requested per control session. 0 indicates unlimited by
+policy, but remember this is checked all the way to the
+root of the hierarchy. (If you want an unlimited class,
+your root must be unlimited, and the whole path down to
+the given class.)
 .TP
 .I parent     
 The first \fIlimit\fR line cannot have a parent since
