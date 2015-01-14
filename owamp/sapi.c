@@ -35,7 +35,8 @@ static int
 OpenSocket(
         OWPContext  ctx,
         int         family,
-        I2Addr      addr
+        I2Addr      addr,
+        char        *def_serv
         )
 {
     struct addrinfo *fai;
@@ -43,7 +44,7 @@ OpenSocket(
     int             on;
     int             fd=-1;
 
-    if( !(fai = I2AddrAddrInfo(addr,NULL,OWP_CONTROL_SERVICE_NAME))){
+    if( !(fai = I2AddrAddrInfo(addr,NULL,def_serv))){
         return -2;
     }
 
@@ -129,10 +130,11 @@ failsock:
  * Returns:        
  * Side Effect:        
  */
-I2Addr
-OWPServerSockCreate(
+static I2Addr
+OWPServerSockCreateCommon(
         OWPContext      ctx,
         I2Addr          addr,
+        char            *def_serv,
         OWPErrSeverity  *err_ret
         )
 {
@@ -154,7 +156,7 @@ OWPServerSockCreate(
      */
     if((!addr) &&
             !(addr = I2AddrByWildcard(OWPContextErrHandle(ctx),SOCK_STREAM,
-                    OWP_CONTROL_SERVICE_NAME))){
+                    def_serv))){
         goto error;
     }
 
@@ -166,14 +168,14 @@ OWPServerSockCreate(
     /*
      * First try IPv6 addrs only
      */
-    fd = OpenSocket(ctx,AF_INET6,addr);
+    fd = OpenSocket(ctx,AF_INET6,addr,def_serv);
 
     /*
      * Fall back to IPv4 addrs if necessary.
      */
     if(fd == -1)
 #endif
-        fd = OpenSocket(ctx,AF_INET,addr);
+        fd = OpenSocket(ctx,AF_INET,addr,def_serv);
 
     /*
      * if we failed to find any IPv6 or IPv4 addresses... punt.
@@ -201,11 +203,33 @@ error:
 
 }
 
+I2Addr
+OWPServerSockCreate(
+        OWPContext      ctx,
+        I2Addr          addr,
+        OWPErrSeverity  *err_ret
+        )
+{
+    return OWPServerSockCreateCommon(ctx, addr, OWP_CONTROL_SERVICE_NAME,
+                                     err_ret);
+}
+
+I2Addr
+TWPServerSockCreate(
+        OWPContext      ctx,
+        I2Addr          addr,
+        OWPErrSeverity  *err_ret
+        )
+{
+    return OWPServerSockCreateCommon(ctx, addr, TWP_CONTROL_SERVICE_NAME,
+                                     err_ret);
+}
+
 /*
- * Function:        OWPControlAccept
+ * Function:        OWPControlAcceptCommon
  *
  * Description:        
- *                 This function is used to initialiize the communication
+ *                 This function is used to initialize the xWAMP communication
  *                 to the peer.
  *           
  * In Args:        
@@ -220,14 +244,15 @@ error:
  * 
  * Side Effect:
  */
-OWPControl
-OWPControlAccept(
+static OWPControl
+OWPControlAcceptCommon(
         OWPContext      ctx,            /* library context              */
         int             connfd,         /* connected socket             */
         struct sockaddr *connsaddr,     /* connected socket addr        */
         socklen_t       connsaddrlen,   /* connected socket addr len    */
         uint32_t        mode_offered,   /* advertised server mode       */
         OWPNum64        uptime,         /* uptime for server            */
+        OWPBoolean      twoway,
         int             *retn_on_intr,  /* if *retn_on_intr return      */
         OWPErrSeverity  *err_ret        /* err - return                 */
         )
@@ -257,7 +282,7 @@ OWPControlAccept(
 
     *err_ret = OWPErrOK;
 
-    if ( !(cntrl = _OWPControlAlloc(ctx,err_ret)))
+    if ( !(cntrl = _OWPControlAlloc(ctx,twoway,err_ret)))
         goto error;
 
     cntrl->sockfd = connfd;
@@ -476,6 +501,78 @@ error:
         free(pf_free);
     OWPControlClose(cntrl);
     return NULL;
+}
+
+/*
+ * Function:        OWPControlAccept
+ *
+ * Description:
+ *                 This function is used to initialize the OWAMP communication
+ *                 to the peer.
+ *
+ * In Args:
+ *                 connfd,connsaddr, and connsaddrlen are all returned
+ *                 from "accept".
+ *
+ * Returns:        Valid OWPControl handle on success, NULL if
+ *              the request has been rejected, or error has occurred.
+ *              Return value does not distinguish between illegal
+ *              requests, those rejected on policy reasons, or
+ *              errors encountered by the server during execution.
+ *
+ * Side Effect:
+ */
+OWPControl
+OWPControlAccept(
+        OWPContext      ctx,            /* library context              */
+        int             connfd,         /* connected socket             */
+        struct sockaddr *connsaddr,     /* connected socket addr        */
+        socklen_t       connsaddrlen,   /* connected socket addr len    */
+        uint32_t        mode_offered,   /* advertised server mode       */
+        OWPNum64        uptime,         /* uptime for server            */
+        int             *retn_on_intr,  /* if *retn_on_intr return      */
+        OWPErrSeverity  *err_ret        /* err - return                 */
+        )
+{
+    return OWPControlAcceptCommon(ctx,connfd,connsaddr,connsaddrlen,
+                                  mode_offered,uptime,False,retn_on_intr,
+                                  err_ret);
+}
+
+/*
+ * Function:        TWPControlAccept
+ *
+ * Description:
+ *                 This function is used to initialize the TWAMP communication
+ *                 to the peer.
+ *
+ * In Args:
+ *                 connfd,connsaddr, and connsaddrlen are all returned
+ *                 from "accept".
+ *
+ * Returns:        Valid OWPControl handle on success, NULL if
+ *              the request has been rejected, or error has occurred.
+ *              Return value does not distinguish between illegal
+ *              requests, those rejected on policy reasons, or
+ *              errors encountered by the server during execution.
+ *
+ * Side Effect:
+ */
+OWPControl
+TWPControlAccept(
+        OWPContext      ctx,            /* library context              */
+        int             connfd,         /* connected socket             */
+        struct sockaddr *connsaddr,     /* connected socket addr        */
+        socklen_t       connsaddrlen,   /* connected socket addr len    */
+        uint32_t        mode_offered,   /* advertised server mode       */
+        OWPNum64        uptime,         /* uptime for server            */
+        int             *retn_on_intr,  /* if *retn_on_intr return      */
+        OWPErrSeverity  *err_ret        /* err - return                 */
+        )
+{
+    return OWPControlAcceptCommon(ctx,connfd,connsaddr,connsaddrlen,
+                                  mode_offered,uptime,True,retn_on_intr,
+                                  err_ret);
 }
 
 OWPErrSeverity

@@ -395,7 +395,7 @@ OWPControlOpen(
     /*
      * First allocate memory for the control state.
      */
-    if( !(cntrl = _OWPControlAlloc(ctx,err_ret)))
+    if( !(cntrl = _OWPControlAlloc(ctx,False,err_ret)))
         goto error;
 
     /*

@@ -46,6 +46,16 @@
 #include "owampdP.h"
 #include "policy.h"
 
+#ifdef TWAMP
+#define NWPServerSockCreate TWPServerSockCreate
+#define NWPControlAccept TWPControlAccept
+#define OWP_DFLT_CONTROL_TIMEOUT 900
+#else
+#define NWPServerSockCreate OWPServerSockCreate
+#define NWPControlAccept OWPControlAccept
+#define OWP_DFLT_CONTROL_TIMEOUT 1800
+#endif
+
 /* Global variable - the total number of allowed Control connections. */
 static pid_t                mypid;
 static int                  owpd_chld = 0;
@@ -670,9 +680,11 @@ ACCEPT:
         I2ErrLog(errhand,"setitimer(): %M");
         exit(OWPErrFATAL);
     }
-    cntrl = OWPControlAccept(policy->ctx,connfd,
-            (struct sockaddr *)&sbuff,sbufflen,
-            mode,uptime,&owpd_intr,&out);
+    cntrl = NWPControlAccept(
+        policy->ctx,connfd,
+        (struct sockaddr *)&sbuff,sbufflen,
+        mode,uptime,&owpd_intr,&out);
+
     /*
      * session not accepted.
      */
@@ -1221,7 +1233,7 @@ int main(
     opts.user = opts.group = NULL;
     opts.diskfudge = 1.0;
     opts.dieby = 5;
-    opts.controltimeout = 1800;
+    opts.controltimeout = OWP_DFLT_CONTROL_TIMEOUT;
     opts.portspec = NULL;
     opts.maxcontrolsessions = 0;
 
@@ -1747,7 +1759,7 @@ int main(
                 "Invalid source address specified: %s",opts.srcnode);
         exit(1);
     }
-    listenaddr = OWPServerSockCreate(ctx,listenaddr,&out);
+    listenaddr = NWPServerSockCreate(ctx,listenaddr,&out);
     if(!listenaddr){
         OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
                 "Unable to create server socket. Exiting...");

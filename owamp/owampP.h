@@ -211,6 +211,7 @@ struct OWPControlRec{
     OWPBoolean              server;     /* this record represents server */
     int                     state;      /* current state of connection */
     OWPSessionMode          mode;
+    OWPBoolean              twoway;
 
     /*
      * Very rough upper bound estimate of rtt.
@@ -809,6 +810,7 @@ _OWPReadStartAck(
 extern OWPControl
 _OWPControlAlloc(
         OWPContext      ctx,
+        OWPBoolean      twoway,
         OWPErrSeverity  *err_ret
         );
 

@@ -155,9 +155,10 @@
 #define OWP_DEFAULT_OFFERED_MODE         (OWP_MODE_OPEN|OWP_MODE_AUTHENTICATED|OWP_MODE_ENCRYPTED)
 
 /*
- * IANA 'blessed' port number for OWAMP
+ * IANA 'blessed' port numbers for OWAMP & TWAMP
  */
 #define OWP_CONTROL_SERVICE_NAME        "861"
+#define TWP_CONTROL_SERVICE_NAME        "862"
 
 /*
  * Default value to use for the listen backlog. We pick something large
@@ -1037,6 +1038,12 @@ OWPServerSockCreate(
         OWPErrSeverity  *err_ret
         );
 
+extern I2Addr
+TWPServerSockCreate(
+        OWPContext      ctx,
+        I2Addr          addr,
+        OWPErrSeverity  *err_ret
+        );
 
 /*!
  * Function:        OWPControlAccept
@@ -1063,6 +1070,18 @@ OWPServerSockCreate(
  */
 extern OWPControl
 OWPControlAccept(
+        OWPContext      ctx,            /* library context              */
+        int             connfd,         /* conencted socket             */
+        struct sockaddr *connsaddr,     /* connected socket addr        */
+        socklen_t       connsaddrlen,   /* connected socket addr len    */
+        uint32_t       mode_offered,   /* advertised server mode       */
+        OWPNum64        uptime,         /* uptime report                */
+        int             *retn_on_intr,  /* return on i/o interrupt      */
+        OWPErrSeverity  *err_ret        /* err - return                 */
+        );
+
+extern OWPControl
+TWPControlAccept(
         OWPContext      ctx,            /* library context              */
         int             connfd,         /* conencted socket             */
         struct sockaddr *connsaddr,     /* connected socket addr        */
