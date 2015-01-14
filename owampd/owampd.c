@@ -713,9 +713,15 @@ ACCEPT:
 
         switch (msgtype){
 
+#ifdef TWAMP
+            case OWPReqTestTW:
+                rc = OWPProcessTestRequestTW(cntrl,&owpd_intr);
+                break;
+#else
             case OWPReqTest:
                 rc = OWPProcessTestRequest(cntrl,&owpd_intr);
                 break;
+#endif
 
             case OWPReqStartSessions:
                 rc = OWPProcessStartSessions(cntrl,&owpd_intr);
@@ -734,7 +740,7 @@ ACCEPT:
                     I2ErrLog(errhand,"setitimer(): %M");
                     goto done;
                 }
-                while(OWPSessionsActive(cntrl,NULL)){
+                while(True){
                     int        wstate;
 
                     rc = OWPErrOK;
@@ -754,10 +760,12 @@ ACCEPT:
                         }
                         break;
                     }
-                    if(wstate == 0){
+                    if(wstate <= 0){
                         goto nextreq;
                     }
                 }
+
+#ifndef TWAMP
                 /*
                  * Sessions are complete, but StopSessions
                  * message has not been exchanged - set the
@@ -770,9 +778,11 @@ ACCEPT:
                     goto done;
                 }
                 rc = OWPStopSessions(cntrl,&owpd_intr,NULL);
+#endif
 
                 break;
 
+#ifndef TWAMP
             case OWPReqFetchSession:
                 /*
                  * TODO: Should the timeout be suspended
@@ -787,17 +797,32 @@ ACCEPT:
                  */
                 rc = OWPProcessFetchSession(cntrl,&owpd_intr);
                 break;
+#endif
+
+            case OWPReqSockIntr:
+                break;
 
             case OWPReqSockClose:
-            default:
                 rc = OWPErrFATAL;
+                break;
+
+            default:
+                /*
+                 * Don't log an error message if already classified as
+                 * invalid request, since OWPReadRequestType will have
+                 * already logged one.
+                 */
+                if (msgtype != OWPReqInvalid) {
+                    I2ErrLog(errhand,"Unexpected message type %d", msgtype);
+                }
+                rc = OWPUnexpectedRequestType(cntrl);
                 break;
         }
 nextreq:
         if(rc < OWPErrWARNING){
             break;
         }
-        if(owpd_exit){
+        if(owpd_exit || owpd_alrm){
             break;
         }
     }

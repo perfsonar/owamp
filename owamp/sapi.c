@@ -777,6 +777,117 @@ err2:
 }
 
 OWPErrSeverity
+OWPProcessTestRequestTW(
+        OWPControl  cntrl,
+        int         *retn_on_intr
+        )
+{
+    OWPTestSession  tsession = NULL;
+    OWPErrSeverity  err_ret=OWPErrOK;
+    uint16_t       port;
+    int             rc;
+    OWPAcceptType   acceptval = OWP_CNTRL_FAILURE;
+    int             ival=1;
+    int             *intr = &ival;
+    struct sockaddr *rsaddr;
+    struct sockaddr *ssaddr;
+    socklen_t       saddrlen;
+
+    if(retn_on_intr){
+        intr = retn_on_intr;
+    }
+
+    /*
+     * Read the TestRequest and alloate tsession to hold the information.
+     */
+    if((rc = _OWPReadTestRequest(cntrl,intr,&tsession,&acceptval)) !=
+            OWPErrOK){
+        if(acceptval < 0)
+            return OWPErrFATAL;
+        return OWPErrWARNING;
+    }
+
+    assert(tsession);
+
+    /*
+     * Get local copies of saddr's.
+     */
+    rsaddr = I2AddrSAddr(tsession->receiver,&saddrlen);
+    ssaddr = I2AddrSAddr(tsession->sender,&saddrlen);
+    if(!rsaddr || !ssaddr){
+        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                "Invalid addresses from ReadTestRequest");
+        err_ret = OWPErrFATAL;
+        goto error;
+    }
+
+    if(_OWPCreateSID(tsession) != 0){
+        err_ret = OWPErrWARNING;
+        acceptval = OWP_CNTRL_FAILURE;
+        goto error;
+    }
+
+    /*
+     * open port and get SID. For the purposes of policy, we are a
+     * local sender - we don't require any disk space.
+     */
+    if(!_OWPCallCheckTestPolicy(cntrl,True,
+                                rsaddr,ssaddr,saddrlen,
+                                &tsession->test_spec,&tsession->closure,
+                                &err_ret)){
+        if(err_ret < OWPErrOK)
+            goto error;
+        OWPError(cntrl->ctx,OWPErrWARNING,OWPErrPOLICY,
+                 "Test not allowed");
+        acceptval = OWP_CNTRL_REJECT;
+        err_ret = OWPErrWARNING;
+        goto error;
+    }
+
+    /*
+     * Use the receiver address for the endpoint - we'll use sendto to
+     * actually send the reflected packet
+     */
+    if(!_OWPEndpointInit(cntrl,tsession,tsession->receiver,NULL,
+                         &acceptval,&err_ret)){
+        goto error;
+    }
+
+    if(!_OWPEndpointInitHook(cntrl,tsession,&acceptval,&err_ret)){
+        goto error;
+    }
+    port = I2AddrPort(tsession->receiver);
+
+    if( (rc = _OWPWriteAcceptSession(cntrl,intr,OWP_CNTRL_ACCEPT,
+                    port,tsession->sid)) < OWPErrOK){
+        err_ret = (OWPErrSeverity)rc;
+        goto err2;
+    }
+
+    /*
+     * Add tsession to list of tests managed by this control connection.
+     */
+    tsession->next = cntrl->tests;
+    cntrl->tests = tsession;
+
+    return OWPErrOK;
+
+error:
+    /*
+     * If it is a non-fatal error, communication should continue, so
+     * send negative accept.
+     */
+    if(err_ret >= OWPErrWARNING)
+        (void)_OWPWriteAcceptSession(cntrl,intr,acceptval,0,NULL);
+
+err2:
+    if(tsession)
+        _OWPTestSessionFree(tsession,acceptval);
+
+    return err_ret;
+}
+
+OWPErrSeverity
 OWPProcessStartSessions(
         OWPControl  cntrl,
         int         *retn_on_intr
@@ -1358,4 +1469,33 @@ reject:
 
     return OWPErrWARNING;
 
+}
+
+OWPErrSeverity
+OWPUnexpectedRequestType(
+    OWPControl cntrl
+    )
+{
+    int             ival=1;
+    OWPErrSeverity  rc;
+
+    /*
+     * OWAMP doesn't specify any behaviour on unexpected requests, so
+     * return fatal to cause the server to close the control session.
+     */
+    if (!cntrl->twoway) {
+        return OWPErrFATAL;
+    }
+
+    cntrl->state |= _OWPStateAcceptSession;
+
+    rc = _OWPWriteAcceptSession(cntrl,&ival,OWP_CNTRL_UNSUPPORTED,
+                                0,NULL);
+
+    /*
+     * Reset state
+     */
+    cntrl->state = _OWPStateRequest;
+
+    return rc;
 }

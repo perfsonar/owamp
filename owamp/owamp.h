@@ -1114,7 +1114,8 @@ typedef enum OWPRequestType{
     OWPReqTest=1,
     OWPReqStartSessions=2,
     OWPReqStopSessions=3,
-    OWPReqFetchSession=4
+    OWPReqFetchSession=4,
+    OWPReqTestTW=5,
 } OWPRequestType;
 
 extern OWPRequestType
@@ -1125,6 +1126,12 @@ OWPReadRequestType(
 
 extern OWPErrSeverity
 OWPProcessTestRequest(
+        OWPControl  cntrl,
+        int         *retn_on_intr
+        );
+
+extern OWPErrSeverity
+OWPProcessTestRequestTW(
         OWPControl  cntrl,
         int         *retn_on_intr
         );
@@ -1766,5 +1773,15 @@ OWPTimestampToTimespec(
         struct timespec *tval,
         OWPTimeStamp    *tstamp
         );
+
+extern OWPErrSeverity
+OWPUnexpectedRequestType(
+    OWPControl cntrl
+    );
+
+extern OWPBoolean
+OWPControlIsTwoWay(
+    OWPControl cntrl
+    );
 
 #endif        /* OWAMP_H */

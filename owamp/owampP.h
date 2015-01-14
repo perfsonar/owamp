@@ -142,7 +142,8 @@
 #define _OWPStateStartSessions      (_OWPStateTestRequestSlots << 1)
 #define _OWPStateStopSessions       (_OWPStateStartSessions << 1)
 #define _OWPStateFetchSession       (_OWPStateStopSessions << 1)
-#define _OWPStateAcceptSession         (_OWPStateFetchSession << 1)
+#define _OWPStateTestRequestTW      (_OWPStateFetchSession << 1)
+#define _OWPStateAcceptSession         (_OWPStateTestRequestTW << 1)
 #define _OWPStateStartAck           (_OWPStateAcceptSession << 1)
 /* during fetch-session */
 #define _OWPStateFetchAck           (_OWPStateStartAck << 1)
@@ -167,6 +168,7 @@
 #define _OWPStateIsFetchSession(c)  _OWPStateIs(_OWPStateFetchSession,c)
 #define _OWPStateIsFetching(c)      _OWPStateIs(_OWPStateFetching,c)
 #define _OWPStateIsTest(c)          _OWPStateIs(_OWPStateTest,c)
+#define _OWPStateIsTestReqTW(c)          _OWPStateIs(_OWPStateTestRequestTW,c)
 
 /*
  * other useful constants.
@@ -618,6 +620,7 @@ _OWPEncodeTestRequestPreamble(
         struct sockaddr *receiver,
         OWPBoolean      server_conf_sender,
         OWPBoolean      server_conf_receiver,
+        OWPBoolean      twoway,
         OWPSID          sid,
         OWPTestSpec     *tspec
         );
@@ -628,6 +631,7 @@ _OWPDecodeTestRequestPreamble(
         OWPBoolean      request,
         uint32_t        *msg,
         uint32_t        msg_len,
+        OWPBoolean      is_twoway,
         struct sockaddr *sender,
         struct sockaddr *receiver,
         socklen_t       *socklen,

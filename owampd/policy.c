@@ -2340,19 +2340,25 @@ OWPDCheckTestPolicy(
     }
 
     /*
-     * Check bandwidth
+     * Check bandwidth for one-way sessions.
+     *
+     * This doesn't apply to two-way sessions since we don't know in
+     * advance the sender's send schedule, unlike for one-way
+     * sessions.
      */
-    tinfo->res[0].limit = OWPDLimBandwidth;
-    tinfo->res[0].value = OWPTestPacketBandwidth(ctx,
-            remote_sa_addr->sa_family,OWPGetMode(cntrl),test_spec);
-    if((ret = OWPDQuery(node->policy,OWPDMESGREQUEST,tinfo->res[0]))
-            == OWPDMESGDENIED){
-        OWPDResourceDemand(node,OWPDMESGRELEASE,one_session);
-        goto done;
-    }
-    if(ret == OWPDMESGINVALID){
-        *err_ret = OWPErrFATAL;
-        goto done;
+    if (!OWPControlIsTwoWay(cntrl)) {
+        tinfo->res[0].limit = OWPDLimBandwidth;
+        tinfo->res[0].value = OWPTestPacketBandwidth(ctx,
+                remote_sa_addr->sa_family,OWPGetMode(cntrl),test_spec);
+        if((ret = OWPDQuery(node->policy,OWPDMESGREQUEST,tinfo->res[0]))
+           == OWPDMESGDENIED){
+            OWPDResourceDemand(node,OWPDMESGRELEASE,one_session);
+            goto done;
+        }
+        if(ret == OWPDMESGINVALID){
+            *err_ret = OWPErrFATAL;
+            goto done;
+        }
     }
 
 

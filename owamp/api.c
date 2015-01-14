@@ -629,9 +629,9 @@ _OWPStopSendSessions(
         }
 
         /*
-         * Receive sessions are not done here.
+         * Two-way and receive sessions are not done here.
          */
-        if(!sptr->endpoint->send) continue;
+        if(!cntrl->twoway && !sptr->endpoint->send) continue;
 
         /*
          * Stop local sessions
@@ -642,64 +642,66 @@ _OWPStopSendSessions(
         /* count senders for inclusion in StopSessions message */
         num_senders++;
 
-        /*
-         * simple check to validate skip records:
-         * Just verify size of file matches reported number
-         * of skip records.
-         */
-        if(fstat(sptr->endpoint->skiprecfd,&sbuf) != 0){
-            OWPError(cntrl->ctx,OWPErrWARNING,errno,"fstat(skiprecfd): %M");
-            *acceptval = OWP_CNTRL_FAILURE;
-            err2 = MIN(OWPErrWARNING,err2);
-            continue;
+        if (!cntrl->twoway) {
+            /*
+             * simple check to validate skip records:
+             * Just verify size of file matches reported number
+             * of skip records.
+             */
+            if(fstat(sptr->endpoint->skiprecfd,&sbuf) != 0){
+                OWPError(cntrl->ctx,OWPErrWARNING,errno,"fstat(skiprecfd): %M");
+                *acceptval = OWP_CNTRL_FAILURE;
+                err2 = MIN(OWPErrWARNING,err2);
+                continue;
+            }
+
+            /*
+             * Seek to beginning of file for reading.
+             */
+            if(lseek(sptr->endpoint->skiprecfd,0,SEEK_SET) == -1){
+                OWPError(cntrl->ctx,OWPErrWARNING,errno,"lseek(skiprecfd,0): %M");
+                *acceptval = OWP_CNTRL_FAILURE;
+                err2 = MIN(OWPErrWARNING,err2);
+                continue;
+            }
+
+            /*
+             * Read next_seqno and num_skips for verification purposes.
+             * (IGNORE intr for this local file i/o)
+             */
+            if(I2Readn(sptr->endpoint->skiprecfd,sdr,8) != 8){
+                OWPError(cntrl->ctx,OWPErrWARNING,errno,"I2Readn(skiprecfd): %M");
+                *acceptval = OWP_CNTRL_FAILURE;
+                err2 = MIN(OWPErrWARNING,err2);
+                continue;
+            }
+
+            /*
+             * Reset fd to beginning of file for reading.
+             */
+            if(lseek(sptr->endpoint->skiprecfd,0,SEEK_SET) == -1){
+                OWPError(cntrl->ctx,OWPErrWARNING,errno,"lseek(skiprecfd,0): %M");
+                *acceptval = OWP_CNTRL_FAILURE;
+                err2 = MIN(OWPErrWARNING,err2);
+                continue;
+            }
+
+            nskip = ntohl(sdr[1]);
+
+            /*
+             * Each skip record is 8 bytes, plus 8 bytes for next_seqno and
+             * num_skip_records means: filesize == ((nskip+1)*8)
+             */
+            if((off_t)((nskip+1)*8) != sbuf.st_size){
+                OWPError(cntrl->ctx,OWPErrWARNING,EINVAL,
+                         "_OWPStopSendSessions: Invalid skiprecfd data");
+                *acceptval = OWP_CNTRL_FAILURE;
+                err2 = MIN(OWPErrWARNING,err2);
+                continue;
+            }
+
+            sptr->endpoint->skiprecsize = sbuf.st_size;
         }
-
-        /*
-         * Seek to beginning of file for reading.
-         */
-        if(lseek(sptr->endpoint->skiprecfd,0,SEEK_SET) == -1){
-            OWPError(cntrl->ctx,OWPErrWARNING,errno,"lseek(skiprecfd,0): %M");
-            *acceptval = OWP_CNTRL_FAILURE;
-            err2 = MIN(OWPErrWARNING,err2);
-            continue;
-        }
-
-        /*
-         * Read next_seqno and num_skips for verification purposes.
-         * (IGNORE intr for this local file i/o)
-         */
-        if(I2Readn(sptr->endpoint->skiprecfd,sdr,8) != 8){
-            OWPError(cntrl->ctx,OWPErrWARNING,errno,"I2Readn(skiprecfd): %M");
-            *acceptval = OWP_CNTRL_FAILURE;
-            err2 = MIN(OWPErrWARNING,err2);
-            continue;
-        }
-
-        /*
-         * Reset fd to beginning of file for reading.
-         */
-        if(lseek(sptr->endpoint->skiprecfd,0,SEEK_SET) == -1){
-            OWPError(cntrl->ctx,OWPErrWARNING,errno,"lseek(skiprecfd,0): %M");
-            *acceptval = OWP_CNTRL_FAILURE;
-            err2 = MIN(OWPErrWARNING,err2);
-            continue;
-        }
-
-        nskip = ntohl(sdr[1]);
-
-        /*
-         * Each skip record is 8 bytes, plus 8 bytes for next_seqno and
-         * num_skip_records means: filesize == ((nskip+1)*8)
-         */
-        if((off_t)((nskip+1)*8) != sbuf.st_size){
-            OWPError(cntrl->ctx,OWPErrWARNING,EINVAL,
-                    "_OWPStopSendSessions: Invalid skiprecfd data");
-            *acceptval = OWP_CNTRL_FAILURE;
-            err2 = MIN(OWPErrWARNING,err2);
-            continue;
-        }
-
-        sptr->endpoint->skiprecsize = sbuf.st_size;
     }
 
     *num_sessions = num_senders;
@@ -725,6 +727,8 @@ _OWPStopSendSessions(
 static OWPErrSeverity
 _OWPStopRecvSessions(
         OWPControl      cntrl,
+        OWPTimeStamp    stoptime,
+        OWPBoolean      nowait,
         OWPAcceptType   *acceptval_ret
         )
 {
@@ -732,6 +736,9 @@ _OWPStopRecvSessions(
     OWPAcceptType   aval=OWP_CNTRL_ACCEPT;
     OWPAcceptType   *acceptval = &aval;
     OWPTestSession  sptr;
+    struct timespec currts;
+    struct timespec stopts;
+    struct timespec lossts;
 
     if(acceptval_ret){
         acceptval = acceptval_ret;
@@ -752,9 +759,34 @@ _OWPStopRecvSessions(
         }
 
         /*
-         * Send sessions not done here.
+         * One-way send sessions not done here.
          */
-        if(sptr->endpoint->send) continue;
+        if(!cntrl->twoway && sptr->endpoint->send) continue;
+
+        if (cntrl->twoway && cntrl->server && !nowait) {
+            uint32_t esterr;
+            uint8_t sync;
+
+            _OWPGetTimespec(cntrl->ctx,&currts,&esterr,&sync);
+            OWPTimestampToTimespec(&stopts, &stoptime);
+
+            // TODO: this should be bounded by REFWAIT timeout
+            OWPNum64ToTimespec(&lossts,sptr->test_spec.loss_timeout);
+            timespecadd(&stopts,&lossts);
+
+            if(timespeccmp(&stopts,&currts,<))
+                break;
+
+            /*
+             * Convert from absolute to relative
+             */
+            timespecsub(&stopts,&currts);
+            /*
+             * Wait for loss timeout time to allow in-flight packets
+             * to still be reflected.
+             */
+            nanosleep(&stopts, NULL);
+        }
 
         /*
          * Stop local sessions
@@ -1321,6 +1353,14 @@ _OWPCleanUpSessions(
         acceptval = acceptval_ret;
     *acceptval = OWP_CNTRL_ACCEPT;
 
+    if (cntrl->twoway && cntrl->server) {
+        /*
+         * No cleanup required for server two-way sessions, since no
+         * datafile is created.
+         */
+        return True;
+    }
+
     /*
      * Parse test session list and pull recv sessions into the receivers
      * list.
@@ -1345,13 +1385,16 @@ _OWPCleanUpSessions(
         /*
          * Only need to clean recv sessions.
          */
-        if(tptr->endpoint->send){
+        if(!cntrl->twoway && tptr->endpoint->send){
             continue;
         }
 
 
         I2HexEncode(sid_name,tptr->sid,sizeof(OWPSID));
 
+        if (!tptr->endpoint->datafile) {
+            continue;
+        }
         rfp = wfp = tptr->endpoint->datafile;
 
         /*
@@ -1707,8 +1750,10 @@ clean_sessions:
      * Stop Recv side sessions now that we have received the
      * StopSessions message (even though it has not been completely
      * read yet).
+     *
+     * This also stops two-way sessions.
      */
-    err = _OWPStopRecvSessions(cntrl,acceptval);
+    err = _OWPStopRecvSessions(cntrl,stoptime,!readstop,acceptval);
     err2 = MIN(err,err2);
     if(err2 < OWPErrWARNING){
         goto done;
@@ -1789,15 +1834,31 @@ OWPStopSessionsWait(
         return -1;
     }
 
+    if (cntrl->twoway && cntrl->server) {
+        if (!OWPSessionsActive(cntrl,acceptval) && (*acceptval)) {
+            /*
+             * Sessions completed with error - don't wait for
+             * StopSessions message, just return.
+             */
+            cntrl->state &= ~_OWPStateTest;
+            return 0;
+        }
+    } else {
+        if (!OWPSessionsActive(cntrl,acceptval) || (*acceptval)){
+            /*
+             * Sessions are complete - send StopSessions message.
+             */
+            *err_ret = OWPStopSessions(cntrl,intr,acceptval);
+            return 0;
+        }
+    }
+
     /*
-     * If there are no active sessions, get the status and return.
+     * Before polling, check if we have been interrupted, and if so
+     * return to caller.
      */
-    if(!OWPSessionsActive(cntrl,acceptval) || (*acceptval)){
-        /*
-         * Sessions are complete - send StopSessions message.
-         */
-        *err_ret = OWPStopSessions(cntrl,intr,acceptval);
-        return 0;
+    if (*intr){
+        return 2;
     }
 
     if(wake){
@@ -1846,6 +1907,21 @@ AGAIN:
          * rest of the tests to complete.
          */
         if(OWPSessionsActive(cntrl,acceptval) && !*acceptval){
+            goto AGAIN;
+        }
+
+        if (cntrl->twoway && cntrl->server) {
+            if (!OWPSessionsActive(cntrl,acceptval) && (*acceptval)) {
+                /*
+                 * Sessions completed with error - don't wait for
+                 * StopSessions message, just return.
+                 */
+                cntrl->state &= ~_OWPStateTest;
+                return 0;
+            }
+            /*
+             * Otherwise, wait for StopSessions message.
+             */
             goto AGAIN;
         }
 
@@ -1911,8 +1987,10 @@ AGAIN:
      * Stop Recv side sessions now that we have received the
      * StopSessions message (even though it has not been completely
      * read yet).
+     *
+     * This also stops two-way sessions.
      */
-    err2 = _OWPStopRecvSessions(cntrl,acceptval);
+    err2 = _OWPStopRecvSessions(cntrl,stoptime,!readstop,acceptval);
     *err_ret = MIN(*err_ret,err2);
     if(*err_ret < OWPErrWARNING){
         goto done;
@@ -1940,7 +2018,8 @@ done:
      * If errors are non-fatal (warning or better) then send the
      * stop sessions message.
      */
-    if(readstop && (*err_ret >= OWPErrWARNING)){
+    if(readstop && (*err_ret >= OWPErrWARNING) &&
+       !(cntrl->twoway && cntrl->server)){
         err2 = _OWPWriteStopSessions(cntrl,intr,*acceptval,num_sessions);
         *err_ret = MIN(*err_ret,err2);
     }
@@ -2731,7 +2810,7 @@ OWPWriteDataHeader(
     if((_OWPEncodeTestRequestPreamble(ctx,msg,&len,
                     (struct sockaddr*)&hdr->addr_sender,
                     (struct sockaddr*)&hdr->addr_receiver,
-                    hdr->conf_sender,hdr->conf_receiver,
+                    hdr->conf_sender,hdr->conf_receiver,False,
                     hdr->sid,&hdr->test_spec) != 0) || !len){
         return False;
     }
@@ -3003,6 +3082,7 @@ OWPReadDataHeader(
          */
         if(_OWPDecodeTestRequestPreamble(ctx,False,msg,
                     _OWP_TEST_REQUEST_PREAMBLE_SIZE,
+                    False,
                     (struct sockaddr*)&hdr_ret->addr_sender,
                     (struct sockaddr*)&hdr_ret->addr_receiver,
                     &hdr_ret->addr_len,&hdr_ret->ipvn,
@@ -3452,4 +3532,11 @@ OWPIsLostRecord(
         )
 {
     return !rec->recv.owptime;
+}
+
+OWPBoolean
+OWPControlIsTwoWay(
+    OWPControl cntrl)
+{
+    return cntrl->twoway;
 }
