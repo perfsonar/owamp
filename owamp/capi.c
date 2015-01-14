@@ -257,12 +257,13 @@ _OWPClientConnect(
     int             rc;
     struct addrinfo *fai=NULL;
     struct addrinfo *ai=NULL;
+    char            *serv;
 #ifdef NOT
     char            nodename[NI_MAXHOST];
     size_t          nodename_len = sizeof(nodename);
     char            servname[NI_MAXSERV];
     size_t          servname_len = sizeof(servname);
-    char            *node,*serv;
+    char            *node;
 #endif
 
     if(!server_addr)
@@ -276,10 +277,16 @@ _OWPClientConnect(
         return 0;
     }
 
+    if (cntrl->twoway) {
+        serv = TWP_CONTROL_SERVICE_NAME;
+    } else {
+        serv = OWP_CONTROL_SERVICE_NAME;
+    }
+
     /*
      * Initialize addrinfo portion of server_addr record.
      */
-    if( !(fai = I2AddrAddrInfo(server_addr,NULL,OWP_CONTROL_SERVICE_NAME))){
+    if( !(fai = I2AddrAddrInfo(server_addr,NULL,serv))){
         goto error;
     }
 
@@ -350,7 +357,7 @@ error:
 }
 
 /*
- * Function:        OWPControlOpen
+ * Function:        OWPControlOpenCommon
  *
  * Description:        
  *                 Opens a connection to an owamp server. Returns after complete
@@ -363,15 +370,16 @@ error:
  *                 A valid OWPControl pointer or NULL.
  * Side Effect:        
  */
-OWPControl
-OWPControlOpen(
+static OWPControl
+OWPControlOpenCommon(
         OWPContext      ctx,            /* control context      */
         const char      *local_addr,    /* local addr or null   */
         I2Addr          server_addr,    /* server addr          */
         uint32_t        mode_req_mask,  /* requested modes      */
         OWPUserID       userid,         /* userid or NULL       */
         OWPNum64        *uptime_ret,    /* server uptime - ret  */
-        OWPErrSeverity  *err_ret        /* err - return         */
+        OWPErrSeverity  *err_ret,       /* err - return         */
+        OWPBoolean      twoway          /* is this for a two-way session? */
         )
 {
     int             rc;
@@ -395,7 +403,7 @@ OWPControlOpen(
     /*
      * First allocate memory for the control state.
      */
-    if( !(cntrl = _OWPControlAlloc(ctx,False,err_ret)))
+    if( !(cntrl = _OWPControlAlloc(ctx,twoway,err_ret)))
         goto error;
 
     /*
@@ -630,6 +638,64 @@ denied:
         I2AddrFree(server_addr);
     OWPControlClose(cntrl);
     return NULL;
+}
+
+/*
+ * Function:        OWPControlOpen
+ *
+ * Description:
+ *                 Opens a connection to an owamp server. Returns after complete
+ *                 control connection setup is complete. This means that encrytion
+ *                 has been intialized, and the client is authenticated to the
+ *                 server if that is necessary. However, the client has not
+ *                 verified the server at this point.
+ *
+ * Returns:
+ *                 A valid OWPControl pointer or NULL.
+ * Side Effect:
+ */
+OWPControl
+OWPControlOpen(
+        OWPContext      ctx,            /* control context      */
+        const char      *local_addr,    /* local addr or null   */
+        I2Addr          server_addr,    /* server addr          */
+        uint32_t        mode_req_mask,  /* requested modes      */
+        OWPUserID       userid,         /* userid or NULL       */
+        OWPNum64        *uptime_ret,    /* server uptime - ret  */
+        OWPErrSeverity  *err_ret        /* err - return         */
+        )
+{
+    return OWPControlOpenCommon(ctx,local_addr,server_addr,mode_req_mask,
+                                userid,uptime_ret,err_ret,False);
+}
+
+/*
+ * Function:        TWPControlOpen
+ *
+ * Description:
+ *                 Opens a connection to an twamp server. Returns after complete
+ *                 control connection setup is complete. This means that encrytion
+ *                 has been intialized, and the client is authenticated to the
+ *                 server if that is necessary. However, the client has not
+ *                 verified the server at this point.
+ *
+ * Returns:
+ *                 A valid OWPControl pointer or NULL.
+ * Side Effect:
+ */
+OWPControl
+TWPControlOpen(
+        OWPContext      ctx,            /* control context      */
+        const char      *local_addr,    /* local addr or null   */
+        I2Addr          server_addr,    /* server addr          */
+        uint32_t        mode_req_mask,  /* requested modes      */
+        OWPUserID       userid,         /* userid or NULL       */
+        OWPNum64        *uptime_ret,    /* server uptime - ret  */
+        OWPErrSeverity  *err_ret        /* err - return         */
+        )
+{
+    return OWPControlOpenCommon(ctx,local_addr,server_addr,mode_req_mask,
+                                userid,uptime_ret,err_ret,True);
 }
 
 /*

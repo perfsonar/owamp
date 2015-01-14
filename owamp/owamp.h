@@ -850,6 +850,21 @@ OWPControlOpen(
         );
 
 /*
+ * TWPControlOpen is similar to OWPControlOpen, except that it
+ * connects to a TWP server
+ */
+extern OWPControl
+TWPControlOpen(
+        OWPContext      ctx,
+        const char      *local_addr,    /* src addr or NULL             */
+        I2Addr          server_addr,    /* server addr or NULL          */
+        uint32_t       mode_mask,      /* OR of OWPSessionMode vals    */
+        OWPUserID       userid,         /* null if unwanted             */
+        OWPNum64        *uptime_ret,    /* server uptime - ret or NULL  */
+        OWPErrSeverity  *err_ret
+        );
+
+/*
  * Client and Server
  */
 extern OWPErrSeverity

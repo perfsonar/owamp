@@ -54,6 +54,12 @@ static int          owp_intr = 0;
 static char         dirpath[PATH_MAX];
 static uint32_t     file_oset,tstamp_oset,ext_oset;
 
+#ifdef TWAMP
+#define NWPControlOpen TWPControlOpen
+#else
+#define NWPControlOpen OWPControlOpen
+#endif
+
 static void
 print_conn_args(
         void
@@ -1594,7 +1600,7 @@ main(
          * Open connection to owampd.
          */
 
-        ping_ctx.cntrl = OWPControlOpen(ctx, 
+        ping_ctx.cntrl = NWPControlOpen(ctx,
                 ping_ctx.opt.srcaddr,
                 I2AddrByNode(eh, ping_ctx.remote_serv),
                 ping_ctx.auth_mode,ping_ctx.opt.identity,
