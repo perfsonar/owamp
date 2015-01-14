@@ -115,7 +115,7 @@ usage(
         )
 {
     if(msg) fprintf(stderr, "%s: %s\n", progname, msg);
-    if (!strcmp(progname, "owping")) {
+    if (!strcmp(progname, "owping") || !strcmp(progname, "twping")) {
         fprintf(stderr,
                 "usage: %s %s\n%s\n", 
                 progname, "[arguments] testaddr [servaddr]",
@@ -1177,7 +1177,7 @@ main(
     ping_ctx.opt.portspec->high = 9960;
 
     /* Create options strings for this program. */
-    if (!strcmp(progname, "owping")) {
+    if (!strcmp(progname, "owping") || !strcmp(progname, "twping")) {
         strcpy(optstring, conn_opts);
         strcat(optstring, test_opts);
         strcat(optstring, out_opts);
@@ -1506,7 +1506,7 @@ main(
     /*
      * Handle 3 possible cases (owping, owfetch, owstats) one by one.
      */
-    if (!strcmp(progname, "owping")){
+    if (!strcmp(progname, "owping") || !strcmp(progname, "twping")){
 
         if((argc < 1) || (argc > 2)){
             usage(progname, NULL);

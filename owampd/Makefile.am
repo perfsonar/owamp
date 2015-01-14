@@ -23,7 +23,11 @@ AM_CFLAGS = $(OWP_PREFIX_CFLAGS)
 
 INCLUDES	= $(OWPINCS) $(I2UTILINCS)
 
-bin_PROGRAMS	= owampd
+bin_PROGRAMS	= owampd twampd
 owampd_SOURCES	= owampdP.h owampd.c policy.h policy.c fts.h fts.c
 owampd_LDADD	= $(OWPLIBS) $(MALLOCDEBUGLIBS) -lI2util
 owampd_DEPENDENCIES = $(OWPLIBDEPS) $(I2UTILLIBDEPS)
+
+twampd_SOURCES	= owampdP.h twampd.c policy.h policy.c fts.h fts.c
+twampd_LDADD	= $(owampd_LDADD)
+twampd_DEPENDENCIES = $(owampd_DEPENDENCIES)

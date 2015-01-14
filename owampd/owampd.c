@@ -77,12 +77,13 @@ usage(
 
     fprintf(stderr,
             "   -a authmode       Default supported authmodes:[E]ncrypted,[A]uthenticated,[O]pen\n"
-            "   -c confidr        Configuration directory\n"
+            "   -c confdir        Configuration directory\n"
             "   -d datadir        Data directory\n"
             "   -e facility       Syslog \"facility\" to log errors\n"
-            "   -f                Allow owampd to run as root\n"
+            "   -f                Allow %s to run as root\n"
             "   -G group          Run as group \"group\" :-gid also valid\n"
-            "   -h                Print this message and exit\n"
+            "   -h                Print this message and exit\n",
+            progname
            );
     fprintf(stderr,
             "   -P portrange      port range for recivers to use\n"
@@ -1515,7 +1516,7 @@ int main(
         }
 
         if(!setuser && !opts.allowroot){
-            I2ErrLog(errhand,"Running owampd as root is folly!");
+            I2ErrLog(errhand,"Running %s as root is folly!", progname);
             I2ErrLog(errhand,
                     "Use the -U option! (or allow root with the -f option)");
             exit(1);

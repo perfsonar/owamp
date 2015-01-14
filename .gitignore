@@ -38,6 +38,7 @@ owampd/.deps/
 owampd/Makefile
 owampd/Makefile.in
 owampd/owampd
+owampd/twampd
 owping/.deps/
 owping/Makefile
 owping/Makefile.in
@@ -45,6 +46,7 @@ owping/owfetch
 owping/owping
 owping/owstats
 owping/owup
+owping/twping
 powstream/.deps/
 powstream/Makefile
 powstream/Makefile.in
