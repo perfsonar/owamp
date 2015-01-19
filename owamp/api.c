@@ -1410,6 +1410,13 @@ _OWPCleanUpSessions(
         return True;
     }
 
+    if (cntrl->twoway && !cntrl->server) {
+        /*
+         * Cleanup not implemented for TWAMP clients.
+         */
+        return True;
+    }
+
     /*
      * Parse test session list and pull recv sessions into the receivers
      * list.
@@ -2434,6 +2441,9 @@ GetSessionFinishedType(
         case 3:
             phdr->rec_size = _OWP_DATARECV3_SIZE;
             break;
+        case _OWP_VERSION_TWOWAY|3:
+            phdr->rec_size = _OWP_DATAREC_TWV3_SIZE;
+            break;
         default:
             OWPError(ctx,OWPErrFATAL,EINVAL,
                     "_OWPReadDataHeaderInitial: Invalid file version (%ul)",
@@ -2871,15 +2881,18 @@ OWPWriteDataHeader(
 
     /*
      * encode test_spec early so failure is detected early.
+     *
+     * Pretend always that this is a one-way session, not a two-way
+     * one so that nslots and npackets are encoded.
      */
     if((_OWPEncodeTestRequestPreamble(ctx,msg,&len,
                     (struct sockaddr*)&hdr->addr_sender,
                     (struct sockaddr*)&hdr->addr_receiver,
-                    hdr->conf_sender,hdr->conf_receiver,False,
+                    hdr->twoway?True:hdr->conf_sender,hdr->conf_receiver,False,
                     hdr->sid,&hdr->test_spec) != 0) || !len){
         return False;
     }
-    ver = htonl(3);
+    ver = htonl((hdr->twoway?_OWP_VERSION_TWOWAY:0)|3);
 
     /*
      * Compute the offset to the end of the "header" information. Either
@@ -3074,6 +3087,47 @@ OWPWriteDataRecord(
     return True;
 }
 
+/*
+ * Function:        OWPWriteTWDataRecord
+ *
+ * Description:
+ *         Write a single data record described by rec to file fp.
+ *
+ * In Args:
+ *
+ * Out Args:
+ *
+ * Scope:
+ * Returns:
+ * Side Effect:
+ */
+OWPBoolean
+OWPWriteTWDataRecord(
+        OWPContext  ctx,
+        FILE        *fp,
+        OWPTWDataRec  *rec
+        )
+{
+    char    buf[_OWP_DATAREC_TWV3_SIZE];
+
+    if(!_OWPEncodeTWDataRecord(buf,rec)){
+        OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                "OWPTWWriteDataRecord: Unable to encode data record");
+        return False;
+    }
+
+    /*
+     * write data record
+     */
+    if(fwrite(buf,1,_OWP_DATAREC_TWV3_SIZE,fp) != _OWP_DATAREC_TWV3_SIZE){
+        OWPError(ctx,OWPErrFATAL,errno,
+                "OWPWriteDataRecord: fwrite(): %M");
+        return False;
+    }
+
+    return True;
+}
+
 
 /*
  * Function:        OWPReadDataHeader
@@ -3122,6 +3176,7 @@ OWPReadDataHeader(
     hdr_ret->version = phrec.version;
     hdr_ret->sbuf = phrec.sbuf;
     hdr_ret->rec_size = phrec.rec_size;
+    hdr_ret->twoway = ((hdr_ret->version & _OWP_VERSION_TWOWAY) ? True : False);
 
     /*
      * Decode the header if present(version 2).
@@ -3144,6 +3199,9 @@ OWPReadDataHeader(
         hdr_ret->addr_len = sizeof(hdr_ret->addr_sender);
         /*
          * Now decode it into the hdr_ret variable.
+         *
+         * Pretend this is always a one-way session, not a two-way
+         * session to allow nslot and npackets to be non-zero.
          */
         if(_OWPDecodeTestRequestPreamble(ctx,False,msg,
                     _OWP_TEST_REQUEST_PREAMBLE_SIZE,
@@ -3188,7 +3246,7 @@ OWPReadDataHeader(
     hdr_ret->num_skiprecs = phrec.num_skiprecs;
     hdr_ret->oset_skiprecs = phrec.oset_skiprecs;
     hdr_ret->oset_datarecs = phrec.oset_datarecs;
-    if(phrec.finished != OWP_SESSION_FINISHED_NORMAL){
+    if(phrec.finished != OWP_SESSION_FINISHED_NORMAL || hdr_ret->twoway){
         hdr_ret->num_datarecs = (phrec.sbuf.st_size - phrec.hdr_len)/
             hdr_ret->rec_size;
     }
@@ -3412,7 +3470,10 @@ OWPParseRecords(
             len_rec = _OWP_DATARECV2_SIZE;
             break;
         case 3:
-            len_rec = _OWP_DATAREC_SIZE;
+            len_rec = _OWP_DATARECV3_SIZE;
+            break;
+        case _OWP_VERSION_TWOWAY|3:
+            len_rec = _OWP_DATAREC_TWV3_SIZE;
             break;
         default:
             OWPError(ctx,OWPErrFATAL,EINVAL,
@@ -3441,6 +3502,78 @@ OWPParseRecords(
             return OWPErrFATAL;
         }
         rc = proc_rec(&rec,app_data);
+        if(!rc) continue;
+        if(rc < 0)
+            return OWPErrFATAL;
+        return OWPErrOK;
+
+    }
+
+    return OWPErrOK;
+}
+
+/*
+ * Function:        OWPParseTWRecords
+ *
+ * Description:
+ *         Fetch num_rec records from disk calling the record proc function
+ *         on each record.
+ *
+ * In Args:
+ *
+ * Out Args:
+ *
+ * Scope:
+ * Returns:
+ * Side Effect:
+ */
+OWPErrSeverity
+OWPParseTWRecords(
+        OWPContext      ctx,
+        FILE            *fp,
+        uint32_t       num_rec,
+        uint32_t       file_version,
+        OWPDoTWDataRecord proc_rec,
+        void            *app_data
+        )
+{
+    size_t      len_rec;
+    char        rbuf[_OWP_DATAREC_TWV3_SIZE];
+    uint32_t    i;
+    OWPTWDataRec twrec;
+    int         rc;
+
+    switch(file_version){
+        case _OWP_VERSION_TWOWAY|3:
+            len_rec = _OWP_DATAREC_TWV3_SIZE;
+            break;
+        default:
+            OWPError(ctx,OWPErrFATAL,EINVAL,
+                    "OWPParseTWRecords: Invalid file version (%d)",
+                    file_version);
+            return OWPErrFATAL;
+    }
+
+    for(i=0;i<num_rec;i++){
+        if(fread(rbuf,len_rec,1,fp) < 1){
+            if(ferror(fp)){
+                OWPError(ctx,OWPErrFATAL,errno,
+                        "fread(): STREAM ERROR: offset=%" PRIuPTR ",i=%" PRIu32,
+                        ftello(fp),i);
+            }
+            else if(feof(fp)){
+                OWPError(ctx,OWPErrFATAL,errno,
+                        "fread(): EOF: offset=%" PRIu64,ftello(fp));
+            }
+            return OWPErrFATAL;
+        }
+        if(!_OWPDecodeTWDataRecord(file_version,&twrec,rbuf)){
+            errno = EFTYPE;
+            OWPError(ctx,OWPErrFATAL,errno,
+                    "OWPParseTWRecords: Invalid Data Record: %M");
+            return OWPErrFATAL;
+        }
+        rc = proc_rec(&twrec,app_data);
         if(!rc) continue;
         if(rc < 0)
             return OWPErrFATAL;

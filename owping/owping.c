@@ -116,7 +116,11 @@ print_output_args(
             "   -n units       \'n\',\'u\',\'m\', or \'s\'",
             "   -N count       number of test packets (to summarize per sub-session)\n"
             "   -Q             run the test and exit without reporting statistics",
+#ifdef TWAMP
+            "   -R             print RAW data: \"SSEQ STIME SS SERR SRTIME SRS SRERR STTL RSEQ RSTIME RSS RSERR RTIME RS RERR RTTL\\n\"",
+#else
             "   -R             print RAW data: \"SEQNO STIME SS SERR RTIME RS RERR TTL\\n\"",
+#endif
             "   -v[N]          print out individual delays. You can supply an optional N here to limit the print to the first N packets",
             "   -U             Adds UNIX timestamps when printing individual delays"
            );
@@ -220,8 +224,8 @@ FailSession(
 }
 
 /*
- * RAW ascii format is:
- * "SEQ STIME SS SERR RTIME RS RERR\n"
+ * RAW ascii format for OWAMP is:
+ * "SEQ STIME SS SERR RTIME RS RERR TTL\n"
  * name     desc                type
  * SEQ      sequence number     unsigned long
  * STIME    sendtime            owptimestamp (%020 PRIu64)
@@ -251,6 +255,53 @@ printraw(
 }
 
 /*
+ * RAW ascii format for TWAMP is:
+ * "SSEQ STIME SS SERR SRTIME SRS SRERR STTL RSEQ RSTIME RSS RSERR RTIME RS RERR RTTL\n"
+ * name     desc                           type
+ * SSEQ     send sequence number           unsigned long
+ * STIME    sendtime                       owptimestamp (%020 PRIu64)
+ * SS       send synchronized              boolean unsigned
+ * SERR     send err estimate              float (%g)
+ * SRTIME   send (receive) time            owptimestamp (%020 PRIu64)
+ * SRS      send (receive) synchronized    boolean unsigned
+ * SRERR    send (receive) err estimate    float (%g)
+ * STTL     send ttl                       unsigned short
+ * RSEQ     reflect sequence number        unsigned long
+ * RTIME    reflected (send) time          owptimestamp (%020 PRIu64)
+ * RS       reflected (send) synchronized  boolean unsigned
+ * RERR     reflected (send) err estimate  float (%g)
+ * RTIME    recvtime                       owptimestamp (%020 PRIu64)
+ * RS       recv synchronized              boolean unsigned
+ * RERR     recv err estimate              float (%g)
+ * RTTL     reflected ttl                  unsigned short
+ */
+static int
+printrawTW(
+        OWPTWDataRec    *rec,
+        void            *udata
+        )
+{
+    FILE        *out = (FILE*)udata;
+
+    fprintf(out,
+            "%lu " OWP_TSTAMPFMT " %u %g " OWP_TSTAMPFMT " %u %g %u "
+            "%lu " OWP_TSTAMPFMT " %u %g " OWP_TSTAMPFMT " %u %g %u\n",
+            (unsigned long)rec->sent.seq_no,
+            rec->sent.send.owptime,rec->sent.send.sync,
+            OWPGetTimeStampError(&rec->sent.send),
+            rec->sent.recv.owptime,rec->sent.recv.sync,
+            OWPGetTimeStampError(&rec->sent.recv),
+            rec->sent.ttl,
+            (unsigned long)rec->reflected.seq_no,
+            rec->reflected.send.owptime,rec->reflected.send.sync,
+            OWPGetTimeStampError(&rec->reflected.send),
+            rec->reflected.recv.owptime,rec->reflected.recv.sync,
+            OWPGetTimeStampError(&rec->reflected.recv),
+            rec->reflected.ttl);
+    return 0;
+}
+
+/*
  * Does statistical output parsing.
  */
 int
@@ -258,7 +309,8 @@ do_stats(
         OWPContext    ctx,
         FILE        *fp,
         char        *from,
-        char        *to
+        char        *to,
+        OWPTestSpec *tspec
         )
 {
     OWPSessionHeaderRec hdr;
@@ -282,11 +334,19 @@ do_stats(
      * If raw data is requested, no summary information is needed.
      */
     if(ping_ctx.opt.raw){
+#ifdef TWAMP
+        if(OWPParseTWRecords(ctx,fp,num_rec,hdr.version,printrawTW,stdout)
+                < OWPErrWARNING){
+            I2ErrLog(eh,"OWPParseTWRecords(): %M");
+            return -1;
+        }
+#else
         if(OWPParseRecords(ctx,fp,num_rec,hdr.version,printraw,stdout)
                 < OWPErrWARNING){
             I2ErrLog(eh,"OWPParseRecords(): %M");
             return -1;
         }
+#endif
         return 0;
     }
 
@@ -306,6 +366,18 @@ do_stats(
     /* Set the timestamp flag here */
     if (ping_ctx.opt.display_unix_ts == True)
       stats->display_unix_ts = True;
+
+#ifdef TWAMP
+    /*
+     * For two-way sessions the number of packets is always 0 in
+     * the test request preamble, which is used to populate hdr.test_spec
+     *
+     * Override this so that sub-session summaries work correctly
+     * for two-way sessions.
+     */
+    if(tspec)
+        hdr.test_spec.npackets = tspec->npackets;
+#endif
 
     /*
      * How many summaries?
@@ -1895,8 +1967,8 @@ main(
                 I2ErrLog(eh,"Unable to fetch data for sid(%s)",sname);
             }
             else if(!ping_ctx.opt.quiet || ping_ctx.opt.raw){
-                if( do_stats(ctx,tofp,local,remote)){
-                    I2ErrLog(eh, "do_stats(\"to\" session): %M");
+                if( do_stats(ctx,tofp,local,remote,NULL)){
+                    I2ErrLog(eh, "do_stats(\"to\" session)");
                 }
             }
             if(tofp && fclose(tofp)){
@@ -1908,8 +1980,8 @@ main(
         if(owp_intr > 1) exit(2);
 
         if(fromfp && (!ping_ctx.opt.quiet || ping_ctx.opt.raw)){
-            if( do_stats(ctx,fromfp,remote,local)){
-                I2ErrLog(eh, "do_stats(\"from\" session): %M");
+            if( do_stats(ctx,fromfp,remote,local,&tspec)){
+                I2ErrLog(eh, "do_stats(\"from\" session)");
             }
         }
 
@@ -1930,7 +2002,7 @@ main(
                 exit(1);
             }
 
-            if ( do_stats(ctx,fp,NULL,NULL)){
+            if ( do_stats(ctx,fp,NULL,NULL,NULL)){
                 I2ErrLog(eh,"do_stats() failed.");
                 exit(1);
             }
@@ -1980,7 +2052,7 @@ main(
                 I2ErrLog(eh,"Unable to fetch sid(%s)",sname);
             }
             else if((!ping_ctx.opt.quiet || ping_ctx.opt.raw) &&
-                    do_stats(ctx,fp,NULL,NULL)){
+                    do_stats(ctx,fp,NULL,NULL,NULL)){
                 I2ErrLog(eh,"do_stats() failed.");
             }
             else if(fclose(fp)){

@@ -158,12 +158,18 @@ PacketAlloc(
         /*
          * print out info message to inform that the "size" calculation was not
          * good enough. (dynamic memory allocations during parsing is to be
-         * avoided if possible)
+         * avoided if possible).
+         *
+         * Note that with two-way pings, we don't know the client's
+         * send schedule so this is expected and we don't want to
+         * print a message in that case.
          */
-        OWPError(stats->ctx,OWPErrINFO,OWPErrUNKNOWN,
-                "PacketAlloc: Allocating OWPPacket!: plistlen=%u, timeout=%g",
-                stats->plistlen,
-                OWPNum64ToDouble(stats->hdr->test_spec.loss_timeout));
+        if (!stats->hdr->twoway) {
+            OWPError(stats->ctx,OWPErrINFO,OWPErrUNKNOWN,
+                     "PacketAlloc: Allocating OWPPacket!: plistlen=%u, timeout=%g",
+                     stats->plistlen,
+                     OWPNum64ToDouble(stats->hdr->test_spec.loss_timeout));
+        }
 
         if(!(node = calloc(sizeof(OWPPacketRec),stats->plistlen))){
             OWPError(stats->ctx,OWPErrFATAL,errno,"calloc(): %M");
@@ -531,7 +537,9 @@ OWPStatsFree(
         stats->bsort = NULL;
         stats->bsortlen = 0;
     }
-    I2HashClose(stats->btable);
+    if(stats->btable){
+        I2HashClose(stats->btable);
+    }
     while(stats->ballocated){
         OWPBucket   t;
 
@@ -540,7 +548,9 @@ OWPStatsFree(
         stats->ballocated = t;
     }
 
-    I2HashClose(stats->ptable);
+    if(stats->ptable){
+        I2HashClose(stats->ptable);
+    }
     while(stats->pallocated){
         OWPPacket   t;
 
@@ -744,10 +754,14 @@ OWPStatsCreate(
      * If this factor is too small, there will be entries in syslog and
      * it can be increased. (A dynmic allocation will happen in this event.)
      */
+    if (hdr->twoway) {
+        d = 0.0;
+    } else {
 #define PACKETBUFFERALLOCFACTOR   3.5
-    d = OWPTestPacketRate(stats->ctx,&stats->hdr->test_spec) *
+        d = OWPTestPacketRate(stats->ctx,&stats->hdr->test_spec) *
             OWPNum64ToDouble(stats->hdr->test_spec.loss_timeout) *
             PACKETBUFFERALLOCFACTOR;
+    }
     if(d > 0x7fffffffL){
         OWPError(stats->ctx,OWPErrDEBUG,OWPErrUNKNOWN,
                 "%s: Extreme packet rate (%g) requires excess memory usage",d);
@@ -837,17 +851,20 @@ OWPStatsCreate(
 
     /*
      * reordering buffers
+     * (Not supported for TWAMP)
      */
-    stats->rlistlen = stats->plistlen;
-    if( !(stats->rseqno = calloc(stats->rlistlen,sizeof(uint32_t)))){
-            OWPError(stats->ctx,OWPErrFATAL,errno,
-                    "%s: calloc(%lu,uint32_t): %M",func,stats->rlistlen);
-            goto error;
-    }
-    if( !(stats->rn = calloc(stats->rlistlen,sizeof(uint32_t)))){
-            OWPError(stats->ctx,OWPErrFATAL,errno,
-                    "%s: calloc(%lu,uint32_t): %M",func,stats->rlistlen);
-            goto error;
+    if(!stats->hdr->twoway){
+        stats->rlistlen = stats->plistlen;
+        if( !(stats->rseqno = calloc(stats->rlistlen,sizeof(uint32_t)))){
+                OWPError(stats->ctx,OWPErrFATAL,errno,
+                        "%s: calloc(%lu,uint32_t): %M",func,stats->rlistlen);
+                goto error;
+        }
+        if( !(stats->rn = calloc(stats->rlistlen,sizeof(uint32_t)))){
+                OWPError(stats->ctx,OWPErrFATAL,errno,
+                        "%s: calloc(%lu,uint32_t): %M",func,stats->rlistlen);
+                goto error;
+        }
     }
 
     return stats;
@@ -969,8 +986,11 @@ IterateSummarizeSession(
          * can be flushed.
          */
         while(stats->pbegin->seq < rec->seq_no){
-            if(!PacketBeginFlush(stats))
+            if(!PacketBeginFlush(stats)) {
+                OWPError(stats->ctx,OWPErrFATAL,EINVAL,
+                         "IterateSummarizeSession: Unable to flush lost packets");
                 return -1;
+            }
         }
     }else{
         /*
@@ -981,8 +1001,11 @@ IterateSummarizeSession(
                 stats->hdr->test_spec.loss_timeout);
 
         while(OWPNum64Cmp(stats->pbegin->schedtime,thresh) < 0){
-            if(!PacketBeginFlush(stats))
+            if(!PacketBeginFlush(stats)) {
+                OWPError(stats->ctx,OWPErrFATAL,EINVAL,
+                         "IterateSummarizeSession: Unable to flush packets");
                 return -1;
+            }
         }
     }
 
@@ -1148,6 +1171,210 @@ IterateSummarizeSession(
     return 0;
 }
 
+
+static int
+IterateSummarizeTWSession(
+        OWPTWDataRec *rec,
+        void        *cdata
+        )
+{
+    OWPStats    stats = cdata;
+    OWPPacket   node;
+    double      proc_d;
+    double      d;
+    double      derr;
+    long int    i;
+
+    /*
+     * Mark the first offset that has a seq greater than currently
+     * interested in. This allows the caller to know what offset to
+     * use for the "beginning" of the next summary.
+     */
+    if(!stats->next_oset && (rec->sent.seq_no >= stats->last)){
+        stats->next_oset = stats->begin_oset + stats->i * stats->hdr->rec_size;
+    }
+
+    /* increase file index */
+    stats->i++;
+
+    /*
+     * return (cont processing) if this record is not part of this sum-session
+     *
+     * XXX: This may not be completely correct with respect to reordering...
+     * If the first packet of the "next" session takes place before the
+     * last packet of the "previous" session - should reordering be counted?
+     *
+     */
+    if((rec->sent.seq_no < stats->first) || (rec->sent.seq_no >= stats->last)){
+        return 0;
+    }
+
+    /*
+     * Flush OWPPacket buffer before dealing with this packet so the buffer
+     * only holds as many records as is needed.
+     *
+     */
+    if(OWPIsLostRecord(&rec->sent)){
+        /*
+         * if current rec is lost, then all seq nums less than this one
+         * can be flushed.
+         */
+        while(stats->pbegin->seq < rec->sent.seq_no){
+            if(!PacketBeginFlush(stats)) {
+                OWPError(stats->ctx,OWPErrFATAL,EINVAL,
+                         "IterateTWSummarizeSession: Unable to flush lost packets");
+                return -1;
+            }
+        }
+    }else{
+        /*
+         * If this packet is not lost, then compute recv-lossThresh
+         * and flush all packets with "sent" before this time.
+         */
+        OWPNum64    thresh = OWPNum64Sub(rec->sent.send.owptime,
+                stats->hdr->test_spec.loss_timeout);
+
+        while(OWPNum64Cmp(stats->pbegin->schedtime,thresh) < 0){
+            if(!PacketBeginFlush(stats)) {
+                OWPError(stats->ctx,OWPErrFATAL,EINVAL,
+                         "IterateTWSummarizeSession: Unable to flush packets");
+                return -1;
+            }
+        }
+    }
+
+    /*
+     * Fetch current packet record
+     */
+    if( !(node = PacketGet(stats,rec->sent.seq_no))){
+        OWPError(stats->ctx,OWPErrFATAL,EINVAL,
+                "IterateSummarizeTWSession: Unable to fetch packet #%lu",
+                rec->sent.seq_no);
+        return -1;
+    }
+
+    if( OWPIsLostRecord(&rec->sent)){
+        /*
+         * If this has been seen before, then we have a problem.
+         */
+        if(node->seen){
+            OWPError(stats->ctx,OWPErrFATAL,EINVAL,
+                    "IterateSummarizeTWSession: Unexpected lost packet record");
+            return -1;
+        }
+        node->lost = True;
+        stats->sent++;
+
+        /* sync */
+        if(!rec->sent.recv.sync){
+            stats->sync = 0;
+        }
+
+        /*
+         * Time error
+         */
+        derr = OWPGetTimeStampError(&rec->sent.recv);
+        stats->maxerr = MAX(stats->maxerr,derr);
+
+        if(stats->output){
+            fprintf(stats->output,"seq_no=%-10u *LOST*\n", rec->sent.seq_no);
+        }
+
+        return 0;
+    }
+    else{
+        /*
+         * If this has already been declared lost, we have a problem.
+         */
+        if(node->lost){
+            OWPError(stats->ctx,OWPErrFATAL,EINVAL,
+                    "IterateSummarizeTWSession: Unexpected duplicate packet record (for lost one)");
+            return -1;
+        }
+
+        if(!node->seen){
+            stats->sent++;
+        }
+        node->seen++;
+    }
+
+    /*
+     * compute processing delay on far end
+     */
+    proc_d = OWPDelay(&rec->sent.recv, &rec->reflected.send);
+    /*
+     * compute best possible estimate for network round-trip time for this packet
+     */
+    d = OWPDelay(&rec->sent.send, &rec->reflected.recv) - proc_d;
+
+    /*
+     * compute total error from send/recv.
+     */
+    derr = OWPGetTimeStampError(&rec->sent.send) +
+        OWPGetTimeStampError(&rec->reflected.recv) +
+        OWPGetTimeStampError(&rec->sent.recv);
+    stats->maxerr = MAX(stats->maxerr,derr);
+
+    /*
+     * Print individual packet record
+     */
+    if(stats->output){
+        if (stats->display_unix_ts == True) {
+            /* print using unix timestamp */
+            double epochdiff = (OWPULongToNum64(OWPJAN_1970))>>32;
+            fprintf(stats->output,
+                    "seq_no=%d delay=%e %s proc_delay=%e %s (err=%.3g %s) sent=%f reflected=%f recv=%f\n",
+                    rec->sent.seq_no, d*stats->scale_factor, stats->scale_abrv,
+                    proc_d*stats->scale_factor, stats->scale_abrv,
+                    derr*stats->scale_factor, stats->scale_abrv,
+                    OWPNum64ToDouble(rec->sent.send.owptime) - epochdiff,
+                    OWPNum64ToDouble(rec->reflected.send.owptime) - epochdiff,
+                    OWPNum64ToDouble(rec->reflected.recv.owptime) - epochdiff
+                );
+        }
+        else {
+            /* print the default */
+            fprintf(stats->output,
+                    "seq_no=%-10u delay=%.3g %s proc_delay=%.3g %s\t(err=%.3g %s)\n",
+                    rec->sent.seq_no, d*stats->scale_factor, stats->scale_abrv,
+                    proc_d*stats->scale_factor, stats->scale_abrv,
+                    derr*stats->scale_factor,stats->scale_abrv);
+        }
+    }
+
+    /*
+     * Save max/min delays
+     */
+    stats->min_delay = MIN(stats->min_delay,d);
+    stats->max_delay = MAX(stats->max_delay,d);
+    stats->min_proc_delay = MIN(stats->min_proc_delay,proc_d);
+    stats->max_proc_delay = MAX(stats->max_proc_delay,proc_d);
+
+    /*
+     * Delay and TTL stats not computed on duplicates
+     */
+    if(node->seen > 1){
+        return 0;
+    }
+
+    /*
+     * Increment histogram for this delay
+     */
+    if( !BucketIncrementDelay(stats,d)){
+        /* error return */
+        OWPError(stats->ctx,OWPErrFATAL,EINVAL,
+                "IterateSummarizeTWSession: Unable to increment delay bucket");
+        return -1;
+    }
+
+    /*
+     * TTL info
+     */
+    stats->ttl_count[rec->sent.ttl]++;
+
+    return 0;
+}
+
 static void
 PrintStatsHeader(
         OWPStats    stats,
@@ -1159,7 +1386,8 @@ PrintStatsHeader(
     if(!output)
         return;
 
-    fprintf(output,"\n--- owping statistics from [%s]:%s to [%s]:%s ---\n",
+    fprintf(output,"\n--- %s statistics from [%s]:%s to [%s]:%s ---\n",
+            stats->hdr->twoway ? "twping" : "owping",
             stats->fromhost,stats->fromserv,stats->tohost,stats->toserv);
     I2HexEncode(sid_name,stats->hdr->sid,sizeof(OWPSID));
     fprintf(output,"SID:\t%s\n",sid_name);
@@ -1329,16 +1557,22 @@ OWPStatsParse(
         stats->ttl_count[i] = 0;
     }
 
-    /* re-order buffers */
-    for(i=0;i<stats->rlistlen;i++){
-        stats->rseqno[i]=0;
-        stats->rn[i]=0;
+    /* re-order buffers
+     * (Not supported for TWAMP)
+     */
+    if(!stats->hdr->twoway){
+        for(i=0;i<stats->rlistlen;i++){
+            stats->rseqno[i]=0;
+            stats->rn[i]=0;
+        }
     }
 
     /* init min_delay to +inf, max_delay to -inf */
     stats->inf_delay = OWPNum64ToDouble(stats->hdr->test_spec.loss_timeout + 1);
     stats->min_delay = stats->inf_delay;
     stats->max_delay = -stats->inf_delay;
+    stats->min_proc_delay = stats->inf_delay;
+    stats->max_proc_delay = -stats->inf_delay;
 
     /* timestamp quality */
     stats->sync = 1;
@@ -1352,12 +1586,22 @@ OWPStatsParse(
      */
     PrintStatsHeader(stats,output);
     stats->output = output;
-    if(OWPParseRecords(stats->ctx,stats->fp,nrecs,stats->hdr->version,
-                IterateSummarizeSession,(void*)stats) != OWPErrOK){
-        OWPError(stats->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                "OWPStatsParse: iteration of data records failed");
-        stats->output = NULL;
-        return False;
+    if (stats->hdr->twoway) {
+        if(OWPParseTWRecords(stats->ctx,stats->fp,nrecs,stats->hdr->version,
+                             IterateSummarizeTWSession,(void*)stats) != OWPErrOK){
+            OWPError(stats->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                     "OWPStatsParse: iteration of twoway data records failed");
+            stats->output = NULL;
+            return False;
+        }
+    } else {
+        if(OWPParseRecords(stats->ctx,stats->fp,nrecs,stats->hdr->version,
+                           IterateSummarizeSession,(void*)stats) != OWPErrOK){
+            OWPError(stats->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                     "OWPStatsParse: iteration of data records failed");
+            stats->output = NULL;
+            return False;
+        }
     }
     stats->output = NULL;
 
@@ -1581,7 +1825,8 @@ OWPStatsPrintSummary(
     }
 
 
-    fprintf(output,"one-way delay min/median/max = %s/%s/%s %s, ",
+    fprintf(output,"%s min/median/max = %s/%s/%s %s, ",
+            stats->hdr->twoway ? "round-trip time" : "one-way delay",
             minval,n1val,maxval,stats->scale_abrv);
     if(stats->sync){
         fprintf(output,"(err=%.3g %s)\n",stats->maxerr * stats->scale_factor,
@@ -1589,6 +1834,28 @@ OWPStatsPrintSummary(
     }
     else{
         fprintf(output,"(unsync)\n");
+    }
+    if (stats->hdr->twoway) {
+        if(stats->min_proc_delay >= stats->inf_delay){
+            strncpy(minval,"nan",sizeof(minval));
+        }
+        else if( (snprintf(minval,sizeof(minval),"%.3g",
+                           stats->min_proc_delay * stats->scale_factor) < 0)){
+            OWPError(stats->ctx,OWPErrWARNING,errno,
+                     "OWPStatsPrintSummary: snprintf(): %M");
+            strncpy(minval,"XXX",sizeof(minval));
+        }
+        if(stats->max_proc_delay <= -stats->inf_delay){
+            strncpy(maxval,"nan",sizeof(maxval));
+        }
+        else if( (snprintf(maxval,sizeof(maxval),"%.3g",
+                           stats->max_proc_delay * stats->scale_factor) < 0)){
+            OWPError(stats->ctx,OWPErrWARNING,errno,
+                     "OWPStatsPrintSummary: snprintf(): %M");
+            strncpy(maxval,"XXX",sizeof(maxval));
+        }
+        fprintf(output,"reflector processing time min/max = %s/%s %s\n",
+                minval,maxval,stats->scale_abrv);
     }
 
 
@@ -1605,7 +1872,8 @@ OWPStatsPrintSummary(
                     "OWPStatsPrintSummary: snprintf(): %M");
         strncpy(n1val,"XXX",sizeof(n1val));
     }
-    fprintf(output,"one-way jitter = %s %s (P95-P50)\n",
+    fprintf(output,"%s = %s %s (P95-P50)\n",
+            stats->hdr->twoway ? "two-way PDV" : "one-way jitter",
             n1val,stats->scale_abrv);
 
     /*
@@ -1654,19 +1922,24 @@ OWPStatsPrintSummary(
 
     /*
      * Report j-reordering
+     *
+     * (Not needed for TWAMP as twping won't allow packets to be
+     * re-ordered)
      */
-    for(i=0;((i<stats->rlistlen) && (stats->rn[i]));i++){
-        fprintf(output,"%ld-reordering = %f%%\n",i+1,
-                100.0*stats->rn[i]/(stats->rnumseqno));
-    }
-    if(i==0){
-        fprintf(output,"no reordering\n");
-    }
-    else if(i < stats->rlistlen){
-        fprintf(output,"no %ld-reordering\n", i+1);
-    }
-    else{
-        fprintf(output,"%ld-reordering not handled\n",stats->rlistlen+1);
+    if(!stats->hdr->twoway){
+        for(i=0;((i<stats->rlistlen) && (stats->rn[i]));i++){
+            fprintf(output,"%ld-reordering = %f%%\n",i+1,
+                    100.0*stats->rn[i]/(stats->rnumseqno));
+        }
+        if(i==0){
+            fprintf(output,"no reordering\n");
+        }
+        else if(i < stats->rlistlen){
+            fprintf(output,"no %ld-reordering\n", i+1);
+        }
+        else{
+            fprintf(output,"%ld-reordering not handled\n",stats->rlistlen+1);
+        }
     }
 
     fprintf(output,"\n");
@@ -1790,16 +2063,21 @@ OWPStatsPrintMachine(
 
     /*
      * Reordering histogram
+     *
+     * (Not needed for TWAMP as twping won't allow packets to be
+     * re-ordered)
      */
-    fprintf(output,"<NREORDERING>\n");
-    for(j=0;((j<stats->rlistlen) && (stats->rn[j]));j++){
-        fprintf(output,"\t%u\t%u\n",(uint32_t)j+1,
-                stats->rn[j]);
+    if(!stats->hdr->twoway){
+        fprintf(output,"<NREORDERING>\n");
+        for(j=0;((j<stats->rlistlen) && (stats->rn[j]));j++){
+            fprintf(output,"\t%u\t%u\n",(uint32_t)j+1,
+                    stats->rn[j]);
+        }
+        if((j==0) || (j >= stats->rlistlen)){
+            fprintf(output,"\t%u\t%u\n",(uint32_t)j+1,0);
+        }
+        fprintf(output,"</NREORDERING>\n");
     }
-    if((j==0) || (j >= stats->rlistlen)){
-        fprintf(output,"\t%u\t%u\n",(uint32_t)j+1,0);
-    }
-    fprintf(output,"</NREORDERING>\n");
 
     return True;
 }

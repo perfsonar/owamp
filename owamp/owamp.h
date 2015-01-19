@@ -1249,6 +1249,8 @@ typedef struct OWPSessionHeaderRec{
     OWPBoolean              header;         /* RO: TestSession header?  */
     uint32_t                version;        /* RO: File version         */
     uint32_t                rec_size;       /* RO: data record size     */
+    OWPBoolean              twoway;         /* RO: is this a two-way
+                                               session? */
     OWPSessionFinishedType  finished;       /* RW: is session finished?
                                                0:no,1:yes,2:unknown     */
 
@@ -1263,7 +1265,8 @@ typedef struct OWPSessionHeaderRec{
     uint8_t                 ipvn;           /* RO: ipvn of addrs        */
     socklen_t               addr_len;       /* RO: saddr_len of saddrs  */
     struct sockaddr_storage addr_sender;    /* RW                       */
-    struct sockaddr_storage addr_receiver;  /* RW                       */
+    struct sockaddr_storage addr_receiver;  /* RW: addr of reflector
+                                               for two-way */
     OWPBoolean              conf_sender;    /* RW                       */
     OWPBoolean              conf_receiver;  /* RW                       */
     OWPSID                  sid;            /* RW                       */
@@ -1355,6 +1358,14 @@ typedef struct OWPDataRec {
 } OWPDataRec;
 
 /*
+ * Two-way data record
+ */
+typedef struct OWPTWDataRec {
+    OWPDataRec sent;
+    OWPDataRec reflected;
+} OWPTWDataRec;
+
+/*
  * Write data record to a file.
  * Returns:
  * 0        Success
@@ -1364,6 +1375,13 @@ OWPWriteDataRecord(
         OWPContext  ctx,
         FILE        *fp,
         OWPDataRec  *rec
+        );
+
+extern OWPBoolean
+OWPWriteTWDataRecord(
+        OWPContext  ctx,
+        FILE        *fp,
+        OWPTWDataRec *rec
         );
 
 /*
@@ -1402,6 +1420,21 @@ OWPParseRecords(
         OWPDoDataRecord proc_rec,
         void            *udata          /* passed into proc_rec     */
         );
+
+typedef int (*OWPDoTWDataRecord)(
+        OWPTWDataRec *rec,
+        void        *udata
+        );
+
+extern OWPErrSeverity
+OWPParseTWRecords(
+        OWPContext      ctx,
+        FILE            *fp,
+        uint32_t       num_rec,
+        uint32_t       file_version,
+        OWPDoTWDataRecord proc_rec,
+        void            *app_data
+    );
 
 /*
  * OWPReadDataSkipRecs
@@ -1576,6 +1609,8 @@ typedef struct OWPStatsRec{
     double          inf_delay;
     double          min_delay;
     double          max_delay;
+    double          min_proc_delay;
+    double          max_proc_delay;
     OWPBoolean      sync;
     double          maxerr;
 

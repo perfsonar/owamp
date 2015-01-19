@@ -68,9 +68,12 @@
 #define _OWP_TESTREC_OFFSET (40)
 #define _OWP_DATARECV2_SIZE (24)
 #define _OWP_DATARECV3_SIZE (25)
+#define _OWP_DATAREC_TWV3_SIZE (50)
 #define _OWP_DATAREC_SIZE _OWP_DATARECV3_SIZE
 #define _OWP_MAXDATAREC_SIZE _OWP_DATAREC_SIZE
 #define _OWP_SKIPREC_SIZE   (8)
+
+#define _OWP_VERSION_TWOWAY (128)
 
 /*
  * Size of a single AES block
@@ -102,7 +105,7 @@
 #if (_OWP_FETCH_BUFFSIZE != (_OWP_RIJNDAEL_BLOCK_SIZE * _OWP_FETCH_AES_BLOCKS))
 #error "Fetch Buffer is mis-sized for AES block size!"
 #endif
-#if (_OWP_FETCH_BUFFSIZE != (_OWP_DATAREC_SIZE * _OWP_FETCH_DATAREC_BLOCKS))
+#if (_OWP_FETCH_BUFFSIZE != (_OWP_DATARECV3_SIZE * _OWP_FETCH_DATAREC_BLOCKS))
 #error "Fetch Buffer is mis-sized for Test Record Size!"
 #endif
 /* 
@@ -269,6 +272,7 @@ typedef struct OWPLostPacketRec OWPLostPacketRec, *OWPLostPacket;
 struct OWPLostPacketRec{
     uint32_t       seq;
     OWPBoolean      hit;
+    OWPBoolean      sent;
     OWPNum64        relative;
     struct timespec absolute;   /* absolute time */
     OWPLostPacket   next;
@@ -694,6 +698,20 @@ _OWPDecodeDataRecord(
         uint32_t    file_version,
         OWPDataRec  *rec,
         /* V0,V2 == [_OWP_DATARECV2_SIZE], V3 == [_OWP_DATAREC_SIZE] */
+        char        *buf
+        );
+
+extern OWPBoolean
+_OWPEncodeTWDataRecord(
+        char        buf[_OWP_DATAREC_TWV3_SIZE],
+        OWPTWDataRec *rec
+        );
+
+extern OWPBoolean
+_OWPDecodeTWDataRecord(
+        uint32_t    file_version,
+        OWPTWDataRec *rec,
+        /* (_OWP_VERSION_TWOWAY|V3) == [_OWP_DATAREC_TWV3_SIZE] */
         char        *buf
         );
 

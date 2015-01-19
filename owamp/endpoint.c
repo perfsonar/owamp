@@ -716,9 +716,9 @@ success:
          * Determine data rate. i.e. size/second.
          */
         size = OWPTestPacketRate(cntrl->ctx,&ep->tsession->test_spec) *
-            _OWP_DATAREC_SIZE;
+            _OWP_MAXDATAREC_SIZE;
 
-        if(size < _OWP_DATAREC_SIZE){
+        if(size < _OWP_MAXDATAREC_SIZE){
             /* If rate is less than one packet/second then unbuffered */
             setvbuf(ep->datafile,NULL,_IONBF,0);
         }
@@ -1665,7 +1665,8 @@ alloc_node(
     ep->freelist = ep->freelist->next;
 
     node->seq = seq;
-    node->hit = 0;
+    node->hit = False;
+    node->sent = False;
     node->next = NULL;
 
     k.dptr = &node->seq;
@@ -1946,6 +1947,13 @@ flush_lost(
      * records along the way.
      */
     while(timespeccmp(&expectspec,&currtime,<)){
+        /*
+         * Stop flushing when the packet at the front of the queue
+         * hasn't actually been sent yet
+         */
+        if(ep->twoway && !ep->begin->sent){
+            break;
+        }
 
         /*
          * If !hit - and the seq number is less than
@@ -1957,38 +1965,65 @@ flush_lost(
          * queue.)
          */
         if(!ep->begin->hit){
-            OWPDataRec      lostrec;
+            OWPTWDataRec      lostrec;
+
+#ifdef OWP_EXTRA_DEBUG
+            OWPError(ep->cntrl->ctx,OWPErrDEBUG,OWPErrUNKNOWN,
+                     "flush_lost: lost packet seq %u", ep->begin->seq);
+#endif
 
             /*
              * set fields in lostrec for missing packet
              * record.
              */
             /* seq no */
-            lostrec.seq_no = ep->begin->seq;
+            lostrec.sent.seq_no = ep->begin->seq;
+
             /* presumed sent time */
-            lostrec.send.owptime = OWPNum64Add(
+            lostrec.sent.send.owptime = OWPNum64Add(
                     ep->tsession->test_spec.start_time,
                     ep->begin->relative);
-            lostrec.send.sync = 0;
-            lostrec.send.multiplier = 1;
-            lostrec.send.scale = 64;
+            lostrec.sent.send.sync = 0;
+            lostrec.sent.send.multiplier = 1;
+            lostrec.sent.send.scale = 64;
 
             /* special value recv time */
-            lostrec.recv = *errest;
-            lostrec.recv.owptime = OWPULongToNum64(0);
+            lostrec.sent.recv = *errest;
+            lostrec.sent.recv.owptime = OWPULongToNum64(0);
 
             /* recv error was set above... */
 
-            lostrec.ttl = 255;
+            lostrec.sent.ttl = 255;
 
-            if( !OWPWriteDataRecord(ep->cntrl->ctx,
-                        ep->datafile,&lostrec)){
-                OWPError(ep->cntrl->ctx,OWPErrFATAL,
-                        OWPErrUNKNOWN,
-                        "OWPWriteDataRecord()");
-                return -1;
+            if(ep->twoway){
+                lostrec.reflected.ttl = 255;
+                lostrec.reflected.seq_no = 0;
+                lostrec.reflected.send = lostrec.sent.recv;
+                lostrec.reflected.recv = lostrec.sent.recv;
+
+                if( !OWPWriteTWDataRecord(ep->cntrl->ctx,
+                            ep->datafile,&lostrec)){
+                    OWPError(ep->cntrl->ctx,OWPErrFATAL,
+                            OWPErrUNKNOWN,
+                            "OWPWriteTWDataRecord()");
+                    return -1;
+                }
+            }
+            else{
+                if( !OWPWriteDataRecord(ep->cntrl->ctx,
+                            ep->datafile,&lostrec.sent)){
+                    OWPError(ep->cntrl->ctx,OWPErrFATAL,
+                            OWPErrUNKNOWN,
+                            "OWPWriteDataRecord()");
+                    return -1;
+                }
             }
         }
+
+#ifdef OWP_EXTRA_DEBUG
+        OWPError(ep->cntrl->ctx,OWPErrDEBUG,OWPErrUNKNOWN,
+                 "flush_lost: flushing packet seq %u", ep->begin->seq);
+#endif
 
         /*
          * Pop the front off the queue.
@@ -3008,7 +3043,6 @@ run_tw_test(
     char            *tstamperr;
     char            *hmac;
     OWPTimeStamp    owptstamp;
-    OWPNum64        nextoffset;
     int             r;
     size_t          resp_len_payload;
     struct sockaddr_storage peer_addr;
@@ -3017,12 +3051,16 @@ run_tw_test(
     char            *reply_tstamp;
     char            *reply_tstamperr;
     char            *reply_rcv_tstamp;
+    uint32_t        *reply_snd_seq;
     char            *reply_snd_tstamp;
     char            *reply_snd_tstamperr;
     char            *reply_snd_ttl;
     char            *reply_hmac;
     ssize_t         resp_len;
-    uint8_t         ttl;
+    OWPSessionHeaderRec hdr;
+    OWPTWDataRec    twdatarec;
+    OWPLostPacket node;
+    int flush_rc;
 
     /*
      * Get pointer to lsaddr used for listening.
@@ -3041,7 +3079,28 @@ run_tw_test(
         exit(OWP_CNTRL_FAILURE);
     }
 
-    // TODO: stats header
+    /*
+     * Prepare the file header - had to wait until now to
+     * get the real starttime.
+     */
+    memset(&hdr,0,sizeof(hdr));
+    hdr.twoway = True;
+    hdr.finished = OWP_SESSION_FINISHED_INCOMPLETE;
+    memcpy(&hdr.sid,ep->tsession->sid,sizeof(hdr.sid));
+    hdr.conf_sender = ep->tsession->conf_sender;
+    hdr.conf_receiver = ep->tsession->conf_receiver;
+    hdr.test_spec = ep->tsession->test_spec;
+    memcpy(&hdr.addr_sender,lsaddr,lsaddrlen);
+    memcpy(&hdr.addr_receiver,rsaddr,rsaddrlen);
+
+    /*
+     * Write the file header.
+     */
+    if( !OWPWriteDataHeader(ep->cntrl->ctx,ep->datafile,&hdr)){
+        OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                 "run_tw_test: Unable to write data file header");
+        exit(OWP_CNTRL_FAILURE);
+    }
 
     /*
      * Initialize pointers to various positions in the packet buffer,
@@ -3088,6 +3147,7 @@ run_tw_test(
         reply_tstamp = &ep->payload[4];
         reply_tstamperr = &ep->payload[12];
         reply_rcv_tstamp = &ep->payload[16];
+        reply_snd_seq = (uint32_t*)&ep->payload[24];
         reply_snd_tstamp = &ep->payload[28];
         reply_snd_tstamperr = &ep->payload[36];
         reply_snd_ttl = &ep->payload[40];
@@ -3099,6 +3159,7 @@ run_tw_test(
         reply_tstamp = &ep->payload[16];
         reply_tstamperr = &ep->payload[24];
         reply_rcv_tstamp = &ep->payload[32];
+        reply_snd_seq = (uint32_t*)&ep->payload[48];
         reply_snd_tstamp = &ep->payload[64];
         reply_snd_tstamperr = &ep->payload[72];
         reply_snd_ttl = &ep->payload[80];
@@ -3115,11 +3176,6 @@ run_tw_test(
         exit(OWP_CNTRL_FAILURE);
     }
 
-    /*
-     * initialize nextoffset (running sum of next sendtime relative to
-     * start.
-     */
-    nextoffset = OWPULongToNum64(0);
     i=0;
 
     /*
@@ -3137,6 +3193,21 @@ run_tw_test(
         exit(OWP_CNTRL_FAILURE);
     }
 
+    /*
+     * Initialize packet buffer with first node
+     */
+    ep->begin = ep->end = alloc_node(ep,0);
+    if(!ep->begin){
+        exit(OWP_CNTRL_FAILURE);
+    }
+
+    ep->begin->relative = OWPScheduleContextGenerateNextDelta(
+            ep->tsession->sctx);
+    /* just using owptstamp as a temp var here. */
+    owptstamp.owptime = OWPNum64Add(ep->begin->relative,
+            ep->tsession->test_spec.start_time);
+    (void)OWPTimestampToTimespec(&ep->begin->absolute,&owptstamp);
+
     do{
         /*
          * First setup "this" packet. calloc() used to allocate ep->payload,
@@ -3147,10 +3218,11 @@ run_tw_test(
         (void)I2RandomBytes(ep->cntrl->ctx->rand_src,(uint8_t *)padding,
                             ep->tsession->test_spec.packet_size_padding);
 #endif
-        nextoffset = OWPNum64Add(nextoffset,
-                OWPScheduleContextGenerateNextDelta(
-                    ep->tsession->sctx));
-        OWPNum64ToTimespec(&nexttime,nextoffset);
+
+        if(!(node = get_node(ep,i))){
+            goto finish_sender;
+        }
+        OWPNum64ToTimespec(&nexttime,node->relative);
         timespecadd(&nexttime,&ep->start);
         *seq = htonl(i);
 
@@ -3204,6 +3276,16 @@ AGAIN:
             latetime = timeout;
             timespecadd(&latetime,&nexttime);
             if(timespeccmp(&currtime,&latetime,>)){
+#ifdef OWP_EXTRA_DEBUG
+                OWPError(ep->cntrl->ctx,OWPErrDEBUG,OWPErrUNKNOWN,
+                         "run_tw_test: missed send time (not sent): seq %u",i);
+#endif
+                /*
+                 * Pretend it was sent and received so that it will
+                 * be flushed from the packet buffer
+                 */
+                node->sent = True;
+                node->hit = True;
                 goto SKIP_SEND;
             }
 
@@ -3291,7 +3373,10 @@ AGAIN:
                         "Unable to send([%s]:%s:(#%d): %M",
                         nodename,nodeserv,i);
             }
+            node->sent = True;
+            node->absolute = currtime;
 
+RECEIVE:
             if(owp_int || owp_usr2){
                 goto finish_sender;
             }
@@ -3322,16 +3407,11 @@ AGAIN:
             resp_len = recvfromttl(ep->cntrl->ctx,ep->sockfd,
                                    ep->payload,resp_len_payload,lsaddr,lsaddrlen,
                                    (struct sockaddr*)&peer_addr,&peer_addr_len,
-                                   &ttl);
-            if(resp_len < OWPTestTWPayloadSize(ep->cntrl->mode, 0)){
-                if(errno != EINTR){
-                    OWPError(ep->cntrl->ctx,OWPErrFATAL,
-                             OWPErrUNKNOWN,"recvfromttl(): %M");
-                    goto finish_sender;
-                }
-
-                // TODO: stats record for lost packet
-                goto SKIP_SEND;
+                                   &twdatarec.reflected.ttl);
+            if(errno != EINTR){
+                OWPError(ep->cntrl->ctx,OWPErrFATAL,
+                         OWPErrUNKNOWN,"recvfromttl(): %M");
+                goto finish_sender;
             }
 
             if(owp_int || owp_usr2){
@@ -3346,6 +3426,12 @@ AGAIN:
                          "Problem retrieving time");
                 goto finish_sender;
             }
+            /*
+             * Save that time as a timestamp
+             */
+            (void)OWPTimespecToTimestamp(&twdatarec.reflected.recv,&currtime,
+                                         &esterror,NULL);
+            twdatarec.reflected.recv.sync = sync;
 
             /*
              * Received a packet, so cancel timeout timer.
@@ -3356,6 +3442,25 @@ AGAIN:
                 OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
                         "setitimer(disable): %M");
                 goto finish_sender;
+            }
+
+            /*
+             * Flush buffer of packets that have reached their timeout
+             */
+            flush_rc = flush_lost(ep,&currtime,&timeout,&twdatarec.reflected.recv);
+            if(flush_rc < 0){
+                goto error;
+            }
+            else if(flush_rc > 0){
+                goto finish_sender;
+            }
+
+            /*
+             * If we didn't actually receive anything then just skip
+             * to process the next packet
+             */
+            if(resp_len < OWPTestTWPayloadSize(ep->cntrl->mode, 0)){
+                goto SKIP_SEND;
             }
 
             /*
@@ -3412,11 +3517,100 @@ AGAIN:
 
 #ifdef OWP_EXTRA_DEBUG
             OWPError(ep->cntrl->ctx,OWPErrDEBUG,OWPErrUNKNOWN,
-                     "run_tw_test packet received: seq %u, size %u",
-                     ntohl(*reply_seq), resp_len);
+                     "run_tw_test: packet received: seq %u, sender seq %u, size %u",
+                     ntohl(*reply_seq), ntohl(*reply_snd_seq), resp_len);
 #endif
 
-            // TODO: stats record
+            /*
+             * Retrieve reflected sender sequence number
+             */
+            twdatarec.sent.seq_no = ntohl(*reply_snd_seq);
+            if(twdatarec.sent.seq_no > i){
+                OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                         "Invalid reflected sender sequence number!");
+                goto finish_sender;
+            }
+
+            /*
+             * If we received a packet that has already timed out
+             * and been flushed from the buffer just go back to
+             * receive another packet
+             */
+            if(twdatarec.sent.seq_no < ep->begin->seq){
+#ifdef OWP_EXTRA_DEBUG
+                OWPError(ep->cntrl->ctx,OWPErrDEBUG,OWPErrUNKNOWN,
+                         "run_tw_test: packet discarded: seq %u, sender seq %u, size %u",
+                         ntohl(*reply_seq), ntohl(*reply_snd_seq), resp_len);
+#endif
+                goto RECEIVE;
+            }
+
+            /*
+             * What time did sender send this packet?
+             */
+            _OWPDecodeTimeStamp(&twdatarec.sent.send,(uint8_t *)reply_snd_tstamp);
+            if(!_OWPDecodeTimeStampErrEstimate(&twdatarec.sent.send,(uint8_t *)reply_snd_tstamperr)){
+                OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                         "Invalid sent send timestamp!");
+                goto finish_sender;
+            }
+            _OWPDecodeTimeStamp(&twdatarec.sent.recv,(uint8_t *)reply_rcv_tstamp);
+            if(!_OWPDecodeTimeStampErrEstimate(&twdatarec.sent.recv,(uint8_t *)reply_tstamperr)){
+                OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                         "Invalid sent recv timestamp!");
+                goto finish_sender;
+            }
+            twdatarec.sent.ttl = *reply_snd_ttl;
+
+            twdatarec.reflected.seq_no = ntohl(*reply_seq);
+            _OWPDecodeTimeStamp(&twdatarec.reflected.send,(uint8_t *)reply_tstamp);
+            if(!_OWPDecodeTimeStampErrEstimate(&twdatarec.reflected.send,(uint8_t *)reply_tstamperr)){
+                OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                         "Invalid reflected send timestamp!");
+                goto finish_sender;
+            }
+
+            if( !OWPWriteTWDataRecord(ep->cntrl->ctx,ep->datafile,
+                                      &twdatarec)){
+                OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                         "OWPWriteTWDataRecord()");
+                goto finish_sender;
+            }
+
+            /*
+             * Retrieve node from buffer for the received sender
+             * sequence number
+             */
+            if(!(node = get_node(ep,twdatarec.sent.seq_no))){
+                goto finish_sender;
+            }
+
+            /*
+             * This packet is a duplicate, so go back to receive
+             * another packet
+             */
+            if(node->hit){
+#ifdef OWP_EXTRA_DEBUG
+                OWPError(ep->cntrl->ctx,OWPErrDEBUG,OWPErrUNKNOWN,
+                         "run_tw_test: duplicate packet: seq %u, sender seq %u, size %u",
+                         ntohl(*reply_seq), ntohl(*reply_snd_seq), resp_len);
+#endif
+                goto RECEIVE;
+            }
+
+            /*
+             * Record that an original packet has been received
+             */
+            node->hit = True;
+
+            /*
+             * If we just received the last packet of the session
+             * then go back to receive so that any duplicates can
+             * be received
+             */
+            if(i == ep->tsession->test_spec.npackets-1){
+                goto RECEIVE;
+            }
 
 SKIP_SEND:
             i++;
@@ -3440,9 +3634,31 @@ SKIP_SEND:
     } while(i < ep->tsession->test_spec.npackets);
 
 finish_sender:
+    /*
+     * Perform a final flush to ensure that all required packets are
+     * processed, if the last flush did not result in the end of the test
+     */
+    if(!flush_rc){
+        if(!_OWPGetTimespec(ep->cntrl->ctx,&currtime,&esterror,&sync)){
+            OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                     "Problem retrieving time");
+        }
+        else{
+            (void)OWPTimespecToTimestamp(&twdatarec.reflected.recv,&currtime,
+                                         &esterror,NULL);
+            twdatarec.reflected.recv.sync = sync;
+
+            if(flush_lost(ep,&currtime,&timeout,&twdatarec.reflected.recv) < 0){
+                goto error;
+            }
+        }
+    }
+
     if(owp_int){
         OWPError(ep->cntrl->ctx,OWPErrINFO,OWPErrUNKNOWN,
                 "run_tw_test: Exiting from signal");
+
+error:
         _OWPWriteDataHeaderFinished(ep->cntrl->ctx,ep->datafile,OWP_SESSION_FINISHED_ERROR,0);
         fclose(ep->datafile);
         ep->datafile = NULL;

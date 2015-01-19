@@ -2971,3 +2971,74 @@ _OWPDecodeDataRecord(
 
     return True;
 }
+
+/*
+ * Function:        _OWPTWEncodeDataRecord
+ *
+ * Description:
+ *         This function is used to encode the 50 octet "packet record" from
+ *         the values in the given OWPTWDataRec. It returns false if the
+ *         timestamp err estimates are invalid values.
+ *
+ * In Args:
+ *
+ * Out Args:
+ *
+ * Scope:
+ * Returns:
+ * Side Effect:
+ */
+OWPBoolean
+_OWPEncodeTWDataRecord(
+        char        buf[50],
+        OWPTWDataRec  *rec
+        )
+{
+    if (!_OWPEncodeDataRecord(&buf[0], &rec->sent)) {
+        return False;
+    }
+    if (!_OWPEncodeDataRecord(&buf[25], &rec->reflected)) {
+        return False;
+    }
+
+    return True;
+}
+
+/*
+ * Function:        OWPDecodeTWDataRecord
+ *
+ * Description:
+ *         This function is used to decode the "packet record" and
+ *         place the values in the given OWPTWDataRec. It returns false if the
+ *         timestamp err estimates are invalid values.
+ *
+ * In Args:
+ *
+ * Out Args:
+ *
+ * Scope:
+ * Returns:
+ * Side Effect:
+ */
+OWPBoolean
+_OWPDecodeTWDataRecord(
+        uint32_t    file_version,
+        OWPTWDataRec *rec,
+        char        *buf
+        )
+{
+    switch(file_version){
+    case _OWP_VERSION_TWOWAY|3:
+        if (!_OWPDecodeDataRecord(3, &rec->sent, &buf[0])) {
+            return False;
+        }
+        if (!_OWPDecodeDataRecord(3, &rec->reflected, &buf[25])) {
+            return False;
+        }
+        break;
+    default:
+        return False;
+    }
+
+    return True;
+}
