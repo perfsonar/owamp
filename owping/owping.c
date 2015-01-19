@@ -81,17 +81,23 @@ print_test_args(
         void
         )
 {
-    fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n",
-            "              [Test Args]",
-            "   -c count       number of test packets",
-            "   -D DSCP        RFC 2474 style DSCP value for TOS byte",
-            "   -f | -F file   perform one-way test from testhost [and save results to file]",
-            "   -i wait        mean average time between packets (seconds)",
-            "   -L timeout     maximum time to wait for a packet before declaring it lost (seconds)",
-            "   -P portrange   port range to use during the test",
-            "   -s padding     size of the padding added to each packet (bytes)",
-            "   -t | -T file   perform one-way test to testhost [and save results to file]",
-            "   -z delayStart  time to wait before executing test (seconds)"
+    fprintf(stderr,
+            "              [Test Args]\n"
+            "   -c count       number of test packets\n"
+            "   -D DSCP        RFC 2474 style DSCP value for TOS byte\n"
+#ifdef TWAMP
+            "   -F file        save results to file\n"
+#else
+            "   -f | -F file   perform one-way test from testhost [and save results to file]\n"
+#endif
+            "   -i wait        mean average time between packets (seconds)\n"
+            "   -L timeout     maximum time to wait for a packet before declaring it lost (seconds)\n"
+            "   -P portrange   port range to use during the test\n"
+            "   -s padding     size of the padding added to each packet (bytes)\n"
+#ifndef TWAMP
+            "   -t | -T file   perform one-way test to testhost [and save results to file]\n"
+#endif
+            "   -z delayStart  time to wait before executing test (seconds)\n"
            );
 }
 
@@ -1098,7 +1104,7 @@ main(
     OWPSlot             slot;
     OWPNum64            rtt_bound;
     OWPNum64            delayStart;
-    OWPSID              tosid, fromsid;
+    OWPSID              tosid;
     OWPAcceptType       acceptval;
     OWPErrSeverity      err;
     FILE                *fromfp=NULL;
@@ -1111,9 +1117,12 @@ main(
     char                *endptr = NULL;
     char                optstring[128];
     static char         *conn_opts = "64A:k:S:u:";
-    static char         *test_opts = "c:D:E:fF:i:L:P:s:tT:z:";
+    static char         *test_opts = "c:D:E:F:i:L:P:s:z:";
     static char         *out_opts = "a:b:d:Mn:N:pQRv::U";
     static char         *gen_opts = "h";
+#ifndef TWAMP
+    static char         *ow_opts = "ftT:";
+#endif
 #ifndef    NDEBUG
     static char         *debug_opts = "w";
 #endif
@@ -1203,6 +1212,9 @@ main(
     strcat(optstring, gen_opts);
 #ifndef    NDEBUG
     strcat(optstring,debug_opts);
+#endif
+#ifndef TWAMP
+    strcat(optstring, ow_opts);
 #endif
 
     while((ch = getopt(argc, argv, optstring)) != -1){
@@ -1686,6 +1698,25 @@ main(
 
         if(owp_intr) exit(2);
 
+#ifdef TWAMP
+        if (ping_ctx.opt.save_from_test) {
+            fromfp = fopen(ping_ctx.opt.save_from_test,
+                           "w+b");
+            if(!fromfp){
+                I2ErrLog(eh,"fopen(%s): %M",
+                         ping_ctx.opt.save_from_test);
+                exit(1);
+            }
+        } else if( !(fromfp = tfile(eh))){
+            exit(1);
+        }
+
+        if (!OWPSessionRequest(ping_ctx.cntrl, NULL, False,
+                               I2AddrByNode(eh,ping_ctx.remote_test),
+                               True,(OWPTestSpec*)&tspec,
+                               fromfp,tosid,&err_ret))
+            FailSession(ping_ctx.cntrl);
+#else
         /*
          * Prepare paths for datafiles. Unlink if not keeping data.
          */
@@ -1700,6 +1731,7 @@ main(
         if(owp_intr) exit(2);
 
         if(ping_ctx.opt.from) {
+            OWPSID fromsid;
 
             if (ping_ctx.opt.save_from_test) {
                 fromfp = fopen(ping_ctx.opt.save_from_test,
@@ -1719,7 +1751,7 @@ main(
                         fromfp,fromsid,&err_ret))
                 FailSession(ping_ctx.cntrl);
         }
-
+#endif
 
         if(OWPStartSessions(ping_ctx.cntrl) < OWPErrINFO)
             FailSession(ping_ctx.cntrl);
@@ -1833,6 +1865,7 @@ main(
             I2AddrFree(laddr);
         }
 
+#ifndef TWAMP
         if(ping_ctx.opt.to && (ping_ctx.opt.save_to_test ||
                     !ping_ctx.opt.quiet || ping_ctx.opt.raw)){
             FILE    *tofp;
@@ -1852,6 +1885,7 @@ main(
                 I2ErrLog(eh,"close(): %M");
             }
         }
+#endif
 
         if(owp_intr > 1) exit(2);
 

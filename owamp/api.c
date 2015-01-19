@@ -1720,6 +1720,15 @@ OWPStopSessions(
         goto clean_sessions;
     }
 
+    if (cntrl->twoway && !cntrl->server) {
+        /*
+         * Using TWAMP, we don't expect a response from the server so
+         * skip straight to cleaning up test sessions.
+         */
+        readstop = False;
+        goto clean_sessions;
+    }
+
     msgtype = OWPReadRequestType(cntrl,intr);
     switch(msgtype){
         case OWPReqStopSessions:
@@ -1817,7 +1826,7 @@ OWPStopSessionsWait(
     int             *intr=&ival;
     uint32_t        num_sessions=0;
     OWPTimeStamp    stoptime;
-    OWPBoolean      readstop=True;
+    OWPBoolean      readstop=!(cntrl->twoway && !cntrl->server);
 
     *err_ret = OWPErrOK;
     if(acceptval_ret){
@@ -1945,6 +1954,13 @@ AGAIN:
     msgtype = OWPReadRequestType(cntrl,intr);
     switch(msgtype){
         case OWPReqStopSessions:
+            if (cntrl->twoway && !cntrl->server) {
+                OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+                         "OWPStopSessionsWait: StopSessions message should "
+                         "not be received by TWAMP client");
+                *err_ret = OWPErrFATAL;
+                goto done;
+            }
             break;
 
         case OWPReqSockClose:

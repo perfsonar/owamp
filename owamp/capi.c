@@ -723,7 +723,7 @@ _OWPClientRequestTestReadResponse(
         I2Addr          receiver,
         OWPBoolean      server_conf_receiver,
         OWPTestSpec     *test_spec,
-        OWPSID          sid,                /* ret iff conf_receiver else set */
+        OWPSID          sid,  /* ret iff cntrl->twoway || conf_receiver else set */
         OWPErrSeverity  *err_ret
         )
 {
@@ -738,12 +738,12 @@ _OWPClientRequestTestReadResponse(
                     I2AddrSAddr(sender,NULL),
                     I2AddrSAddr(receiver,NULL),
                     server_conf_sender, server_conf_receiver,
-                    sid, test_spec)) < OWPErrOK){
+                    cntrl->twoway ? NULL : sid, test_spec)) < OWPErrOK){
         *err_ret = (OWPErrSeverity)rc;
         return 1;
     }
 
-    if(server_conf_receiver)
+    if(cntrl->twoway || server_conf_receiver)
         sid_ret = sid;
 
     if((rc = _OWPReadAcceptSession(cntrl,retn_on_intr,&acceptval,
@@ -761,7 +761,7 @@ _OWPClientRequestTestReadResponse(
             return 1;
         }
     }
-    else if(!server_conf_sender && server_conf_receiver){
+    else if(cntrl->twoway || (!server_conf_sender && server_conf_receiver)){
         if( !I2AddrSetPort(receiver,port_ret)){
             return 1;
         }
@@ -984,7 +984,7 @@ foundaddr:
     /*
      * Configure receiver first since the sid comes from there.
      */
-    if(server_conf_receiver){
+    if(cntrl->twoway || server_conf_receiver){
         /*
          * If send local, check local policy for sender
          */
@@ -992,7 +992,8 @@ foundaddr:
             /*
              * create the local sender
              */
-            if(!_OWPEndpointInit(cntrl,tsession,sender,NULL,
+            if(!_OWPEndpointInit(cntrl,tsession,sender,
+                        cntrl->twoway?fp:NULL,
                         &aval,err_ret)){
                 goto error;
             }
@@ -1014,8 +1015,10 @@ foundaddr:
          * sender.
          */
         if((rc = _OWPClientRequestTestReadResponse(cntrl,retn_on_intr,
-                        sender,server_conf_sender,
-                        receiver,server_conf_receiver,
+                        sender,
+                        !cntrl->twoway && server_conf_sender,
+                        receiver,
+                        !cntrl->twoway && server_conf_receiver,
                         test_spec,tsession->sid,err_ret)) != 0){
             goto error;
         }
@@ -1344,6 +1347,13 @@ OWPFetchSession(
     int                 *retn_on_intr=&intr;
 
     *err_ret = OWPErrOK;
+
+    if(cntrl->twoway){
+        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+                "OWPFetchSession: not allowed on two-way connection");
+        *err_ret = OWPErrFATAL;
+        return 0;
+    }
 
     if(!fp){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
