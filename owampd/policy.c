@@ -1144,12 +1144,7 @@ InitializeDiskUsage(
  * Scope:        
  * Returns:        
  * Side Effect:        
- *         This function does no clean-up of memory it allocates in the event
- *         of failure. It is expected that the application will report
- *         an error and exit if this function fails.
- *
- *         TODO: I really should fix this - it is lazy, and makes looking for
- *         memory leaks more difficult.
+ *         None.
  */
 OWPDPolicy
 OWPDPolicyInstall(
@@ -1157,6 +1152,7 @@ OWPDPolicyInstall(
         char        *datadir,
         char        *confdir,
         double      diskfudge,
+        const char  *fileprefix,
         char        **lbuf,
         size_t      *lbuf_max
         )
@@ -1166,7 +1162,7 @@ OWPDPolicyInstall(
     char        pfname[MAXPATHLEN+1];
     char        lfname[MAXPATHLEN+1];
     int         len;
-    FILE        *kfp,*lfp;
+    FILE        *kfp = NULL,*lfp = NULL;
     int         rc;        /* row count */
 
     /*
@@ -1203,7 +1199,7 @@ OWPDPolicyInstall(
     }
     if(!(policy->datadir = strdup(datadir))){
         OWPError(ctx,OWPErrFATAL,errno,"strdup(datadir): %M");
-        return NULL;
+        goto error;
     }
 
     /*
@@ -1215,60 +1211,62 @@ OWPDPolicyInstall(
             !(policy->pfs = I2HashInit(eh,0,NULL,NULL))){
         OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
                 "OWPDPolicyInstall: Unable to allocate hashes");
-        return NULL;
+        goto error;
     }
 
     /*
      * Open the pass-phrase file.
      */
     pfname[0] = '\0';
-    len = strlen(OWP_PFS_FILE);
+    len = strlen(fileprefix) + strlen(OWP_PFS_FILE_SUFFIX);
     if(len > MAXPATHLEN){
         OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
                 "strlen(OWP_PFS_FILE > MAXPATHLEN)");
-        return NULL;
+        goto error;
     }
 
     len += strlen(confdir) + strlen(OWP_PATH_SEPARATOR);
     if(len > MAXPATHLEN){
         OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
-                "Path to %s > MAXPATHLEN",OWP_PFS_FILE);
-        return NULL;
+                 "Path to %s%s > MAXPATHLEN",fileprefix,OWP_PFS_FILE_SUFFIX);
+        goto error;
     }
     strcpy(pfname,confdir);
     strcat(pfname,OWP_PATH_SEPARATOR);
-    strcat(pfname,OWP_PFS_FILE);
+    strcat(pfname,fileprefix);
+    strcat(pfname,OWP_PFS_FILE_SUFFIX);
     if(!(kfp = fopen(pfname,"r")) && (errno != ENOENT)){
         OWPError(ctx,OWPErrFATAL,errno,"Unable to open %s: %M",pfname);
-        return NULL;
+        goto error;
     }
 
     /*
      * Open the limits file.
      */
     lfname[0] = '\0';
-    len = strlen(OWP_LIMITS_FILE);
+    len = strlen(fileprefix) + strlen(OWP_LIMITS_FILE_SUFFIX);
     if(len > MAXPATHLEN){
         OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
                 "strlen(OWP_LIMITS_FILE > MAXPATHLEN)");
-        return NULL;
+        goto error;
     }
 
     len += strlen(confdir) + strlen(OWP_PATH_SEPARATOR);
     if(len > MAXPATHLEN){
         OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
-                "Path to %s > MAXPATHLEN",OWP_LIMITS_FILE);
-        return NULL;
+                 "Path to %s%s > MAXPATHLEN",fileprefix,OWP_LIMITS_FILE_SUFFIX);
+        goto error;
     }
     strcpy(lfname,confdir);
     strcat(lfname,OWP_PATH_SEPARATOR);
-    strcat(lfname,OWP_LIMITS_FILE);
+    strcat(lfname,fileprefix);
+    strcat(lfname,OWP_LIMITS_FILE_SUFFIX);
 
     if(!(lfp = fopen(lfname,"r"))){
         if(errno != ENOENT){
             OWPError(ctx,OWPErrFATAL,errno,"Unable to open %s: %M",
                     lfname);
-            return NULL;
+            goto error;
         }
     }
 
@@ -1280,24 +1278,26 @@ OWPDPolicyInstall(
     if((rc = parsepfs(policy,kfp,lbuf,lbuf_max)) < 0){
         OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
                 "%s:%d Invalid file syntax",pfname,-rc);
-        return NULL;
+        goto error;
     }
 
     if((rc = parselimits(policy,lfp,lbuf,lbuf_max)) < 0){
         OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
                 "%s:%d Invalid file syntax",lfname,-rc);
-        return NULL;
+        goto error;
     }
 
     if(kfp && (fclose(kfp) != 0)){
         OWPError(ctx,OWPErrFATAL,errno,"fclose(%s): %M",pfname);
-        return NULL;
+        goto error;
     }
+    kfp = NULL;
 
     if(lfp && (fclose(lfp) != 0)){
         OWPError(ctx,OWPErrFATAL,errno,"fclose(%s): %M",lfname);
-        return NULL;
+        goto error;
     }
+    lfp = NULL;
 
     /*
      * Policy files were parsed and loaded ok. Now, install policy
@@ -1308,35 +1308,57 @@ OWPDPolicyInstall(
      */
 
     if(!OWPContextConfigSetV(ctx,OWPDPOLICY,policy)){
-        return NULL;
+        goto error;
     }
     if(!OWPContextConfigSetF(ctx,OWPGetPF,(OWPFunc)getpf)){
-        return NULL;
+        goto error;
     }
     if(!OWPContextConfigSetF(ctx,OWPCheckControlPolicy,
                 (OWPFunc)checkcontrolfunc)){
-        return NULL;
+        goto error;
     }
     if(!OWPContextConfigSetF(ctx,OWPCheckTestPolicy,
                 (OWPFunc)checktestfunc)){
-        return NULL;
+        goto error;
     }
     if(!OWPContextConfigSetF(ctx,OWPCheckFetchPolicy,
                 (OWPFunc)checkfetchfunc)){
-        return NULL;
+        goto error;
     }
     if(!OWPContextConfigSetF(ctx,OWPTestComplete,
                 (OWPFunc)testcompletefunc)){
-        return NULL;
+        goto error;
     }
     if(!OWPContextConfigSetF(ctx,OWPOpenFile,(OWPFunc)openfilefunc)){
-        return NULL;
+        goto error;
     }
     if(!OWPContextConfigSetF(ctx,OWPCloseFile,(OWPFunc)closefilefunc)){
-        return NULL;
+        goto error;
     }
 
     return policy;
+
+error:
+    if (lfp) {
+        fclose(lfp);
+    }
+    if (kfp) {
+        fclose(kfp);
+    }
+    if (policy) {
+        if (policy->pfs) {
+            I2HashClose(policy->pfs);
+        }
+        if (policy->idents) {
+            I2HashClose(policy->idents);
+        }
+        if (policy->limits) {
+            I2HashClose(policy->limits);
+        }
+        free(policy->datadir);
+    }
+    free(policy);
+    return NULL;
 }
 
 OWPBoolean

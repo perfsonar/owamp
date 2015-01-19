@@ -47,14 +47,19 @@
 #include "policy.h"
 
 #ifdef TWAMP
+#define NWAMPD_FILE_PREFIX "twampd-server"
 #define NWPServerSockCreate TWPServerSockCreate
 #define NWPControlAccept TWPControlAccept
 #define OWP_DFLT_CONTROL_TIMEOUT 900
 #else
+#define NWAMPD_FILE_PREFIX "owampd-server"
 #define NWPServerSockCreate OWPServerSockCreate
 #define NWPControlAccept OWPControlAccept
 #define OWP_DFLT_CONTROL_TIMEOUT 1800
 #endif
+
+#define OWAMPD_PID_FILE  NWAMPD_FILE_PREFIX".pid"
+#define OWAMPD_INFO_FILE NWAMPD_FILE_PREFIX".info"
 
 /* Global variable - the total number of allowed Control connections. */
 static pid_t                mypid;
@@ -97,7 +102,7 @@ usage(
            );
     fprintf(stderr,
             "   -P portrange      port range for recivers to use\n"
-            "   -R vardir         directory for owamp-server.pid file\n"
+            "   -R vardir         directory for " OWAMPD_PID_FILE " file\n"
             "   -S nodename:port  Srcaddr to bind to\n"
             "   -U user           Run as user \"user\" :-uid also valid\n"
             "   -v                verbose output\n"
@@ -1075,6 +1080,7 @@ LoadConfig(
                 break;
             }
         }
+#ifndef TWAMP
         else if(!strncasecmp(key,"diskfudge",10)){
             char        *end=NULL;
             double        tdbl;
@@ -1098,6 +1104,7 @@ LoadConfig(
                 break;
             }
         }
+#endif
         else if(!strncasecmp(key,"dieby",6)){
             char                *end=NULL;
             uint32_t        tlng;
@@ -1463,7 +1470,7 @@ int main(
     /*  Get exclusive lock for pid file. */
     strcpy(pid_file, opts.vardir);
     strcat(pid_file, OWP_PATH_SEPARATOR);
-    strcat(pid_file, "owamp-server.pid");
+    strcat(pid_file, OWAMPD_PID_FILE);
     if ((pid_fd = open(pid_file, O_RDWR|O_CREAT,
                     S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH)) < 0) {
         I2ErrLog(errhand, "open(%s): %M", pid_file);
@@ -1489,7 +1496,7 @@ int main(
      * Install policy for "ctx" - and return policy record.
      */
     if(!(policy = OWPDPolicyInstall(ctx,opts.datadir,opts.confdir,
-                    opts.diskfudge,&lbuf,&lbuf_max))){
+                    opts.diskfudge,NWAMPD_FILE_PREFIX,&lbuf,&lbuf_max))){
         I2ErrLog(errhand, "PolicyInit failed. Exiting...");
         exit(1);
     };
@@ -1753,7 +1760,7 @@ int main(
         /* Record the start timestamp in the info file. */
         strcpy(info_file, opts.vardir);
         strcat(info_file, OWP_PATH_SEPARATOR);
-        strcat(info_file, "owamp-server.info");
+        strcat(info_file, OWAMPD_INFO_FILE);
         if ((info_fp = fopen(info_file, "w")) == NULL) {
             I2ErrLog(errhand, "fopen(%s): %M", info_file);
             kill(mypid,SIGTERM);

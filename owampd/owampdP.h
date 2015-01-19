@@ -22,7 +22,11 @@
 #define _OWAMPDP_H_
 
 #ifndef OWAMPD_CONF_FILE
-#define OWAMPD_CONF_FILE        "owamp-server.conf"
+#ifdef TWAMP
+#define OWAMPD_CONF_FILE        "twampd-server.conf"
+#else
+#define OWAMPD_CONF_FILE        "owampd-server.conf"
+#endif
 #endif
 
 /*
