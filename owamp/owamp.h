@@ -1178,6 +1178,11 @@ OWPTestPayloadSize(
         OWPSessionMode  mode,
         uint32_t       padding
         );
+extern OWPPacketSizeT
+OWPTestTWPayloadSize(
+        OWPSessionMode  mode,
+        uint32_t       padding
+    );
 /*
  * PacketSize is used to compute the full packet size - this is used to
  * determine bandwidth requirements for policy purposes.
@@ -1188,6 +1193,12 @@ OWPTestPacketSize(
         OWPSessionMode  mode,
         uint32_t       padding
         );
+extern OWPPacketSizeT
+OWPTestTWPacketSize(
+        int             af,    /* AF_INET, AF_INET6 */
+        OWPSessionMode  mode,
+        uint32_t       padding
+    );
 
 /*
  * Returns # packets/second: 0.0 on error.

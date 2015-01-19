@@ -296,6 +296,7 @@ typedef struct OWPEndpointRec{
     pid_t               child;
     int                 wopts;
     OWPBoolean          send;
+    OWPBoolean          twoway;
     int                 sockfd;
     int                 skiprecfd;
     off_t               skiprecsize;
@@ -307,6 +308,7 @@ typedef struct OWPEndpointRec{
      */
     uint8_t             aesbytes[_OWP_RIJNDAEL_BLOCK_SIZE];
     keyInstance         aeskey;
+    keyInstance         aes_tw_reply_key;
     uint8_t             hmac_key[32];
     I2HMACSha1Context   hmac_ctx;
 

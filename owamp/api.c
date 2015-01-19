@@ -364,7 +364,7 @@ OWPTestPayloadSize(
         uint32_t       padding
         )
 {
-    OWPPacketSizeT msg_size;
+    OWPPacketSizeT msg_size = 0;
 
     switch (mode) {
         case OWP_MODE_OPEN:
@@ -374,9 +374,27 @@ OWPTestPayloadSize(
         case OWP_MODE_ENCRYPTED:
             msg_size = 48;
             break;
-        default:
-            return 0;
-            /* UNREACHED */
+    }
+
+    return msg_size + padding;
+}
+
+OWPPacketSizeT
+OWPTestTWPayloadSize(
+        OWPSessionMode  mode,
+        uint32_t       padding
+        )
+{
+    OWPPacketSizeT msg_size = 0;
+
+    switch (mode) {
+        case OWP_MODE_OPEN:
+            msg_size = 41;
+            break;
+        case OWP_MODE_AUTHENTICATED:
+        case OWP_MODE_ENCRYPTED:
+            msg_size = 112;
+            break;
     }
 
     return msg_size + padding;
@@ -459,6 +477,37 @@ OWPTestPacketSize(
     }
 
     if(!(payload_size = OWPTestPayloadSize(mode,padding)))
+        return 0;
+
+    return payload_size + header_size;
+}
+
+/*
+ ** Given the protocol family, OWAMP mode and packet padding,
+ ** compute the size of resulting full IP packet.
+ */
+OWPPacketSizeT
+OWPTestTWPacketSize(
+        int             af,    /* AF_INET, AF_INET6 */
+        OWPSessionMode  mode,
+        uint32_t       padding
+        )
+{
+    OWPPacketSizeT payload_size, header_size;
+
+    switch (af) {
+        case AF_INET:
+            header_size = OWP_IP4_HDR_SIZE + OWP_UDP_HDR_SIZE;
+            break;
+        case AF_INET6:
+            header_size = OWP_IP6_HDR_SIZE + OWP_UDP_HDR_SIZE;
+            break;
+        default:
+            return 0;
+            /* UNREACHED */
+    }
+
+    if(!(payload_size = OWPTestTWPayloadSize(mode,padding)))
         return 0;
 
     return payload_size + header_size;

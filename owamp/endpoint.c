@@ -400,6 +400,7 @@ _OWPEndpointInit(
     size_t                  localnodelen = sizeof(localnode);
     double                  enddelay = _OWP_DEFAULT_FUZZTIME;
     double                  *enddelayptr;
+    size_t                  snd_payload_len;
 
     *err_ret = OWPErrFATAL;
     *aval = OWP_CNTRL_UNAVAILABLE_TEMP;
@@ -414,6 +415,7 @@ _OWPEndpointInit(
         return False;
 
     ep->send = (localaddr == tsession->sender);
+    ep->twoway = cntrl->twoway;
 
     ep->tsession = tsession;
     ep->cntrl = cntrl;
@@ -424,8 +426,13 @@ _OWPEndpointInit(
         goto error;
     }
 
-    tpsize = OWPTestPacketSize(saddr->sa_family,
-            ep->cntrl->mode,tsession->test_spec.packet_size_padding);
+    if (cntrl->twoway) {
+        tpsize = OWPTestTWPacketSize(saddr->sa_family,
+                                     ep->cntrl->mode,tsession->test_spec.packet_size_padding);
+    } else {
+        tpsize = OWPTestPacketSize(saddr->sa_family,
+                                   ep->cntrl->mode,tsession->test_spec.packet_size_padding);
+    }
     tpsize += 128;        /* Add fuzz space for IP "options" */
     sbuf_size = tpsize;
     if((OWPPacketSizeT)sbuf_size != tpsize){
@@ -437,8 +444,17 @@ _OWPEndpointInit(
 
     ep->len_payload = OWPTestPayloadSize(ep->cntrl->mode,
             ep->tsession->test_spec.packet_size_padding);
+    snd_payload_len = ep->len_payload;
+    if (cntrl->twoway) {
+        /*
+         * We attempt to reflect the same sized packet back, but only
+         * if the sender has requested enough padding.
+         */
+        snd_payload_len = MAX(snd_payload_len, OWPTestTWPayloadSize(
+                                  ep->cntrl->mode, 0));
+    }
     /* use calloc to initialize the memory to 0 */
-    ep->payload = calloc(1,ep->len_payload);
+    ep->payload = calloc(1,MAX(ep->len_payload,snd_payload_len));
 
     if(!ep->payload){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,"calloc(): %M");
@@ -602,10 +618,10 @@ success:
     }
 
     /*
-     * If we are receiver, sid is valid and we need to open file.
+     * If we are two-way client or one-way receiver, allocate lost
+     * packet buffer cache.
      */
-    if(!ep->send){
-        size_t          size;
+    if((cntrl->twoway && !cntrl->server) || (!cntrl->twoway && !ep->send)){
         OWPLostPacket   alist;
 
         /*
@@ -655,6 +671,14 @@ success:
                     "_OWPEndpointInit: Unable to initialize lost packet buffer");
             goto error;
         }
+    }
+
+    /*
+     * If we are two-way client or one-way receiver, sid is valid and
+     * we need to open file.
+     */
+    if ((cntrl->twoway && !cntrl->server) || (!cntrl->twoway && !ep->send)) {
+        size_t          size;
 
         ep->fname[0] = '\0';
         if(!fp){
@@ -720,11 +744,13 @@ success:
             }
             setvbuf(ep->datafile,ep->fbuff,_IOFBF,size);
         }
+    }
 
+    if (cntrl->twoway || !ep->send) {
         /*
-         * receiver - need to set the recv buffer size large
-         * enough for the packet, so we can get it in a single
-         * recv.
+         * Two-way client/server or one-way receiver - need to set the
+         * recv buffer size large enough for the packet, so we can get
+         * it in a single recv.
          */
         opt_size = sizeof(sopt);
         if(getsockopt(ep->sockfd,SOL_SOCKET,SO_RCVBUF,
@@ -783,7 +809,11 @@ success:
                 goto error;
         }
     }
-    else{
+    /*
+     * Create skip records for one-way sender. Two-way client doesn't
+     * use skip records at this time.
+     */
+    if (!cntrl->twoway && ep->send){
         _OWPSkip    askip;
 
         /*
@@ -843,10 +873,12 @@ success:
             askip[i].next = ep->free_skiplist;
             ep->free_skiplist = &askip[i];
         }
+    }
 
+    if (cntrl->twoway || ep->send){
         /*
-         * Sender needs to set sockopt's to ensure test
-         * packets don't fragment in the socket api.
+         * Two-way client/server or sender needs to set sockopt's to
+         * ensure test packets don't fragment in the socket api.
          */
 
         opt_size = sizeof(sopt);
@@ -2522,7 +2554,21 @@ _OWPEndpointInitHook(
         rijndaelEncrypt(sidkey.rk,sidkey.Nr,ep->cntrl->aessession_key,
                 ep->aesbytes);
 
-        if(ep->send){
+        if(ep->cntrl->twoway){
+            if (ep->cntrl->server){
+                ep->aeskey.Nr = rijndaelKeySetupDec(ep->aeskey.rk,ep->aesbytes,
+                        sizeof(ep->aesbytes)*8);
+                ep->aes_tw_reply_key.Nr = rijndaelKeySetupEnc(ep->aes_tw_reply_key.rk,
+                        ep->aesbytes,sizeof(ep->aesbytes)*8);
+            }
+            else {
+                ep->aeskey.Nr = rijndaelKeySetupEnc(ep->aeskey.rk,ep->aesbytes,
+                        sizeof(ep->aesbytes)*8);
+                ep->aes_tw_reply_key.Nr = rijndaelKeySetupDec(ep->aes_tw_reply_key.rk,
+                        ep->aesbytes,sizeof(ep->aesbytes)*8);
+            }
+        }
+        else if(ep->send){
             /* send side needs encryption */
             ep->aeskey.Nr = rijndaelKeySetupEnc(ep->aeskey.rk,ep->aesbytes,
                     sizeof(ep->aesbytes)*8);
