@@ -60,6 +60,8 @@ static uint32_t     file_oset,tstamp_oset,ext_oset;
 #define NWPControlOpen OWPControlOpen
 #endif
 
+#define OWP_PADDING_UNSET (~0)
+
 static void
 print_conn_args(
         void
@@ -1180,7 +1182,7 @@ main(
     ping_ctx.opt.lossThreshold = 0.0;
     ping_ctx.opt.delayStart = 0.0;
     ping_ctx.opt.percentiles = NULL;
-    ping_ctx.opt.padding = 0;
+    ping_ctx.opt.padding = OWP_PADDING_UNSET;
     ping_ctx.mean_wait = (float)0.1;
     ping_ctx.opt.units = 'm';
     ping_ctx.opt.numBucketPackets = 0;
@@ -1539,6 +1541,22 @@ main(
             ping_ctx.remote_serv = argv[1];
         else
             ping_ctx.remote_serv = ping_ctx.remote_test;
+
+        if(ping_ctx.opt.padding == OWP_PADDING_UNSET){
+#ifdef TWAMP
+            /*
+             * If padding hasn't been set explicitly then set it to
+             * the difference between the sender payload size and the
+             * response payload size (i.e. such that the sending
+             * payload has enough space that the reflector generates a
+             * packet with the same size, albeit with no padding).
+             */
+            ping_ctx.opt.padding = OWPTestTWPayloadSize(ping_ctx.auth_mode,0) -
+                OWPTestPayloadSize(ping_ctx.auth_mode,0);
+#else
+            ping_ctx.opt.padding = 0;
+#endif
+        }
 
         /*
          * This is in reality dependent upon the actual protocol used
