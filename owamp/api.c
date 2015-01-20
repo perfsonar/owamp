@@ -788,6 +788,7 @@ _OWPStopRecvSessions(
     struct timespec currts;
     struct timespec stopts;
     struct timespec lossts;
+    uint32_t        testtimeout;
 
     if(acceptval_ret){
         acceptval = acceptval_ret;
@@ -819,8 +820,16 @@ _OWPStopRecvSessions(
             _OWPGetTimespec(cntrl->ctx,&currts,&esterr,&sync);
             OWPTimestampToTimespec(&stopts, &stoptime);
 
-            // TODO: this should be bounded by REFWAIT timeout
-            OWPNum64ToTimespec(&lossts,sptr->test_spec.loss_timeout);
+            /*
+             * To mitigate against potential buggy clients, make the
+             * loss timeout bound by the REFWAIT timeout.
+             */
+            if (!OWPContextConfigGetU32(cntrl->ctx,TWPTestTimeout,&testtimeout)) {
+                testtimeout = _TWP_DEFAULT_TEST_TIMEOUT;
+            }
+            testtimeout = MIN(testtimeout, sptr->test_spec.loss_timeout);
+
+            OWPNum64ToTimespec(&lossts,testtimeout);
             timespecadd(&stopts,&lossts);
 
             if(timespeccmp(&stopts,&currts,<))

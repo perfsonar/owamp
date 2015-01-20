@@ -63,6 +63,11 @@
 #define _OWP_DEFAULT_PBKDF2_COUNT   (2048)
 
 /*
+ * Default timeout for testtimeout
+ */
+#define _TWP_DEFAULT_TEST_TIMEOUT (900)
+
+/*
  * Offset's and lengths for various file versions.
  */
 #define _OWP_TESTREC_OFFSET (40)

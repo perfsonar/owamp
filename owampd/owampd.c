@@ -1186,6 +1186,23 @@ LoadConfig(
             }
             opts.maxcontrolsessions = tlng;
         }
+#ifdef TWAMP
+        else if(!strncasecmp(key,"testtimeout",
+                             strlen("testtimeout"))){
+            char        *end=NULL;
+            uint32_t    tlng;
+
+            errno = 0;
+            tlng = strtoul(val,&end,10);
+            if((end == val) || (errno == ERANGE)){
+                fprintf(stderr,"strtoul(): %s\n",
+                        strerror(errno));
+                rc=-rc;
+                break;
+            }
+            opts.testtimeout = tlng;
+        }
+#endif
         else{
             fprintf(stderr,"Unknown key=%s\n",key);
             rc = -rc;
@@ -1449,6 +1466,18 @@ int main(
                 "OWPContextConfigSetU32(): Can't set OWPKeyDerivationCount?!");
         exit(1);
     }
+
+    /*
+     * Setup testtimeout
+     */
+#ifdef TWAMP
+    if(opts.testtimeout && !OWPContextConfigSetU32(ctx,TWPTestTimeout,
+                opts.testtimeout)){
+        I2ErrLog(errhand,
+                "OWPContextConfigSetU32(): Can't set TWPTestTimeout?!");
+        exit(1);
+    }
+#endif
 
     /*
      * Setup enddelay

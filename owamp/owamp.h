@@ -693,6 +693,12 @@ typedef void (*OWPCloseFileFunc)(
  */
 #define OWPKeyDerivationCount "OWPKeyDerivationCount"
 
+
+/*
+ * Set the timeout seconds for the testtimeout function
+ */
+#define TWPTestTimeout "TWPTestTimeout"
+
 /*
  * Set the 'enddelay' (time for a sender to wait after session completion
  * to actually send the stop session message).

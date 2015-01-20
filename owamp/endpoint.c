@@ -1059,6 +1059,7 @@ error:
 static int owp_usr1;
 static int owp_usr2;
 static int owp_int;
+static int owp_alrm;
 
 /*
  * This sighandler is used to ensure SIGCHLD events are sent to this process.
@@ -1095,6 +1096,7 @@ sig_catch(
             owp_int = 1;
             break;
         case SIGALRM:
+            owp_alrm = 1;
             break;
         default:
             OWPError(NULL,OWPErrFATAL,OWPErrUNKNOWN,
@@ -2536,6 +2538,7 @@ run_reflector(
         )
 {
     struct timespec     currtime;
+    struct itimerval    wake;
     uint32_t            *seq;
     uint32_t            clr_mem[24]; /* 6 blocks */
     char                *clr_buffer = (char *)clr_mem; /* legal type pun ;) */
@@ -2546,7 +2549,6 @@ run_reflector(
     uint32_t            esterror,lasterror=0;
     uint32_t            recv_lasterror=0;
     uint8_t             sync;
-    int                 owp_intr;
     struct sockaddr     *lsaddr;
     socklen_t           lsaddrlen;
     struct sockaddr     *rsaddr;
@@ -2572,6 +2574,7 @@ run_reflector(
     OWPTimeStamp        recv_tstamp;
     uint8_t             ttl;
     size_t              snd_payload_len;
+    uint32_t            testtimeout;
 
     if( !(lsaddr = I2AddrSAddr(ep->tsession->sender,&lsaddrlen))){
         exit(OWP_CNTRL_FAILURE);
@@ -2665,6 +2668,13 @@ run_reflector(
     }
 
     /*
+     * Retrieve the test timeout - how long to wait for test packets
+     */
+    if (! OWPContextConfigGetU32(ep->cntrl->ctx,TWPTestTimeout,&testtimeout)) {
+        testtimeout = _TWP_DEFAULT_TEST_TIMEOUT;
+    }
+
+    /*
      * initialize currtime for absolute to relative time conversion
      * needed by timers.
      */
@@ -2681,10 +2691,19 @@ run_reflector(
         socklen_t               peer_addr_len;
 again:
         /*
-         * Set the timer.
+         * Set the REFWAIT timer.
          */
-        owp_intr = 0;
-        // TODO: REFWAIT
+        tvalclear(&wake.it_value);
+        wake.it_value.tv_sec = testtimeout;
+        tvalclear(&wake.it_interval);
+        owp_alrm = 0;
+        if(setitimer(ITIMER_REAL,&wake,NULL) != 0){
+            OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                    "setitimer(wake=%d,%d) seq=%lu: %M",
+                    wake.it_value.tv_sec,wake.it_value.tv_usec,
+                    ep->end->seq);
+            goto error;
+        }
 
         if(owp_int){
             goto error;
@@ -2707,7 +2726,7 @@ again:
             }
         }
 
-        if(owp_int){
+        if(owp_int || owp_alrm){
             goto error;
         }
         if(owp_usr2){
@@ -2720,6 +2739,17 @@ again:
         if(!_OWPGetTimespec(ep->cntrl->ctx,&currtime,&esterror,&sync)){
             OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
                     "Problem retrieving time");
+            goto error;
+        }
+
+        /*
+         * Received a packet, so cancel REFWAIT timer.
+         */
+        tvalclear(&wake.it_value);
+        tvalclear(&wake.it_interval);
+        if(setitimer(ITIMER_REAL,&wake,NULL) != 0){
+            OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                    "setitimer(disable): %M");
             goto error;
         }
 
@@ -2748,9 +2778,6 @@ again:
         }
         if(owp_usr2){
             goto test_over;
-        }
-        if(owp_intr){
-            goto again;
         }
 
         /*
@@ -2989,8 +3016,13 @@ test_over:
 
 error:
 
-    OWPError(ep->cntrl->ctx,OWPErrINFO,OWPErrUNKNOWN,
-             "run_reflector: Exiting due to error");
+    if (owp_alrm) {
+        OWPError(ep->cntrl->ctx,OWPErrINFO,OWPErrUNKNOWN,
+                 "run_reflector: Exiting due to REFWAIT timeout");
+    } else {
+        OWPError(ep->cntrl->ctx,OWPErrINFO,OWPErrUNKNOWN,
+                 "run_reflector: Exiting due to error");
+    }
 
     exit(OWP_CNTRL_FAILURE);
 }

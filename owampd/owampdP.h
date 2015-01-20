@@ -58,6 +58,9 @@ typedef struct {
     double          diskfudge;
     uint32_t        dieby;
     uint32_t        controltimeout;
+#ifdef TWAMP
+    uint32_t        testtimeout;
+#endif
     uint32_t        pbkdf2_count;
     uint32_t        maxcontrolsessions;
 #ifndef        NDEBUG

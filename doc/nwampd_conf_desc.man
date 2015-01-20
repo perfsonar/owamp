@@ -240,6 +240,16 @@ and both numbers must be valid port values. (16 bit unsigned integer values)
 .IP Default:
 0
 .RE
+.if '\*[proto]'TWAMP' \{\
+.   TP
+.   BI testtimeout " testtimeout"
+Number of seconds to wait for test packets before timing the test
+session out.
+.   RS
+.   IP Default:
+900
+.   RE
+.\}
 .TP
 .BI user " user"
 Specifies the uid the \fB\*[prog]\fR process should run as. \fIuser\fR
