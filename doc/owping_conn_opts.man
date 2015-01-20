@@ -29,18 +29,18 @@
 .TP
 \fB\-4\fR
 .br
-Forces OWAMP clients to use IPv4 addresses only.
+Forces the client to use IPv4 addresses only.
 .RS
 .IP Default:
-Unset. OWAMP will use IPv4 or IPv6 address, but tries IPv6 first. 
+Unset. Client will use IPv4 or IPv6 address, but tries IPv6 first. 
 .RE
 .TP
 \fB\-6\fR
 .br
-Forces OWAMP clients to use IPv6 addresses only.
+Forces the client to use IPv6 addresses only.
 .RS
 .IP Default:
-Unset. OWAMP will use IPv4 or IPv6 address, but tries IPv6 first. 
+Unset. Client will use IPv4 or IPv6 address, but tries IPv6 first. 
 .RE
 .TP
 \fB\-A\fR \fIauthmode\fB
@@ -54,16 +54,13 @@ any or all of the characters "AEO". The modes are:
 digitally signs part of each test packet.
 .IP \fBE\fR
 [\fBE\fR]ncrypted. This mode encrypts the control connection and
-encrypts each test packet in full. This mode forces an encryption step
-between the fetching of a timestamp and when the packet is sent. This
-adds more computational delay to the time reported by \fBOWAMP\fR for each
-packet.
+encrypts each test packet in full.
 .IP \fBO\fR
 [\fBO\fR]pen. No encryption of any kind is done.
 .PP
 The client can specify all the modes with which it is willing to communicate.
-The most strict mode that both the \fBOWAMP\fR server and the \fBOWAMP\fR
-client are willing to use
+The most strict mode that both the \fB\*[proto]\fR server and the
+\fB\*[proto]\fR client are willing to use
 will be selected. Authenticated and Encrypted modes require a "shared secret"
 in the form of a pass-phrase that is used to generate the AES and HMAC-SHA1
 session keys.

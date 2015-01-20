@@ -22,6 +22,8 @@
 .\"
 .\"	Description:	
 .\"
+.\"Protocol name
+.ds proto OWAMP
 .TH owping 1 "$Date$"
 .SH NAME
 owping \- Client application to request one-way latency tests.
@@ -112,7 +114,7 @@ OWAMP_DEBUG_TIMEOFFSET	Offset time by this amount (float)
 .IP
 Run two concurrent ~10-second test sessions at a rate of a packet every 0.1
 seconds. One session sending packets from the local host to somehost.com,
-the other session receiving packets from somehost.com.) Print summary
+the other session receiving packets from somehost.com. Print summary
 statistics of the results only.
 .LP
 \fBowping somehost.com:98765
@@ -142,7 +144,7 @@ that datafile using the same Output options that are available in
 .IP
 Run two concurrent ~10-second test sessions at a rate of a packet every 0.1
 seconds. One session sending packets from the local host to somehost.com,
-the other session receiving packets from somehost.com.) Print summary
+the other session receiving packets from somehost.com. Print summary
 statistics of the results and save the resulting data saved in from.owp and
 to.owp.
 .LP
@@ -150,14 +152,14 @@ to.owp.
 .IP
 Run two concurrent ~10-second test sessions at an average rate of 1 packet
 every second. One session sending packets from the local host to
-somehost.com, the other session receiving packets from somehost.com.)
+somehost.com, the other session receiving packets from somehost.com.
 Print summary statistics of the results only.
 .LP
 \fBowping -i 1f -c 10 somehost.com\fR
 .IP
 Run two concurrent ~10-second test sessions at a rate of 1 packet
 every second. One session sending packets from the local host to
-somehost.com, the other session receiving packets from somehost.com.)
+somehost.com, the other session receiving packets from somehost.com.
 Print summary statistics of the results only.
 .LP
 \fBowping -i 1.0e,0f -c 20 somehost.com\fR
@@ -165,8 +167,14 @@ Print summary statistics of the results only.
 Run two concurrent ~10-second test sessions. Send back-to-back packet
 pairs at an average rate of a packet pair every 1 seconds.
 One session sending packets from the local host to
-somehost.com, the other session receiving packets from somehost.com.)
+somehost.com, the other session receiving packets from somehost.com.
 Print summary statistics of the results only.
+.SH NOTES
+Use of authentication and encryption modes adds extra processing
+requirements between the fetching of a timestamp and when the packet
+is sent, with it being greater for encryption than for
+authentication. This adds more computational delay to the time
+reported by \fBOWAMP\fR for each packet.
 .SH SEE ALSO
 owampd(8), owstats(1), owfetch(1) and the \%http://e2epi.internet2.edu/owamp/
 web site.

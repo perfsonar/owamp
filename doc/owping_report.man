@@ -26,7 +26,7 @@
 .\"      is not useful as a man-page on its own.
 .\"
 .PP
-\fBOWAMP\fR supports three reporting formats. A textual summary that was
+\fB\*[proto]\fR supports three reporting formats. A textual summary that was
 designed to be as similar to the results that \fBping\fR produces as
 possible. A machine readable summary format (\fI\-M\fR). And finally
 a raw format that prints out the data from each and every packet in as
@@ -42,7 +42,7 @@ Session Identifier. This value is unique for every test session.
 .TP
 Sent, Lost, Duplicates
 .br
-Number of packets that were sent, lost, and duplicated as seen by \fBOWAMP\fR.
+Number of packets that were sent, lost, and duplicated as seen by \fB\*[proto]\fR.
 .TP
 Min Delay, Median Delay, Max Delay, Error Estimate
 .br
@@ -55,7 +55,7 @@ simply due to the resolution of the median measurement.)
 .TP
 Jitter
 .br
-An estimate of how "stable" the delay samples are. \fBOWAMP\fR reports
+An estimate of how "stable" the delay samples are. \fB\*[proto]\fR reports
 the the 95th percentile of delay - 50th percentile of delay.
 .TP
 Additional percentiles
@@ -66,22 +66,22 @@ sample are displayed.
 TTL (hops) information
 .br
 As a packet traverses the network, the IP TTL field is decremented each
-time the packet crosses a router. \fBOWAMP\fR has been designed to
-collect the TTL information from the packets. The \fBOWAMP\fR
-sender sets the TTL of all outgoing packets to 255. The \fBOWAMP\fR
+time the packet crosses a router. \fB\*[proto]\fR has been designed to
+collect the TTL information from the packets. The \fB\*[proto]\fR
+sender sets the TTL of all outgoing packets to 255. The \fB\*[proto]\fR
 receiver retrieves the TTL from the packet. The normal textual
 report uses this information to report the number of hops (number of
 routers) the packet traversed. The number of distinct values is reported
 as well as the minimum and maximum number of hops seen in the given session.
 The other reporting formats just report raw TTL values as seen in the packets.
 (It should be noted that if the number of hops reported seems unusually
-large, it probably means the \fBOWAMP\fR sender was not able to set the
+large, it probably means the \fB\*[proto]\fR sender was not able to set the
 TTL value correctly. The \fBtraceroute(1)\fR program can be used to
-verify what \fBOWAMP\fR is reporting.)
+verify what \fB\*[proto]\fR is reporting.)
 .TP
 Reordering
 .br
-Finally \fBOWAMP\fR reports the amount of re-ordering it observed. A
+Finally \fB\*[proto]\fR reports the amount of re-ordering it observed. A
 description of the metric used to report this can be found at:
 .br
 \%http://www.internet2.edu/performance/owamp/draft-shalunov-reordering-definition-02.txt.html

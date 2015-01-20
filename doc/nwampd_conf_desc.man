@@ -2,8 +2,6 @@
 .\" to tell man to run the appropriate filter "t" for table.
 .\" vim: set filetype=nroff :
 .\"
-.\"	$Id$
-.\"
 .\"######################################################################
 .\"#									#
 .\"#			   Copyright (C)  2004				#
@@ -12,7 +10,7 @@
 .\"#									#
 .\"######################################################################
 .\"
-.\"	File:		owampd.conf.man
+.\"	File:		nwamp_conf_desc.man
 .\"
 .\"	Author:		Jeff Boote
 .\"			Internet2
@@ -21,25 +19,22 @@
 .\"
 .\"	Description:	
 .\"
-.TH owampd.conf 5 "$Date$"
-.SH NAME
-owampd.conf \- One-way latency daemon configuration file.
 .SH DESCRIPTION
-The \fBowampd.conf\fR file is the configuration file for the owampd(8)
+The \fB\*[prog].conf\fR file is the configuration file for the \*[prog](8)
 daemon. It is used to configure the basic operation of the server. For
 example, what addresses and ports it should listen on, where it should
 send error messages, and where it should save files.
 .PP
-The policy rules for \fBowampd\fR are configured using the \fBowampd.limits\fR
+The policy rules for \fB\*[prog]\fR are configured using the \fB\*[prog].limits\fR
 file; the details for configuring those policies are described in
-the owampd.limits(5) manual page.
+the \*[prog].limits(5) manual page.
 .PP
 The format of this file is:
 .RS
 .IP \(bu
 Comment lines are any line where the first non-whitespace character is '#'.
 These lines are counted for the purposes of returning line numbers in error
-messages but are otherwise ignored by \fBowampd\fR.
+messages but are otherwise ignored by \fB\*[prog]\fR.
 .IP \(bu
 Lines may be continued using the semi-standard '\\' character followed
 immediately by a newline character. This is the only valid place for
@@ -63,9 +58,7 @@ any or all of the characters "AEO". The modes are:
 encrypts part of each test packet.
 .IP \fBE\fR
 [\fBE\fR]ncrypted. This mode encrypts the control connection and encrypts
-each test packet in full. This mode forces an encryption step between
-the fetching of a timestamp and when the packet is sent. This adds more
-computational delay to the time reported by \fBOWAMP\fR for each packet.
+each test packet in full.
 .IP \fBO\fR
 [\fBO\fR]pen. No encryption of any kind is done.
 .PP
@@ -80,7 +73,12 @@ will be selected.
 Number of seconds to wait for protocol messages before timing out.
 .RS
 .IP Default:
+.ie '\*[proto]'OWAMP' \{\
 1800
+.\}
+.el \{\
+900
+.\}
 .RE
 .TP
 .BI datadir " datadir"
@@ -88,7 +86,7 @@ Directory path where data files will be placed. The data files are the
 "\fIreceive\fR" session files that are buffered on the server. Policy
 restrictions can be used to set how much disk space a given connection
 can use, as well as to determine when each file is deleted. (See the
-\fBowampd.limits(f)\fR manual page.)
+\fB\*[prog].limits(f)\fR manual page.)
 .RS
 .IP Default:
 Current directory
@@ -109,7 +107,7 @@ gracefully, please send a bug report to owamp-users\@internet2.edu.
 .BI diskfudge " diskfudge"
 Fudge factor to use when determining if a buffered owp file should be kept.
 It creates a hard limit for disk usage. The soft limit is determined by
-the \fIlimitclass\fR that a connection matches [see the owampd.limits(5)
+the \fIlimitclass\fR that a connection matches [see the \*[prog].limits(5)
 manual page] and is applied when a test is requested. If the estimated
 file-size of the test would put the
 \fIlimitclass\fR over the soft limit, then the test is denied. However, it is
@@ -165,9 +163,9 @@ LOG_DAEMON
 .RE
 .TP
 .BI group " group"
-Specifies the gid the \fBowampd\fR process should run as. \fIgroup\fR
+Specifies the gid the \fB\*[prog]\fR process should run as. \fIgroup\fR
 can be specified using a valid group name on the system or by using -gid.
-This option is only used if \fBowampd\fR is started as root.
+This option is only used if \fB\*[prog]\fR is started as root.
 .RS
 .PP
 This option can be useful to limit log-file permissions to only users
@@ -175,7 +173,7 @@ in this group.
 .RE
 .TP
 .B loglocation
-Directs the \fBowampd\fR process to report source code file and line
+Directs the \fB\*[prog]\fR process to report source code file and line
 number information with error messages. This is a particularly useful
 option to set when sending in messages as part of a bug report.
 .TP
@@ -191,22 +189,22 @@ limit is no longer exceeded.
 .BI pbkdf2_count " count"
 This indicates the count parameter for the pseudo-random key derivation
 function that is used to derive the session key from the long term
-key stored in the \fBowampd.pfs\fR file.
+key stored in the \fB\*[prog].pfs\fR file.
 .RS
 .IP Default:
 2048
 .RE
 .TP
 .B rootfolly
-If present, this disables the requirement that \fBowampd\fR run with
-non-root permissions. There are legitimate reasons to run \fBowampd\fR
-as root, but it is more risky. (For example, some operating systems
-require root permissions to set the TOS bits used by the \fI\-D\fR and
-\fI\-H\fR options of \fBowping\fR.) This additional option was added
-to ensure root permissions are only used when explicitly intended.
+If present, this disables the requirement that \fB\*[prog]\fR run with
+non-root permissions. There are legitimate reasons to run
+\fB\*[prog]\fR as root, but it is more risky. (For example, some
+operating systems require root permissions to set some DSCP values
+requested by a client.) This additional option was added to ensure
+root permissions are only used when explicitly intended.
 .TP
 .BI srcnode " nodename:port"
-Specify the address and port that \fBowampd\fR will listen for requests.
+Specify the address and port that \fB\*[prog]\fR will listen for requests.
 \fInodename\fR can be specified using a DNS name or using the textual
 representation of the address. It is possible to set the source address
 without setting the \fIport\fR by simply leaving off the ':' and \fIport\fR
@@ -218,21 +216,21 @@ ensures the port number is distinct from the address specification. The
 address can be wildcarded by only specifying the \fIport\fR portion.
 .RS
 .PP
-Because the default port for \fBowampd\fR is in the \fIprotected\fR range
-for most operating systems, it is usually required that \fBowampd\fR
+Because the default port for \fB\*[prog]\fR is in the \fIprotected\fR range
+for most operating systems, it is usually required that \fB\*[prog]\fR
 is stared as root. This option can be used to specify a non-standard
 port value that is not protected.
 .IP Default:
 \fInodename\fR is wildcarded as any currently available address
 .br
-\fIport\fR is 861.
+\fIport\fR is \*[port].
 .RE
 .TP
 .BI testports " 0 | lowport-highport"
 Specify the specific port range to use on the local host for
-.I OWAMP-Test
+.I \*[proto]-Test
 packets. This can be specified in two ways. First, as 0 which would indicate
-.B owampd
+.B \*[prog]
 should allow the system to pick the port (ephemeral). Second, as a range.
 .I lowport
 must be a smaller value than
@@ -244,32 +242,25 @@ and both numbers must be valid port values. (16 bit unsigned integer values)
 .RE
 .TP
 .BI user " user"
-Specifies the uid the \fBowampd\fR process should run as. \fIuser\fR
+Specifies the uid the \fB\*[prog]\fR process should run as. \fIuser\fR
 can be specified using a valid user name on the system or by using -uid.
-This option is only used if \fBowampd\fR is started as root.
+This option is only used if \fB\*[prog]\fR is started as root.
 .RS
 .PP
-In the default case, \fBowampd\fR should be started as root so it can bind
-the default port 861. (See \fIsrcnode\fR option.) \fBowampd\fR will release root
-permissions shortly after binding to this protected port and requests will
-be serviced by processes running with permissions defined by the \fIuser\fR.
+In the default case, \fB\*[prog]\fR should be started as root so it
+can bind the default port \*[port]. (See \fIsrcnode\fR option.)
+\fB\*[prog]\fR will release root permissions shortly after binding to
+this protected port and requests will be serviced by processes running
+with permissions defined by the \fIuser\fR.
 .RE
 .TP
 .BI vardir " vardir"
-Directory path where the owampd.pid and owampd.info files will be placed.
+Directory path where the \*[prog].pid and \*[prog].info files will be placed.
 .RS
 .IP Default:
 Current directory
 .RE
 .TP
 .B verbose
-If this option is present, it directs the \fBowampd\fR process to
+If this option is present, it directs the \fB\*[prog]\fR process to
 generate more verbose messages to syslog.
-.SH SEE ALSO
-owping(1), owampd(8), owampd.limits(5), owampd.pfs(5), pfstore(1),
-and the \%http://e2epi.internet2.edu/owamp/ web site.
-.SH ACKNOWLEDGMENTS
-This material is based in part on work supported by the National Science
-Foundation (NSF) under Grant No. ANI-0314723. Any opinions, findings and
-conclusions or recommendations expressed in this material are those of
-the author(s) and do not necessarily reflect the views of the NSF.

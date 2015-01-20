@@ -93,16 +93,27 @@ CS7	111000
 Unset.
 .RE
 .TP
+.ie '\*[proto]'OWAMP' \{\
 \fB\-f\fR | \fB\-F\fR \fIfromfile\fR
-.br
-Perform a One-way test \fBf\fRrom the target \fItestpeer\fR. The \fI\-F\fR
-form is used to save the results in \fIfromfile\fR. If no directional
-options (\fI\-f, \-F, \-t, \-T\fR) are specified, \fBowping\fR requests
-concurrent bidirectional tests, otherwise only the explicit directions are
-performed.
-.RS
-.IP Default:
+.   br
+Perform a One-way test \fBf\fRrom the target \fItestpeer\fR. The
+\fI\-F\fR form is used to save the results in \fIfromfile\fR. If no
+directional options (\fI\-f, \-F, \-t, \-T\fR) are specified,
+\fBowping\fR requests concurrent bidirectional tests, otherwise only
+the explicit directions are performed.
+.   RS
+.   IP Default:
 True, unless the \fI\-t\fR or \fI\-T\fR have been specified explicitly.
+.\}
+.el \{\
+\fB\-F\fR \fIoutputfile\fR
+.   br
+Save the results in \fIoutputfile\fR for later output with
+\fBowstats\fR.
+.   RS
+.   IP Default:
+Don't save the results.
+.\}
 .RE
 .TP
 \fB\-i\fR \fIsend_schedule\fR
@@ -170,7 +181,7 @@ how long to expect a test session to take.
 
 Note: The default of 2 seconds longer than a round-trip estimate was simply
 a guess for how long a typical user would be willing to wait after the end
-of the test for the results. For the \fBOWAMP\fR results to be
+of the test for the results. For the \fB\*[proto]\fR results to be
 statistically relevant and to be able to compare data between two sessions
 the \fItimeout\fR option should be specified.
 .RS
@@ -181,10 +192,10 @@ the \fItimeout\fR option should be specified.
 .BI \-P " 0 | lowport-highport"
 .br
 Specify the specific port range to use for
-.I OWAMP-Test
-packets. This can be specified in two ways. First, as 0 which would indicate
-.B owping
-should allow the system to pick the port (ephemeral). Second, as a range.
+.I \*[proto]-Test
+packets. This can be specified in two ways. First, as 0 which would
+indicate the client should allow the system to pick the port
+(ephemeral). Second, as a range.
 .I lowport
 must be a smaller value than
 .I highport
@@ -204,26 +215,28 @@ for a test packet in \fIauthenticated\fR or \fIencrypted\fR mode is 48 bytes.
 .IP Default:
 0 (bytes)
 .RE
-.TP
+.if '\*[proto]'OWAMP' \{\
+.   TP
 \fB\-t\fR | \fB\-T\fR \fItofile\fR
-.br
-Perform a one-way test \fBt\fRoward the target \fItestpeer\fR. The \fI\-T\fR
-form is used to save the results in \fItofile\fR. If no directional
-options (\fI\-f, \-F, \-t, \-T\fR) are specified, \fBowping\fR requests
-concurrent bidirectional tests, otherwise only the explicit directions are
-performed.
-.RS
-.IP Default:
+.   br
+Perform a one-way test \fBt\fRoward the target \fItestpeer\fR. The
+\fI\-T\fR form is used to save the results in \fItofile\fR. If no
+directional options (\fI\-f, \-F, \-t, \-T\fR) are specified,
+\fBowping\fR requests concurrent bidirectional tests, otherwise only
+the explicit directions are performed.
+.   RS
+.   IP Default:
 True, unless the \fI\-f\fR or \fI\-F\fR have been specified explicitly.
-.RE
+.   RE
+.\}
 .TP
 \fB\-z\fR \fIdelayStart\fR
 .br
-Time to wait before starting a test. \fBowping\fR attempts to calculate a
-reasonable minimum delay to ensure that the start of the test happens
-after completion of the setup protocol. If \fIdelayStart\fR is specified
-as a value less than this reasonable minimum delay, the reasonable minimum
-will be used instead.
+Time to wait before starting a test. The client attempts to calculate
+a reasonable minimum delay to ensure that the start of the test
+happens after completion of the setup protocol. If \fIdelayStart\fR is
+specified as a value less than this reasonable minimum delay, the
+reasonable minimum will be used instead.
 .RS
 .IP Default:
 2-3 times the round-trip estimate plus 1 (seconds)

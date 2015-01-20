@@ -22,6 +22,8 @@
 .\"
 .\"	Description:	
 .\"
+.\"Protocol name
+.ds proto OWAMP
 .TH owfetch 1 "$Date$"
 .SH NAME
 owfetch \- Client application to fetch buffered \fBOWAMP\fR session data.

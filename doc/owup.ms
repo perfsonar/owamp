@@ -22,6 +22,8 @@
 .\"
 .\"	Description:	
 .\"
+.\"Protocol name
+.ds proto OWAMP
 .TH owup 1 "$Date$"
 .SH NAME
 owup \- Client application to query the server for uptime information

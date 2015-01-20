@@ -21,10 +21,16 @@ config/missing
 configure
 doc/Makefile
 doc/Makefile.in
+doc/owampd.man
+doc/owampd.conf.man
 doc/owfetch.man
 doc/owping.man
 doc/owstats.man
 doc/owup.man
+doc/twampd.man
+doc/twampd.conf.man
+doc/twampd.limits.man
+doc/twping.man
 owamp.spec
 owamp/.deps/
 owamp/Makefile
