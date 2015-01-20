@@ -1,26 +1,26 @@
-." The first line of this file must contain the '"[e][r][t][v] line
-." to tell man to run the appropriate filter "t" for table.
-." vim: set filetype=nroff :
-."
-."	$Id$
-."
-."######################################################################
-."#									#
-."#			   Copyright (C)  2004				#
-."#	     			Internet2				#
-."#			   All Rights Reserved				#
-."#									#
-."######################################################################
-."
-."	File:		owampd.conf.man
-."
-."	Author:		Jeff Boote
-."			Internet2
-."
-."	Date:		Tue May 11 14:15:18 MDT 2004
-."
-."	Description:	
-."
+.\" The first line of this file must contain the '"[e][r][t][v] line
+.\" to tell man to run the appropriate filter "t" for table.
+.\" vim: set filetype=nroff :
+.\"
+.\"	$Id$
+.\"
+.\"######################################################################
+.\"#									#
+.\"#			   Copyright (C)  2004				#
+.\"#	     			Internet2				#
+.\"#			   All Rights Reserved				#
+.\"#									#
+.\"######################################################################
+.\"
+.\"	File:		owampd.conf.man
+.\"
+.\"	Author:		Jeff Boote
+.\"			Internet2
+.\"
+.\"	Date:		Tue May 11 14:15:18 MDT 2004
+.\"
+.\"	Description:	
+.\"
 .TH owampd.conf 5 "$Date$"
 .SH NAME
 owampd.conf \- One-way latency daemon configuration file.
