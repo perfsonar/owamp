@@ -30,6 +30,7 @@
 #include <string.h>
 #include <assert.h>
 #include <libgen.h>
+#include <poll.h>
 
 
 /*
@@ -1759,10 +1760,9 @@ OWPStopSessionsWait(
         OWPErrSeverity  *err_ret
         )
 {
-    struct timeval  reltime;
-    struct timeval  *waittime = NULL;
-    fd_set          readfds;
-    fd_set          exceptfds;
+    struct timespec reltime;
+    int             timeout;
+    struct pollfd   fds[1];
     int             rc;
     int             msgtype;
     OWPErrSeverity  err2=OWPErrOK;
@@ -1812,22 +1812,22 @@ OWPStopSessionsWait(
 
         if(OWPNum64Cmp(currstamp.owptime,*wake) < 0){
             wakenum = OWPNum64Sub(*wake,currstamp.owptime);
-            OWPNum64ToTimeval(&reltime,wakenum);
+            OWPNum64ToTimespec(&reltime,wakenum);
         }
         else{
-            tvalclear(&reltime);
+            timespecclear(&reltime);
         }
 
-        waittime = &reltime;
+        timeout = (reltime.tv_sec * 1000 + reltime.tv_nsec / 1000000);
+    }else{
+        timeout = -1;
     }
 
-
-    FD_ZERO(&readfds);
-    FD_SET(cntrl->sockfd,&readfds);
-    FD_ZERO(&exceptfds);
-    FD_SET(cntrl->sockfd,&exceptfds);
+    fds[0].fd = cntrl->sockfd;
+    fds[0].events = POLLIN | POLLERR | POLLHUP;
+    fds[0].revents = 0;
 AGAIN:
-    rc = select(cntrl->sockfd+1,&readfds,NULL,&exceptfds,waittime);
+    rc = poll(fds,sizeof(fds)/sizeof(fds[0]),timeout);
 
     if(rc < 0){
         if(errno != EINTR){
@@ -1836,7 +1836,7 @@ AGAIN:
             *err_ret = OWPErrFATAL;
             return -1;
         }
-        if(waittime || *intr){
+        if(wake || *intr){
             return 2;
         }
 
@@ -1859,10 +1859,9 @@ AGAIN:
     if(rc == 0)
         return 1;
 
-    if(!FD_ISSET(cntrl->sockfd,&readfds) &&
-            !FD_ISSET(cntrl->sockfd,&exceptfds)){
+    if(!(fds[0].revents & (POLLIN | POLLERR | POLLHUP))){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                "select():cntrl fd not ready?:%M");
+                "poll():cntrl fd not ready?:%M");
         *err_ret = _OWPFailControlSession(cntrl,OWPErrFATAL);
         goto done;
     }
