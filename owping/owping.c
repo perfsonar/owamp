@@ -1226,13 +1226,13 @@ main(
 #else
     static char         *ow_opts = "ftT:";
 #endif
-#ifndef    NDEBUG
+#ifdef DEBUG
     static char         *debug_opts = "w";
 #endif
     int                 fname_len;
 
     ia.line_info = (I2NAME | I2MSG);
-#ifndef    NDEBUG
+#ifdef DEBUG
     ia.line_info |= (I2LINE | I2FILE);
 #endif
     ia.fp = stderr;
@@ -1275,7 +1275,9 @@ main(
     ping_ctx.opt.v4only = ping_ctx.opt.v6only = ping_ctx.opt.zero_addr =
     ping_ctx.opt.records = ping_ctx.opt.from = ping_ctx.opt.to =
     ping_ctx.opt.quiet = ping_ctx.opt.raw = ping_ctx.opt.machine = False;
+#ifdef DEBUG
     ping_ctx.opt.childwait = NULL;
+#endif
     ping_ctx.opt.save_from_test = ping_ctx.opt.save_to_test
         = ping_ctx.opt.identity = ping_ctx.opt.pffile
         = ping_ctx.opt.srcaddr = ping_ctx.opt.authmode
@@ -1314,7 +1316,7 @@ main(
     }
 
     strcat(optstring, gen_opts);
-#ifndef    NDEBUG
+#ifdef DEBUG
     strcat(optstring,debug_opts);
 #endif
 #ifdef TWAMP
@@ -1544,7 +1546,7 @@ main(
 	case 'U':
 	  ping_ctx.opt.display_unix_ts = True;
 	  break;
-#ifndef    NDEBUG
+#ifdef DEBUG
             case 'w':
                 ping_ctx.opt.childwait = (void*)True;
                 break;
@@ -1730,7 +1732,7 @@ main(
             exit(1);
         }
 
-#ifndef    NDEBUG
+#ifdef DEBUG
         /*
          * Setup debugging of child processes.
          */

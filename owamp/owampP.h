@@ -298,7 +298,7 @@ typedef struct OWPEndpointRec{
     OWPControl          cntrl;
     OWPTestSession      tsession;
 
-#ifndef        NDEBUG
+#ifdef DEBUG
     I2Boolean           childwait;
 #endif
 

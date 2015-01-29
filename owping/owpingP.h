@@ -86,7 +86,7 @@ typedef    struct {
 
         OWPPortRange    portspec;           /* -P */
 
-#ifndef    NDEBUG
+#ifdef DEBUG
         void            *childwait;         /* -w */
 #endif
 
