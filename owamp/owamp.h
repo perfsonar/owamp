@@ -1505,11 +1505,24 @@ struct OWPPacketRec{
     OWPBoolean  lost;
 };
 
+typedef enum {
+        OWP_DELAY,
+        TWP_FWD_DELAY,
+        TWP_BCK_DELAY,
+        TWP_PROC_DELAY,
+} OWPDelayType;
+
+#define OWP_DELAY_TYPE_NUM                 3
+#define OWP_DELAY_TYPE_NUM_INC_PROC        OWP_DELAY_TYPE_NUM + 1
+
 typedef struct OWPBucketRec OWPBucketRec, *OWPBucket;
 struct OWPBucketRec{
     OWPBucket   next;
     int         b;      /* bucket index */
-    uint32_t    n;      /* samples in this bucket */
+
+    /* The processing jitter isn't an interesting metric since it
+     * doesn't say anything about the network */
+    uint32_t    delay_samples[OWP_DELAY_TYPE_NUM]; /* [total][fwd][bck] */
 };
 
 typedef struct OWPStatsRec{
@@ -1613,12 +1626,11 @@ typedef struct OWPStatsRec{
      * Summary Stats
      */
     double          inf_delay;
-    double          min_delay;
-    double          max_delay;
-    double          min_proc_delay;
-    double          max_proc_delay;
+    double          min_delay[OWP_DELAY_TYPE_NUM_INC_PROC];  /* [total][fwd][bck][proc] */
+    double          max_delay[OWP_DELAY_TYPE_NUM_INC_PROC];  /* [total][fwd][bck][proc] */
+    OWPBoolean      clocks_offset;
     OWPBoolean      sync;
-    double          maxerr;
+    double          maxerr[OWP_DELAY_TYPE_NUM];    /* [total][fwd][bck] */
 
     uint32_t       dups;
     uint32_t       lost;

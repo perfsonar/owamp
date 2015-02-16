@@ -339,7 +339,9 @@ BucketBufferClean(
     }
 
     node->b = 0;
-    node->n = 0;
+    node->delay_samples[OWP_DELAY] = 0;
+    node->delay_samples[TWP_FWD_DELAY] = 0;
+    node->delay_samples[TWP_BCK_DELAY] = 0;
     node->next = stats->bfreelist;
     stats->bfreelist = node;
 
@@ -370,7 +372,40 @@ BucketBufferPrint(
     OWPBucket   node = v.dptr;
     FILE        *fp = app_data;
 
-    fprintf(fp,"\t%d\t%u\n",node->b,node->n);
+    fprintf(fp,"\t%d\t%u\n",node->b,node->delay_samples[OWP_DELAY]);
+
+    return True;
+}
+
+/*
+ * Function:    BucketBufferPrintTW
+ *
+ * Description:
+ *              Used to print out the current hash of all existing values
+ *              for two-way sessions.
+ *
+ * In Args:
+ *
+ * Out Args:
+ *
+ * Scope:
+ * Returns:
+ * Side Effect:
+ */
+static I2Boolean
+BucketBufferPrintTW(
+        I2Datum k __attribute__((unused)),
+        I2Datum v,
+        void    *app_data
+        )
+{
+    OWPBucket   node = v.dptr;
+    FILE        *fp = app_data;
+
+    fprintf(fp,"\t%d\t%u\t%u\t%u\n",node->b,
+            node->delay_samples[OWP_DELAY],
+            node->delay_samples[TWP_FWD_DELAY],
+            node->delay_samples[TWP_BCK_DELAY]);
 
     return True;
 }
@@ -422,13 +457,17 @@ BucketBufferSortFill(
  */
 static OWPBoolean
 BucketIncrementDelay(
-    OWPStats    stats,
-    double      d       /* delay */
+    OWPStats        stats,
+    double          d,       /* delay */
+    OWPDelayType    type
     )
 {
     int         b;
     OWPBucket   node;
     I2Datum     k,v;
+
+    /* Not supported for the processing delay */
+    assert(type < OWP_DELAY_TYPE_NUM);
 
     /*
      * XXX: May eventually need to round these off to some significant number
@@ -445,9 +484,9 @@ BucketIncrementDelay(
         node = (OWPBucket)v.dptr;
     }
     else{
-        if(!stats->bfreelist){
-            long int    i;
+        long int    i;
 
+        if(!stats->bfreelist){
             /*
              * print out info message to inform that the "size" calculation
              * was not good enough. (dynamic memory allocations during parsing
@@ -474,7 +513,9 @@ BucketIncrementDelay(
 
         node->next = NULL;
         node->b = b;
-        node->n = 0;
+        for(i=0;i<OWP_DELAY_TYPE_NUM;i++){
+            node->delay_samples[i] = 0;
+        }
 
         k.dptr = &node->b;
         k.dsize = sizeof(node->b);
@@ -489,7 +530,7 @@ BucketIncrementDelay(
     /*
      * Increment number of samples.
      */
-    node->n++;
+    node->delay_samples[type]++;
 
     return True;
 }
@@ -1053,7 +1094,7 @@ IterateSummarizeSession(
          * Time error
          */
         derr = OWPGetTimeStampError(&rec->recv);
-        stats->maxerr = MAX(stats->maxerr,derr);
+        stats->maxerr[OWP_DELAY] = MAX(stats->maxerr[OWP_DELAY],derr);
 
         if(stats->output){
             fprintf(stats->output,"seq_no=%-10u *LOST*\n", rec->seq_no);
@@ -1107,7 +1148,7 @@ IterateSummarizeSession(
      * compute total error from send/recv
      */
     derr = OWPGetTimeStampError(&rec->send) + OWPGetTimeStampError(&rec->recv);
-    stats->maxerr = MAX(stats->maxerr,derr);
+    stats->maxerr[OWP_DELAY] = MAX(stats->maxerr[OWP_DELAY],derr);
 
     /*
      * Print individual packet record
@@ -1143,8 +1184,8 @@ IterateSummarizeSession(
     /*
      * Save max/min delays
      */
-    stats->min_delay = MIN(stats->min_delay,d);
-    stats->max_delay = MAX(stats->max_delay,d);
+    stats->min_delay[OWP_DELAY] = MIN(stats->min_delay[OWP_DELAY],d);
+    stats->max_delay[OWP_DELAY] = MAX(stats->max_delay[OWP_DELAY],d);
 
     /*
      * Delay and TTL stats not computed on duplicates
@@ -1156,7 +1197,7 @@ IterateSummarizeSession(
     /*
      * Increment histogram for this delay
      */
-    if( !BucketIncrementDelay(stats,d)){
+    if( !BucketIncrementDelay(stats,d,OWP_DELAY)){
         /* error return */
         OWPError(stats->ctx,OWPErrFATAL,EINVAL,
                 "IterateSummarizeSession: Unable to increment delay bucket");
@@ -1180,8 +1221,8 @@ IterateSummarizeTWSession(
 {
     OWPStats    stats = cdata;
     OWPPacket   node;
-    double      proc_d;
-    double      d;
+    double      delay[OWP_DELAY_TYPE_NUM_INC_PROC];
+    double      delay_err[OWP_DELAY_TYPE_NUM];
     double      derr;
     long int    i;
 
@@ -1274,7 +1315,9 @@ IterateSummarizeTWSession(
          * Time error
          */
         derr = OWPGetTimeStampError(&rec->sent.recv);
-        stats->maxerr = MAX(stats->maxerr,derr);
+        for(i=0;i<OWP_DELAY_TYPE_NUM;i++){
+            stats->maxerr[i] = MAX(stats->maxerr[i],derr);
+        }
 
         if(stats->output){
             fprintf(stats->output,"seq_no=%-10u *LOST*\n", rec->sent.seq_no);
@@ -1301,19 +1344,48 @@ IterateSummarizeTWSession(
     /*
      * compute processing delay on far end
      */
-    proc_d = OWPDelay(&rec->sent.recv, &rec->reflected.send);
+    delay[TWP_PROC_DELAY] = OWPDelay(&rec->sent.recv, &rec->reflected.send);
     /*
      * compute best possible estimate for network round-trip time for this packet
      */
-    d = OWPDelay(&rec->sent.send, &rec->reflected.recv) - proc_d;
+    delay[OWP_DELAY] = OWPDelay(&rec->sent.send, &rec->reflected.recv) - delay[TWP_PROC_DELAY];
+
+    /*
+     * compute the sending delay for this packet
+     */
+    delay[TWP_FWD_DELAY] = OWPDelay(&rec->sent.send, &rec->sent.recv);
+
+    /*
+     * compute the reflection delay for this packet
+     */
+    delay[TWP_BCK_DELAY] = OWPDelay(&rec->reflected.send, &rec->reflected.recv);
 
     /*
      * compute total error from send/recv.
      */
-    derr = OWPGetTimeStampError(&rec->sent.send) +
+    delay_err[OWP_DELAY] = OWPGetTimeStampError(&rec->sent.send) +
         OWPGetTimeStampError(&rec->reflected.recv) +
+        OWPGetTimeStampError(&rec->reflected.send) +
         OWPGetTimeStampError(&rec->sent.recv);
-    stats->maxerr = MAX(stats->maxerr,derr);
+
+    /*
+     * compute the send delay error
+     */
+    delay_err[TWP_FWD_DELAY] = OWPGetTimeStampError(&rec->sent.send) +
+        OWPGetTimeStampError(&rec->sent.recv);
+
+    /*
+     * compute the reflection delay error
+     */
+    delay_err[TWP_BCK_DELAY] = OWPGetTimeStampError(&rec->reflected.send) +
+        OWPGetTimeStampError(&rec->reflected.recv);
+
+    /*
+     * Local and remote clocks are out of sync if the delays are negative
+     */
+    if(delay[TWP_FWD_DELAY] < 0 || delay[TWP_BCK_DELAY] < 0){
+        stats->clocks_offset = True;
+    }
 
     /*
      * Print individual packet record
@@ -1323,11 +1395,15 @@ IterateSummarizeTWSession(
             /* print using unix timestamp */
             double epochdiff = (OWPULongToNum64(OWPJAN_1970))>>32;
             fprintf(stats->output,
-                    "seq_no=%d delay=%e %s proc_delay=%e %s (err=%.3g %s) sent=%f reflected=%f recv=%f\n",
-                    rec->sent.seq_no, d*stats->scale_factor, stats->scale_abrv,
-                    proc_d*stats->scale_factor, stats->scale_abrv,
-                    derr*stats->scale_factor, stats->scale_abrv,
+                    "seq_no=%d fwd_delay=%e %s bck_delay=%e %s delay=%e %s proc_delay=%e %s (err=%.3g %s) sent=%f recv=%f reflected=%f recv=%f\n",
+                    rec->sent.seq_no,
+                    delay[TWP_FWD_DELAY]*stats->scale_factor, stats->scale_abrv,
+                    delay[TWP_BCK_DELAY]*stats->scale_factor, stats->scale_abrv,
+                    delay[OWP_DELAY]*stats->scale_factor, stats->scale_abrv,
+                    delay[TWP_PROC_DELAY]*stats->scale_factor, stats->scale_abrv,
+                    delay_err[OWP_DELAY]*stats->scale_factor, stats->scale_abrv,
                     OWPNum64ToDouble(rec->sent.send.owptime) - epochdiff,
+                    OWPNum64ToDouble(rec->sent.recv.owptime) - epochdiff,
                     OWPNum64ToDouble(rec->reflected.send.owptime) - epochdiff,
                     OWPNum64ToDouble(rec->reflected.recv.owptime) - epochdiff
                 );
@@ -1335,20 +1411,27 @@ IterateSummarizeTWSession(
         else {
             /* print the default */
             fprintf(stats->output,
-                    "seq_no=%-10u delay=%.3g %s proc_delay=%.3g %s\t(err=%.3g %s)\n",
-                    rec->sent.seq_no, d*stats->scale_factor, stats->scale_abrv,
-                    proc_d*stats->scale_factor, stats->scale_abrv,
-                    derr*stats->scale_factor,stats->scale_abrv);
+                    "seq_no=%-10u fwd_delay=%.3g %s bck_delay=%.3g %s delay=%.3g %s proc_delay=%.3g %s\t(err=%.3g %s)\n",
+                    rec->sent.seq_no,
+                    delay[TWP_FWD_DELAY]*stats->scale_factor, stats->scale_abrv,
+                    delay[TWP_BCK_DELAY]*stats->scale_factor, stats->scale_abrv,
+                    delay[OWP_DELAY]*stats->scale_factor, stats->scale_abrv,
+                    delay[TWP_PROC_DELAY]*stats->scale_factor, stats->scale_abrv,
+                    delay_err[OWP_DELAY]*stats->scale_factor, stats->scale_abrv);
         }
     }
 
     /*
      * Save max/min delays
      */
-    stats->min_delay = MIN(stats->min_delay,d);
-    stats->max_delay = MAX(stats->max_delay,d);
-    stats->min_proc_delay = MIN(stats->min_proc_delay,proc_d);
-    stats->max_proc_delay = MAX(stats->max_proc_delay,proc_d);
+    for(i=0;i<OWP_DELAY_TYPE_NUM_INC_PROC;i++){
+        stats->min_delay[i] = MIN(stats->min_delay[i],delay[i]);
+        stats->max_delay[i] = MAX(stats->max_delay[i],delay[i]);
+    }
+
+    for(i=0;i<OWP_DELAY_TYPE_NUM;i++){
+        stats->maxerr[i] = MAX(stats->maxerr[i],delay_err[i]);
+    }
 
     /*
      * Delay and TTL stats not computed on duplicates
@@ -1360,11 +1443,13 @@ IterateSummarizeTWSession(
     /*
      * Increment histogram for this delay
      */
-    if( !BucketIncrementDelay(stats,d)){
-        /* error return */
-        OWPError(stats->ctx,OWPErrFATAL,EINVAL,
-                "IterateSummarizeTWSession: Unable to increment delay bucket");
-        return -1;
+    for(i=0;i<OWP_DELAY_TYPE_NUM;i++){
+        if( !BucketIncrementDelay(stats,delay[i],i)){
+            /* error return */
+            OWPError(stats->ctx,OWPErrFATAL,EINVAL,
+                    "IterateSummarizeTWSession: Unable to increment delay type %l bucket",i);
+            return -1;
+        }
     }
 
     /*
@@ -1408,9 +1493,10 @@ BucketBufferSortCmp(
 
 static OWPBoolean
 BucketBufferSortPercentile(
-        OWPStats    stats,
-        double      alpha,
-        double      *delay_ret
+        OWPStats        stats,
+        double          alpha,
+        double          *delay_ret,
+        OWPDelayType    type
         )
 {
     uint32_t    i;
@@ -1418,11 +1504,14 @@ BucketBufferSortPercentile(
 
     assert((0.0 <= alpha) && (alpha <= 1.0));
 
+    /* Not supported for the processing delay */
+    assert(type < OWP_DELAY_TYPE_NUM);
+
     for(i=0;
             (i < stats->bsortsize) &&
-            ((stats->bsort[i]->n + sum) < (alpha * stats->sent));
+            ((stats->bsort[i]->delay_samples[type] + sum) < (alpha * stats->sent));
             i++){
-        sum += stats->bsort[i]->n;
+        sum += stats->bsort[i]->delay_samples[type];
     }
 
     if(i >= stats->bsortsize){
@@ -1569,14 +1658,17 @@ OWPStatsParse(
 
     /* init min_delay to +inf, max_delay to -inf */
     stats->inf_delay = OWPNum64ToDouble(stats->hdr->test_spec.loss_timeout + 1);
-    stats->min_delay = stats->inf_delay;
-    stats->max_delay = -stats->inf_delay;
-    stats->min_proc_delay = stats->inf_delay;
-    stats->max_proc_delay = -stats->inf_delay;
+    for(i=0;i<OWP_DELAY_TYPE_NUM_INC_PROC;i++){
+        stats->min_delay[i] = stats->inf_delay;
+        stats->max_delay[i] = -stats->inf_delay;
+    }
+    stats->clocks_offset = False;
 
     /* timestamp quality */
     stats->sync = 1;
-    stats->maxerr = 0.0;
+    for(i=0;i<OWP_DELAY_TYPE_NUM;i++){
+        stats->maxerr[i] = 0.0;
+    }
 
     /* dups/lost */
     stats->dups = stats->lost = 0;
@@ -1691,6 +1783,156 @@ OWPStatsScaleFactor(
     return factor;
 }
 
+static void
+PrintDelayStats(
+        OWPStats        stats,
+        FILE            *output,
+        OWPDelayType    type
+        )
+{
+    char            minval[80];
+    char            maxval[80];
+    char            n1val[80];
+    char            *delaydesc;
+    double          d1;
+
+    /*
+     * Min, Max, Median
+     */
+
+    /*
+     * parse min/max - Sure would be easier if C99 soft-float were portable...
+     * XXX: Just use NAN as the float value once that works everywhere!
+     *      (BucketBufferSortPercentile would be WAY easier!!!)
+     */
+    if(stats->min_delay[type] >= stats->inf_delay){
+        strncpy(minval,"nan",sizeof(minval));
+    }
+    else if( (snprintf(minval,sizeof(minval),"%.3g",
+                    stats->min_delay[type] * stats->scale_factor) < 0)){
+        OWPError(stats->ctx,OWPErrWARNING,errno,
+                    "OWPStatsPrintSummary: snprintf(): %M");
+        strncpy(minval,"XXX",sizeof(minval));
+    }
+    if(stats->max_delay[type] <= -stats->inf_delay){
+        strncpy(maxval,"nan",sizeof(maxval));
+    }
+    else if( (snprintf(maxval,sizeof(maxval),"%.3g",
+                    stats->max_delay[type] * stats->scale_factor) < 0)){
+        OWPError(stats->ctx,OWPErrWARNING,errno,
+                    "OWPStatsPrintSummary: snprintf(): %M");
+        strncpy(maxval,"XXX",sizeof(maxval));
+    }
+
+    /* Delay type description */
+    switch(type){
+        case OWP_DELAY:
+            delaydesc = stats->hdr->twoway ? "round-trip time" : "one-way delay";
+            break;
+        case TWP_FWD_DELAY:
+            delaydesc = "send time";
+            break;
+        case TWP_BCK_DELAY:
+            delaydesc = "reflect time";
+            break;
+        case TWP_PROC_DELAY:
+            delaydesc = "reflector processing time";
+            break;
+        default:
+            return;
+    }
+
+    /* Print delay statistics */
+    switch(type){
+        case OWP_DELAY:
+        case TWP_FWD_DELAY:
+        case TWP_BCK_DELAY:
+            /* Calculate the median delay for these types */
+            if( !BucketBufferSortPercentile(stats,0.5,&d1,type)){
+                strncpy(n1val,"nan",sizeof(n1val));
+            }
+            else if(snprintf(n1val,sizeof(n1val),"%.3g",
+                              (d1 * stats->scale_factor)) < 0){
+                OWPError(stats->ctx,OWPErrWARNING,errno,
+                            "OWPStatsPrintSummary: snprintf(): %M");
+                strncpy(n1val,"XXX",sizeof(n1val));
+            }
+
+            fprintf(output,"%s min/median/max = %s/%s/%s %s, ",
+                    delaydesc,minval,n1val,maxval,stats->scale_abrv);
+
+            if(stats->sync){
+                fprintf(output,"(err=%.3g %s)\n",
+                        stats->maxerr[type] * stats->scale_factor,
+                        stats->scale_abrv);
+            }
+            else{
+                fprintf(output,"(unsync)\n");
+            }
+            break;
+        case TWP_PROC_DELAY:
+            fprintf(output,"%s min/max = %s/%s %s\n",
+                    delaydesc,minval,maxval,stats->scale_abrv);
+            break;
+    }
+}
+
+static OWPBoolean
+CalculateJitter(
+        OWPStats        stats,
+        OWPDelayType    type,
+        double          *jitter_ret
+        )
+{
+    double pc95,pc50;
+
+    if( !BucketBufferSortPercentile(stats,0.95,&pc95,type) ||
+        !BucketBufferSortPercentile(stats,0.5,&pc50,type)){
+        return False;
+    }
+
+    *jitter_ret = pc95-pc50;
+    return True;
+}
+
+static void
+PrintJitterStats(
+        OWPStats        stats,
+        FILE            *output,
+        OWPDelayType    type
+        )
+{
+    char            n1val[80];
+    char            *jitterdesc;
+    double          jitter;
+
+    if( !CalculateJitter(stats,type,&jitter)){
+        strncpy(n1val,"nan",sizeof(n1val));
+    }
+    else if(snprintf(n1val,sizeof(n1val),"%.3g",
+                      jitter * stats->scale_factor) < 0){
+        OWPError(stats->ctx,OWPErrWARNING,errno,
+                    "OWPStatsPrintSummary: snprintf(): %M");
+        strncpy(n1val,"XXX",sizeof(n1val));
+    }
+
+    switch(type){
+        case OWP_DELAY:
+            jitterdesc = stats->hdr->twoway ? "two-way PDV" : "one-way jitter";
+            break;
+        case TWP_FWD_DELAY:
+            jitterdesc = "send PDV";
+            break;
+        case TWP_BCK_DELAY:
+            jitterdesc = "reflect PDV";
+            break;
+        default:
+            return;
+    }
+    fprintf(output,"%s = %s %s (P95-P50)\n",
+            jitterdesc,n1val,stats->scale_abrv);
+}
+
 /*
  * Human-readable statistics summary
  */
@@ -1707,10 +1949,8 @@ OWPStatsPrintSummary(
     uint8_t    	    nttl=0;
     uint8_t    	    minttl=255;
     uint8_t    	    maxttl=0;
-    char            minval[80];
-    char            maxval[80];
     char            n1val[80];
-    double          d1, d2;
+    double          d1;
     struct timespec sspec;
     struct timespec espec;
     struct timespec *sspecp,*especp;
@@ -1718,6 +1958,14 @@ OWPStatsPrintSummary(
     struct tm       *stmp,*etmp;
     char            stval[50],etval[50];
     OWPTimeStamp    ttstamp;
+
+    /*
+     * If local and remote clocks are offset from each other
+     * then the directional delay stats are not meaningful
+     */
+    if(stats->clocks_offset){
+        fprintf(output,"\nDirectional delays may be inaccurate due to out of sync clocks!\n");
+    }
 
     PrintStatsHeader(stats,output);
 
@@ -1786,95 +2034,21 @@ OWPStatsPrintSummary(
     fprintf(output,"%u sent, %u lost (%.3f%%), %u duplicates\n",
             stats->sent,stats->lost,100.0*d1,stats->dups);
 
-    /*
-     * Min, Median
-     */
-
-    /*
-     * parse min/max - Sure would be easier if C99 soft-float were portable...
-     * XXX: Just use NAN as the float value once that works everywhere!
-     *      (BucketBufferSortPercentile would be WAY easier!!!)
-     */
-    if(stats->min_delay >= stats->inf_delay){
-        strncpy(minval,"nan",sizeof(minval));
+    PrintDelayStats(stats,output,OWP_DELAY);
+    if(stats->hdr->twoway){
+        PrintDelayStats(stats,output,TWP_FWD_DELAY);
+        PrintDelayStats(stats,output,TWP_BCK_DELAY);
+        PrintDelayStats(stats,output,TWP_PROC_DELAY);
     }
-    else if( (snprintf(minval,sizeof(minval),"%.3g",
-                    stats->min_delay * stats->scale_factor) < 0)){
-        OWPError(stats->ctx,OWPErrWARNING,errno,
-                    "OWPStatsPrintSummary: snprintf(): %M");
-        strncpy(minval,"XXX",sizeof(minval));
-    }
-    if(stats->max_delay <= -stats->inf_delay){
-        strncpy(maxval,"nan",sizeof(maxval));
-    }
-    else if( (snprintf(maxval,sizeof(maxval),"%.3g",
-                    stats->max_delay * stats->scale_factor) < 0)){
-        OWPError(stats->ctx,OWPErrWARNING,errno,
-                    "OWPStatsPrintSummary: snprintf(): %M");
-        strncpy(maxval,"XXX",sizeof(maxval));
-    }
-
-    if( !BucketBufferSortPercentile(stats,0.5,&d1)){
-        strncpy(n1val,"nan",sizeof(n1val));
-    }
-    else if(snprintf(n1val,sizeof(n1val),"%.3g",
-                      d1 * stats->scale_factor) < 0){
-        OWPError(stats->ctx,OWPErrWARNING,errno,
-                    "OWPStatsPrintSummary: snprintf(): %M");
-        strncpy(n1val,"XXX",sizeof(n1val));
-    }
-
-
-    fprintf(output,"%s min/median/max = %s/%s/%s %s, ",
-            stats->hdr->twoway ? "round-trip time" : "one-way delay",
-            minval,n1val,maxval,stats->scale_abrv);
-    if(stats->sync){
-        fprintf(output,"(err=%.3g %s)\n",stats->maxerr * stats->scale_factor,
-                stats->scale_abrv);
-    }
-    else{
-        fprintf(output,"(unsync)\n");
-    }
-    if (stats->hdr->twoway) {
-        if(stats->min_proc_delay >= stats->inf_delay){
-            strncpy(minval,"nan",sizeof(minval));
-        }
-        else if( (snprintf(minval,sizeof(minval),"%.3g",
-                           stats->min_proc_delay * stats->scale_factor) < 0)){
-            OWPError(stats->ctx,OWPErrWARNING,errno,
-                     "OWPStatsPrintSummary: snprintf(): %M");
-            strncpy(minval,"XXX",sizeof(minval));
-        }
-        if(stats->max_proc_delay <= -stats->inf_delay){
-            strncpy(maxval,"nan",sizeof(maxval));
-        }
-        else if( (snprintf(maxval,sizeof(maxval),"%.3g",
-                           stats->max_proc_delay * stats->scale_factor) < 0)){
-            OWPError(stats->ctx,OWPErrWARNING,errno,
-                     "OWPStatsPrintSummary: snprintf(): %M");
-            strncpy(maxval,"XXX",sizeof(maxval));
-        }
-        fprintf(output,"reflector processing time min/max = %s/%s %s\n",
-                minval,maxval,stats->scale_abrv);
-    }
-
 
     /*
      * "jitter"
      */
-    if( !BucketBufferSortPercentile(stats,0.95,&d1) ||
-        !BucketBufferSortPercentile(stats,0.5,&d2)){
-        strncpy(n1val,"nan",sizeof(n1val));
+    PrintJitterStats(stats,output,OWP_DELAY);
+    if(stats->hdr->twoway){
+        PrintJitterStats(stats,output,TWP_FWD_DELAY);
+        PrintJitterStats(stats,output,TWP_BCK_DELAY);
     }
-    else if(snprintf(n1val,sizeof(n1val),"%.3g",
-                      (d1-d2) * stats->scale_factor) < 0){
-        OWPError(stats->ctx,OWPErrWARNING,errno,
-                    "OWPStatsPrintSummary: snprintf(): %M");
-        strncpy(n1val,"XXX",sizeof(n1val));
-    }
-    fprintf(output,"%s = %s %s (P95-P50)\n",
-            stats->hdr->twoway ? "two-way PDV" : "one-way jitter",
-            n1val,stats->scale_abrv);
 
     /*
      * Print out random percentiles
@@ -1882,7 +2056,7 @@ OWPStatsPrintSummary(
     if(npercentiles){
         fprintf(output,"Percentiles:\n");
         for(ui=0;ui<npercentiles;ui++){
-            if( !BucketBufferSortPercentile(stats,percentiles[ui]/100.0,&d1)){
+            if( !BucketBufferSortPercentile(stats,percentiles[ui]/100.0,&d1,OWP_DELAY)){
                 strncpy(n1val,"nan",sizeof(n1val));
             }
             else if(snprintf(n1val,sizeof(n1val),"%.3g",
@@ -1947,6 +2121,51 @@ OWPStatsPrintSummary(
     return True;
 }
 
+static char
+*MachineDelayTypeDesc(
+        OWPDelayType    type
+        )
+{
+    switch(type){
+        case OWP_DELAY:
+            return "";
+        case TWP_FWD_DELAY:
+            return "_FWD";
+        case TWP_BCK_DELAY:
+            return "_BCK";
+        case TWP_PROC_DELAY:
+            return "_PROC";
+        default:
+            return "_UNKNOWN";
+    }
+}
+
+static inline void
+PrintMinDelayMachine(
+        OWPStats        stats,
+        OWPDelayType    type,
+        FILE            *output
+        )
+{
+    if(stats->min_delay[type] < stats->inf_delay){
+        fprintf(output,"MIN%s\t%g\n",MachineDelayTypeDesc(type),
+                stats->min_delay[type]);
+    }
+}
+
+static inline void
+PrintMaxDelayMachine(
+        OWPStats        stats,
+        OWPDelayType    type,
+        FILE            *output
+        )
+{
+    if(stats->max_delay[type] > -stats->inf_delay){
+        fprintf(output,"MAX%s\t%g\n",MachineDelayTypeDesc(type),
+                stats->max_delay[type]);
+    }
+}
+
 /*
  * Program-readable statistics summary
  */
@@ -1961,6 +2180,7 @@ OWPStatsPrintMachine(
     char        sid_name[sizeof(OWPSID)*2+1];
     uint32_t    i;
     long int    j;
+    double      d1;
     uint8_t     nttl=0;
     uint8_t     minttl=255;
     uint8_t     maxttl=0;
@@ -2013,15 +2233,56 @@ OWPStatsPrintMachine(
      */
     fprintf(output,"SENT\t%u\n",stats->sent);
     fprintf(output,"SYNC\t%" PRIuPTR "\n",stats->sync);
-    fprintf(output,"MAXERR\t%g\n",stats->maxerr);
+    fprintf(output,"MAXERR\t%g\n",stats->maxerr[OWP_DELAY]);
+    if(stats->hdr->twoway){
+        fprintf(output,"MAXERR_FWD\t%g\n",stats->maxerr[TWP_FWD_DELAY]);
+        fprintf(output,"MAXERR_BCK\t%g\n",stats->maxerr[TWP_BCK_DELAY]);
+    }
     fprintf(output,"DUPS\t%u\n",stats->dups);
     fprintf(output,"LOST\t%u\n",stats->lost);
 
-    if(stats->min_delay < stats->inf_delay){
-        fprintf(output,"MIN\t%g\n",stats->min_delay);
+    /* Min delay */
+    PrintMinDelayMachine(stats,OWP_DELAY,output);
+    if(stats->hdr->twoway){
+        PrintMinDelayMachine(stats,TWP_FWD_DELAY,output);
+        PrintMinDelayMachine(stats,TWP_BCK_DELAY,output);
+        PrintMinDelayMachine(stats,TWP_PROC_DELAY,output);
     }
-    if(stats->max_delay > -stats->inf_delay){
-        fprintf(output,"MAX\t%g\n",stats->max_delay);
+
+    /* Median delay */
+    if(BucketBufferSortPercentile(stats,0.5,&d1,OWP_DELAY)){
+        fprintf(output,"MEDIAN\t%g\n",d1);
+    }
+    if(stats->hdr->twoway){
+        if(BucketBufferSortPercentile(stats,0.5,&d1,TWP_FWD_DELAY)){
+            fprintf(output,"MEDIAN_FWD\t%g\n",d1);
+        }
+        if(BucketBufferSortPercentile(stats,0.5,&d1,TWP_BCK_DELAY)){
+            fprintf(output,"MEDIAN_BCK\t%g\n",d1);
+        }
+    }
+
+    /* Max delay */
+    PrintMaxDelayMachine(stats,OWP_DELAY,output);
+    if(stats->hdr->twoway){
+        PrintMaxDelayMachine(stats,TWP_FWD_DELAY,output);
+        PrintMaxDelayMachine(stats,TWP_BCK_DELAY,output);
+        PrintMaxDelayMachine(stats,TWP_PROC_DELAY,output);
+    }
+
+    /*
+     * PDV
+     */
+    if(CalculateJitter(stats,OWP_DELAY,&d1)){
+        fprintf(output,"PDV\t%g\n",d1);
+    }
+    if(stats->hdr->twoway){
+        if(CalculateJitter(stats,TWP_FWD_DELAY,&d1)){
+            fprintf(output,"PDV_FWD\t%g\n",d1);
+        }
+        if(CalculateJitter(stats,TWP_BCK_DELAY,&d1)){
+            fprintf(output,"PDV_BCK\t%g\n",d1);
+        }
     }
 
     /*
@@ -2029,7 +2290,10 @@ OWPStatsPrintMachine(
      */
     if(stats->sent > stats->lost){
         fprintf(output,"<BUCKETS>\n");
-        I2HashIterate(stats->btable,BucketBufferPrint,output);
+        if(stats->hdr->twoway)
+            I2HashIterate(stats->btable,BucketBufferPrintTW,output);
+        else
+            I2HashIterate(stats->btable,BucketBufferPrint,output);
         fprintf(output,"</BUCKETS>\n");
     }
 
