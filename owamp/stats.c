@@ -2073,7 +2073,7 @@ OWPStatsPrintSummary(
     /*
      * Report ttl's
      */
-    for(i=0;i<255;i++){
+    for(i=0;i<256;i++){
         if(!stats->ttl_count[i])
             continue;
         nttl++;
@@ -2087,10 +2087,10 @@ OWPStatsPrintSummary(
         fprintf(output,"TTL not reported\n");
     }
     else if(nttl == 1){
-        fprintf(output,"Hops = %d (consistently)\n",255-minttl);
+        fprintf(output,"hops = %d (consistently)\n",255-minttl);
     }
     else{
-        fprintf(output,"Hops takes %d values; Min Hops = %d, Max Hops = %d\n",
+        fprintf(output,"hops takes %d values; min hops = %d, max hops = %d\n",
                 nttl,255-maxttl,255-minttl);
     }
 
@@ -2300,7 +2300,7 @@ OWPStatsPrintMachine(
     /*
      * TTL histogram
      */
-    for(i=0;i<255;i++){
+    for(i=0;i<256;i++){
         if(!stats->ttl_count[i])
             continue;
         nttl++;
@@ -2312,9 +2312,9 @@ OWPStatsPrintMachine(
 
     if(nttl > 0){
         fprintf(output,"MINTTL\t%u\n",minttl);
-        fprintf(output,"MAXTTL\t%u\n",minttl);
+        fprintf(output,"MAXTTL\t%u\n",maxttl);
         fprintf(output,"<TTLBUCKETS>\n");
-        for(i=0;i<255;i++){
+        for(i=0;i<256;i++){
             if(!stats->ttl_count[i])
                 continue;
             fprintf(output,"\t%u\t%u\n",i,stats->ttl_count[i]);
