@@ -1611,7 +1611,7 @@ typedef struct OWPStatsRec{
     /*
      * TTL info - histogram of received TTL values.
      */
-    uint8_t        ttl_count[256];
+    unsigned long   ttl_count[256];
 
     /*
      * Reordering buffers

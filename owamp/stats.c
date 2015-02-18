@@ -2317,7 +2317,7 @@ OWPStatsPrintMachine(
         for(i=0;i<256;i++){
             if(!stats->ttl_count[i])
                 continue;
-            fprintf(output,"\t%u\t%u\n",i,stats->ttl_count[i]);
+            fprintf(output,"\t%u\t%lu\n",i,stats->ttl_count[i]);
         }
         fprintf(output,"</TTLBUCKETS>\n");
 
