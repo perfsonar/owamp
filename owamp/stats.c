@@ -1207,7 +1207,7 @@ IterateSummarizeSession(
     /*
      * TTL info
      */
-    stats->ttl_count[rec->ttl]++;
+    stats->ttl_count[OWP_TTL][rec->ttl]++;
 
     return 0;
 }
@@ -1455,7 +1455,8 @@ IterateSummarizeTWSession(
     /*
      * TTL info
      */
-    stats->ttl_count[rec->sent.ttl]++;
+    stats->ttl_count[TWP_FWD_TTL][rec->sent.ttl]++;
+    stats->ttl_count[TWP_BCK_TTL][rec->reflected.ttl]++;
 
     return 0;
 }
@@ -1534,6 +1535,7 @@ OWPStatsParse(
     off_t       fileend;
     uint32_t    nrecs;
     long int    i;
+    uint8_t     type;
 
     if(last == (uint32_t)~0){
         last = stats->hdr->test_spec.npackets;
@@ -1642,8 +1644,9 @@ OWPStatsParse(
     I2HashIterate(stats->btable,BucketBufferClean,stats);
 
     /* ttl */
-    for(i=0;i<256;i++){
-        stats->ttl_count[i] = 0;
+    for(type=0;type<OWP_TTL_TYPE_NUM;type++){
+        for(i=0;i<256;i++)
+            stats->ttl_count[type][i] = 0;
     }
 
     /* re-order buffers
@@ -1933,6 +1936,68 @@ PrintJitterStats(
             jitterdesc,n1val,stats->scale_abrv);
 }
 
+static int
+CalculateTtlStats(
+        OWPStats    stats,
+        OWPTtlType  type,
+        uint8_t     *min_ttl,
+        uint8_t     *max_ttl
+        )
+{
+    uint8_t ttl_num=0;
+    uint16_t i;
+
+    *min_ttl=255;
+    *max_ttl=0;
+
+    for(i=0;i<256;i++){
+        if(!stats->ttl_count[type][i])
+            continue;
+        ttl_num++;
+        if(i < *min_ttl)
+            *min_ttl = i;
+        if(i > *max_ttl)
+            *max_ttl = i;
+    }
+
+    return ttl_num;
+}
+
+static void
+PrintTtlStats(
+        OWPStats    stats,
+        FILE        *output,
+        OWPTtlType  type
+        )
+{
+    uint8_t ttl_num;
+    uint8_t min_ttl;
+    uint8_t max_ttl;
+    char    *ttl_desc;
+
+    ttl_num = CalculateTtlStats(stats, type, &min_ttl, &max_ttl);
+
+    switch(type){
+        case OWP_TTL:
+            ttl_desc = stats->hdr->twoway ? "send " : "";
+            break;
+        case TWP_BCK_TTL:
+            ttl_desc = "reflect ";
+            break;
+    }
+
+    if(ttl_num < 1){
+        fprintf(output,"%sTTL not reported\n", ttl_desc);
+    }
+    else if(ttl_num == 1){
+        fprintf(output,"%shops = %d (consistently)\n",ttl_desc,255-min_ttl);
+    }
+    else{
+        fprintf(output,"%shops takes %d values; min hops = %d, max hops = %d\n",
+                ttl_desc,ttl_num,255-max_ttl,255-min_ttl);
+    }
+}
+
 /*
  * Human-readable statistics summary
  */
@@ -1946,9 +2011,6 @@ OWPStatsPrintSummary(
 {
     long int        i;
     uint32_t        ui;
-    uint8_t    	    nttl=0;
-    uint8_t    	    minttl=255;
-    uint8_t    	    maxttl=0;
     char            n1val[80];
     double          d1;
     struct timespec sspec;
@@ -2073,26 +2135,9 @@ OWPStatsPrintSummary(
     /*
      * Report ttl's
      */
-    for(i=0;i<256;i++){
-        if(!stats->ttl_count[i])
-            continue;
-        nttl++;
-        if(i<minttl)
-            minttl = i;
-        if(i>maxttl)
-            maxttl = i;
-    }
-
-    if(nttl < 1){
-        fprintf(output,"TTL not reported\n");
-    }
-    else if(nttl == 1){
-        fprintf(output,"hops = %d (consistently)\n",255-minttl);
-    }
-    else{
-        fprintf(output,"hops takes %d values; min hops = %d, max hops = %d\n",
-                nttl,255-maxttl,255-minttl);
-    }
+    PrintTtlStats(stats,output,OWP_TTL);
+    if(stats->hdr->twoway)
+        PrintTtlStats(stats,output,TWP_BCK_TTL);
 
     /*
      * Report j-reordering
@@ -2166,6 +2211,87 @@ PrintMaxDelayMachine(
     }
 }
 
+static inline uint8_t
+PrintMinMaxTtlMachine(
+        OWPStats    stats,
+        FILE        *output,
+        OWPTtlType  type
+        )
+{
+    uint8_t     ttl_num;
+    uint8_t     min_ttl;
+    uint8_t     max_ttl;
+    char        *type_desc;
+
+    ttl_num = CalculateTtlStats(stats,type,&min_ttl,&max_ttl);
+
+    switch(type){
+        case OWP_TTL:
+            type_desc = stats->hdr->twoway ? "_FWD" : "";
+            break;
+        case TWP_BCK_TTL:
+            type_desc = "_BCK";
+            break;
+    }
+
+    fprintf(output,"MINTTL%s\t%u\n",type_desc,min_ttl);
+    fprintf(output,"MAXTTL%s\t%u\n",type_desc,max_ttl);
+
+    return ttl_num;
+}
+
+/* Print TTL count for one-way sessions */
+static void
+PrintTtlBucket(
+        OWPStats    stats,
+        FILE        *output,
+        uint16_t    bucket
+        )
+{
+    if(stats->ttl_count[OWP_TTL][bucket])
+        fprintf(output,"\t%u\t%lu\n",bucket,stats->ttl_count[OWP_TTL][bucket]);
+}
+
+/* Print TTL counts for two-way sessions */
+static void
+PrintTtlBucketTW(
+        OWPStats    stats,
+        FILE        *output,
+        uint16_t    bucket
+        )
+{
+    if(stats->ttl_count[TWP_FWD_TTL][bucket] ||
+       stats->ttl_count[TWP_BCK_TTL][bucket])
+        fprintf(output,"\t%u\t%lu\t%lu\n",bucket,
+                stats->ttl_count[TWP_FWD_TTL][bucket],
+                stats->ttl_count[TWP_BCK_TTL][bucket]);
+}
+
+static void
+PrintTtlStatsMachine(
+        OWPStats    stats,
+        FILE        *output
+        )
+{
+    uint16_t ttl_num;
+    uint16_t i;
+
+    ttl_num = PrintMinMaxTtlMachine(stats,output,OWP_TTL);
+    if(stats->hdr->twoway)
+        ttl_num += PrintMinMaxTtlMachine(stats,output,TWP_BCK_TTL);
+
+    if(ttl_num > 0){
+        fprintf(output,"<TTLBUCKETS>\n");
+        for(i=0;i<256;i++){
+            if(stats->hdr->twoway)
+                PrintTtlBucketTW(stats,output,i);
+            else
+                PrintTtlBucket(stats,output,i);
+        }
+        fprintf(output,"</TTLBUCKETS>\n");
+    }
+}
+
 /*
  * Program-readable statistics summary
  */
@@ -2178,12 +2304,8 @@ OWPStatsPrintMachine(
     /* Version 3.0 of stats output */
     float       version=3.0;
     char        sid_name[sizeof(OWPSID)*2+1];
-    uint32_t    i;
     long int    j;
     double      d1;
-    uint8_t     nttl=0;
-    uint8_t     minttl=255;
-    uint8_t     maxttl=0;
 
     I2HexEncode(sid_name,stats->hdr->sid,sizeof(OWPSID));
 
@@ -2300,28 +2422,7 @@ OWPStatsPrintMachine(
     /*
      * TTL histogram
      */
-    for(i=0;i<256;i++){
-        if(!stats->ttl_count[i])
-            continue;
-        nttl++;
-        if(i<minttl)
-            minttl = i;
-        if(i>maxttl)
-            maxttl = i;
-    }
-
-    if(nttl > 0){
-        fprintf(output,"MINTTL\t%u\n",minttl);
-        fprintf(output,"MAXTTL\t%u\n",maxttl);
-        fprintf(output,"<TTLBUCKETS>\n");
-        for(i=0;i<256;i++){
-            if(!stats->ttl_count[i])
-                continue;
-            fprintf(output,"\t%u\t%lu\n",i,stats->ttl_count[i]);
-        }
-        fprintf(output,"</TTLBUCKETS>\n");
-
-    }
+    PrintTtlStatsMachine(stats,output);
 
     fprintf(output,"\n");
 

@@ -1515,6 +1515,14 @@ typedef enum {
 #define OWP_DELAY_TYPE_NUM                 3
 #define OWP_DELAY_TYPE_NUM_INC_PROC        OWP_DELAY_TYPE_NUM + 1
 
+typedef enum {
+        TWP_FWD_TTL,
+        TWP_BCK_TTL,
+        OWP_TTL = TWP_FWD_TTL,
+} OWPTtlType;
+
+#define OWP_TTL_TYPE_NUM        2
+
 typedef struct OWPBucketRec OWPBucketRec, *OWPBucket;
 struct OWPBucketRec{
     OWPBucket   next;
@@ -1611,7 +1619,7 @@ typedef struct OWPStatsRec{
     /*
      * TTL info - histogram of received TTL values.
      */
-    unsigned long   ttl_count[256];
+    unsigned long   ttl_count[OWP_TTL_TYPE_NUM][256];
 
     /*
      * Reordering buffers
