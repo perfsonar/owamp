@@ -76,16 +76,16 @@ PacketFree(
     k.dptr = &node->seq;
     k.dsize = sizeof(node->seq);
 
-    if(I2HashDelete(stats->ptable,k) != 0){
+    if(I2HashDelete(stats->ptable[node->type],k) != 0){
         OWPError(stats->ctx,OWPErrWARNING,OWPErrUNKNOWN,
-                "PacketFree: Unable to remove seq #%lu from OWPPacket table",
-                node->seq);
+                "PacketFree: Unable to remove seq #%lu from OWPPacket table %u",
+                node->seq,node->type);
     }
 
     node->seq = 0;
     node->seen = 0;
-    node->next = stats->pfreelist;
-    stats->pfreelist = node;
+    node->next = stats->pfreelist[node->type];
+    stats->pfreelist[node->type] = node;
 
     return;
 }
@@ -139,20 +139,22 @@ PacketBufferClean(
  */
 static OWPPacket
 PacketAlloc(
-    OWPStats    stats,
-    uint32_t   seq
+    OWPStats        stats,
+    uint32_t        seq,
+    OWPPacketType   type
     )
 {
     OWPPacket   node;
     I2Datum     k,v;
 
-    if((seq > stats->last) || (stats->pend && (seq <= stats->pend->seq))){
+    if((type != TWP_BCK_PKTS && seq > stats->last) ||
+       (stats->pend[type] && (seq <= stats->pend[type]->seq))){
         OWPError(stats->ctx,OWPErrFATAL,OWPErrINVALID,
-                "PacketAlloc: Invalid seq number for OWPPacket buffer");
+                "PacketAlloc: Invalid seq number for OWPPacket buffer %u",type);
         return NULL;
     }
 
-    if(!stats->pfreelist){
+    if(!stats->pfreelist[type]){
         long int    i;
 
         /*
@@ -176,28 +178,29 @@ PacketAlloc(
             return NULL;
         }
 
-        node[0].next = stats->pallocated;
-        stats->pallocated = node;
+        node[0].next = stats->pallocated[type];
+        stats->pallocated[type] = node;
         for(i=1;i<stats->plistlen;i++){
-            node[i].next = stats->pfreelist;
-            stats->pfreelist = &node[i];
+            node[i].next = stats->pfreelist[type];
+            stats->pfreelist[type] = &node[i];
         }
     }
 
-    node = stats->pfreelist;
-    stats->pfreelist = stats->pfreelist->next;
+    node = stats->pfreelist[type];
+    stats->pfreelist[type] = stats->pfreelist[type]->next;
 
     node->next = NULL;
     node->seq = seq;
     node->seen = 0;
     node->lost = False;
+    node->type = type;
 
     k.dptr = &node->seq;
     k.dsize = sizeof(node->seq);
     v.dptr = node;
     v.dsize = sizeof(*node);
 
-    if(I2HashStore(stats->ptable,k,v) != 0){
+    if(I2HashStore(stats->ptable[type],k,v) != 0){
         return NULL;
     }
 
@@ -225,8 +228,9 @@ PacketAlloc(
  */
 static OWPPacket
 PacketGet(
-        OWPStats    stats,
-        uint32_t   seq
+        OWPStats        stats,
+        uint32_t        seq,
+        OWPPacketType   type
         )
 {
     OWPPacket   node;
@@ -235,40 +239,45 @@ PacketGet(
     /*
      * optimize for most frequent case.
      */
-    if(seq == stats->pend->seq){
-        return stats->pend;
+    if(seq == stats->pend[type]->seq){
+        return stats->pend[type];
     }
 
     /*
      * Ignore invalid seq num.
      */
-    if((seq < stats->first) || (seq > stats->last)){
+    if((seq < stats->first) || (type != TWP_BCK_PKTS && (seq > stats->last))){
+        OWPError(stats->ctx,OWPErrFATAL,OWPErrINVALID,
+                "Invalid type %u seq number request (out of range)",type);
         return NULL;
     }
 
     /*
      * Need to build the list from current "end" to this seq num.
      */
-    if(seq > stats->pend->seq){
-        node = stats->pend;
+    if(seq > stats->pend[type]->seq){
+        node = stats->pend[type];
 
         while(node->seq < seq){
             /* bug if context is not alligned with node allocation */
-            assert(node->seq+1 == stats->isctx);
+            assert(node->seq+1 == stats->isctx[type]);
 
-            /* update current schedule value */
-            stats->endnum = OWPNum64Add(stats->endnum,
-                    OWPScheduleContextGenerateNextDelta(stats->sctx));
-            stats->isctx++;
+            if(type != TWP_BCK_PKTS){
+                /* update current schedule value */
+                stats->endnum = OWPNum64Add(stats->endnum,
+                        OWPScheduleContextGenerateNextDelta(stats->sctx));
+
+            }
+            stats->isctx[type]++;
 
             /* allocate and initialize next packet record */
-            node->next = PacketAlloc(stats,node->seq+1);
+            node->next = PacketAlloc(stats,node->seq+1,type);
             node->next->schedtime = stats->endnum;
 
             node = node->next;
         }
 
-        stats->pend = node;
+        stats->pend[type] = node;
 
         return node;
     }
@@ -277,9 +286,9 @@ PacketGet(
      * Shouldn't be requesting this seq num... It should already
      * be loss_timeout in the past.
      */
-    if(seq < stats->pbegin->seq){
+    if(seq < stats->pbegin[type]->seq){
         OWPError(stats->ctx,OWPErrFATAL,OWPErrINVALID,
-                "Invalid seq number request");
+                "Invalid type %u seq number request",type);
         return NULL;
     }
 
@@ -290,9 +299,9 @@ PacketGet(
     k.dptr = &seq;
     k.dsize = sizeof(seq);
 
-    if(!I2HashFetch(stats->ptable,k,&v)){
+    if(!I2HashFetch(stats->ptable[type],k,&v)){
         OWPError(stats->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                "Unable to fetch seq (%lu) from packet hash",seq);
+                "Unable to fetch seq (%lu) from packet hash %u",seq,type);
         return NULL;
     }
 
@@ -561,6 +570,8 @@ OWPStatsFree(
         OWPStats    stats
         )
 {
+    uint8_t type;
+
     if(!stats)
         return;
 
@@ -589,15 +600,17 @@ OWPStatsFree(
         stats->ballocated = t;
     }
 
-    if(stats->ptable){
-        I2HashClose(stats->ptable);
-    }
-    while(stats->pallocated){
-        OWPPacket   t;
+    for(type=0;type<OWP_PKT_TYPE_NUM;type++){
+        if(stats->ptable[type]){
+            I2HashClose(stats->ptable[type]);
+        }
+        while(stats->pallocated[type]){
+            OWPPacket   t;
 
-        t = stats->pallocated->next;
-        free(stats->pallocated);
-        stats->pallocated = t;
+            t = stats->pallocated[type]->next;
+            free(stats->pallocated[type]);
+            stats->pallocated[type] = t;
+        }
     }
 
     if(stats->sctx){
@@ -654,6 +667,7 @@ OWPStatsCreate(
     char        *func = "OWPStatsCreate";
     OWPStats    stats=NULL;
     double      d;
+    uint8_t     type;
     long int    i;
     size_t      s;
 
@@ -783,7 +797,9 @@ OWPStatsCreate(
                 "OWPStatsCreate: Unable to create schedule context");
         goto error;
     }
-    stats->isctx = 0;
+    for(type=0;type<OWP_PKT_TYPE_NUM;type++){
+        stats->isctx[type] = 0;
+    }
     stats->endnum = stats->hdr->test_spec.start_time;
 
     /*
@@ -813,31 +829,33 @@ OWPStatsCreate(
     }
     stats->plistlen = MAX(stats->plistlen,10); /* never alloc less than 10 */
 
-    if( !(stats->pallocated = calloc(stats->plistlen,sizeof(OWPPacketRec)))){
-            OWPError(stats->ctx,OWPErrFATAL,errno,
-                    "%s: calloc(%lu,OWPPacketRec): %M",func,stats->plistlen);
+    for(type=0;type<OWP_PKT_TYPE_NUM;type++){
+        if( !(stats->pallocated[type] = calloc(stats->plistlen,sizeof(OWPPacketRec)))){
+                OWPError(stats->ctx,OWPErrFATAL,errno,
+                        "%s: calloc(%lu,OWPPacketRec): %M",func,stats->plistlen);
+                goto error;
+        }
+
+        /*
+         * Packet buffer hash table
+         */
+        if( !(stats->ptable[type] = I2HashInit(OWPContextErrHandle(stats->ctx),
+                        stats->plistlen,NULL,NULL))){
+            OWPError(stats->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                    "%s: Unable to allocate PacketRec hash");
             goto error;
-    }
+        }
 
-    /*
-     * Packet buffer hash table
-     */
-    if( !(stats->ptable = I2HashInit(OWPContextErrHandle(stats->ctx),
-                    stats->plistlen,NULL,NULL))){
-        OWPError(stats->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                "%s: Unable to allocate PacketRec hash");
-        goto error;
-    }
-
-    /*
-     * [0] is used to track the list of allocated arrays so they can
-     * be freed. (So, only index 1 and above from each array are actually
-     * used.)
-     * This loop takes each one of those nodes and puts them in the freelist.
-     */
-    for(i=1; i<stats->plistlen; i++){
-        stats->pallocated[i].next = stats->pfreelist;
-        stats->pfreelist = &stats->pallocated[i];
+        /*
+         * [0] is used to track the list of allocated arrays so they can
+         * be freed. (So, only index 1 and above from each array are actually
+         * used.)
+         * This loop takes each one of those nodes and puts them in the freelist.
+         */
+        for(i=1; i<stats->plistlen; i++){
+            stats->pallocated[type][i].next = stats->pfreelist[type];
+            stats->pfreelist[type] = &stats->pallocated[type][i];
+        }
     }
 
     /*
@@ -918,15 +936,16 @@ error:
 
 static OWPBoolean
 PacketBeginFlush(
-        OWPStats    stats
+        OWPStats        stats,
+        OWPPacketType   type
         )
 {
-    OWPPacket   node = stats->pbegin;
+    OWPPacket   node = stats->pbegin[type];
     OWPBoolean  keep_parsing = True;
 
     if(!node){
         OWPError(stats->ctx,OWPErrFATAL,EINVAL,
-                "PacketBeginFlush: begin node empty?");
+                "PacketBeginFlush: type %u begin node empty?",type);
         return False;
     }
 
@@ -954,10 +973,11 @@ PacketBeginFlush(
     if(node->lost){
         /* count lost packets */
         stats->lost++;
+        assert(type != TWP_BCK_PKTS);
     }
     else if(node->seen){
         /* count dups */
-        stats->dups += (node->seen - 1);
+        stats->dups[type] += (node->seen - 1);
     }
 
 flush:
@@ -966,10 +986,10 @@ flush:
     stats->end_time = node->schedtime;
 
     if(node->next){
-        stats->pbegin = node->next;
+        stats->pbegin[type] = node->next;
     }
     else if((node->seq+1) < stats->last){
-        stats->pbegin = PacketGet(stats,node->seq+1);
+        stats->pbegin[type] = PacketGet(stats,node->seq+1,type);
     }
     else{
         keep_parsing = False;
@@ -1026,8 +1046,8 @@ IterateSummarizeSession(
          * if current rec is lost, then all seq nums less than this one
          * can be flushed.
          */
-        while(stats->pbegin->seq < rec->seq_no){
-            if(!PacketBeginFlush(stats)) {
+        while(stats->pbegin[OWP_PKTS]->seq < rec->seq_no){
+            if(!PacketBeginFlush(stats,OWP_PKTS)){
                 OWPError(stats->ctx,OWPErrFATAL,EINVAL,
                          "IterateSummarizeSession: Unable to flush lost packets");
                 return -1;
@@ -1041,8 +1061,8 @@ IterateSummarizeSession(
         OWPNum64    thresh = OWPNum64Sub(rec->recv.owptime,
                 stats->hdr->test_spec.loss_timeout);
 
-        while(OWPNum64Cmp(stats->pbegin->schedtime,thresh) < 0){
-            if(!PacketBeginFlush(stats)) {
+        while(OWPNum64Cmp(stats->pbegin[OWP_PKTS]->schedtime,thresh) < 0){
+            if(!PacketBeginFlush(stats,OWP_PKTS)){
                 OWPError(stats->ctx,OWPErrFATAL,EINVAL,
                          "IterateSummarizeSession: Unable to flush packets");
                 return -1;
@@ -1053,7 +1073,7 @@ IterateSummarizeSession(
     /*
      * Fetch current packet record
      */
-    if( !(node = PacketGet(stats,rec->seq_no))){
+    if( !(node = PacketGet(stats,rec->seq_no,OWP_PKTS))){
         OWPError(stats->ctx,OWPErrFATAL,EINVAL,
                 "IterateSummarizeSession: Unable to fetch packet #%lu",
                 rec->seq_no);
@@ -1220,7 +1240,7 @@ IterateSummarizeTWSession(
         )
 {
     OWPStats    stats = cdata;
-    OWPPacket   node;
+    OWPPacket   node[OWP_PKT_TYPE_NUM];
     double      delay[OWP_DELAY_TYPE_NUM_INC_PROC];
     double      delay_err[OWP_DELAY_TYPE_NUM];
     double      derr;
@@ -1260,10 +1280,10 @@ IterateSummarizeTWSession(
          * if current rec is lost, then all seq nums less than this one
          * can be flushed.
          */
-        while(stats->pbegin->seq < rec->sent.seq_no){
-            if(!PacketBeginFlush(stats)) {
+        while(stats->pbegin[TWP_FWD_PKTS]->seq < rec->sent.seq_no){
+            if(!PacketBeginFlush(stats,TWP_FWD_PKTS)){
                 OWPError(stats->ctx,OWPErrFATAL,EINVAL,
-                         "IterateTWSummarizeSession: Unable to flush lost packets");
+                         "IterateTWSummarizeSession: Unable to flush lost send packets");
                 return -1;
             }
         }
@@ -1275,21 +1295,34 @@ IterateSummarizeTWSession(
         OWPNum64    thresh = OWPNum64Sub(rec->sent.send.owptime,
                 stats->hdr->test_spec.loss_timeout);
 
-        while(OWPNum64Cmp(stats->pbegin->schedtime,thresh) < 0){
-            if(!PacketBeginFlush(stats)) {
+        while(OWPNum64Cmp(stats->pbegin[TWP_FWD_PKTS]->schedtime,thresh) < 0){
+            if(!PacketBeginFlush(stats,TWP_FWD_PKTS)){
                 OWPError(stats->ctx,OWPErrFATAL,EINVAL,
-                         "IterateTWSummarizeSession: Unable to flush packets");
+                         "IterateTWSummarizeSession: Unable to flush send packets");
                 return -1;
             }
         }
     }
 
     /*
-     * Fetch current packet record
+     * Flush all reflect packets where the associated send packet has
+     * already been flushed. This ensures that the reflect packet buffer
+     * stays in sync with the send packet buffer.
      */
-    if( !(node = PacketGet(stats,rec->sent.seq_no))){
+    while(stats->pbegin[TWP_FWD_PKTS]->associated_seq > stats->pbegin[TWP_BCK_PKTS]->seq){
+        if(!PacketBeginFlush(stats,TWP_BCK_PKTS)){
+            OWPError(stats->ctx,OWPErrFATAL,EINVAL,
+                     "IterateTWSummarizeSession: Unable to flush reflect packets");
+            return -1;
+        }
+    }
+
+    /*
+     * Fetch current send packet record
+     */
+    if( !(node[TWP_FWD_PKTS] = PacketGet(stats,rec->sent.seq_no,TWP_FWD_PKTS))){
         OWPError(stats->ctx,OWPErrFATAL,EINVAL,
-                "IterateSummarizeTWSession: Unable to fetch packet #%lu",
+                "IterateSummarizeTWSession: Unable to fetch send packet #%lu",
                 rec->sent.seq_no);
         return -1;
     }
@@ -1298,12 +1331,21 @@ IterateSummarizeTWSession(
         /*
          * If this has been seen before, then we have a problem.
          */
-        if(node->seen){
+        if(node[TWP_FWD_PKTS]->seen){
             OWPError(stats->ctx,OWPErrFATAL,EINVAL,
                     "IterateSummarizeTWSession: Unexpected lost packet record");
             return -1;
         }
-        node->lost = True;
+
+        /*
+         * Only mark one node as lost otherwise the lost count is
+         * double what is expected.
+         *
+         * Also, the sequence number for a lost reflect record is 0
+         * which will conflict with the actual record with sequence
+         * number 0.
+         */
+        node[TWP_FWD_PKTS]->lost = True;
         stats->sent++;
 
         /* sync */
@@ -1329,16 +1371,64 @@ IterateSummarizeTWSession(
         /*
          * If this has already been declared lost, we have a problem.
          */
-        if(node->lost){
+        if(node[TWP_FWD_PKTS]->lost){
             OWPError(stats->ctx,OWPErrFATAL,EINVAL,
                     "IterateSummarizeTWSession: Unexpected duplicate packet record (for lost one)");
             return -1;
         }
 
-        if(!node->seen){
-            stats->sent++;
+        /* Get current reflect packet record */
+        if( !(node[TWP_BCK_PKTS] = PacketGet(stats,rec->reflected.seq_no,TWP_BCK_PKTS))){
+            OWPError(stats->ctx,OWPErrFATAL,EINVAL,
+                    "IterateSummarizeTWSession: Unable to fetch reflect packet #%lu",
+                    rec->reflected.seq_no);
+            return -1;
         }
-        node->seen++;
+
+        /*
+         * Store the send sequence number the first time we encounter
+         * this reflect sequence number so that we can ensure that the
+         * reflect sequence number is only ever associated with one
+         * send sequence number
+         */
+        if(!node[TWP_BCK_PKTS]->seen){
+            node[TWP_BCK_PKTS]->associated_seq = rec->sent.seq_no;
+        }
+        /*
+         * If this reflect sequence number has been seen before
+         * but associated with different send sequence numbers then
+         * there is a problem
+         */
+        else if(node[TWP_BCK_PKTS]->associated_seq != rec->sent.seq_no){
+            OWPError(stats->ctx,OWPErrFATAL,EINVAL,
+                    "IterateSummarizeTWSession: Reflect sequence number associated with multiple send sequence numbers");
+            return -1;
+        }
+        node[TWP_BCK_PKTS]->seen++;
+
+        /*
+         * Record a sent packet for each unseen forward packet.
+         * Store the reflect sequence number so that send duplicates
+         * can be differentiated from reflect duplicates
+         */
+        if(!node[TWP_FWD_PKTS]->seen){
+            stats->sent++;
+            node[TWP_FWD_PKTS]->seen++;
+            node[TWP_FWD_PKTS]->associated_seq = rec->reflected.seq_no;
+        }
+        /*
+         * The reflect sequence number of a send duplicate is different
+         * since it is reflected multiple times.
+         *
+         * If the reflect sequence number is different to that of the
+         * first record for this send sequence number and if this is
+         * the first time we have seen this reflect sequence number
+         * then this record represents a send duplicate
+         */
+        else if(node[TWP_FWD_PKTS]->associated_seq != rec->reflected.seq_no &&
+           node[TWP_BCK_PKTS]->seen == 1){
+            node[TWP_FWD_PKTS]->seen++;
+        }
     }
 
     /*
@@ -1436,7 +1526,7 @@ IterateSummarizeTWSession(
     /*
      * Delay and TTL stats not computed on duplicates
      */
-    if(node->seen > 1){
+    if(node[TWP_FWD_PKTS]->seen > 1 || node[TWP_BCK_PKTS]->seen > 1){
         return 0;
     }
 
@@ -1601,16 +1691,17 @@ OWPStatsParse(
      */
 
     /* Schedule information: advance sctx to appropriate value */
-    if( !first || (first < stats->isctx)){
+    if( !first || (first < stats->isctx[OWP_PKTS])){
         OWPScheduleContextReset(stats->sctx,NULL,NULL);
-        stats->isctx = 0;
+        stats->isctx[OWP_PKTS] = 0;
         stats->endnum = stats->hdr->test_spec.start_time;
     }
-    while(stats->isctx <= first){
+    while(stats->isctx[OWP_PKTS] <= first){
         stats->endnum = OWPNum64Add(stats->endnum,
                 OWPScheduleContextGenerateNextDelta(stats->sctx));
-        stats->isctx++;
+        stats->isctx[OWP_PKTS]++;
     }
+    stats->isctx[TWP_BCK_PKTS] = stats->isctx[OWP_PKTS];
     stats->start_time = stats->endnum;
 
     /*
@@ -1619,18 +1710,23 @@ OWPStatsParse(
      * initialize with first record needed.
      */
 
-    /* clean up */
-    I2HashIterate(stats->ptable,PacketBufferClean,stats);
+    for(type=0;type<OWP_PKT_TYPE_NUM;type++){
+        /* clean up */
+        I2HashIterate(stats->ptable[type],PacketBufferClean,stats);
 
-    /* alloc first node */
-    stats->pbegin = stats->pend = PacketAlloc(stats,first);
+        /* alloc first node */
+        stats->pbegin[type] = stats->pend[type] = PacketAlloc(stats,first,type);
 
-    /*
-     * update sctx/isctx to approprate place
-     */
+        /*
+         * update sctx/isctx to approprate place
+         */
 
-    /* initialize first node with appropriate sched time */
-    stats->pbegin->schedtime = stats->endnum;
+        /* initialize first node with appropriate sched time */
+        stats->pbegin[type]->schedtime = stats->endnum;
+
+        /* dups per packet type */
+        stats->dups[type] = 0;
+    }
 
     /*
      *
@@ -1673,8 +1769,8 @@ OWPStatsParse(
         stats->maxerr[i] = 0.0;
     }
 
-    /* dups/lost */
-    stats->dups = stats->lost = 0;
+    /* lost */
+    stats->lost = 0;
 
     /*
      * Iterate function to read all data
@@ -1703,7 +1799,9 @@ OWPStatsParse(
     /*
      * Process remaining buffered packet records
      */
-    while(stats->pbegin && PacketBeginFlush(stats));
+    for(type=0;type<OWP_PKT_TYPE_NUM;type++){
+        while(stats->pbegin[type] && PacketBeginFlush(stats,type));
+    }
 
     /*
      * Sort Delay histogram
@@ -2093,8 +2191,15 @@ OWPStatsPrintSummary(
     else{
         d1 = 0.0;
     }
-    fprintf(output,"%u sent, %u lost (%.3f%%), %u duplicates\n",
-            stats->sent,stats->lost,100.0*d1,stats->dups);
+    fprintf(output,"%u sent, %u lost (%.3f%%), ",
+                    stats->sent,stats->lost,100.0*d1);
+    if(stats->hdr->twoway){
+        fprintf(output,"%u send duplicates, %u reflect duplicates\n",
+                stats->dups[TWP_FWD_PKTS],stats->dups[TWP_BCK_PKTS]);
+    }
+    else{
+        fprintf(output,"%u duplicates\n",stats->dups[OWP_PKTS]);
+    }
 
     PrintDelayStats(stats,output,OWP_DELAY);
     if(stats->hdr->twoway){
@@ -2359,8 +2464,13 @@ OWPStatsPrintMachine(
     if(stats->hdr->twoway){
         fprintf(output,"MAXERR_FWD\t%g\n",stats->maxerr[TWP_FWD_DELAY]);
         fprintf(output,"MAXERR_BCK\t%g\n",stats->maxerr[TWP_BCK_DELAY]);
+
+        fprintf(output,"DUPS_FWD\t%u\n",stats->dups[TWP_FWD_PKTS]);
+        fprintf(output,"DUPS_BCK\t%u\n",stats->dups[TWP_BCK_PKTS]);
     }
-    fprintf(output,"DUPS\t%u\n",stats->dups);
+    else{
+        fprintf(output,"DUPS\t%u\n",stats->dups[OWP_PKTS]);
+    }
     fprintf(output,"LOST\t%u\n",stats->lost);
 
     /* Min delay */

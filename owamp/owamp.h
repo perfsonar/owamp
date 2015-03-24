@@ -1489,6 +1489,15 @@ OWPParsePortRange (
         char    *pspec,
         OWPPortRangeRec   *portspec
         );
+
+typedef enum {
+        TWP_FWD_PKTS,
+        TWP_BCK_PKTS,
+        OWP_PKTS = TWP_FWD_PKTS,
+} OWPPacketType;
+
+#define OWP_PKT_TYPE_NUM        2
+
 /*
  * TODO: This needs lots of clean-up to be a good public interface.
  * Most of these fields do not really need to be exposed.
@@ -1498,11 +1507,15 @@ OWPParsePortRange (
  */
 typedef struct OWPPacketRec OWPPacketRec, *OWPPacket;
 struct OWPPacketRec{
-    OWPPacket   next;
-    uint32_t    seq;        /* packet seq no */
-    OWPNum64    schedtime;  /* scheduled send time */
-    uint32_t    seen;       /* how many times seen? */
-    OWPBoolean  lost;
+    OWPPacket     next;
+    uint32_t      seq;        /* packet seq no */
+    OWPNum64      schedtime;  /* scheduled send time */
+    uint32_t      seen;       /* how many times seen? */
+    OWPBoolean    lost;
+
+    /* Other direction sequence number (for two way sessions) */
+    uint32_t      associated_seq;
+    OWPPacketType type;
 };
 
 typedef enum {
@@ -1572,7 +1585,7 @@ typedef struct OWPStatsRec{
      * TestSession information
      */
     OWPScheduleContext  sctx;
-    uint32_t            isctx;      /* index for next seq_no */
+    uint32_t            isctx[OWP_PKT_TYPE_NUM]; /* index for next seq_no */
     OWPNum64            endnum;     /* current sched time for (isctx-1) */
 
     OWPNum64            start_time; /* send time for first scheduled packet */
@@ -1596,12 +1609,12 @@ typedef struct OWPStatsRec{
     /*
      * Packet records (used to count dups/lost)
      */
-    I2Table         ptable;
+    I2Table         ptable[OWP_PKT_TYPE_NUM];
     long int        plistlen;
-    OWPPacket       pallocated;
-    OWPPacket       pfreelist;
-    OWPPacket       pbegin;
-    OWPPacket       pend;
+    OWPPacket       pallocated[OWP_PKT_TYPE_NUM];
+    OWPPacket       pfreelist[OWP_PKT_TYPE_NUM];
+    OWPPacket       pbegin[OWP_PKT_TYPE_NUM];
+    OWPPacket       pend[OWP_PKT_TYPE_NUM];
 
     /*
      * Delay histogram
@@ -1640,7 +1653,7 @@ typedef struct OWPStatsRec{
     OWPBoolean      sync;
     double          maxerr[OWP_DELAY_TYPE_NUM];    /* [total][fwd][bck] */
 
-    uint32_t       dups;
+    uint32_t       dups[OWP_PKT_TYPE_NUM];
     uint32_t       lost;
 
 } OWPStatsRec, *OWPStats;
