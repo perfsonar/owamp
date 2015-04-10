@@ -192,12 +192,12 @@ else
     # LDFLAGS/CFLAGS - but ultimately, AC_SEARCH_LIBS and AC_CHECK_HEADERS
     # must succeed.
     if test -n "$with_I2util" -a -d "$with_I2util"; then
-        I2util_dir=`dirname $with_I2util`
+        I2util_dir="$with_I2util"
         case $I2util_dir in
             /*) ;; # already an absolute path
             *) I2util_dir="`pwd`/$I2util_dir" ;;
         esac
-        LDFLAGS="-L$with_I2util/lib $LDFLAGS"
+        LDFLAGS="-L$I2util_dir/lib -L$I2util_dir/lib64 $LDFLAGS"
         CFLAGS="-I$I2util_dir/include $CFLAGS"
     fi
     AC_SEARCH_LIBS([I2AddrByNode],I2util, ,AC_MSG_ERROR([Couldn't find I2util library]))
