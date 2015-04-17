@@ -33,6 +33,7 @@
 #include <netinet/in.h>
 #include <string.h>
 #include <assert.h>
+#include <ctype.h>
 
 /*
  * Function:        _OWPClientBind
@@ -61,7 +62,6 @@ _OWPClientBind(
         OWPErrSeverity  *err_ret
         )
 {
-    struct addrinfo *fai;
     struct addrinfo *ai;
     OWPBoolean      retval = False;
 
@@ -257,11 +257,13 @@ _OWPClientConnect(
     int             rc;
     struct addrinfo *fai=NULL;
     struct addrinfo *ai=NULL;
+#ifdef NOT
     char            nodename[NI_MAXHOST];
     size_t          nodename_len = sizeof(nodename);
     char            servname[NI_MAXSERV];
     size_t          servname_len = sizeof(servname);
     char            *node,*serv;
+#endif
 
     if(!server_addr)
         goto error;

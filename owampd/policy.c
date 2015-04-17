@@ -135,7 +135,8 @@ static struct limdesc        limkeys[] = {
 {OWPDLimBandwidth,      "bandwidth",        LIMINTVAL,  1,  0},
 {OWPDLimDisk,           "disk",             LIMINTVAL,  0,  0},
 {OWPDLimDeleteOnFetch,  "delete_on_fetch",  LIMBOOLVAL, 0,  0},
-{OWPDLimAllowOpenMode,  "allow_open_mode",  LIMBOOLVAL, 0,  1}
+{OWPDLimAllowOpenMode,  "allow_open_mode",  LIMBOOLVAL, 0,  1},
+{OWPDLimTestSessions,   "test_sessions",    LIMINTVAL,  0,  0},
 };
 
 static OWPDLimitT
@@ -2307,6 +2308,7 @@ OWPDCheckTestPolicy(
     OWPDPolicyNode  node;
     OWPDInfoTest    tinfo;
     OWPDMesgT       ret;
+    static const OWPDLimRec one_session = {OWPDLimTestSessions,1};
 
     *err_ret = OWPErrOK;
 
@@ -2332,6 +2334,13 @@ OWPDCheckTestPolicy(
     tinfo->node = node;
 
     /*
+     * Stored in control session process, so query locally.
+     */
+    if(!OWPDResourceDemand(node,OWPDMESGREQUEST,one_session)) {
+        goto done;
+    }
+
+    /*
      * Check bandwidth
      */
     tinfo->res[0].limit = OWPDLimBandwidth;
@@ -2339,6 +2348,7 @@ OWPDCheckTestPolicy(
             remote_sa_addr->sa_family,OWPGetMode(cntrl),test_spec);
     if((ret = OWPDQuery(node->policy,OWPDMESGREQUEST,tinfo->res[0]))
             == OWPDMESGDENIED){
+        OWPDResourceDemand(node,OWPDMESGRELEASE,one_session);
         goto done;
     }
     if(ret == OWPDMESGINVALID){
@@ -2360,6 +2370,7 @@ OWPDCheckTestPolicy(
 
         if((ret = OWPDQuery(node->policy,OWPDMESGREQUEST,tinfo->res[1]))
                 == OWPDMESGDENIED){
+            OWPDResourceDemand(node,OWPDMESGRELEASE,one_session);
             OWPDQuery(node->policy,OWPDMESGRELEASE,tinfo->res[0]);
             goto done;
         }
@@ -2857,7 +2868,7 @@ OWPDCloseFile(
      * otherwise - this is a fetch-session target file.
      */
     else if(rinfo->itype == OWPDINFO_FETCH){
-        xinfo = &rinfo->test;
+        xinfo = &rinfo->fetch;
         finfo = xinfo->finfo;
         xinfo->finfo = NULL;
 

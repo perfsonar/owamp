@@ -55,6 +55,7 @@ typedef struct {
     uint32_t        dieby;
     uint32_t        controltimeout;
     uint32_t        pbkdf2_count;
+    uint32_t        maxcontrolsessions;
 #ifndef        NDEBUG
     void            *childwait;
 #endif

@@ -29,7 +29,7 @@
 # Process this file with autoconf to produce a configure script.
 AC_INIT(owamp, 3.4.10, owamp-bugs@internet2.edu)
 AC_CONFIG_AUX_DIR(config)
-AM_INIT_AUTOMAKE(owamp, 3.4.10, [no-define])
+AM_INIT_AUTOMAKE([no-define foreign])
 AC_CONFIG_SRCDIR(owamp/context.c)
 AM_CONFIG_HEADER(owamp/config.h)
 

@@ -29,6 +29,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include <sys/resource.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <sys/socket.h>
@@ -40,6 +41,7 @@
 #include <pwd.h>
 #include <grp.h>
 #include <syslog.h>
+#include <poll.h>
 
 #include "owampdP.h"
 #include "policy.h"
@@ -58,6 +60,7 @@ static I2ErrHandle          errhand=NULL;
 static I2Table              fdtable=NULL;
 static I2Table              pidtable=NULL;
 static OWPNum64             uptime;
+static uint32_t             control_sessions = 0;
 
 #if defined HAVE_DECL_OPTRESET && !HAVE_DECL_OPTRESET
 int optreset;
@@ -196,23 +199,67 @@ AllocChldState(
         return NULL;
     }
 
+    control_sessions++;
+
     return cstate;
 }
 
 static void
 FreeChldState(
         ChldState   cstate,
-        fd_set      *readfds
+        struct pollfd **fds,
+        nfds_t      *nfds
         )
 {
     I2Datum k;
+    nfds_t i;
+    struct pollfd *newfds;
 
     k.dptr = NULL;
 
     if(cstate->fd >= 0){
 
         while((close(cstate->fd) < 0) && (errno == EINTR));
-        FD_CLR(cstate->fd, readfds);
+
+        /*
+         * Find index of pollfd element
+         */
+        for (i = 0; i < *nfds; i++) {
+            if (cstate->fd == (*fds)[i].fd) {
+                break;
+            }
+        }
+        if (i == *nfds) {
+            OWPError(cstate->policy->ctx,OWPErrWARNING,
+                    OWPErrUNKNOWN,
+                    "fd(%d) not in poll fds!?!",cstate->fd);
+            return;
+        }
+        /*
+         * Remove the element from the array
+         */
+        if (i < *nfds - 1) {
+            memmove(&(*fds)[i], &(*fds)[i + 1], (*nfds - 1 - i) * sizeof(**fds));
+        }
+
+        if (*nfds - 1 == 0) {
+            free(*fds);
+            newfds = NULL;
+        } else {
+            /*
+             * Ensure that we don't leak memory by overwriting *fds on
+             * failure
+             */
+            newfds = realloc(*fds, (*nfds - 1) * sizeof(**fds));
+            if (!newfds) {
+                OWPError(cstate->policy->ctx,OWPErrWARNING,
+                         OWPErrUNKNOWN,
+                         "unable to realloc poll fds: %M");
+                return;
+            }
+        }
+        *fds = newfds;
+        (*nfds)--;
 
         k.dsize = cstate->fd;
         if(I2HashDelete(fdtable,k) != 0){
@@ -231,7 +278,7 @@ FreeChldState(
     /*
      * TODO: Release bandwidth resources here if there are any left.
      */
-
+    control_sessions--;
 
     /*
      * TODO: If exit was not normal... Should we be looking at
@@ -245,8 +292,8 @@ FreeChldState(
 
 static void
 ReapChildren(
-        int     *maxfd,
-        fd_set  *readfds
+        struct pollfd **fds,
+        nfds_t      *nfds
         )
 {
     int         status;
@@ -268,13 +315,7 @@ ReapChildren(
         }
         cstate = val.dptr;
 
-        /*
-         * Let main loop know maxfd needs to be recomputed.
-         */
-        if(cstate->fd == *maxfd)
-            *maxfd = -1;
-
-        FreeChldState(cstate,readfds);
+        FreeChldState(cstate,fds,nfds);
     }
 
 
@@ -282,10 +323,9 @@ ReapChildren(
 }
 
 struct CleanPipeArgRec{
-    int     *maxfd;
-    fd_set  *avail;
-    fd_set  *readfds;
-    int     nready;
+    struct pollfd *fds;
+    nfds_t        nfds;
+    int           nready;
 };
 
 static I2Boolean
@@ -298,12 +338,20 @@ CheckFD(
     struct CleanPipeArgRec  *arg = (struct CleanPipeArgRec *)app_data;
     ChldState               cstate = fdval.dptr;
     int                     err=1;
+    nfds_t                  i;
 
     /*
      * If this fd is not ready, return.
      */
-    if(!FD_ISSET(cstate->fd,arg->avail))
+    for (i = 0; i < arg->nfds; i++) {
+        if (arg->fds[i].fd == cstate->fd) {
+            break;
+        }
+    }
+    if (i == arg->nfds || !(arg->fds[i].revents & POLLIN))
         return True;
+
+    arg->fds[i].revents = 0;
 
     /*
      * This fd needs processing - reduce the "ready" count.
@@ -355,21 +403,18 @@ done:
 /*
  * avail contains the fd_set of fd's that are currently readable, readfds is
  * the set of all fd's that the server needs to pay attention to.
- * maxfd is the largest of those.
  */
 static void
 CleanPipes(
-        fd_set  *avail,
-        int     *maxfd,
-        fd_set  *readfds,
+        struct pollfd *fds,
+        nfds_t      nfds,
         int     nready
         )
 {
     struct CleanPipeArgRec  cpargs;
 
-    cpargs.avail = avail;
-    cpargs.maxfd = maxfd;
-    cpargs.readfds = readfds;
+    cpargs.fds = fds;
+    cpargs.nfds = nfds;
     cpargs.nready = nready;
 
     I2HashIterate(fdtable,CheckFD,&cpargs);
@@ -422,8 +467,8 @@ static void
 NewConnection(
         OWPDPolicy  policy,
         I2Addr      listenaddr,
-        int         *maxfd,
-        fd_set      *readfds
+        struct pollfd **fds,
+        nfds_t      *nfds
         )
 {
     int                     connfd;
@@ -437,6 +482,7 @@ NewConnection(
     OWPErrSeverity          out;
     struct itimerval        itval;
     OWPRequestType          msgtype=OWPReqInvalid;
+    struct pollfd           *newfds;
 
 ACCEPT:
     sbufflen = sizeof(sbuff);
@@ -456,7 +502,7 @@ ACCEPT:
                  * accept since it could make more free
                  * connections.
                  */
-                ReapChildren(maxfd,readfds);
+                ReapChildren(fds,nfds);
                 goto ACCEPT;
                 break;
             case ECONNABORTED:
@@ -467,6 +513,26 @@ ACCEPT:
                         "accept(): %M");
                 return;
                 break;
+        }
+    }
+
+    if (opts.maxcontrolsessions &&
+        (control_sessions + 1 > opts.maxcontrolsessions)) {
+        /*
+         * Go ahead and reap before declaring this to have exceeded
+         * the max control sessions since it could make more free
+         * connections.
+         */
+        ReapChildren(fds,nfds);
+        if (control_sessions + 1 > opts.maxcontrolsessions) {
+            OWPError(policy->ctx,OWPErrWARNING,OWPErrPOLICY,
+                     "Resource usage exceeds limits %s "
+                     "(used = %" PRIu32 ", limit = %" PRIu32 ")",
+                     "maxcontrolsessions",
+                     control_sessions,opts.maxcontrolsessions);
+            OWPError(policy->ctx,OWPErrFATAL,OWPErrUNKNOWN,"socketpair(): %M");
+            (void)close(connfd);
+            return;
         }
     }
 
@@ -505,9 +571,25 @@ ACCEPT:
             return;
         }
 
-        FD_SET(chld->fd, readfds);
-        if((*maxfd > -1) && (chld->fd > *maxfd))
-            *maxfd = chld->fd;
+        /*
+         * Ensure that we don't leak memory by overwriting *fds on
+         * failure
+         */
+        newfds = realloc(*fds, (*nfds + 1) * sizeof(**fds));
+        if (!newfds) {
+            OWPError(policy->ctx,OWPErrWARNING,
+                    OWPErrUNKNOWN,
+                    "unable to realloc poll fds: %M");
+            return;
+        }
+        /*
+         * Add new element to end of newly (re-)allocated array
+         */
+        newfds[*nfds].fd = chld->fd;
+        newfds[*nfds].events = POLLIN;
+        newfds[*nfds].revents = 0;
+        *fds = newfds;
+        (*nfds)++;
 
         return;
     }
@@ -746,22 +828,6 @@ inthash(
        )
 {
     return (uint32_t)key.dsize;
-}
-
-static I2Boolean
-FindMaxFD(
-        I2Datum key,
-        I2Datum value       __attribute__((unused)),
-        void    *app_data
-        )
-{
-    int *maxfd = (int *)app_data;
-
-    if((*maxfd < 0) || ((int)key.dsize > *maxfd)){
-        *maxfd = (int)key.dsize;
-    }
-
-    return True;
 }
 
 static I2Boolean
@@ -1049,6 +1115,21 @@ LoadConfig(
                 break;
             }
         }
+        else if(!strncasecmp(key,"maxcontrolsessions",
+                             strlen("maxcontrolsessions"))){
+            char            *end=NULL;
+            uint32_t        tlng;
+
+            errno = 0;
+            tlng = strtoul(val,&end,10);
+            if((end == val) || (errno == ERANGE)){
+                fprintf(stderr,"strtoul(): %s\n",
+                        strerror(errno));
+                rc=-rc;
+                break;
+            }
+            opts.maxcontrolsessions = tlng;
+        }
         else{
             fprintf(stderr,"Unknown key=%s\n",key);
             rc = -rc;
@@ -1075,8 +1156,8 @@ int main(
     char                pid_file[MAXPATHLEN],
                         info_file[MAXPATHLEN];
 
-    fd_set              readfds;
-    int                 maxfd;    /* max fd in readfds */
+    struct pollfd       *fds;
+    nfds_t              nfds;
     OWPContext          ctx;
     OWPDPolicy          policy;
     I2Addr              listenaddr = NULL;
@@ -1129,6 +1210,7 @@ int main(
     opts.dieby = 5;
     opts.controltimeout = 1800;
     opts.portspec = NULL;
+    opts.maxcontrolsessions = 0;
 
     if(!getcwd(opts.cwd,sizeof(opts.cwd))){
         perror("getcwd()");
@@ -1371,6 +1453,28 @@ int main(
     lbuf = NULL;
     lbuf_max = 0;
 
+    if (opts.maxcontrolsessions) {
+        struct rlimit rlim;
+        rc = getrlimit(RLIMIT_NOFILE, &rlim);
+        if (rc < 0) {
+            I2ErrLog(errhand,"getrlimit(): %M");
+        } else {
+            /*
+             * We don't know how many files the libraries that we link
+             * to will use, so use double the max sessions as a crude
+             * estimate.
+             */
+            if (rlim.rlim_cur < (opts.maxcontrolsessions*2) &&
+                rlim.rlim_cur != rlim.rlim_max) {
+                rlim.rlim_cur = (opts.maxcontrolsessions*2);
+                rc = setrlimit(RLIMIT_NOFILE, &rlim);
+                if (rc < 0) {
+                    I2ErrLog(errhand,"setrlimit(): %M");
+                }
+            }
+        }
+
+    }
     /*
      * If running as root warn if the -U/-G flags not set.
      */
@@ -1674,25 +1778,24 @@ int main(
     }
 
     listenfd = I2AddrFD(listenaddr);
-    FD_ZERO(&readfds);
-    FD_SET(listenfd,&readfds);
-    maxfd = listenfd;
+    nfds = 1;
+    fds = malloc(sizeof(*fds));
+    if (!fds) {
+        I2ErrLog(errhand,"unable to allocate memory: %M");
+        exit(1);
+    }
+    fds[0].fd = listenfd;
+    fds[0].events = POLLIN;
+    fds[0].revents = 0;
 
     while (1) {
         int     nfound;
-        fd_set  ready;
-
-        if(maxfd < 0){
-            I2HashIterate(fdtable,FindMaxFD,&maxfd);
-            maxfd = MAX(maxfd,listenfd);
-        }
-        ready = readfds;
 
         if(owpd_exit){
             break;
         }
 
-        nfound = select(maxfd+1,&ready,NULL,NULL,NULL);
+        nfound = poll(fds,nfds,-1);
 
         /*
          * Handle select interupts/errors.
@@ -1702,7 +1805,7 @@ int main(
                 if(owpd_exit){
                     break;
                 }
-                ReapChildren(&maxfd,&readfds);
+                ReapChildren(&fds,&nfds);
                 continue;
             }
             OWPError(ctx,OWPErrFATAL,errno,"select(): %M");
@@ -1715,28 +1818,28 @@ int main(
         if(nfound == 0)
             continue;
 
-        if(FD_ISSET(listenfd, &ready)){ /* new connection */
-            NewConnection(policy,listenaddr,&maxfd,&readfds);
+        if(fds[0].revents & POLLIN){ /* new connection */
+            NewConnection(policy,listenaddr,&fds,&nfds);
+            fds[0].revents = 0;
         }
         else{
-            CleanPipes(&ready,&maxfd,&readfds,nfound);
+            CleanPipes(fds,nfds,nfound);
         }
 
         if(owpd_exit){
             break;
         }
 
-        ReapChildren(&maxfd,&readfds);
+        ReapChildren(&fds,&nfds);
     }
 
     I2ErrLog(errhand,"%s: exiting...",progname);
     /*
-     * Close the server socket. reset the readfds/maxfd so they
-     * can't confuse later ReapChildren calls.
+     * Close the server socket. set poll slot fd to -1 so that it
+     * won't confuse later ReapChildren calls.
      */
     I2AddrFree(listenaddr);
-    FD_ZERO(&readfds);
-    maxfd = -1;
+    fds[0].fd = -1;
 
     /*
      * Signal the process group to exit.
@@ -1765,7 +1868,7 @@ int main(
         if(!owpd_chld){
             (void)sigsuspend(&sigs);
         }
-        ReapChildren(&maxfd,&readfds);
+        ReapChildren(&fds,&nfds);
     }
 
     /*

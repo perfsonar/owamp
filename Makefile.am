@@ -18,6 +18,7 @@
 #
 #	Description:	toplevel build for owamp project
 #
+ACLOCAL_AMFLAGS = -I config
 SUBDIRS = @TOP_BUILD_DIRS@ owamp owampd owping conf powstream test doc
 #SUBDIRS = owamp owampd owping owdigest conf powstream scripts
 

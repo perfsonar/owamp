@@ -179,6 +179,15 @@ Directs the \fBowampd\fR process to report source code file and line
 number information with error messages. This is a particularly useful
 option to set when sending in messages as part of a bug report.
 .TP
+.BI maxcontrolsessions " sessions"
+Specifies the maximum number of control sessions that can be
+active concurrently. Further connections will be closed until the
+limit is no longer exceeded.
+.RS
+.IP Default:
+0 - unlimited
+.RE
+.TP
 .BI pbkdf2_count " count"
 This indicates the count parameter for the pseudo-random key derivation
 function that is used to derive the session key from the long term

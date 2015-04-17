@@ -1236,7 +1236,6 @@ fetch_clean:
 	p->fetch = NULL;
     }
 
-error_out:
     return -1;
 }
 
