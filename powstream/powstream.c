@@ -1293,7 +1293,7 @@ main(
     appctx.opt.meanWait = 0.1;
     appctx.opt.bucketWidth = 0.0001; /* 100 usecs */
     appctx.opt.port_range.low  = 8760;
-    appctx.opt.port_range.high = 8960;
+    appctx.opt.port_range.high = 9960;
 
     /*
      * Fix getopt if the brain-dead GNU version is being used.
