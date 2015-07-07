@@ -142,6 +142,7 @@ print_output_args()
 "   -p             print filenames to stdout\n"
 "   -R             Only send messages to syslog (not STDERR)\n"
 "   -v             include more verbose output\n"
+"   -U             Adds UNIX timestamps to summary results"
            );
 }
 
@@ -712,6 +713,10 @@ skip_data:
         I2ErrLog(eh,"OWPStatsCreate failed");
         goto skip_sum;
     }
+    
+    /* Set the timestamp flag here */
+    if (appctx.opt.display_unix_ts == True)
+        stats->display_unix_ts = True;
 
     /*
      * Parse the data and compute the statistics
@@ -1259,7 +1264,7 @@ main(
     char                optstring[128];
     static char         *conn_opts = "46A:k:S:u:I:";
     static char         *test_opts = "c:E:i:L:s:tz:P:";
-    static char         *out_opts = "b:d:e:N:pRv";
+    static char         *out_opts = "b:d:e:N:pRvU";
     static char         *gen_opts = "hw";
     static char         *posixly_correct="POSIXLY_CORRECT=True";
 
@@ -1480,6 +1485,9 @@ main(
                 break;
             case 'p':
                 appctx.opt.printfiles = True;
+                break;
+            case 'U':
+                appctx.opt.display_unix_ts = True;
                 break;
             /* undocumented debug options */
 #ifndef        NDEBUG
@@ -2042,6 +2050,10 @@ AGAIN:
                     break;
                 }
             }
+            
+            /* Set the timestamp flag here */
+            if (appctx.opt.display_unix_ts == True)
+                stats->display_unix_ts = True;
 
             /*
              * Parse the data and compute the statistics

@@ -82,6 +82,7 @@ typedef        struct {
 
         char        *savedir;           /* -d */
         I2Boolean   printfiles;         /* -p */
+        I2Boolean   display_unix_ts;    /* -U */
         int         facility;           /* -e */
                                         /* -r stderr too */
         int         verbose;            /* -v verbose */
