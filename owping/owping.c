@@ -1174,7 +1174,7 @@ main(
     ping_ctx.opt.portspec = &ping_ctx.portrec;
 
     ping_ctx.opt.portspec->low  = 8760;
-    ping_ctx.opt.portspec->high = 8960;
+    ping_ctx.opt.portspec->high = 9960;
 
     /* Create options strings for this program. */
     if (!strcmp(progname, "owping")) {
