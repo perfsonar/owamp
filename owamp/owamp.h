@@ -471,7 +471,7 @@ OWPError_(
         const char      *fmt,
         ...
         );
-
+        
 /*
  * The "context"  is used to basically initialize the library. There is no
  * "global" state - so you can create more than one "context" if you like.
@@ -709,6 +709,11 @@ typedef void (*OWPCloseFileFunc)(
  */
 #define OWPIPv6Only "OWPIPv6Only"
 
+extern int
+OWPReportLevelByName(
+        const char      *name
+        );
+        
 extern OWPContext
 OWPContextCreate(
         I2ErrHandle eh

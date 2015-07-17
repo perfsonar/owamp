@@ -50,3 +50,30 @@ OWPError_(
 
     return;
 }
+
+int
+OWPReportLevelByName(
+        const char      *name
+        )
+{
+    if(!strncasecmp(name,"fatal",6)){
+        return (int) OWPErrFATAL;
+    }
+    else if(!strncasecmp(name,"warning",8)){
+        return (int) OWPErrWARNING;
+    }
+    else if(!strncasecmp(name,"info",5)){
+        return (int) OWPErrINFO;
+    }
+    else if(!strncasecmp(name,"debug",6)){
+        return (int) OWPErrDEBUG;
+    }
+    else if(!strncasecmp(name,"all",4)){
+        return (int) OWPErrOK;
+    }
+    else if(!strncasecmp(name,"none",5)){
+        return 0;
+    }
+    
+    return -1;
+}

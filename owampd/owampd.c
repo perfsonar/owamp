@@ -961,6 +961,17 @@ LoadConfig(
             }
             syslogattr.facility = fac;
         }
+        else if(!strncasecmp(key,"loglevel",9)){
+            int report_level = OWPReportLevelByName(val);
+            if(report_level == -1){
+                     fprintf(stderr,
+                            "Log level \"%s\" invalid\n",
+                            val);
+                    rc = -rc;
+                    break;
+            }
+            syslogattr.report_level = report_level;
+        }
         else if(!strncasecmp(key,"loglocation",12)){
             syslogattr.line_info |= I2FILE|I2LINE;
         }
@@ -1197,7 +1208,8 @@ int main(
     syslogattr.facility = LOG_DAEMON;
     syslogattr.priority = LOG_ERR;
     syslogattr.line_info = I2MSG;
-
+    syslogattr.report_level = OWPErrINFO;
+    
     /* Set up options defaults */
     opts.verbose = False;
     opts.passwd = "passwd.conf";
