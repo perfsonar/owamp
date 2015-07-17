@@ -1806,10 +1806,9 @@ OWPDResourceDemand(
     ret = IntegerResourceDemand(node,query,lim);
 
     /*
-     * These messages are printed to INFO so they can be selected
-     * as non-interesting.
+     * These messages are printed to DEBUG if allowed and FATAL if denied
      */
-    OWPError(node->policy->ctx,OWPErrDEBUG,OWPErrPOLICY,
+    OWPError(node->policy->ctx,(ret)?OWPErrDEBUG:OWPErrFATAL,OWPErrPOLICY,
             "ResReq %s: %s:%s:%s = %" PRIu64 " (result = %" PRIu64
             ", limit = %" PRIu64 ")",
             (ret)?"ALLOWED":"DENIED",
@@ -1820,7 +1819,7 @@ OWPDResourceDemand(
             GetUsed(node,lim.limit),
             GetLimit(node,lim.limit));
     for(node = node->parent;!ret && node;node = node->parent){
-        OWPError(node->policy->ctx,OWPErrDEBUG,OWPErrPOLICY,
+        OWPError(node->policy->ctx,(ret)?OWPErrDEBUG:OWPErrFATAL,OWPErrPOLICY,
                 "ResReq %s: %s:%s:%s = %" PRIu64
                 " (result = %" PRIu64 ", limit = %" PRIu64")",
                 (ret)?"ALLOWED":"DENIED",
