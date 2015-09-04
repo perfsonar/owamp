@@ -67,8 +67,11 @@ do
 	    ERROR=4
 	fi
 	;;
-    restart)
-    	$0 stop; echo "waiting..."; sleep 10; $0 start;
+	status)
+		echo $STATUS
+	;;
+	restart)
+		$0 stop; echo "waiting..."; sleep 10; $0 start;
 	;;
 #	if [ $RUNNING -eq 0 ]; then
 #	    echo "$0 $ARG: owampd not running, trying to start"
@@ -95,6 +98,7 @@ start      - start owampd
 stop       - stop owampd
 restart    - restart owampd if running by sending a SIGHUP or start if 
              not running
+status     - report if owampd is running
 help       - this screen
 
 EOF

@@ -138,10 +138,12 @@ print_output_args()
 "   -b bucketWidth create summary files with buckets(seconds)\n"
 "   -d dir         directory to save session file in\n"
 "   -e facility    syslog facility to log to\n"
+"   -g loglevel    severity log messages to report to syslog Valid values: NONE, FATAL, WARN, INFO, DEBUG, ALL\n"
 "   -N count       number of test packets (per sub-session)\n"
 "   -p             print filenames to stdout\n"
 "   -R             Only send messages to syslog (not STDERR)\n"
 "   -v             include more verbose output\n"
+"   -U             Adds UNIX timestamps to summary results"
            );
 }
 
@@ -712,6 +714,10 @@ skip_data:
         I2ErrLog(eh,"OWPStatsCreate failed");
         goto skip_sum;
     }
+    
+    /* Set the timestamp flag here */
+    if (appctx.opt.display_unix_ts == True)
+        stats->display_unix_ts = True;
 
     /*
      * Parse the data and compute the statistics
@@ -1259,7 +1265,7 @@ main(
     char                optstring[128];
     static char         *conn_opts = "46A:k:S:u:I:";
     static char         *test_opts = "c:E:i:L:s:tz:P:";
-    static char         *out_opts = "b:d:e:N:pRv";
+    static char         *out_opts = "b:d:e:g:N:pRvU";
     static char         *gen_opts = "hw";
     static char         *posixly_correct="POSIXLY_CORRECT=True";
 
@@ -1284,7 +1290,8 @@ main(
     syslogattr.facility = LOG_USER;
     syslogattr.priority = LOG_ERR;
     syslogattr.line_info = I2MSG;
-
+    syslogattr.report_level = OWPErrINFO;
+    
     /* Set default options. */
     memset(&appctx,0,sizeof(appctx));
     appctx.opt.numPackets = 300;
@@ -1305,6 +1312,7 @@ main(
     opterr = 0;
     while((ch = getopt(argc, argv, optstring)) != -1){
         int fac;
+        int report_level;
         switch (ch){
             case 'e':
                 if((fac = I2ErrLogSyslogFacility(optarg)) == -1){
@@ -1314,6 +1322,16 @@ main(
                     exit(1);
                 }
                 syslogattr.facility = fac;
+                break;
+            case 'g':
+                report_level = OWPReportLevelByName(optarg);
+                if(report_level == -1){
+                         fprintf(stderr,
+                                "Log level \"%s\" invalid\n",
+                                optarg);
+                        exit(1);
+                }
+                syslogattr.report_level = report_level;
                 break;
             case 'v':
                 appctx.opt.verbose++;
@@ -1481,6 +1499,9 @@ main(
             case 'p':
                 appctx.opt.printfiles = True;
                 break;
+            case 'U':
+                appctx.opt.display_unix_ts = True;
+                break;
             /* undocumented debug options */
 #ifndef        NDEBUG
             case 'w':
@@ -1489,6 +1510,7 @@ main(
 #endif
             /* handled in prior getopt call... */
             case 'e':
+            case 'g':
             case 'R':
             case 'v':
                 break;
@@ -2042,6 +2064,10 @@ AGAIN:
                     break;
                 }
             }
+            
+            /* Set the timestamp flag here */
+            if (appctx.opt.display_unix_ts == True)
+                stats->display_unix_ts = True;
 
             /*
              * Parse the data and compute the statistics

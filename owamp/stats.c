@@ -1709,6 +1709,13 @@ OWPStatsPrintMachine(
 
     fprintf(output,"START_TIME\t" OWP_TSTAMPFMT "\n",stats->start_time);
     fprintf(output,"END_TIME\t" OWP_TSTAMPFMT "\n",stats->end_time);
+    
+    /* print unix versions of timestamp */
+    if (stats->display_unix_ts == True) {
+        double epochdiff = (OWPULongToNum64(OWPJAN_1970))>>32;
+        fprintf(output,"UNIX_START_TIME\t%f\n", OWPNum64ToDouble(stats->start_time) - epochdiff);
+        fprintf(output,"UNIX_END_TIME\t%f\n", OWPNum64ToDouble(stats->end_time) - epochdiff);
+    }
 
     /*
      * If typeP is specified as a DSCP code-byte, then output it too.
