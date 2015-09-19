@@ -152,7 +152,7 @@ limit root with disk=0,\
 # parent permissions
 limit regular with parent=root,\
 		disk=10G,\
-		bandwidth=1M
+		bandwidth=20M
 
 # Default everything to regular user access
 assign default regular
