@@ -1,3 +1,9 @@
+owamp (3.4.14-2) UNRELEASED; urgency=low
+
+  * Port to Jessie
+
+ -- Antoine Delvaux <adelvaux@man.poznan.pl>  Thu, 19 Nov 2015 15:58:16 +0000
+
 owamp (3.4.14-1) perfsonar-wheezy-staging; urgency=low
 
   * Improved logging capabilities (-g)
