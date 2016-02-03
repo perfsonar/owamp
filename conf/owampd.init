@@ -10,9 +10,9 @@
 
 
 OWAMPDBINDIR=/usr/bin
-CONFDIR=/etc/owampd
+CONFDIR=/etc/owamp-server
 OWAMPDVARDIR=/var/run
-PIDFILE=${OWAMPDVARDIR}/owampd.pid
+PIDFILE=${OWAMPDVARDIR}/owamp-server.pid
 
 OWAMPD="${OWAMPDBINDIR}/owampd -c ${CONFDIR} -R ${OWAMPDVARDIR}"
 
@@ -28,30 +28,30 @@ do
     if [ -f $PIDFILE ] ; then
 	PID=`cat $PIDFILE`
 	if [ "x$PID" != "x" ] && kill -0 $PID 2>/dev/null ; then
-	    STATUS="owampd (pid $PID) running"
+	    STATUS="owamp-server (pid $PID) running"
 	    RUNNING=1
 	else
-	    STATUS="owampd (pid $PID?) not running"
+	    STATUS="owamp-server (pid $PID?) not running"
 	    RUNNING=0
 	fi
     else
-	STATUS="owampd (no pid file) not running"
+	STATUS="owamp-server (no pid file) not running"
 	RUNNING=0
     fi
 
     case $ARG in
     start)
 	if [ $RUNNING -eq 1 ]; then
-	    echo "$0 $ARG: owampd (pid $PID) already running"
+	    echo "$0 $ARG: owamp-server (pid $PID) already running"
 	    continue
 	fi
 
 	echo $OWAMPD
 
 	if $OWAMPD ; then
-	    echo "$0 $ARG: owampd started"
+	    echo "$0 $ARG: owamp-server started"
 	else
-	    echo "$0 $ARG: owampd could not be started"
+	    echo "$0 $ARG: owamp-server could not be started"
 	    ERROR=3
 	fi
 	;;
@@ -61,9 +61,9 @@ do
 	    continue
 	fi
 	if kill $PID ; then
-	    echo "$0 $ARG: owampd stopped"
+	    echo "$0 $ARG: owamp-server stopped"
 	else
-	    echo "$0 $ARG: owampd could not be stopped"
+	    echo "$0 $ARG: owamp-server could not be stopped"
 	    ERROR=4
 	fi
 	;;
@@ -94,11 +94,11 @@ do
 	echo "usage: $0 (start|stop|restart|help)"
 	cat <<EOF
 
-start      - start owampd
-stop       - stop owampd
-restart    - restart owampd if running by sending a SIGHUP or start if 
+start      - start owamp-server
+stop       - stop owamp-server
+restart    - restart owamp-server if running by sending a SIGHUP or start if 
              not running
-status     - report if owampd is running
+status     - report if owamp-server is running
 help       - this screen
 
 EOF
