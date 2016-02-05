@@ -22,6 +22,3 @@ export DH_OPTIONS
 override_dh_auto_configure:
 	dh_auto_configure -- \
 		--with-I2util=no
-
-override_dh_installinit:
-	dh_installinit --name=owampd
