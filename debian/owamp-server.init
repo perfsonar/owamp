@@ -1,6 +1,6 @@
 #!/bin/sh
 ### BEGIN INIT INFO
-# Provides:          owampd
+# Provides:          owamp-server
 # Required-Start:    $network $local_fs $remote_fs
 # Required-Stop:     $network $local_fs $remote_fs
 # Default-Start:     2 3 4 5
@@ -18,13 +18,13 @@
 # PATH should only include /usr/* if it runs after the mountnfs.sh script
 PATH=/sbin:/usr/sbin:/bin:/usr/bin
 DESC="OWAMP server"        # Introduce a short description here
-NAME=owampd                # Introduce the short server's name here
+NAME=owamp-server          # Introduce the short server's name here
 DAEMON=/usr/sbin/owampd    # Introduce the server's location here
 PIDFILE=/var/run/$NAME.pid
 SCRIPTNAME=/etc/init.d/$NAME
 
 # Arguments to run the daemon with
-DAEMON_ARGS="-c /etc/owampd -R /var/run"
+DAEMON_ARGS="-c /etc/owamp-server -R /var/run"
 
 # Exit if the package is not installed
 [ -x $DAEMON ] || exit 0
@@ -86,13 +86,13 @@ do_stop()
 
 case "$1" in
   start)
-    log_daemon_msg "Starting $DESC" "$NAME"
-    do_start
-    case "$?" in
+	log_daemon_msg "Starting $DESC" "$NAME"
+	do_start
+	case "$?" in
 		0|1) log_end_msg 0 ;;
 		2) log_end_msg 1 ;;
 	esac
-  ;;
+	;;
   stop)
 	log_daemon_msg "Stopping $DESC" "$NAME"
 	do_stop
@@ -102,8 +102,8 @@ case "$1" in
 	esac
 	;;
   status)
-       status_of_proc "$DAEMON" "$NAME" && exit 0 || exit $?
-       ;;
+	status_of_proc "$DAEMON" "$NAME" && exit 0 || exit $?
+	;;
   restart|force-reload)
 	log_daemon_msg "Restarting $DESC" "$NAME"
 	do_stop
@@ -117,7 +117,7 @@ case "$1" in
 		esac
 		;;
 	  *)
-	  	# Failed to stop
+		# Failed to stop
 		log_end_msg 1
 		;;
 	esac
