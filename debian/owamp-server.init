@@ -20,7 +20,7 @@ PATH=/sbin:/usr/sbin:/bin:/usr/bin
 DESC="OWAMP server"        # Introduce a short description here
 NAME=owamp-server          # Introduce the short server's name here
 DAEMON=/usr/sbin/owampd    # Introduce the server's location here
-PIDFILE=/var/run/$NAME.pid
+PIDFILE=/var/run/owampd.pid
 SCRIPTNAME=/etc/init.d/$NAME
 
 # Arguments to run the daemon with
