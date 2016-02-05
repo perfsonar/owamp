@@ -28,11 +28,11 @@
 #include <owamp/owamp.h>
 
 #ifndef OWP_PFS_FILE
-#define OWP_PFS_FILE    "owampd.pfs"
+#define OWP_PFS_FILE    "owamp-server.pfs"
 #endif
 
 #ifndef OWP_LIMITS_FILE
-#define OWP_LIMITS_FILE "owampd.limits"
+#define OWP_LIMITS_FILE "owamp-server.limits"
 #endif
 
 /*

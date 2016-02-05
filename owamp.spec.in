@@ -53,27 +53,50 @@ make
 
 %install
 %makeinstall
-%{__install} -D -p -m 0755 conf/owampd.init %{buildroot}%{_sysconfdir}/rc.d/init.d/owampd
-%{__install} -D -p -m 0755 conf/owampd.limits %{buildroot}%{_sysconfdir}/owampd/owampd.limits
-%{__install} -D -p -m 0755 conf/owampd.rpm.conf %{buildroot}%{_sysconfdir}/owampd/owampd.conf
-%{__install} -D -p -m 0755 conf/owampd.limits %{buildroot}%{_sysconfdir}/owampd/owampd.limits.default
-%{__install} -D -p -m 0755 conf/owampd.rpm.conf %{buildroot}%{_sysconfdir}/owampd/owampd.conf.default
+%{__install} -D -p -m 0755 conf/owampd.init %{buildroot}%{_sysconfdir}/rc.d/init.d/owamp-server
+%{__install} -D -p -m 0755 conf/owampd.limits %{buildroot}%{_sysconfdir}/owamp-server/owamp-server.limits
+%{__install} -D -p -m 0755 conf/owampd.rpm.conf %{buildroot}%{_sysconfdir}/owamp-server/owamp-server.conf
+%{__install} -D -p -m 0755 conf/owampd.limits %{buildroot}%{_sysconfdir}/owamp-server/owamp-server.limits.default
+%{__install} -D -p -m 0755 conf/owampd.rpm.conf %{buildroot}%{_sysconfdir}/owamp-server/owampd.conf.default
 
 %clean
 rm -rf $RPM_BUILD_ROOT 
 
 %post server
 if [ "$1" = "1" ]; then
-	/sbin/chkconfig --add owampd
+	/sbin/chkconfig --add owamp-server
 	/usr/sbin/useradd -r -s /bin/nologin -d /tmp owamp || :
 	mkdir -p /var/lib/owamp
 	chown owamp:owamp /var/lib/owamp
+else
+    #handle pre 1.6 upgrade
+    if [ -e "/etc/owampd/owampd.conf" ]; then
+        mv %{_sysconfdir}/owamp-server/owamp-server.conf %{_sysconfdir}/owamp-server/owamp-server.conf.bak
+        mv /etc/owampd/owampd.conf %{_sysconfdir}/owamp-server/owamp-server.conf
+    elif [ -e "/etc/owampd/owampd.conf.rpmsave" ]; then
+        mv %{_sysconfdir}/owamp-server/owamp-server.conf %{_sysconfdir}/owamp-server/owamp-server.conf.bak
+        mv /etc/owampd/owampd.conf.rpmsave %{_sysconfdir}/owamp-server/owamp-server.conf
+    fi
+    
+    if [ -e "/etc/owampd/owampd.limits" ]; then
+        mv %{_sysconfdir}/owamp-server/owamp-server.limits %{_sysconfdir}/owamp-server/owamp-server.limits.bak
+        mv /etc/owampd/owampd.limits %{_sysconfdir}/owamp-server/owamp-server.limits
+    elif [ -e "/etc/owampd/owampd.limits.rpmsave" ]; then
+        mv %{_sysconfdir}/owamp-server/owamp-server.limits %{_sysconfdir}/owamp-server/owamp-server.limits.bak
+        mv /etc/owampd/owampd.limits.rpmsave %{_sysconfdir}/owamp-server/owamp-server.limits
+    fi
+    
+    /sbin/service owampd stop 2> /dev/null
+    /sbin/chkconfig --del owampd 2> /dev/null
+    
+    /sbin/chkconfig --add owamp-server
+    /sbin/service owamp-server restart
 fi
 
 %preun server
 if [ "$1" = "0" ]; then
-    /sbin/chkconfig --del owampd
-    /sbin/service owampd stop
+    /sbin/chkconfig --del owamp-server
+    /sbin/service owamp-server stop
 fi
 
 %postun server
@@ -82,7 +105,7 @@ if [ "$1" = "0" ]; then
 fi
 
 if [ "$1" = "1" ]; then
-    /sbin/service owampd restart
+    /sbin/service owamp-server restart
 fi
 
 %files client
@@ -104,8 +127,8 @@ fi
 %{_bindir}/owampd
 %{_mandir}/man5/*
 %{_mandir}/man8/*
-%{_sysconfdir}/rc.d/init.d/owampd
-%config(noreplace) %{_sysconfdir}/owampd/*
+%{_sysconfdir}/rc.d/init.d/owamp-server
+%config(noreplace) %{_sysconfdir}/owamp-server/*
 
 #%files devel
 #%defattr(-,root,root,0755)
