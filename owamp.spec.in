@@ -87,7 +87,7 @@ else
     fi
     
     #make sure owamp-server starts if owampd was running
-    /sbin/service owampd stop 2> /dev/null
+    /sbin/service owampd stop 2> /dev/null  || :
     chkconfig --list owampd 2> /dev/null | grep -q on
     if [ $? -eq 0 ]; then
         /sbin/chkconfig --add owamp-server
@@ -95,7 +95,7 @@ else
     else
         /sbin/service owamp-server cond-restart
     fi
-    /sbin/chkconfig --del owampd 2> /dev/null
+    /sbin/chkconfig --del owampd 2> /dev/null  || :
 fi
 
 %preun server
