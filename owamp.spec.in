@@ -86,11 +86,16 @@ else
         mv /etc/owampd/owampd.limits.rpmsave %{_sysconfdir}/owamp-server/owamp-server.limits
     fi
     
+    #make sure owamp-server starts if owampd was running
     /sbin/service owampd stop 2> /dev/null
+    chkconfig --list owampd 2> /dev/null | grep -q on
+    if [ $? -eq 0 ]; then
+        /sbin/chkconfig --add owamp-server
+        /sbin/service owamp-server restart
+    else
+        /sbin/service owamp-server cond-restart
+    fi
     /sbin/chkconfig --del owampd 2> /dev/null
-    
-    /sbin/chkconfig --add owamp-server
-    /sbin/service owamp-server restart
 fi
 
 %preun server
@@ -102,10 +107,6 @@ fi
 %postun server
 if [ "$1" = "0" ]; then
 	/usr/sbin/userdel owamp || :
-fi
-
-if [ "$1" = "1" ]; then
-    /sbin/service owamp-server restart
 fi
 
 %files client
