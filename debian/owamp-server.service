@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 Type=forking
-PIDFile=/var/run/owampd.pid
+PIDFile=/var/run/owamp-server.pid
 ExecStart=/usr/sbin/owampd -c /etc/owamp-server -R /var/run
 
 [Install]
