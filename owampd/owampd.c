@@ -86,7 +86,7 @@ usage(
            );
     fprintf(stderr,
             "   -P portrange      port range for recivers to use\n"
-            "   -R vardir         directory for owampd.pid file\n"
+            "   -R vardir         directory for owamp-server.pid file\n"
             "   -S nodename:port  Srcaddr to bind to\n"
             "   -U user           Run as user \"user\" :-uid also valid\n"
             "   -v                verbose output\n"
@@ -1425,7 +1425,7 @@ int main(
     /*  Get exclusive lock for pid file. */
     strcpy(pid_file, opts.vardir);
     strcat(pid_file, OWP_PATH_SEPARATOR);
-    strcat(pid_file, "owampd.pid");
+    strcat(pid_file, "owamp-server.pid");
     if ((pid_fd = open(pid_file, O_RDWR|O_CREAT,
                     S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH)) < 0) {
         I2ErrLog(errhand, "open(%s): %M", pid_file);
@@ -1715,7 +1715,7 @@ int main(
         /* Record the start timestamp in the info file. */
         strcpy(info_file, opts.vardir);
         strcat(info_file, OWP_PATH_SEPARATOR);
-        strcat(info_file, "owampd.info");
+        strcat(info_file, "owamp-server.info");
         if ((info_fp = fopen(info_file, "w")) == NULL) {
             I2ErrLog(errhand, "fopen(%s): %M", info_file);
             kill(mypid,SIGTERM);
