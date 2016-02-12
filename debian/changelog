@@ -1,6 +1,7 @@
-owamp (3.4.14-2) UNRELEASED; urgency=low
+owamp (3.5.0~1.rc1-1) UNRELEASED; urgency=low
 
   * Port to Jessie
+  * New upstream version.
 
  -- Antoine Delvaux <adelvaux@man.poznan.pl>  Thu, 19 Nov 2015 15:58:16 +0000
 
