@@ -1,25 +1,17 @@
-owamp (3.5.0~1.rc1-1~bpo70+1) UNRELEASED; urgency=low
+owamp (3.5.0~1.rc1-2~bpo70+1) perfsonar-wheezy-staging; urgency=low
 
-  * Backport to Wheezy
+  * Backport to Wheezy.
 
- -- Antoine Delvaux <adelvaux@man.poznan.pl>  Mon, 15 Feb 2016 20:20:17 +0000
+ -- Antoine Delvaux <adelvaux@man.poznan.pl>  Mon, 22 Feb 2016 22:26:01 +0000
 
-owamp (3.4.14-1) perfsonar-wheezy-staging; urgency=low
-
-  * Improved logging capabilities (-g)
-  * Support for UNIX timestamps in summary (-U)
-  * Default bandwidth limit increased to 20M in owampd.limits
-
- -- Antoine Delvaux <adelvaux@man.poznan.pl>  Sat, 19 Sep 2015 22:38:11 +0000
-
-owamp (3.4.11-1) perfsonar-wheezy-staging; urgency=low
-
-owamp (3.5.0~1.rc1-1) UNRELEASED; urgency=low
+owamp (3.5.0~1.rc1-2) perfsonar-jessie-staging; urgency=low
 
   * Port to Jessie
   * New upstream version.
+  * Moved configuration directory to /etc/owamp-server
+  * Renamed configuration file to owamp-server.conf
 
- -- Antoine Delvaux <adelvaux@man.poznan.pl>  Mon, 15 Feb 2016 20:17:12 +0000
+ -- Antoine Delvaux <adelvaux@man.poznan.pl>  Mon, 22 Feb 2016 22:15:27 +0000
 
 owamp (3.4.14-1) perfsonar-wheezy-staging; urgency=low
 

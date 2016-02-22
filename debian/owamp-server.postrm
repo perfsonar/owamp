@@ -31,11 +31,11 @@ case "$1" in
             dpkg-maintscript-helper mv_conffile \
                 /etc/owampd/owampd.conf \
                 /etc/owamp-server/owamp-server.conf \
-                3.4.14-2 -- "$@"
+                3.5.0~1.rc1-2~bpo70+1~ -- "$@"
             dpkg-maintscript-helper mv_conffile \
                 /etc/owampd/owampd.limits \
                 /etc/owamp-server/owamp-server.limits \
-                3.4.14-2 -- "$@"
+                3.5.0~1.rc1-2~bpo70+1~ -- "$@"
         fi
     ;;
 
