@@ -20,6 +20,18 @@ set -e
 
 case "$1" in
     configure)
+        # Rename configuration files
+        if dpkg-maintscript-helper supports mv_conffile; then
+            dpkg-maintscript-helper mv_conffile \
+                /etc/owampd/owampd.conf \
+                /etc/owamp-server/owamp-server.conf \
+                3.4.14-2 -- "$@"
+            dpkg-maintscript-helper mv_conffile \
+                /etc/owampd/owampd.limits \
+                /etc/owamp-server/owamp-server.limits \
+                3.4.14-2 -- "$@"
+        fi
+
         if ! getent passwd owamp > /dev/null ; then
             adduser --system --group --home /var/lib/owamp --quiet \
                 --no-create-home --disabled-login owamp
