@@ -31,6 +31,9 @@ case "$1" in
                 /etc/owamp-server/owamp-server.limits \
                 3.4.14-2 -- "$@"
         fi
+        if [ -d /etc/owampd ]; then
+            rmdir --ignore-fail-on-non-empty /etc/owampd
+        fi
 
         if ! getent passwd owamp > /dev/null ; then
             adduser --system --group --home /var/lib/owamp --quiet \
