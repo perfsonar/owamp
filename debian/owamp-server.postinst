@@ -35,6 +35,13 @@ case "$1" in
             rmdir --ignore-fail-on-non-empty /etc/owampd
         fi
 
+        # Remove old init script
+        if dpkg-maintscript-helper supports rm_conffile; then
+            dpkg-maintscript-helper rm_conffile \
+                /etc/init.d/owampd \
+                3.5.0~1.rc1-2~ -- "$@"
+        fi
+
         if ! getent passwd owamp > /dev/null ; then
             adduser --system --group --home /var/lib/owamp --quiet \
                 --no-create-home --disabled-login owamp
