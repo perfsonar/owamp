@@ -37,6 +37,13 @@ case "$1" in
                 /etc/owamp-server/owamp-server.limits \
                 3.5.0~1.rc1-2~bpo70+1~ -- "$@"
         fi
+
+        # Remove old init script
+        if dpkg-maintscript-helper supports rm_conffile; then
+            dpkg-maintscript-helper rm_conffile \
+                /etc/init.d/owampd \
+                3.5.0~1.rc1-2~bpo70+1~ -- "$@"
+        fi
     ;;
 
     *)
