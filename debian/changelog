@@ -1,17 +1,18 @@
-owamp (3.5.0~1.rc1-2~bpo70+1) perfsonar-wheezy-staging; urgency=low
+owamp (3.5.0~1.rc1-3~bpo70+1) perfsonar-wheezy-staging; urgency=low
 
   * Backport to Wheezy.
 
- -- Antoine Delvaux <adelvaux@man.poznan.pl>  Mon, 22 Feb 2016 22:26:01 +0000
+ -- Antoine Delvaux <adelvaux@man.poznan.pl>  Tue, 23 Feb 2016 14:46:51 +0000
 
-owamp (3.5.0~1.rc1-2) perfsonar-jessie-staging; urgency=low
+owamp (3.5.0~1.rc1-3) perfsonar-jessie-staging; urgency=low
 
   * Port to Jessie
   * New upstream version.
+  * Renamed service to owamp-server
   * Moved configuration directory to /etc/owamp-server
   * Renamed configuration file to owamp-server.conf
 
- -- Antoine Delvaux <adelvaux@man.poznan.pl>  Mon, 22 Feb 2016 22:15:27 +0000
+ -- Antoine Delvaux <adelvaux@man.poznan.pl>  Tue, 23 Feb 2016 14:44:38 +0000
 
 owamp (3.4.14-1) perfsonar-wheezy-staging; urgency=low
 
