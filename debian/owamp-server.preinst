@@ -29,12 +29,12 @@ case "$1" in
         fi
 
         # Remove old init script
-        update-rc.d owampd remove >/dev/null
         if dpkg-maintscript-helper supports rm_conffile; then
             dpkg-maintscript-helper rm_conffile \
                 /etc/init.d/owampd \
                 3.5.0~1.rc1-2~ -- "$@"
         fi
+        update-rc.d owampd remove >/dev/null
     ;;
 
     abort-upgrade)
