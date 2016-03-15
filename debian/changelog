@@ -1,3 +1,9 @@
+owamp (3.5.0-2) perfsonar-jessie-release; urgency=low
+
+  * Call rm_conffile before update-rc.d
+
+ -- Valentin Vidic <Valentin.Vidic@CARNet.hr>  Tue, 15 Mar 2016 08:40:02 +0100
+
 owamp (3.5.0-1) perfsonar-jessie-release; urgency=low
 
   * Port to Jessie
