@@ -35,7 +35,7 @@ Summary: owamp server
 Group: Applications/Network
 %if 0%{?el7}
 Requires: shadow-utils, coreutils
-%systemd_requires
+%{?systemd_requires: %systemd_requires}
 %else
 Requires: chkconfig, initscripts, shadow-utils, coreutils
 %endif
