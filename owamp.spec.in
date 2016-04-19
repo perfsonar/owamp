@@ -62,8 +62,8 @@ make
 
 %install
 %makeinstall
+%{__install} -D -p -m 0644 conf/owampd.service %{buildroot}%{_unitdir}/owamp-server.service
 %{__install} -D -p -m 0755 conf/owampd.init %{buildroot}%{_sysconfdir}/rc.d/init.d/owamp-server
-%{__install} -D -p -m 0755 conf/owampd.service %{buildroot}%{_unitdir}/owamp-server.service
 %{__install} -D -p -m 0755 conf/owampd.limits %{buildroot}%{_sysconfdir}/owamp-server/owamp-server.limits
 %{__install} -D -p -m 0755 conf/owampd.rpm.conf %{buildroot}%{_sysconfdir}/owamp-server/owamp-server.conf
 %{__install} -D -p -m 0755 conf/owampd.limits %{buildroot}%{_sysconfdir}/owamp-server/owamp-server.limits.default
