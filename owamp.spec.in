@@ -7,7 +7,11 @@ Group: *Development/Libraries*
 URL: http://e2epi.internet2.edu/owamp/
 Source: %{name}-%{version}.tar.gz
 Packager: Aaron Brown <aaron@internet2.edu>
+%if 0%{?el7}
+BuildRequires: libtool, I2util, systemd
+%else
 BuildRequires: libtool, I2util
+%endif
 Requires: owamp-client, owamp-server, I2util
 BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-buildroot
 
@@ -29,7 +33,12 @@ server.
 %package server
 Summary: owamp server
 Group: Applications/Network
+%if 0%{?el7}
+Requires: shadow-utils, coreutils
+%{?systemd_requires: %systemd_requires}
+%else
 Requires: chkconfig, initscripts, shadow-utils, coreutils
+%endif
 %description server
 owamp server
 
@@ -53,6 +62,7 @@ make
 
 %install
 %makeinstall
+%{__install} -D -p -m 0644 conf/owampd.service %{buildroot}%{_unitdir}/owamp-server.service
 %{__install} -D -p -m 0755 conf/owampd.init %{buildroot}%{_sysconfdir}/rc.d/init.d/owamp-server
 %{__install} -D -p -m 0755 conf/owampd.limits %{buildroot}%{_sysconfdir}/owamp-server/owamp-server.limits
 %{__install} -D -p -m 0755 conf/owampd.rpm.conf %{buildroot}%{_sysconfdir}/owamp-server/owamp-server.conf
@@ -63,6 +73,14 @@ make
 rm -rf $RPM_BUILD_ROOT 
 
 %post server
+%if 0%{?el7}
+if [ "$1" = "1" ]; then
+	/usr/sbin/useradd -r -s /bin/nologin -d /tmp owamp || :
+	mkdir -p /var/lib/owamp
+	chown owamp:owamp /var/lib/owamp
+fi
+%systemd_post owamp-server.service
+%else
 if [ "$1" = "1" ]; then
 	/sbin/chkconfig --add owamp-server
 	/usr/sbin/useradd -r -s /bin/nologin -d /tmp owamp || :
@@ -97,14 +115,22 @@ else
     fi
     /sbin/chkconfig --del owampd 2> /dev/null  || :
 fi
+%endif
 
 %preun server
+%if 0%{?el7}
+%systemd_preun owamp-server.service
+%else
 if [ "$1" = "0" ]; then
     /sbin/chkconfig --del owamp-server
     /sbin/service owamp-server stop
 fi
+%endif
 
 %postun server
+%if 0%{?el7}
+%systemd_postun_with_restart owamp-server.service
+%endif
 if [ "$1" = "0" ]; then
 	/usr/sbin/userdel owamp || :
 fi
@@ -128,8 +154,12 @@ fi
 %{_bindir}/owampd
 %{_mandir}/man5/*
 %{_mandir}/man8/*
-%{_sysconfdir}/rc.d/init.d/owamp-server
 %config(noreplace) %{_sysconfdir}/owamp-server/*
+%if 0%{?el7}
+%{_unitdir}/owamp-server.service
+%else
+%{_sysconfdir}/rc.d/init.d/owamp-server
+%endif
 
 #%files devel
 #%defattr(-,root,root,0755)
