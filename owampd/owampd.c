@@ -1673,7 +1673,7 @@ int main(
          * kill call.) setsid handles this when daemonizing.
          */
         mypid = getpid();
-        if(setpgid(0,mypid) != 0){
+        if(getsid(0) != mypid && setpgid(0,mypid) != 0){
             I2ErrLog(errhand,"setpgid(): %M");
             exit(1);
         }
