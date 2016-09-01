@@ -74,13 +74,14 @@ rm -rf $RPM_BUILD_ROOT
 
 %post server
 %if 0%{?el7}
+%systemd_post owamp-server.service
 if [ "$1" = "1" ]; then
 	/usr/sbin/useradd -r -s /bin/nologin -d /tmp owamp || :
 	mkdir -p /var/lib/owamp
 	chown owamp:owamp /var/lib/owamp
 	systemctl enable owamp-server.service
+	systemctl start owamp-server.service
 fi
-%systemd_post owamp-server.service
 %else
 if [ "$1" = "1" ]; then
 	/sbin/chkconfig --add owamp-server
