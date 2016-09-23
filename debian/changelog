@@ -1,14 +1,14 @@
-owamp (3.5.0.2-1~bpo70+1) UNRELEASED; urgency=low
+owamp (3.5.1-1~bpo70+1) perfsonar-wheezy-release; urgency=low
 
-  * Backport to Wheezy.
+  * Backporting to Wheezy.
 
- -- Antoine Delvaux <antoine.delvaux@man.poznan.pl>  Thu, 22 Sep 2016 21:24:37 +0000
+ -- Antoine Delvaux <antoine.delvaux@gmail.com>  Fri, 23 Sep 2016 15:05:08 +0000
 
-owamp (3.5.0.2-1) UNRELEASED; urgency=low
+owamp (3.5.1-1) perfsonar-jessie-release; urgency=low
 
-  * TO BE FILLED IN...
+  * New upstream version.
 
- -- Antoine Delvaux <antoine.delvaux@man.poznan.pl>  Thu, 22 Sep 2016 21:16:15 +0000
+ -- Antoine Delvaux <antoine.delvaux@gmail.com>  Fri, 23 Sep 2016 14:57:07 +0000
 
 owamp (3.5.0-2) perfsonar-jessie-release; urgency=low
 
