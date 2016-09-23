@@ -3,7 +3,7 @@ Section: net
 Priority: optional
 Maintainer: Valentin Vidic <Valentin.Vidic@CARNet.hr>
 Build-Depends: debhelper (>= 9), dh-autoreconf, dh-exec, dh-systemd, libi2util-dev (>= 1.4)
-Standards-Version: 3.9.3
+Standards-Version: 3.9.6
 Homepage: http://software.internet2.edu/owamp/
 Vcs-Git: https://code.google.com/p/perfsonar-ps.owamp/
 Vcs-Browser: https://code.google.com/p/perfsonar-ps/source/browse/?repo=owamp
