@@ -1,0 +1,2 @@
+Tests: owampd, owup, owping, owstats
+Restrictions: needs-root
