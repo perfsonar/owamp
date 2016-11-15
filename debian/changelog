@@ -1,3 +1,10 @@
+owamp (3.5.2-1) perfsonar-jessie-release; urgency=low
+
+  * New upstream version.
+  * Adding autopkgtests.
+
+ -- Antoine Delvaux <antoine.delvaux@man.poznan.pl>  Tue, 15 Nov 2016 15:28:51 +0100
+
 owamp (3.5.1-1) perfsonar-jessie-release; urgency=low
 
   * New upstream version.
