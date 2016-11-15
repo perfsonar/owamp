@@ -2188,6 +2188,11 @@ again:
         timespecsub((struct timespec*)&wake.it_value,&currtime);
 
         wake.it_value.tv_usec /= 1000;        /* convert nsec to usec        */
+        while (wake.it_value.tv_usec >= 1000000) {
+            wake.it_value.tv_usec -= 1000000;
+            wake.it_value.tv_sec++;
+        }
+
         tvalclear(&wake.it_interval);
 
         /*
