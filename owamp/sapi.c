@@ -300,6 +300,10 @@ OWPControlAccept(
         goto error;
     }
 
+    OWPError(ctx,OWPErrDEBUG,OWPErrPOLICY,
+            "Connection to ([%s]:%s) from ([%s]:%s)",
+            localnode,localserv,remotenode,remoteserv);
+
     /* generate 16 random bytes of challenge and salt. */
     if((I2RandomBytes(ctx->rand_src,challenge,sizeof(challenge)) != 0) ||
             (I2RandomBytes(ctx->rand_src,salt, sizeof(salt)) != 0)){
@@ -459,6 +463,11 @@ OWPControlAccept(
         *err_ret = (OWPErrSeverity)rc;
         goto error;
     }
+    OWPError(ctx,OWPErrDEBUG,OWPErrPOLICY,
+            "ControlSession([%s]:%s) accepted from userid(%s):([%s]:%s)",
+            localnode,localserv,
+            (cntrl->userid)?cntrl->userid:(char*)"nil",
+            remotenode,remoteserv);
 
     return cntrl;
 
