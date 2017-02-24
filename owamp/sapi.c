@@ -300,7 +300,7 @@ OWPControlAccept(
         goto error;
     }
 
-    OWPError(ctx,OWPErrINFO,OWPErrPOLICY,
+    OWPError(ctx,OWPErrDEBUG,OWPErrPOLICY,
             "Connection to ([%s]:%s) from ([%s]:%s)",
             localnode,localserv,remotenode,remoteserv);
 
@@ -463,7 +463,7 @@ OWPControlAccept(
         *err_ret = (OWPErrSeverity)rc;
         goto error;
     }
-    OWPError(ctx,OWPErrWARNING,OWPErrPOLICY,
+    OWPError(ctx,OWPErrDEBUG,OWPErrPOLICY,
             "ControlSession([%s]:%s) accepted from userid(%s):([%s]:%s)",
             localnode,localserv,
             (cntrl->userid)?cntrl->userid:(char*)"nil",
