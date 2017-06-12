@@ -272,9 +272,13 @@ OWPControlAcceptCommon(
     char            remotenode[NI_MAXHOST],remoteserv[NI_MAXSERV];
     size_t          remotenodelen = sizeof(remotenode);
     size_t          remoteservlen = sizeof(remoteserv);
+    struct sockaddr *remoteaddr;
+    socklen_t       remoteaddrlen;
     char            localnode[NI_MAXHOST],localserv[NI_MAXSERV];
     size_t          localnodelen = sizeof(localnode);
     size_t          localservlen = sizeof(localserv);
+    struct sockaddr *localaddr;
+    socklen_t       localaddrlen;
 
     if(retn_on_intr){
         intr = retn_on_intr;
@@ -318,10 +322,19 @@ OWPControlAcceptCommon(
         goto error;
     }
 
-    if( !I2AddrNodeName(cntrl->remote_addr,remotenode,&remotenodelen) ||
-            !I2AddrServName(cntrl->remote_addr,remoteserv,&remoteservlen) ||
-            !I2AddrNodeName(cntrl->local_addr,localnode,&localnodelen) ||
-            !I2AddrServName(cntrl->local_addr,localserv,&localservlen)){
+    remoteaddr = I2AddrSAddr(cntrl->remote_addr, &remoteaddrlen);
+    if(!remoteaddr || getnameinfo(remoteaddr, remoteaddrlen,
+                        remotenode, remotenodelen,
+                        remoteserv, remoteservlen,
+                        NI_NUMERICSERV | NI_NUMERICHOST) != 0){
+        goto error;
+    }
+
+    localaddr = I2AddrSAddr(cntrl->local_addr, &localaddrlen);
+    if(!localaddr || getnameinfo(localaddr, localaddrlen,
+                        localnode, localnodelen,
+                        localserv, localservlen,
+                        NI_NUMERICSERV | NI_NUMERICHOST) != 0){
         goto error;
     }
 
@@ -693,11 +706,15 @@ OWPProcessTestRequest(
             size_t          remotenodelen = sizeof(remotenode);
             char            recvnode[NI_MAXHOST];
             size_t          recvnodelen = sizeof(recvnode);
+            struct sockaddr *recvaddr;
+            socklen_t       recvaddrlen;
 
             if( !(csaddr = I2AddrSAddr(cntrl->remote_addr,&csaddrlen)) ||
-                    !I2AddrNodeName(cntrl->remote_addr,remotenode,
-                        &remotenodelen) ||
-                    !I2AddrNodeName(tsession->receiver,recvnode,&recvnodelen)){
+                    (getnameinfo(csaddr, csaddrlen, remotenode, remotenodelen,
+                        NULL, 0, NI_NUMERICHOST) != 0) ||
+                    !(recvaddr = I2AddrSAddr(tsession->receiver, &recvaddrlen)) ||
+                    (getnameinfo(recvaddr, recvaddrlen, recvnode,
+                        recvnodelen, NULL, 0, NI_NUMERICHOST) != 0)){
                 OWPError(cntrl->ctx,OWPErrWARNING,OWPErrPOLICY,
                         "Unable to determine sockaddr information");
                 err_ret = OWPErrFATAL;
