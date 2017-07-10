@@ -21,7 +21,8 @@
 INCLUDES	= $(OWPINCS) $(I2UTILINCS)
 AM_CFLAGS	= $(OWP_PREFIX_CFLAGS)
 
-bin_PROGRAMS	= owtvec
+check_PROGRAMS  = owtvec
+TESTS           = $(check_PROGRAMS)
 owtvec_SOURCES	= owtvec.c
 owtvec_LDADD	= $(OWPLIBS) -lI2util $(MALLOCDEBUGLIBS)
 owtvec_DEPENDENCIES = $(OWPLIBDEPS) $(I2UTILLIBDEPS)
