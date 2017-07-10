@@ -2168,7 +2168,7 @@ _OWPReadStopSessions(
     if(!(_OWPStateIs(_OWPStateRequest,cntrl) &&
                 _OWPStateIs(_OWPStateTest,cntrl))){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                "_OWPReadStopSessions called in wrong state.");
+                "_OWPReadStopSessions: Failed - called in wrong state.");
         return OWPErrFATAL;
     }
 
@@ -2198,7 +2198,7 @@ _OWPReadStopSessions(
         }
 
         if (num_sessions != actual_num_sessions) {
-            OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+            OWPError(cntrl->ctx,OWPErrWARNING,OWPErrINVALID,
                      "_OWPReadStopSessions: Message does not account "
                      "for all two-way sessions: %u vs. %u actual",
                      num_sessions, actual_num_sessions);
@@ -2266,7 +2266,7 @@ _OWPReadStopSessions(
             n = _OWPReceiveBlocksIntr(cntrl,(uint8_t *)buf,1,intr);
             if(n != 1){
                 OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                         "_OWPReadStopSessions: Unable to read session record (%d)",
+                         "_OWPReadStopSessions: Failed - Unable to read session record (%d)",
                          i);
                 goto err;
             }
@@ -2303,7 +2303,7 @@ _OWPReadStopSessions(
              */
             if(!tptr){
                 OWPError(cntrl->ctx,OWPErrFATAL,EINVAL,
-                         "_OWPReadStopSessions: sid from StopSessions not valid.");
+                         "_OWPReadStopSessions: Failed - sid from StopSessions not valid.");
                 goto err;
             }
 
@@ -2401,13 +2401,13 @@ _OWPReadStopSessions(
                 _OWPDecodeSkipRecord(&curr_skip,&buf[bufi]);
                 if(curr_skip.end < curr_skip.begin){
                     OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                             "_OWPReadStopSessions: Invalid skip record sid(%s): end < begin",
+                             "_OWPReadStopSessions: Failed - Invalid skip record sid(%s): end < begin",
                              sid_name);
                     goto err;
                 }
                 if(prev_skip.end && (curr_skip.begin < prev_skip.end)){
                     OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                             "_OWPReadStopSessions: Invalid skip record sid(%s): skips out of order",
+                             "_OWPReadStopSessions: Failed - Invalid skip record sid(%s): skips out of order",
                              sid_name);
                     goto err;
                 }
@@ -2434,7 +2434,7 @@ _OWPReadStopSessions(
             if( !(num_skips % 2)){
                 if(memcmp(cntrl->zero,&buf[8],8)){
                     OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                             "_OWPReadStopSessions: Session sid(%s): Invalid zero padding",
+                             "_OWPReadStopSessions: Failed - Session sid(%s): Invalid zero padding",
                              sid_name);
                     goto err;
                 }
@@ -2455,7 +2455,7 @@ _OWPReadStopSessions(
             flk.l_type = F_UNLCK;
             if( fcntl(fileno(rfp), F_SETLKW, &flk) < 0){
                 OWPError(cntrl->ctx,OWPErrFATAL,errno,
-                         "_OWPReadStopSessions: Unable to unlock file sid(%s): %M",
+                         "_OWPReadStopSessions: Failed - Unable to unlock file sid(%s): %M",
                          sid_name);
                 goto err;
             }
@@ -2463,7 +2463,7 @@ _OWPReadStopSessions(
 
         if(*sptr){
             OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                     "_OWPReadStopSessions: Message does not account for all recv sessions");
+                     "_OWPReadStopSessions: Failed - Message does not account for all recv sessions");
             goto err;
         }
     }
@@ -2474,12 +2474,12 @@ _OWPReadStopSessions(
     n = _OWPReceiveBlocksIntr(cntrl,(uint8_t *)buf,1,intr);
     if(n != 1){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                "_OWPReadStopSessions: Unable to read final HMAC block");
+                "_OWPReadStopSessions: Failed - Unable to read final HMAC block");
         goto err;
     }
     if(!_OWPRecvHMACCheckClear(cntrl,buf)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                "_OWPReadStopSessions: Invalid HMAC");
+                "_OWPReadStopSessions: Failed - Invalid HMAC");
         goto err;
     }
 
@@ -2507,8 +2507,6 @@ err:
     if(acceptval){
         *acceptval = OWP_CNTRL_FAILURE;
     }
-    OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-            "_OWPReadStopSessions: Failed");
     return _OWPFailControlSession(cntrl,OWPErrFATAL);
 }
 

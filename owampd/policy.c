@@ -2716,7 +2716,7 @@ OWPDOpenFile(
         key.dptr = dname;
         key.dsize = &finfo->filepath[len2-len1] - dname;
         if(!I2HashFetch(node->policy->limits,key,&val)){
-            OWPError(node->policy->ctx,OWPErrFATAL,OWPErrPOLICY,
+            OWPError(node->policy->ctx,OWPErrWARNING,OWPErrPOLICY,
                     "Unable to determine policy for %s: class %s",
                     finfo->linkpath,dname);
         }
@@ -2915,7 +2915,7 @@ OWPDCloseFile(
              * associated with this file can be released.
              */
             if(fstat(fileno(fp),&sbuf) != 0){
-                OWPError(ctx,OWPErrFATAL,errno,
+                OWPError(ctx,OWPErrWARNING,errno,
                         "OWPDCloseFile: fstat(): %M: Unable to determine filesize...");
                 sbuf.st_size = 0;
             }
