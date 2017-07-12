@@ -26,6 +26,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <assert.h>
+#include <inttypes.h>
 
 int
 main(
@@ -85,35 +86,11 @@ main(
             eval = OWPExpContextNext(exp);
             sum = OWPNum64Add(sum,eval);
             if((n < I2Number(nice)) && (j == nice[n])){
-                /* local copies of eval and sum */
-                OWPNum64    te,ts;
-                /* big-endian versions of eval and sum */
-                uint8_t     e[8];
-                uint8_t     s[8];
                 /* hex encoded big-endian ov eval and sum */
                 char                ve[17];
                 char                vs[17];
-
-                te = eval;
-                ts = sum;
-
-                /*
-                 * Copy low-order 32 bits
-                 */
-                *(uint32_t*)&e[4] = htonl((te&0xffffffffUL));
-                *(uint32_t*)&s[4] = htonl((ts&0xffffffffUL));
-                /*
-                 * Copy high-order 32 bits
-                 */
-                te >>= 32;
-                ts >>= 32;
-                *(uint32_t*)&e[0] = htonl((te&0xffffffffUL));
-                *(uint32_t*)&s[0] = htonl((ts&0xffffffffUL));
-
-                I2HexEncode(ve,e,8);
-                I2HexEncode(vs,s,8);
-                ve[16] = vs[16] = '\0';
-
+                sprintf(ve, "%016" PRIx64, eval);
+                sprintf(vs, "%016" PRIx64, sum);
                 fprintf(stdout,
                         "EXP[%d] = 0x%s (%f)\tSUM[%d] = 0x%s (%f)\n",
                         j,ve,OWPNum64ToDouble(eval),
