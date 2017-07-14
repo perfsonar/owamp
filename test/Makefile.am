@@ -21,13 +21,13 @@
 INCLUDES	= $(OWPINCS) $(I2UTILINCS)
 AM_CFLAGS	= $(OWP_PREFIX_CFLAGS)
 
-check_PROGRAMS  = owtvec pingtest1
+check_PROGRAMS  = owtvec owstats
 TESTS           = $(check_PROGRAMS)
 
 owtvec_SOURCES	= owtvec.c
 owtvec_LDADD	= $(OWPLIBS) -lI2util $(MALLOCDEBUGLIBS)
 owtvec_DEPENDENCIES = $(OWPLIBDEPS) $(I2UTILLIBDEPS)
 
-pingtest1_SOURCES   = pingtest1.c
-pingtest1_LDADD = $(OWPLIBS) -lI2util $(MALLOCDEBUGLIBS)
-pingtest1_DEPENDENCIES = $(OWPLIBDEPS) $(I2UTILLIBDEPS)
+owstats_SOURCES   = owstats.c
+owstats_LDADD = $(OWPLIBS) -lI2util $(MALLOCDEBUGLIBS)
+owstats_DEPENDENCIES = $(OWPLIBDEPS) $(I2UTILLIBDEPS)
