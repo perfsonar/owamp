@@ -28,6 +28,6 @@ owtvec_SOURCES	= owtvec.c
 owtvec_LDADD	= $(OWPLIBS) -lI2util $(MALLOCDEBUGLIBS)
 owtvec_DEPENDENCIES = $(OWPLIBDEPS) $(I2UTILLIBDEPS)
 
-owstats_SOURCES   = owstats.c
+owstats_SOURCES   = owstats.c owtest_utils.c
 owstats_LDADD = $(OWPLIBS) -lI2util $(MALLOCDEBUGLIBS)
 owstats_DEPENDENCIES = $(OWPLIBDEPS) $(I2UTILLIBDEPS)
