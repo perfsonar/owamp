@@ -1,11 +1,12 @@
-#include <owamp/owamp.h>
-#include <I2util/util.h>
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 #include <assert.h>
+
+#include <owamp/owamp.h>
+#include <I2util/util.h>
+
 
 // captured session with a 100-packet test
 #define EXPECTED_NUM_RECORDS 100
@@ -113,18 +114,18 @@ FILE *tmpSessionDataFile(const char *hex) {
     strcpy(filename, TMPNAME_FMT);
     int fd = mkstemp(filename);
     if (fd < 0) {
-        printf("mkstemp error: %s", strerror(errno));
+        printf("mkstemp error: %m\n");
         goto tmp_file_error;
     }
 
     fp = fdopen(fd, "w+b");
     if (!fp) {
-        printf("fdopen error: %s", strerror(errno));
+        printf("fdopen error: %m\n");
         goto tmp_file_error;
     }
 
     if(unlink(filename)) {
-        printf("unlink error: %s", strerror(errno));
+        printf("unlink error: %m\n");
         goto tmp_file_error;
     }
 
@@ -176,36 +177,56 @@ OWPContext tmpContext(char **argv) {
     return ctx;
 }
 
-
 int
 main(
         int     argc    __attribute__((unused)),
         char    **argv
     ) {
 
+    int test_result = 1; // default is to fail
 
+    OWPStats stats = NULL;
     OWPContext ctx = tmpContext(argv);
     OWPSessionHeaderRec hdr;
-
-OWPError(ctx,OWPErrFATAL,OWPErrINVALID,"test ...123");
 
     FILE *fp = tmpSessionDataFile(SESSION_DATA);
 
     int num_rec = OWPReadDataHeader(ctx,fp,&hdr);
 
-    fclose(fp);
-    OWPContextFree(ctx);
-
     if (num_rec != EXPECTED_NUM_RECORDS) {
         printf("expected %d records, found %d\n",
             EXPECTED_NUM_RECORDS, num_rec);
-        exit(1);
+        goto done;
     }
 
     if (!hdr.header) {
         printf("header data not initialized\n");
-        exit(1);
+        goto done;
     }
 
+    stats = OWPStatsCreate(
+        ctx, fp, &hdr, "source", "destination", 'm', 0.0001);
+    if (!stats) {
+        printf("OWPStatsCreate failed\n");
+        goto done;
+    }
+
+    if (!OWPStatsParse(stats, NULL, 0, 0, ~0)) {
+        printf("OWPStatsParse failed\n");
+        goto done;
+    }
+
+    OWPStatsPrintSummary(stats, stdout, NULL, 0);
+
+    // no errors: set test_result to passed
+    test_result = 0;
+
+done:
+    fclose(fp);
+    OWPContextFree(ctx);
+    if(stats) {
+        OWPStatsFree(stats);
+    }
+    exit(test_result);
 }
 
