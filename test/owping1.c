@@ -1,3 +1,12 @@
+/*
+ *        File:         owping1.c
+ *
+ *        Author:       Erik Reid
+ *                      GÉANT
+ *
+ *        Description:  Basic owping client connection setup test
+ */
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -43,8 +52,20 @@ struct _server_start {
 };
 
 
+struct _server_test_results {
+    uint32_t start_time;
+    int sent_greeting;
+    int setup_response_ok;
+    int sent_server_start;
+    int test_complete;
+};
 
-int do_server(int s, uint32_t start_time) {
+
+int do_server(int s, void *context) {
+
+    struct _server_test_results *test_results
+        = (struct _server_test_results *) context;
+    memset(test_results, 0, sizeof (struct _server_test_results));
 
     struct _greeting greeting;
     memset(&greeting, 0, sizeof greeting);
@@ -52,123 +73,84 @@ int do_server(int s, uint32_t start_time) {
     memset(greeting.Challenge, 0x55, sizeof greeting.Challenge);
     memset(greeting.Salt, 0x78, sizeof greeting.Salt);
     *((uint32_t *) greeting.Count) = htonl(1024);
-    write(s, &greeting, sizeof greeting);
+    test_results->sent_greeting 
+        = write(s, &greeting, sizeof greeting) == sizeof greeting;
 
 
     struct _setup_response setup_response;
-    read(s, &setup_response, sizeof setup_response);
+    if(read(s, &setup_response, sizeof setup_response) != sizeof setup_response) {
+        printf("error reading setup response: '%m'\n");
+        return 0;
+    }
+
     uint32_t mode = ntohl(*(uint32_t *) &setup_response.Mode);
     if (mode != OWP_MODE_OPEN) {
         printf("expeced setup response mode == OWP_MODE_OPEN, got: 0x%08x", mode);
-        return 1;
+        return 0;
     }
     // nothing to check in the other fields in unauthenticated mode
+    test_results->setup_response_ok = 1;
 
-   
     struct _server_start server_start;
     memset(&server_start, 0, sizeof server_start);
-    *((uint32_t *) server_start.Start_Time) = htonl(start_time);
-    write(s, &server_start, sizeof server_start);
-
-
-    for(int i=0; i<100; i++) {
-        char c;
-        if(read(s, &c, 1) <= 0) {
-            perror("read error");
-            exit(1);
-        }
-
-        printf("read byte #%d: 0x%02x\n", i, (int) c);
-
-        c = ~c;
-        if(write(s, &c, 1) <= 0) {
-            perror("write error");
-            exit(1);
-        }
-    }
+    *((uint32_t *) server_start.Start_Time) = htonl(test_results->start_time);
+    test_results->sent_server_start
+        = write(s, &server_start, sizeof server_start) == sizeof server_start;
 
     printf("do_server: finished!\n");
+    test_results->test_complete = 1;
     return 0;
 }
 
-void *server_proc(void *socket_path) {
-    int fd;
-
-    struct sockaddr_un addr;
-    memset(&addr, 0, sizeof addr);
-    addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, (char *) socket_path, sizeof addr.sun_path - 1);
-
-    fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (fd < 0) {
-        perror("error creating server socket");
-        exit(1);
-    }
-
-    if(bind(fd, (struct sockaddr *) &addr, sizeof addr) == -1) {
-        perror("bind error");
-        exit(1);
-    }
-
-   if (listen(fd, 1) == -1) {
-        perror("listen error");
-        exit(1);
-    }
-
-    uint32_t server_start_time = (uint32_t) time(NULL);
-
-    while(1) {
-        int cfd = accept(fd, NULL, NULL);
-        if (cfd == -1) {
-            perror("accept error");
-            exit(1);
-        }
-
-        if (do_server(cfd, server_start_time)) {
-            close(fd);
-            exit(1);
-        }
-
-        close(cfd);
-    }
-
-    close(fd);
-    return NULL;
-}
 
 int
 main(
-        int     argc    __attribute__((unused)),
-        char    **argv
-    ) {
-
-    char *socket_path = (char *) malloc(sizeof TMP_SOCK_FILENAME_TPL + 1);
-    strcpy(socket_path, TMP_SOCK_FILENAME_TPL);
-
-    if(!mktemp(socket_path)) {
-        perror("mktemp error");
-        exit(1);
-    }
+    int argc __attribute__((unused)),
+    char    **argv
+) {
 
     pthread_t server_thread;
+    int thread_valid = 0;
+    OWPContext ctx = NULL;
+    I2Addr serverAddr = NULL;
+    OWPControl cntrl = NULL;
+    int fd = -1;
+    struct _server_params server_params;
+    struct _server_test_results test_results;
 
-    errno = pthread_create(&server_thread, NULL, server_proc, socket_path);
-    if (errno) {
-        perror("pthread_create error");
-        exit(1);
+    memset(&test_results, 0, sizeof test_results);
+    test_results.start_time = (uint32_t) time(NULL);
+    server_params.client_proc = do_server;
+    server_params.test_context = &test_results;
+
+    // create a tmp file to use as the unix socket
+    server_params.socket_path = (char *) malloc(sizeof TMP_SOCK_FILENAME_TPL + 1);
+    strcpy(server_params.socket_path, TMP_SOCK_FILENAME_TPL);
+    if(!mktemp(server_params.socket_path)) {
+        perror("mktemp error");
+        goto cleanup;
     }
 
-    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    // start the server thread
+    errno = pthread_create(&server_thread, NULL, server_proc, &server_params);
+    if (errno) {
+        perror("pthread_create error");
+        goto cleanup;
+    }
+    thread_valid = 1;
+
+
+    // create the client socket & wait until we're able to connect
+    fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd == -1) {
         perror("error creating client socket");
-        exit(1);
+        goto cleanup;
     }
 
     struct sockaddr_un addr;
     memset(&addr, 0, sizeof addr);
     addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, socket_path, sizeof addr.sun_path - 1);
-
+    strncpy(addr.sun_path, server_params.socket_path, sizeof addr.sun_path - 1);
 
     int connected = 0;
     for(int i=0; i<10 && !connected; i++) {
@@ -181,28 +163,50 @@ main(
     }
     if (!connected) {
         printf("giving up connection to test server");
-        exit(1);
+        goto cleanup;
     }
 
 
-    OWPContext ctx = tmpContext(argv);
-    I2Addr serverAddr = I2AddrBySockFD(ctx->eh, fd, False);
-    OWPErrSeverity  owp_severity;
-    OWPControl cntrl = OWPControlOpen(
-        ctx, NULL, serverAddr,
-        OWP_MODE_OPEN, NULL,
-        NULL, &owp_severity);
+    // open the control connection
+    ctx = tmpContext(argv);
+    serverAddr = I2AddrBySockFD(ctx->eh, fd, False);
+    OWPErrSeverity owp_severity;
+    cntrl = OWPControlOpen(ctx, NULL, serverAddr, OWP_MODE_OPEN, NULL, NULL, &owp_severity);
 
     if (!cntrl) {
         printf("OWPControlOpen error\n");
-        exit(1);
     }
 
-    pthread_cancel(server_thread);
-    unlink(socket_path);
 
-    OWPControlClose(cntrl);
-    OWPContextFree(ctx);
-    close(fd);
+cleanup:
+
+    if (thread_valid) {
+        if (test_results.test_complete) {
+            pthread_join(server_thread, NULL);
+        } else {
+            pthread_cancel(server_thread);
+        }
+    }
+
+    if (server_params.socket_path) {
+        unlink(server_params.socket_path);
+        free(server_params.socket_path);
+    }
+
+    if (cntrl) {
+        OWPControlClose(cntrl);
+    }
+    if (ctx) {
+        OWPContextFree(ctx);
+    }
+    if (fd >= 0) {
+        close(fd);
+    }
+
+    int exit_code = !test_results.sent_greeting
+        || !test_results.setup_response_ok
+        || !test_results.sent_server_start
+        || !test_results.test_complete;
+    exit(exit_code);
 }
 

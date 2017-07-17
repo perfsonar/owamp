@@ -4,6 +4,10 @@
 #include <unistd.h>
 #include <assert.h>
 
+#include <sys/un.h>
+
+
+
 #include <owamp/owamp.h>
 #include <I2util/util.h>
 
@@ -84,4 +88,57 @@ OWPContext tmpContext(char **argv) {
     }
     return ctx;
 }
+
+
+
+void *server_proc(void *context) {
+    int fd;
+
+    struct _server_params *server_params
+        = (struct _server_params *) context; 
+
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof addr);
+    addr.sun_family = AF_UNIX;
+    strncpy(
+        addr.sun_path,
+        server_params->socket_path,
+        sizeof addr.sun_path - 1);
+
+    fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd < 0) {
+        perror("error creating server socket");
+        return NULL;
+    }
+
+    if(bind(fd, (struct sockaddr *) &addr, sizeof addr) == -1) {
+        close(fd);
+        perror("bind error");
+        return NULL;
+    }
+
+   if (listen(fd, 1) == -1) {
+        close(fd);
+        perror("listen error");
+        return NULL; 
+    }
+
+    int keep_serving = 1;
+    while(keep_serving) {
+        int cfd = accept(fd, NULL, NULL);
+        if (cfd == -1) {
+            close(fd);
+            perror("accept error");
+            return NULL;
+        }
+
+        keep_serving = server_params->client_proc(cfd, server_params->test_context);
+
+        close(cfd);
+    }
+
+    close(fd);
+    return NULL;
+}
+
 
