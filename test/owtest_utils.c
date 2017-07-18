@@ -13,6 +13,7 @@
 #include <assert.h>
 
 #include <sys/un.h>
+#include <dirent.h>
 
 #include <owamp/owamp.h>
 #include <I2util/util.h>
@@ -34,7 +35,6 @@
  * Returns:          a pointer to a FILE
  * Side Effect:
  */
-#define TMPNAME_FMT "owtest.XXXXXX"
 FILE *tmpSessionDataFile(const char *hex) {
 
     char *filename = (char *) malloc(sizeof TMPNAME_FMT);
@@ -83,6 +83,60 @@ tmp_file_error:
     free(filename);
     exit(1);
 }
+
+
+/*
+ * Function:        rmdir_recursive
+ *
+ * Description:     simple version of 'rm -r'
+ *
+ * In Args:         directory name
+ *
+ * Out Args:
+ *
+ * Scope:
+ * Returns:
+ * Side Effect:     simple: doesn't really recover from or report errors
+ */
+void rmdir_recursive(const char *dir_name) {
+    DIR *d = opendir(dir_name);
+    if (!d) {
+        fprintf(stderr, "can't open directory: %s\n", dir_name);
+        perror("opendir error");
+        return;
+    }
+
+    struct dirent *e;
+    while((e=readdir(d))) {
+        if(!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) {
+            continue;
+        }
+
+
+        char name[PATH_MAX];
+        struct stat statbuf;
+
+        sprintf(name, "%s/%s", dir_name, e->d_name);
+        if(!stat(name, &statbuf)) {
+            if (S_ISDIR(statbuf.st_mode)) {
+                rmdir_recursive(name);
+            } else {
+                if(unlink(name)) {
+                    fprintf(stderr, "couldn't unlink file: %s\n", name);
+                    perror("unlink error");
+                }
+            }
+        }
+    }
+
+    closedir(d);
+    if(rmdir(dir_name)) {
+        fprintf(stderr, "couldn't rmdir: %s\n", dir_name);
+        perror("rmdir error");
+    }
+}
+
+
 
 
 

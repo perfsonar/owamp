@@ -6,7 +6,12 @@
  *
  *        Description:  declarations for shared test methods/structs
  */
+
+#define TMPNAME_FMT "owtest.XXXXXX"
+
 FILE *tmpSessionDataFile(const char *hex);
+void rmdir_recursive(const char *dir_name);
+
 OWPContext tmpContext(char **argv);
 
 struct _server_params {
