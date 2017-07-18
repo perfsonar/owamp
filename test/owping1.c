@@ -28,6 +28,7 @@
 
 #define TMP_SOCK_FILENAME_TPL "owsock.XXXXXX"
 
+// cf. rfc 4656, pg 6 
 struct _greeting {
     uint8_t Unused[12];
     uint8_t Modes[4];
@@ -37,6 +38,7 @@ struct _greeting {
     uint8_t MBZ[12];
 };
 
+// cf. rfc 4656, pg 7 
 struct _setup_response {
     uint8_t Mode[4];
     uint8_t KeyID[80];
@@ -44,6 +46,7 @@ struct _setup_response {
     uint8_t Client_IV[16];
 };
 
+// cf. rfc 4656, pg 9
 struct _server_start {
     uint8_t MBZ_Accept[16];
     uint8_t Server_IV[16];
@@ -52,6 +55,7 @@ struct _server_start {
 };
 
 
+// used with do_server
 struct _server_test_results {
     uint32_t start_time;
     int sent_greeting;
@@ -61,11 +65,26 @@ struct _server_test_results {
 };
 
 
+/*
+ * Function:        do_server
+ *
+ * Description:     emulates the server side of a test session
+ *
+ * In Args:         void pointer to struct _server_test_results
+ *                  with initialized start_time
+ *
+ * Out Args:
+ *
+ * Scope:
+ * Returns:          non-zero if the server should continue
+ *                   accepting new clients
+ * Side Effect:
+ */
 int do_server(int s, void *context) {
-
     struct _server_test_results *test_results
         = (struct _server_test_results *) context;
-    memset(test_results, 0, sizeof (struct _server_test_results));
+    test_results->sent_greeting = test_results->setup_response_ok
+        = test_results->sent_server_start = test_results->test_complete = 0;
 
     struct _greeting greeting;
     memset(&greeting, 0, sizeof greeting);
@@ -103,6 +122,39 @@ int do_server(int s, void *context) {
 }
 
 
+/*
+ * Function:        server_proc 
+ *
+ * Description:     wrapper for run_server(struct _server_params *) used
+ *                  with pthread_create
+ *
+ * In Args:         ptr to a struct _server_params
+ *
+ * Out Args:
+ *
+ * Scope:
+ * Returns:         NULL in case of error or server completion
+ * Side Effect:
+ */
+void *server_proc(void *context) {
+    return run_server((struct _server_params *) context);
+}
+
+
+/*
+ * Function:        main
+ *
+ * Description:     launch a simulated owamp server & send commands
+ *                  so they can be validated in do_server (above)
+ *
+ * In Args:         argc, argv (unused)
+ *
+ * Out Args:
+ *
+ * Scope:           unit test (run using make check)
+ * Returns:         non-zero in case of error
+ * Side Effect:
+ */
 int
 main(
     int argc __attribute__((unused)),
@@ -181,6 +233,7 @@ main(
 cleanup:
 
     if (thread_valid) {
+        // possible, but unlikely race condition
         if (test_results.test_complete) {
             pthread_join(server_thread, NULL);
         } else {

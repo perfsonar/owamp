@@ -1,3 +1,11 @@
+/*
+ *        File:         owtest_utils.h
+ *
+ *        Author:       Erik Reid
+ *                      GÉANT
+ *
+ *        Description:  shared test methods/structs
+ */
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -6,16 +14,27 @@
 
 #include <sys/un.h>
 
-
-
 #include <owamp/owamp.h>
 #include <I2util/util.h>
 
 #include "./owtest_utils.h"
 
 
+/*
+ * Function:        tmpSessionDataFile
+ *
+ * Description:     creates a temporary file & writes the input
+ *                  binary data to it (input should be a hex string)
+ *
+ * In Args:         string of hex characters
+ *
+ * Out Args:
+ *
+ * Scope:
+ * Returns:          a pointer to a FILE
+ * Side Effect:
+ */
 #define TMPNAME_FMT "owtest.XXXXXX"
-
 FILE *tmpSessionDataFile(const char *hex) {
 
     char *filename = (char *) malloc(sizeof TMPNAME_FMT);
@@ -67,7 +86,23 @@ tmp_file_error:
 
 
 
-// warning: I2ErrLogImmediate is static, effectively global
+/*
+ * Function:        tmpContext
+ *
+ * Description:     creates an OWPContext instance that can be used
+ *                  for testing
+ *
+ * In Args:         argv passed to main
+ *
+ * Out Args:
+ *
+ * Scope:
+ * Returns:          a new OWPContext
+ * Side Effect:      I2ErrLogImmediate is static, so effectively global
+ *                   ... i.e. this is a convenience function that just
+ *                   makes test code a bit easier to read, but should be
+ *                   called only once (per process)
+ */
 OWPContext tmpContext(char **argv) {
     char *progname;
     progname = (progname = strrchr(argv[0], '/')) ? progname+1 : *argv;
@@ -91,11 +126,23 @@ OWPContext tmpContext(char **argv) {
 
 
 
-void *server_proc(void *context) {
+/*
+ * Function:        run_server
+ *
+ * Description:     starts a server that listens and accepts connections
+ *                  on a unix socket
+ *
+ * In Args:         pointer to a struct _server_params, socket_path and
+ *                  client_proc must be initialized
+ *
+ * Out Args:
+ *
+ * Scope:
+ * Returns:          NULL when an error occurs or the server ends
+ * Side Effect:
+ */
+void *run_server(struct _server_params *server_params) {
     int fd;
-
-    struct _server_params *server_params
-        = (struct _server_params *) context; 
 
     struct sockaddr_un addr;
     memset(&addr, 0, sizeof addr);

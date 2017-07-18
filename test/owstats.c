@@ -1,3 +1,11 @@
+/*
+ *        File:         owstats.c
+ *
+ *        Author:       Erik Reid
+ *                      GÉANT
+ *
+ *        Description:  Basic session parsing & statistics sanity check
+ */
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -10,7 +18,7 @@
 #include "./owtest_utils.h"
 
 
-// captured session with a 100-packet test
+// reference session from a 100-packet test
 #define EXPECTED_NUM_RECORDS 100
 #define SESSION_DATA \
     "4f7741000000000300000001000000640000000000000064000000000000" \
@@ -105,6 +113,20 @@
     "acc963e54add12e5acc9671b60ff"
 
 
+/*
+ * Function:        main
+ *
+ * Description:     parse a reference session data set, parse
+ *                  and compute standard statistics
+ *
+ * In Args:         argc, argv (unused)
+ *
+ * Out Args:
+ *
+ * Scope:           unit test (run using make check)
+ * Returns:         non-zero in case of error
+ * Side Effect:
+ */
 int
 main(
         int     argc    __attribute__((unused)),
