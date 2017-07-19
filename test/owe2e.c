@@ -31,9 +31,9 @@
 /*
  * Function:        find_available_port 
  *
- * Description:     find a port number that can be bound to
+ * Description:     find a tcp port number that can be bound to
  *
- * In Args:         minimum and maximum ports to use for searching 
+ * In Args:
  *
  * Out Args:
  *
@@ -41,35 +41,34 @@
  * Returns:         available port number
  * Side Effect:     exit(1) in case of error or not found
  */
-uint16_t find_available_port(uint16_t first_port, uint16_t last_port) {
-
-    for(uint16_t port=first_port; port <= last_port; port++) {
-        
-        int s = socket(AF_INET, SOCK_STREAM, 0);
-        if (s < 0) {
-            printf("error: failed to create socket!\n");
-            exit(1);
-        }
-        
-        struct sockaddr_in addr;
-        memset(&addr, 0, sizeof addr);
-        addr.sin_family = AF_INET;
-        addr.sin_addr.s_addr = INADDR_ANY;
-        addr.sin_port = htons(port);
-
-        int res = bind(s, (struct sockaddr *) &addr, sizeof addr);
-        if (res < 0) {
-            if (errno != EADDRINUSE) {
-                perror("unexpected bind error");
-            }
-        }
-        close(s);
-        if (res >= 0) {
-            return port;
-        }
+uint16_t find_available_port() {
+    int s = socket(AF_INET, SOCK_STREAM, 0);
+    if (s < 0) {
+        printf("error: failed to create socket!\n");
+        exit(1);
     }
-    printf("error: failed to find an available port\n");
-    exit(1);
+
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof addr);
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = INADDR_ANY;
+    addr.sin_port = 0;
+
+    if(bind(s, (struct sockaddr *) &addr, sizeof addr) < 0) {
+        perror("bind error");
+        exit(1);
+    }
+
+    socklen_t l = sizeof addr;
+    memset(&addr, 0, l);
+    if(getsockname(s, (struct sockaddr *) &addr, &l)) {
+        perror("getsockname error");
+        close(s);
+        exit(1);
+    }
+
+    close(s);
+    return ntohs(addr.sin_port);
 }
 
 /*
@@ -220,7 +219,7 @@ main(
     char    **argv
 ) {
 
-    uint16_t port = find_available_port(1024, 0xffff);
+    uint16_t port = find_available_port();
     printf("found available port: %d, 0x%04x\n", port, port);
 
     int exit_code = 1;
