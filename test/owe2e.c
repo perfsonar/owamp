@@ -25,6 +25,8 @@
 
 #include "./owtest_utils.h"
 
+#define NUM_TEST_PACKETS 10
+
 
 /*
  * Function:        find_available_port 
@@ -154,25 +156,35 @@ int launch_owampd(uint16_t port, char *config_dir, size_t config_dir_size, pid_t
  * Out Args:        pid of owping process
  *
  * Scope:
- * Returns:         non-zero in case of error
+ * Returns:         read FILE ptr opened on the subprocess's stdout
  * Side Effect:     an owping process is started
  */
-int launch_owping(uint16_t port, pid_t *child_pid) {
-    
+FILE *launch_owping(uint16_t port, pid_t *child_pid) {
+   
+    int pipefd[2];
+    pipe(pipefd);
+ 
     if ((*child_pid = fork()) < 0) {
         perror("fork error");
-        return 1;
+        return NULL;
     }
 
     if (*child_pid == 0) {
         // this is the child process
 
+        close(pipefd[0]);
+        dup2(pipefd[1], fileno(stdout));
+
+
+        
         char address[20];
         sprintf(address, "localhost:%d", port);
-    
+  
+        char num_packets[6] = {0};
+        snprintf(num_packets, sizeof num_packets, "%d", NUM_TEST_PACKETS);
         char *argv[] = {
             "../owping/owping",
-            "-c", "10",
+            "-c", num_packets,
             address,
             NULL,
         };
@@ -182,7 +194,8 @@ int launch_owping(uint16_t port, pid_t *child_pid) {
         }
     }
 
-    return 0;
+    close(pipefd[1]);
+    return fdopen(pipefd[0], "r");
 }
 
 
@@ -213,6 +226,7 @@ main(
     int exit_code = 1;
     char config_dir_name[PATH_MAX] = {0};
     pid_t server_pid = -1, ping_pid = -1;
+    FILE *owping = NULL;
 
     if(launch_owampd(port, config_dir_name, sizeof config_dir_name, &server_pid)) {
         goto cleanup;
@@ -220,7 +234,7 @@ main(
 
     sleep(3); // give server time to startup
 
-    if(launch_owping(port, &ping_pid)) {
+    if(!(owping = launch_owping(port, &ping_pid))) {
         goto cleanup;
     }
 
@@ -229,13 +243,31 @@ main(
         perror("waitpid failed waiting for ping proc");
         goto cleanup;
     } else {
-        ping_pid = -1; // i.e. don't kill below
-    }
 
-    exit_code = 0; // succeeded
+        ping_pid = -1; // i.e. don't kill below
+
+        char output[1024];
+        int len = fread(output, 1, sizeof output, owping);
+        output[len] = '\0';
+
+        printf("OWPING OUTPUT:\n%s\n", output);
+
+        if (!status) {
+            // status_str should appear in the output twice
+            char status_str[20];
+            snprintf(status_str, sizeof status_str, "%d sent, 0 lost", NUM_TEST_PACKETS);
+
+            if (count_occurrences(output, status_str) == 2) {
+                exit_code = 0; // succeeded
+            }
+        }
+    }
 
 cleanup:
 
+    if (owping) {
+        fclose(owping);
+    }
     if (ping_pid > 0) {
         kill(ping_pid, SIGKILL);
         waitpid(ping_pid, &status, 0);

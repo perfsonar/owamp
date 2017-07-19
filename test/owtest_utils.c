@@ -242,4 +242,30 @@ void *run_server(struct _server_params *server_params) {
     return NULL;
 }
 
+/*
+ * Function:        count_occurrences
+ *
+ * Description:     count the number of occurrences of needle in haystack
+ *
+ * In Args:         needle: string to search for
+ *                  haystack: string in which to search
+ *
+ * Out Args:
+ *
+ * Scope:
+ * Returns:         number of occurences found
+ * Side Effect:
+ */
+int count_occurrences(const char *haystack, const char *needle) {
+    int num = 0;
+    while(1) {
+        char *match = strstr(haystack, needle);
+        if (!match || strlen(match) < strlen(needle)) {
+            return num;
+        }
+        haystack = &match[strlen(needle)];
+        num++;
+    }
+}
+
 

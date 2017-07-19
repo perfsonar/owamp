@@ -22,5 +22,6 @@ struct _server_params {
 
 void *run_server(struct _server_params *);
 
+int count_occurrences(const char *haystack, const char *needle);
  
 
