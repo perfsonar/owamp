@@ -1,5 +1,18 @@
-This directory holds the owtvec application. This application uses the
-AES based Exponential Deviates functions from the owamp library and
-verifies the implementation successfully produces the expected
-results from Appendix B of the OWAMP specification.
+This directory holds owamp unit tests:
+
+owtvec:  This application uses the AES based Exponential
+         Deviates functions from the owamp library and
+         verifies the implementation successfully produces
+         the expected results from Appendix B of the OWAMP
+         specification.
+
+owstats: read a reference session message and verify it can
+         be parsed and statistics can be generated
+
+owping1: use the client protocol api to generate and send messages
+         to a simiulated server, which validates them and then
+         returns appropriate responses
+
+owe2e:   launch owping/owampd child processes and capture
+         the test output - verify there were no errors
 
