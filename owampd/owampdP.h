@@ -23,9 +23,9 @@
 
 #ifndef OWAMPD_CONF_FILE
 #ifdef TWAMP
-#define OWAMPD_CONF_FILE        "twampd-server.conf"
+#define OWAMPD_CONF_FILE        "twamp-server.conf"
 #else
-#define OWAMPD_CONF_FILE        "owampd-server.conf"
+#define OWAMPD_CONF_FILE        "owamp-server.conf"
 #endif
 #endif
 
