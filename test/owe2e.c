@@ -20,6 +20,7 @@
 
 #include <owamp/owamp.h>
 #include <owamp/owampP.h>
+#include <owampd/owampdP.h>
 #include <I2util/util.h>
 #include <I2util/addr.h>
 
@@ -100,7 +101,7 @@ int launch_owampd(uint16_t port, char *config_dir, size_t config_dir_size, pid_t
     }
 
     char filename[PATH_MAX];
-    sprintf(filename, "%s/%s", config_dir, "owamp-server.conf");
+    sprintf(filename, "%s/%s", config_dir, OWAMPD_CONF_FILE);
     FILE *f = fopen(filename, "w");
     if (!f) {
         perror("fopen error");
