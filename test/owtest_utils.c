@@ -22,12 +22,11 @@
 
 
 /*
- * Function:        tmpSessionDataFile
+ * Function:        tmpFile
  *
- * Description:     creates a temporary file & writes the input
- *                  binary data to it (input should be a hex string)
+ * Description:     creates a temporary file
  *
- * In Args:         string of hex characters
+ * In Args:
  *
  * Out Args:
  *
@@ -35,11 +34,8 @@
  * Returns:          a pointer to a FILE
  * Side Effect:
  */
-FILE *tmpSessionDataFile(const char *hex) {
-
+FILE *tmpFile(void) {
     char *filename = (char *) malloc(sizeof TMPNAME_FMT);
-    size_t nbytes = strlen(hex)/2;
-    uint8_t *bytes = (uint8_t *) malloc(nbytes);
     FILE *fp = NULL;
 
     strcpy(filename, TMPNAME_FMT);
@@ -60,18 +56,6 @@ FILE *tmpSessionDataFile(const char *hex) {
         goto tmp_file_error;
     }
 
-    if(!I2HexDecode(hex, bytes, nbytes)) {
-        printf("I2HexDecode error\n");
-        goto tmp_file_error;
-    }
-
-    if(fwrite(bytes, 1, nbytes, fp) != nbytes) {
-        printf("error writing test data\n");
-        goto tmp_file_error;
-    }
-
-    rewind(fp);
-    free(bytes);
     free(filename);
     return fp;
 
@@ -79,8 +63,49 @@ tmp_file_error:
     if (fp) {
         fclose(fp);
     }
-    free(bytes);
     free(filename);
+    exit(1);
+}
+
+/*
+ * Function:        tmpSessionDataFile
+ *
+ * Description:     creates a temporary file & writes the input
+ *                  binary data to it (input should be a hex string)
+ *
+ * In Args:         string of hex characters
+ *
+ * Out Args:
+ *
+ * Scope:
+ * Returns:          a pointer to a FILE
+ * Side Effect:
+ */
+FILE *tmpSessionDataFile(const char *hex) {
+    size_t nbytes = strlen(hex)/2;
+    uint8_t *bytes = (uint8_t *) malloc(nbytes);
+    FILE *fp = NULL;
+
+    if(!I2HexDecode(hex, bytes, nbytes)) {
+        printf("I2HexDecode error\n");
+        goto tmp_file_error;
+    }
+
+    fp = tmpFile();
+    if(fwrite(bytes, 1, nbytes, fp) != nbytes) {
+        printf("error writing test data\n");
+        goto tmp_file_error;
+    }
+
+    rewind(fp);
+    free(bytes);
+    return fp;
+
+tmp_file_error:
+    if (fp) {
+        fclose(fp);
+    }
+    free(bytes);
     exit(1);
 }
 
@@ -111,7 +136,6 @@ void rmdir_recursive(const char *dir_name) {
         if(!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) {
             continue;
         }
-
 
         char name[PATH_MAX];
         struct stat statbuf;

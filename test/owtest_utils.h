@@ -9,6 +9,7 @@
 
 #define TMPNAME_FMT "owtest.XXXXXX"
 
+FILE *tmpFile(void);
 FILE *tmpSessionDataFile(const char *hex);
 void rmdir_recursive(const char *dir_name);
 
