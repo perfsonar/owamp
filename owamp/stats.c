@@ -2019,18 +2019,18 @@ PrintJitterStats(
 
     switch(type){
         case OWP_DELAY:
-            jitterdesc = stats->hdr->twoway ? "two-way PDV" : "one-way jitter";
+            jitterdesc = stats->hdr->twoway ? "two-way" : "one-way";
             break;
         case TWP_FWD_DELAY:
-            jitterdesc = "send PDV";
+            jitterdesc = "send";
             break;
         case TWP_BCK_DELAY:
-            jitterdesc = "reflect PDV";
+            jitterdesc = "reflect";
             break;
         default:
             return;
     }
-    fprintf(output,"%s = %s %s (P95-P50)\n",
+    fprintf(output,"%s jitter = %s %s (P95-P50)\n",
             jitterdesc,n1val,stats->scale_abrv);
 }
 
