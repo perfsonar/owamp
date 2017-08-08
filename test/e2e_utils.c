@@ -180,6 +180,8 @@ FILE *launch_xwping(PROTOCOL protocol, uint16_t port, const char *authmode, cons
         char *argv[] = {
             protocol == OWAMP ? "../owping/owping" : "../owping/twping",
             "-c", num_packets,
+            "-a", "25,50,75",
+            "-b", ".000001",
             "-A", (char *) authmode,
             "-u", (char *) USERID,
             "-k", pfs_filename,
@@ -188,8 +190,8 @@ FILE *launch_xwping(PROTOCOL protocol, uint16_t port, const char *authmode, cons
         };
 
         if (!strstr(authmode, "A") && !strstr(authmode, "E")) {
-            argv[3] = address;
-            argv[4] = NULL;
+            argv[7] = address;
+            argv[8] = NULL;
         }
         if (execvp(*argv, argv) < 0) {
             perror("execvp error launching ping process");
