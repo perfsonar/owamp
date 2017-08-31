@@ -1,6 +1,6 @@
 [submodule "I2util"]
 	path = I2util
 	url = https://github.com/perfsonar/i2util
-[submodule "toolkit-building"]
-	path = toolkit-building
-	url = https://github.com/perfsonar/toolkit-building.git
+[submodule "distribution"]
+	path = distribution
+	url = https://github.com/perfsonar/distribution.git
