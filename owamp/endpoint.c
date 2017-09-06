@@ -3465,7 +3465,7 @@ RECEIVE:
                                    ep->payload,resp_len_payload,lsaddr,lsaddrlen,
                                    (struct sockaddr*)&peer_addr,&peer_addr_len,
                                    &twdatarec.reflected.ttl);
-            if(errno != EINTR){
+            if(resp_len != resp_len_payload && errno != EINTR){
                 OWPError(ep->cntrl->ctx,OWPErrFATAL,
                          OWPErrUNKNOWN,"recvfromttl(): %M");
                 goto finish_sender;
