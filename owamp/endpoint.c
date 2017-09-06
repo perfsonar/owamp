@@ -395,6 +395,7 @@ _OWPEndpointInit(
     uint16_t                p;
     uint16_t                range;
     OWPPortRange            portrange=NULL;
+    OWPPortRangeRec         dynamic_portrange;
     int                     saveerr=0;
     char                    localnode[NI_MAXHOST];
     size_t                  localnodelen = sizeof(localnode);
@@ -501,15 +502,31 @@ _OWPEndpointInit(
         goto error;
     }
 
+    portrange = (OWPPortRange)OWPContextConfigGetV(cntrl->ctx, OWPTestPortRange);
 
     if(port){
         /*
          * port specified by saddr
          */
         p = port;
+
+        /*
+         * If the port requested by the TWAMP sender cannot be used, we
+         * will attempt to find one within the configured port range.
+         *
+         * If a port range has not been configured then a port between the
+         * requested and max ports will be used.
+         */
+        if(cntrl->twoway && cntrl->server){
+            if (!portrange){
+                portrange = &dynamic_portrange;
+                portrange->high = ~0;
+                portrange->low = port;
+            }
+            range = portrange->high - portrange->low + 1;
+        }
     }
-    else if(!(portrange = (OWPPortRange)OWPContextConfigGetV(cntrl->ctx,
-                    OWPTestPortRange))){
+    else if(!portrange){
         p = port = 0;
     }else{
         uint32_t   r;
@@ -521,15 +538,15 @@ _OWPEndpointInit(
         if(I2RandomBytes(cntrl->ctx->rand_src,(uint8_t*)&r,4) != 0)
             goto error;
 
-        if(portrange->high < portrange->low){
-            OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                    "Invalid port range specified");
-            *aval = OWP_CNTRL_FAILURE;
-            goto error;
-        }
-
         range = portrange->high - portrange->low + 1;
         p = port = portrange->low + ((double)r / 0xffffffff * range);
+    }
+
+    if(portrange && portrange->high < portrange->low){
+        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+                "Invalid port range specified");
+        *aval = OWP_CNTRL_FAILURE;
+        goto error;
     }
 
     do{
