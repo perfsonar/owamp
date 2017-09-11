@@ -161,7 +161,7 @@ int session_setup_test(
         }
     }
     if (!connected) {
-        printf("giving up connection to test server");
+        printf("giving up connection to test server\n");
         goto cleanup;
     }
 
@@ -219,6 +219,7 @@ int session_setup_test(
                 &tspec,
                 NULL,
                 sid_ret, &err_ret)) {
+        printf("OWPSessionRequest returned error\n ");
         goto cleanup;
     }
 
@@ -232,10 +233,18 @@ int session_setup_test(
 cleanup:
 
     if (thread_valid) {
-        // possible, but unlikely race condition
+
+        for(int i=0; i<5; i++) {
+            sleep(1);
+            if (test_params->output.test_complete) {
+                break;
+            }
+        }
+
         if (test_params->output.test_complete) {
             pthread_join(server_thread, NULL);
         } else {
+            printf("warning: server thread didn't exit\n");
             pthread_cancel(server_thread);
         }
     }
