@@ -331,17 +331,11 @@ _OWPWriteServerStart(
     }
 
     /*
-     * Write first two blocks of message - not encrypted
+     * Set first two blocks of message - not encrypted
      */
     memset(&buf[0],0,15);
     *(uint8_t *)&buf[15] = code & 0xff;
     memcpy(&buf[16],cntrl->writeIV,16);
-    if((len = I2Writeni(cntrl->sockfd,buf,32,intr)) != 32){
-        if((len < 0) && *intr && (errno == EINTR)){
-            return OWPErrFATAL;
-        }
-        return OWPErrFATAL;
-    }
 
     if(code == OWP_CNTRL_ACCEPT){
         /*
@@ -349,26 +343,30 @@ _OWPWriteServerStart(
          * func.
          */
         tstamp.owptime = uptime;
-        _OWPEncodeTimeStamp((uint8_t *)&buf[0],&tstamp);
-        memset(&buf[8],0,8);
+        _OWPEncodeTimeStamp((uint8_t *)&buf[32],&tstamp);
+        memset(&buf[40],0,8);
 
         cntrl->state = _OWPStateRequest;
     }
     else{
         /* encryption not valid - reset to clear mode and reject */
         cntrl->mode = OWP_MODE_OPEN;
-        memset(&buf[0],0,16);
+        memset(&buf[32],0,16);
         cntrl->state = _OWPStateInvalid;
     }
 
     /*
-     * Add this block to HMAC, and then send it.
+     * Add final block to HMAC, and then send all 3 blocks
      * No HMAC digest field in this message - so this block gets
      * include as part of the text for the next digest sent in the
      * 'next' message.
      */
-    _OWPSendHMACAdd(cntrl,buf,1);
-    if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,intr) != 1){
+    _OWPSendHMACAdd(cntrl,&buf[32],1);
+
+    if (cntrl->mode & OWP_MODE_DOCIPHER_CNTRL)
+        _OWPEncryptBlocks(cntrl, (uint8_t *)&buf[32], 1, &buf[32]);
+
+    if((len = I2Writeni(cntrl->sockfd,buf,48,intr)) != 48){
         if((len < 0) && *intr && (errno == EINTR)){
             return OWPErrFATAL;
         }
