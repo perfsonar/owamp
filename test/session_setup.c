@@ -7,6 +7,7 @@
  *        Description:  Utilities for launching a *wping client
  *                      and setting up a control session
  */
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -125,10 +126,13 @@ int session_setup_test(
     // create a tmp file to use as the unix socket
     server_params.socket_path = (char *) malloc(sizeof TMP_SOCK_FILENAME_TPL + 1);
     strcpy(server_params.socket_path, TMP_SOCK_FILENAME_TPL);
-    if(!mktemp(server_params.socket_path)) {
-        perror("mktemp error");
+    int tmpfd = mkstemp(server_params.socket_path);
+    if(tmpfd < 0) {
+        perror("mkstemp error");
         goto cleanup;
     }
+    close(tmpfd);
+    unlink(server_params.socket_path);
 
     // start the server thread
     errno = pthread_create(&server_thread, NULL, server_proc, &server_params);

@@ -154,7 +154,10 @@ int launch_xwampd(
 FILE *launch_xwping(PROTOCOL protocol, uint16_t port, const char *authmode, const char *config_dir, pid_t *child_pid) {
    
     int pipefd[2];
-    pipe(pipefd);
+    if(pipe(pipefd)) {
+        perror("pipe creation error");
+        return NULL;
+    }
  
     if ((*child_pid = fork()) < 0) {
         perror("fork error");
