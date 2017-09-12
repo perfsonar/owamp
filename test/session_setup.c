@@ -156,7 +156,8 @@ int session_setup_test(
     strncpy(addr.sun_path, server_params.socket_path, sizeof addr.sun_path - 1);
 
     int connected = 0;
-    for(int i=0; i<10 && !connected; i++) {
+    int i;
+    for(i=0; i<10 && !connected; i++) {
         if(connect(fd, (struct sockaddr *) &addr, sizeof addr) == -1) {
             perror("waiting for server");
             sleep(1);
@@ -209,7 +210,7 @@ int session_setup_test(
     tspec.nslots = num_test_slots;
     tspec.slots = (OWPSlot *) calloc(num_test_slots, sizeof(OWPSlot));
     memset(tspec.slots, 0, num_test_slots * sizeof(OWPSlot));
-    for(int i=0; i<num_test_slots; i++) {
+    for(i=0; i<num_test_slots; i++) {
         tspec.slots[i].slot_type = OWPSlotLiteralType;
         tspec.slots[i].literal.offset = OWPDoubleToNum64((double) i);
     }
@@ -238,7 +239,7 @@ cleanup:
 
     if (thread_valid) {
 
-        for(int i=0; i<5; i++) {
+        for(i=0; i<5; i++) {
             sleep(1);
             if (test_params->output.test_complete) {
                 break;

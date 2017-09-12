@@ -104,7 +104,8 @@ struct _test_case **init_test_case_defs() {
  * free a structure allocated by init_test_case_defs
  */
 void free_test_case_defs(struct _test_case **test_case_defs) {
-    for(struct _test_case **pptc = test_case_defs; *pptc != NULL; pptc++) {
+    struct _test_case **pptc;
+    for(pptc = test_case_defs; *pptc != NULL; pptc++) {
         free((*pptc)->key);
         free((*pptc)->data);
         free(*pptc);
@@ -163,7 +164,8 @@ int main(int argc, char *argv[]) {
 
     int error_found = 0;
     struct _test_case **test_case_defs = init_test_case_defs();
-    for(struct _test_case **pptc = test_case_defs; *pptc != NULL; pptc++) {
+    struct _test_case **pptc;
+    for(pptc = test_case_defs; *pptc != NULL; pptc++) {
         printf("verifying test data set #%d ...\n", (*pptc)->test_case);
         if(openssl_api_test(*pptc)) {
             error_found = 1;
