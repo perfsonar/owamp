@@ -1208,6 +1208,80 @@ _OWPReadTestRequestSlots(
     return OWPErrOK;
 }
 
+static OWPErrSeverity
+_OWPTestSessionSetIPv6LLScope(OWPContext ctx,
+                              const struct sockaddr *cntrl_saddr,
+                              socklen_t cntrl_saddrlen,
+                              struct sockaddr *test_saddr,
+                              socklen_t test_saddrlen)
+{
+#ifdef AF_INET6
+    const struct sockaddr_in6 *cntrl_saddr6 =
+        (const struct sockaddr_in6 *)cntrl_saddr;
+    struct sockaddr_in6 *test_saddr6 =
+        (struct sockaddr_in6 *)test_saddr;
+    if (test_saddr->sa_family == AF_INET6 &&
+        IN6_IS_ADDR_LINKLOCAL(test_saddr6->sin6_addr.s6_addr)) {
+        if (cntrl_saddr && cntrl_saddr->sa_family == AF_INET6 &&
+            IN6_IS_ADDR_LINKLOCAL(cntrl_saddr6->sin6_addr.s6_addr)) {
+            test_saddr6->sin6_scope_id = cntrl_saddr6->sin6_scope_id;
+        } else {
+            char testaddr[NI_MAXHOST];
+            char cntrladdr[NI_MAXHOST];
+            if (getnameinfo(test_saddr,test_saddrlen,
+                            testaddr,sizeof(testaddr),NULL,0,
+                            NI_NUMERICHOST) != 0) {
+                strcpy(testaddr, "unknown");
+            }
+            if (getnameinfo(cntrl_saddr,cntrl_saddrlen,cntrladdr,
+                            sizeof(cntrladdr),NULL,0,NI_NUMERICHOST) != 0) {
+                strcpy(cntrladdr, "unknown");
+            }
+            OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                     "test session address %s out of scope of control "
+                     "address %s",testaddr,cntrladdr);
+            return OWPErrFATAL;
+        }
+    }
+#endif
+
+    return OWPErrOK;
+}
+
+static void
+_OWPSetSAddrIfUnspec(OWPContext ctx,
+                     const struct sockaddr *cntrl_saddr,
+                     struct sockaddr *test_saddr)
+{
+    switch(test_saddr->sa_family){
+        struct sockaddr_in  *test_saddr4;
+        struct sockaddr_in  *cntrl_saddr4;
+#ifdef        AF_INET6
+        struct sockaddr_in6 *test_saddr6;
+        struct sockaddr_in6 *cntrl_saddr6;
+        case AF_INET6:
+            test_saddr6 = (struct sockaddr_in6*)test_saddr;
+            if(!IN6_IS_ADDR_UNSPECIFIED(&test_saddr6->sin6_addr) ||
+               cntrl_saddr->sa_family != AF_INET6)
+                return;
+            cntrl_saddr6 = (struct sockaddr_in6*)cntrl_saddr;
+            memcpy(&test_saddr6->sin6_addr,&cntrl_saddr6->sin6_addr,
+                   sizeof(test_saddr6->sin6_addr));
+            break;
+#endif
+        case AF_INET:
+            test_saddr4 = (struct sockaddr_in*)test_saddr;
+            if (test_saddr4->sin_addr.s_addr != 0 ||
+                cntrl_saddr->sa_family != AF_INET)
+                return;
+            cntrl_saddr4 = (struct sockaddr_in*)cntrl_saddr;
+            test_saddr4->sin_addr.s_addr = cntrl_saddr4->sin_addr.s_addr;
+            break;
+        default:
+            return;
+    }
+}
+
 /*
  * Function:        _OWPReadTestRequest
  *
@@ -1254,6 +1328,8 @@ _OWPReadTestRequest(
     OWPAcceptType           *accept_ptr = &accept_mem;
     int                     ival=0;
     int                     *intr=&ival;
+    const struct sockaddr   *remote_saddr;
+    socklen_t               remote_saddrlen;
 
     *test_session = NULL;
     memset(&sendaddr_rec,0,addrlen);
@@ -1345,6 +1421,38 @@ _OWPReadTestRequest(
             *accept_ptr = OWP_CNTRL_UNSUPPORTED;
             return OWPErrFATAL;
         }
+    }
+
+    /*
+     * To support test sessions listening on IPv6 link-local
+     * addresses, the scope needs to be specified. So copy this over
+     * from the control session remote address, unless it isn't a
+     * link-local in which case the only option is to reject the
+     * request.
+     */
+    remote_saddr = I2AddrSAddr(cntrl->remote_addr,&remote_saddrlen);
+    err_ret = _OWPTestSessionSetIPv6LLScope(
+        cntrl->ctx,remote_saddr,remote_saddrlen,
+        (struct sockaddr*)&sendaddr_rec,addrlen);
+    if (err_ret != OWPErrOK) {
+        *accept_ptr = OWP_CNTRL_UNSUPPORTED;
+        return err_ret;
+    }
+    err_ret = _OWPTestSessionSetIPv6LLScope(
+        cntrl->ctx,remote_saddr,remote_saddrlen,
+        (struct sockaddr*)&recvaddr_rec,addrlen);
+    if (err_ret != OWPErrOK) {
+        *accept_ptr = OWP_CNTRL_UNSUPPORTED;
+        return err_ret;
+    }
+    if (cntrl->twoway) {
+        const struct sockaddr *local_saddr;
+        socklen_t local_saddrlen;
+        _OWPSetSAddrIfUnspec(cntrl->ctx,remote_saddr,
+                             (struct sockaddr*)&sendaddr_rec);
+        local_saddr = I2AddrSAddr(cntrl->local_addr,&local_saddrlen);
+        _OWPSetSAddrIfUnspec(cntrl->ctx,local_saddr,
+                             (struct sockaddr*)&recvaddr_rec);
     }
 
     /*
