@@ -31,12 +31,12 @@
 #define NUM_TEST_PACKETS 10
 
 #define OWAMPD_CONF_FILENAME "owamp-server.conf"
-#define OWAMPD_LIMITS_FILENAME "owampd-server.limits"
-#define OWAMPD_PFS_FILENAME "owampd-server.pfs"
+#define OWAMPD_LIMITS_FILENAME "owamp-server.limits"
+#define OWAMPD_PFS_FILENAME "owamp-server.pfs"
 
 #define TWAMPD_CONF_FILENAME "twamp-server.conf"
-#define TWAMPD_LIMITS_FILENAME "twampd-server.limits"
-#define TWAMPD_PFS_FILENAME "twampd-server.pfs"
+#define TWAMPD_LIMITS_FILENAME "twamp-server.limits"
+#define TWAMPD_PFS_FILENAME "twamp-server.pfs"
 
 
 const char USERID[] = "fake-user";

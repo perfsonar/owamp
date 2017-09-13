@@ -47,13 +47,13 @@
 #include "policy.h"
 
 #ifdef TWAMP
-#define NWAMPD_FILE_PREFIX "twampd-server"
+#define NWAMPD_FILE_PREFIX "twamp-server"
 #define NWPServerSockCreate TWPServerSockCreate
 #define NWPControlAccept TWPControlAccept
 #define OWP_DFLT_CONTROL_TIMEOUT 900
 #define NWP_DEFAULT_OFFERED_MODE TWP_DEFAULT_OFFERED_MODE
 #else
-#define NWAMPD_FILE_PREFIX "owampd-server"
+#define NWAMPD_FILE_PREFIX "owamp-server"
 #define NWPServerSockCreate OWPServerSockCreate
 #define NWPControlAccept OWPControlAccept
 #define OWP_DFLT_CONTROL_TIMEOUT 1800
