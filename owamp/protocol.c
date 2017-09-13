@@ -1248,6 +1248,40 @@ _OWPTestSessionSetIPv6LLScope(OWPContext ctx,
     return OWPErrOK;
 }
 
+static void
+_OWPSetSAddrIfUnspec(OWPContext ctx,
+                     const struct sockaddr *cntrl_saddr,
+                     struct sockaddr *test_saddr)
+{
+    switch(test_saddr->sa_family){
+        struct sockaddr_in  *test_saddr4;
+        struct sockaddr_in  *cntrl_saddr4;
+#ifdef        AF_INET6
+        struct sockaddr_in6 *test_saddr6;
+        struct sockaddr_in6 *cntrl_saddr6;
+        case AF_INET6:
+            test_saddr6 = (struct sockaddr_in6*)test_saddr;
+            if(!IN6_IS_ADDR_UNSPECIFIED(&test_saddr6->sin6_addr) ||
+               cntrl_saddr->sa_family != AF_INET6)
+                return;
+            cntrl_saddr6 = (struct sockaddr_in6*)cntrl_saddr;
+            memcpy(&test_saddr6->sin6_addr,&cntrl_saddr6->sin6_addr,
+                   sizeof(test_saddr6->sin6_addr));
+            break;
+#endif
+        case AF_INET:
+            test_saddr4 = (struct sockaddr_in*)test_saddr;
+            if (test_saddr4->sin_addr.s_addr != 0 ||
+                cntrl_saddr->sa_family != AF_INET)
+                return;
+            cntrl_saddr4 = (struct sockaddr_in*)cntrl_saddr;
+            test_saddr4->sin_addr.s_addr = cntrl_saddr4->sin_addr.s_addr;
+            break;
+        default:
+            return;
+    }
+}
+
 /*
  * Function:        _OWPReadTestRequest
  *
@@ -1410,6 +1444,15 @@ _OWPReadTestRequest(
     if (err_ret != OWPErrOK) {
         *accept_ptr = OWP_CNTRL_UNSUPPORTED;
         return err_ret;
+    }
+    if (cntrl->twoway) {
+        const struct sockaddr *local_saddr;
+        socklen_t local_saddrlen;
+        _OWPSetSAddrIfUnspec(cntrl->ctx,remote_saddr,
+                             (struct sockaddr*)&sendaddr_rec);
+        local_saddr = I2AddrSAddr(cntrl->local_addr,&local_saddrlen);
+        _OWPSetSAddrIfUnspec(cntrl->ctx,local_saddr,
+                             (struct sockaddr*)&recvaddr_rec);
     }
 
     /*
