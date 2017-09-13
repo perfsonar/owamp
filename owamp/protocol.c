@@ -1932,17 +1932,24 @@ _OWPWriteStopSessions(
     buf[0] = OWPReqStopSessions;
     buf[1] = acceptval & 0xff;
     *(uint32_t*)&buf[4] = htonl(num_sessions);
-
-    /*
-     * Add 'header' into HMAC and send
-     */
     _OWPSendHMACAdd(cntrl,buf,1);
-    if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,retn_on_intr) != 1){
-        return _OWPFailControlSession(cntrl,OWPErrFATAL);
-    }
 
+    if (cntrl->twoway) {
+        /*
+         * Complete WriteStopSessions by writing HMAC and send as one chunk.
+         */
+        _OWPSendHMACDigestClear(cntrl,&buf[16]);
+        if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,2,retn_on_intr) != 2){
+            return _OWPFailControlSession(cntrl,OWPErrFATAL);
+        }
+    } else {
+        /*
+         * Send 'header'
+         */
+        if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,retn_on_intr) != 1){
+            return _OWPFailControlSession(cntrl,OWPErrFATAL);
+        }
 
-    if (!cntrl->twoway) {
         /*
          * Loop through each session, write out a session description
          * record for each "send" session.
@@ -2009,14 +2016,14 @@ _OWPWriteStopSessions(
                 return _OWPFailControlSession(cntrl,OWPErrFATAL);
             }
         }
-    }
 
-    /*
-     * Complete WriteStopSessions by sending HMAC.
-     */
-    _OWPSendHMACDigestClear(cntrl,buf);
-    if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,retn_on_intr) != 1){
-        return _OWPFailControlSession(cntrl,OWPErrFATAL);
+        /*
+         * Complete WriteStopSessions by sending HMAC.
+         */
+        _OWPSendHMACDigestClear(cntrl,buf);
+        if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,retn_on_intr) != 1){
+            return _OWPFailControlSession(cntrl,OWPErrFATAL);
+        }
     }
 
     return OWPErrOK;
