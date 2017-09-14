@@ -33,7 +33,6 @@
 #include <string.h>
 #include <ctype.h>
 #include <netdb.h>
-#include <unistd.h>
 #include <errno.h>
 #include <assert.h>
 #include <time.h>
