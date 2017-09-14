@@ -27,13 +27,8 @@
 #include <I2util/util.h>
 #include <owamp/owamp.h>
 
-#ifndef OWP_PFS_FILE
-#define OWP_PFS_FILE    "owamp-server.pfs"
-#endif
-
-#ifndef OWP_LIMITS_FILE
-#define OWP_LIMITS_FILE "owamp-server.limits"
-#endif
+#define OWP_PFS_FILE_SUFFIX    ".pfs"
+#define OWP_LIMITS_FILE_SUFFIX ".limits"
 
 /*
  * Defines for path elements of the server datastore:
@@ -384,6 +379,7 @@ OWPDPolicyInstall(
         char            *datadir,   /* root dir for datafiles   */
         char            *confdir,   /* conf dir for policy      */
         double          diskfudge,
+        const char      *fileprefix, /* prefix to use for pfs and lim files */
         char            **lbuf,
         size_t          *lbuf_max
         );

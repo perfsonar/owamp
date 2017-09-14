@@ -1,27 +1,27 @@
 '\"t
-." The first line of this file must contain the '"[e][r][t][v] line
-." to tell man to run the appropriate filter "t" for table.
-." vim: set filetype=nroff :
-."
-."	$Id$
-."
-."######################################################################
-."#									#
-."#			   Copyright (C)  2004				#
-."#	     			Internet2				#
-."#			   All Rights Reserved				#
-."#									#
-."######################################################################
-."
-."	File:		powstream.1
-."
-."	Author:		Jeff Boote
-."			Internet2
-."
-."	Date:		Sun Dec  3 09:16:52 MST 2006
-."
-."	Description:	
-."
+.\" The first line of this file must contain the '"[e][r][t][v] line
+.\" to tell man to run the appropriate filter "t" for table.
+.\" vim: set filetype=nroff :
+.\"
+.\"	$Id$
+.\"
+.\"######################################################################
+.\"#									#
+.\"#			   Copyright (C)  2004				#
+.\"#	     			Internet2				#
+.\"#			   All Rights Reserved				#
+.\"#									#
+.\"######################################################################
+.\"
+.\"	File:		powstream.1
+.\"
+.\"	Author:		Jeff Boote
+.\"			Internet2
+.\"
+.\"	Date:		Sun Dec  3 09:16:52 MST 2006
+.\"
+.\"	Description:	
+.\"
 .TH powstream 1 "$Date$"
 .SH NAME
 powstream \- Client daemon application for continuous one-way latency tests.

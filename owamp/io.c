@@ -34,7 +34,7 @@ _OWPSendBlocksIntr(
 {
     ssize_t n;
 
-    if (cntrl->mode & OWP_MODE_DOCIPHER)
+    if (cntrl->mode & OWP_MODE_DOCIPHER_CNTRL)
         _OWPEncryptBlocks(cntrl, buf, num_blocks, buf);
 
     n = I2Writeni(cntrl->sockfd,buf,num_blocks*_OWP_RIJNDAEL_BLOCK_SIZE,
@@ -68,7 +68,7 @@ _OWPReceiveBlocksIntr(
     if(n != (num_blocks*_OWP_RIJNDAEL_BLOCK_SIZE))
         return 0;
 
-    if (cntrl->mode & OWP_MODE_DOCIPHER)
+    if (cntrl->mode & OWP_MODE_DOCIPHER_CNTRL)
         _OWPDecryptBlocks(cntrl, buf, num_blocks, buf);
 
     return num_blocks;
@@ -262,7 +262,7 @@ _OWPSendHMACAdd(
         uint32_t    num_blocks
         )
 {
-    if( !(cntrl->mode & OWP_MODE_DOCIPHER)){
+    if( !(cntrl->mode & OWP_MODE_DOCIPHER_CNTRL)){
         return;
     }
 
@@ -298,7 +298,7 @@ _OWPSendHMACDigestClear(
 
     memset(digest,0,_OWP_RIJNDAEL_BLOCK_SIZE);
 
-    if( !(cntrl->mode & OWP_MODE_DOCIPHER)){
+    if( !(cntrl->mode & OWP_MODE_DOCIPHER_CNTRL)){
         return;
     }
 
@@ -333,7 +333,7 @@ _OWPRecvHMACAdd(
         uint32_t    num_blocks
         )
 {
-    if( !(cntrl->mode & OWP_MODE_DOCIPHER)){
+    if( !(cntrl->mode & OWP_MODE_DOCIPHER_CNTRL)){
         return;
     }
 
@@ -369,7 +369,7 @@ _OWPRecvHMACCheckClear(
     uint8_t     hmacd[I2HMAC_SHA1_DIGEST_SIZE];
     OWPBoolean  rval;
 
-    if( !(cntrl->mode & OWP_MODE_DOCIPHER)){
+    if( !(cntrl->mode & OWP_MODE_DOCIPHER_CNTRL)){
         return True;
     }
 
