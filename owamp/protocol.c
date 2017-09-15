@@ -201,7 +201,7 @@ _OWPWriteSetupResponse(
     memset(&buf[0],0,164);
 
     *(uint32_t *)&buf[0] = htonl(cntrl->mode);
-    if(cntrl->mode & OWP_MODE_DOCIPHER){
+    if(cntrl->mode & OWP_MODE_DOCIPHER_CNTRL){
         memcpy(&buf[4],cntrl->userid,80);
         memcpy(&buf[84],token,64);
         memcpy(&buf[148],cntrl->writeIV,16);
@@ -331,17 +331,11 @@ _OWPWriteServerStart(
     }
 
     /*
-     * Write first two blocks of message - not encrypted
+     * Set first two blocks of message - not encrypted
      */
     memset(&buf[0],0,15);
     *(uint8_t *)&buf[15] = code & 0xff;
     memcpy(&buf[16],cntrl->writeIV,16);
-    if((len = I2Writeni(cntrl->sockfd,buf,32,intr)) != 32){
-        if((len < 0) && *intr && (errno == EINTR)){
-            return OWPErrFATAL;
-        }
-        return OWPErrFATAL;
-    }
 
     if(code == OWP_CNTRL_ACCEPT){
         /*
@@ -349,26 +343,30 @@ _OWPWriteServerStart(
          * func.
          */
         tstamp.owptime = uptime;
-        _OWPEncodeTimeStamp((uint8_t *)&buf[0],&tstamp);
-        memset(&buf[8],0,8);
+        _OWPEncodeTimeStamp((uint8_t *)&buf[32],&tstamp);
+        memset(&buf[40],0,8);
 
         cntrl->state = _OWPStateRequest;
     }
     else{
         /* encryption not valid - reset to clear mode and reject */
         cntrl->mode = OWP_MODE_OPEN;
-        memset(&buf[0],0,16);
+        memset(&buf[32],0,16);
         cntrl->state = _OWPStateInvalid;
     }
 
     /*
-     * Add this block to HMAC, and then send it.
+     * Add final block to HMAC, and then send all 3 blocks
      * No HMAC digest field in this message - so this block gets
      * include as part of the text for the next digest sent in the
      * 'next' message.
      */
-    _OWPSendHMACAdd(cntrl,buf,1);
-    if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,intr) != 1){
+    _OWPSendHMACAdd(cntrl,&buf[32],1);
+
+    if (cntrl->mode & OWP_MODE_DOCIPHER_CNTRL)
+        _OWPEncryptBlocks(cntrl, (uint8_t *)&buf[32], 1, &buf[32]);
+
+    if((len = I2Writeni(cntrl->sockfd,buf,48,intr)) != 48){
         if((len < 0) && *intr && (errno == EINTR)){
             return OWPErrFATAL;
         }
@@ -515,6 +513,9 @@ OWPReadRequestType(
         case        4:
             cntrl->state |= _OWPStateFetchSession;
             break;
+        case        5:
+            cntrl->state |= _OWPStateTestRequestTW;
+            break;
         default:
             cntrl->state = _OWPStateInvalid;
             OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
@@ -586,6 +587,7 @@ _OWPEncodeTestRequestPreamble(
         struct sockaddr *receiver,
         OWPBoolean      server_conf_sender, 
         OWPBoolean      server_conf_receiver,
+        OWPBoolean      twoway,
         OWPSID          sid,
         OWPTestSpec     *tspec
         )
@@ -607,9 +609,9 @@ _OWPEncodeTestRequestPreamble(
      */
 
     /* valid "conf" setup? */
-    if(!server_conf_sender && !server_conf_receiver){
+    if(!twoway && !server_conf_sender && !server_conf_receiver){
         OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
-                "_OWPEncodeTestRequestPreamble:Request for empty config?");
+                 "_OWPEncodeTestRequestPreamble:Request for empty config?");
         return OWPErrFATAL;
     }
 
@@ -642,25 +644,29 @@ _OWPEncodeTestRequestPreamble(
     /*
      * Do we have "valid" schedule variables?
      */
-    if((tspec->npackets < 1) || (tspec->nslots < 1) || !tspec->slots){
+    if(!twoway && ((tspec->npackets < 1) || (tspec->nslots < 1) || !tspec->slots)){
         OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
-                "Invalid test distribution parameters");
+                 "Invalid test distribution parameters");
         return OWPErrFATAL;
     }
 
     /*
      * set simple values
      */
-    buf[0] = 1;        /* Request-Session message # */
+    if (twoway) {
+        buf[0] = OWPReqTestTW;
+    } else {
+        buf[0] = OWPReqTest;
+    }
     buf[1] = version & 0xF;
-    buf[2] = (server_conf_sender)?1:0;
-    buf[3] = (server_conf_receiver)?1:0;
+    buf[2] = (server_conf_sender && !twoway)?1:0;
+    buf[3] = (server_conf_receiver && !twoway)?1:0;
 
     /*
      * slots and npackets... convert to network byte order.
      */
-    *(uint32_t*)&buf[4] = htonl(tspec->nslots);
-    *(uint32_t*)&buf[8] = htonl(tspec->npackets);
+    *(uint32_t*)&buf[4] = htonl(twoway ? 0 : tspec->nslots);
+    *(uint32_t*)&buf[8] = htonl(twoway ? 0 : tspec->npackets);
 
     /*
      * Now set addr values. (sockaddr vars should already have
@@ -734,6 +740,7 @@ _OWPDecodeTestRequestPreamble(
         OWPBoolean      request,
         uint32_t       *msg,
         uint32_t       msg_len,
+        OWPBoolean      is_twoway,
         struct sockaddr *sender,
         struct sockaddr *receiver,
         socklen_t       *socklen,
@@ -776,9 +783,20 @@ _OWPDecodeTestRequestPreamble(
             break;
     }
 
-    if(!*server_conf_sender && !*server_conf_receiver){
+    if(!*server_conf_sender && !*server_conf_receiver && !is_twoway){
         OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
                 "_OWPDecodeTestRequestPreamble: Invalid null request");
+        return OWPErrWARNING;
+    } else if (is_twoway && (*server_conf_sender || *server_conf_receiver)){
+        OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
+                "_OWPDecodeTestRequestPreamble: Invalid role for two-way request");
+        return OWPErrWARNING;
+    }
+
+    if(is_twoway && (tspec->nslots != 0 || tspec->npackets != 0)){
+        OWPError(ctx,OWPErrFATAL,OWPErrINVALID,
+                 "_OWPDecodeTestRequestPreamble: Invalid slots/number of packets for two-way request: %d/%d",
+                 tspec->nslots, tspec->npackets);
         return OWPErrWARNING;
     }
 
@@ -1007,7 +1025,7 @@ _OWPWriteTestRequest(
      */
     if((_OWPEncodeTestRequestPreamble(cntrl->ctx,cntrl->msg,&buf_len,
                     sender,receiver,server_conf_sender,
-                    server_conf_receiver,sid,test_spec) != 0) ||
+                    server_conf_receiver,cntrl->twoway,sid,test_spec) != 0) ||
             (buf_len != 112)){
         return OWPErrFATAL;
     }
@@ -1028,27 +1046,28 @@ _OWPWriteTestRequest(
     /*
      * Send slots
      */
-    for(i=0;i<test_spec->nslots;i++){
-        if(_OWPEncodeSlot(cntrl->msg,&test_spec->slots[i]) != OWPErrOK){
-            OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                    "_OWPWriteTestRequest: Invalid slot record");
-            cntrl->state = _OWPStateInvalid;
-            return OWPErrFATAL;
+    if (!cntrl->twoway) {
+        for(i=0;i<test_spec->nslots;i++){
+            if(_OWPEncodeSlot(cntrl->msg,&test_spec->slots[i]) != OWPErrOK){
+                OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+                         "_OWPWriteTestRequest: Invalid slot record");
+                cntrl->state = _OWPStateInvalid;
+                return OWPErrFATAL;
+            }
+            _OWPSendHMACAdd(cntrl,buf,1);
+            if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,retn_on_intr) != 1){
+                cntrl->state = _OWPStateInvalid;
+                return OWPErrFATAL;
+            }
         }
-        _OWPSendHMACAdd(cntrl,buf,1);
+        /*
+         * Send HMAC digest block
+         */
+        _OWPSendHMACDigestClear(cntrl,buf);
         if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,retn_on_intr) != 1){
             cntrl->state = _OWPStateInvalid;
             return OWPErrFATAL;
         }
-    }
-
-    /*
-     * Send HMAC digest block
-     */
-    _OWPSendHMACDigestClear(cntrl,buf);
-    if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,retn_on_intr) != 1){
-        cntrl->state = _OWPStateInvalid;
-        return OWPErrFATAL;
     }
 
     cntrl->state |= _OWPStateAcceptSession;
@@ -1189,6 +1208,80 @@ _OWPReadTestRequestSlots(
     return OWPErrOK;
 }
 
+static OWPErrSeverity
+_OWPTestSessionSetIPv6LLScope(OWPContext ctx,
+                              const struct sockaddr *cntrl_saddr,
+                              socklen_t cntrl_saddrlen,
+                              struct sockaddr *test_saddr,
+                              socklen_t test_saddrlen)
+{
+#ifdef AF_INET6
+    const struct sockaddr_in6 *cntrl_saddr6 =
+        (const struct sockaddr_in6 *)cntrl_saddr;
+    struct sockaddr_in6 *test_saddr6 =
+        (struct sockaddr_in6 *)test_saddr;
+    if (test_saddr->sa_family == AF_INET6 &&
+        IN6_IS_ADDR_LINKLOCAL(test_saddr6->sin6_addr.s6_addr)) {
+        if (cntrl_saddr && cntrl_saddr->sa_family == AF_INET6 &&
+            IN6_IS_ADDR_LINKLOCAL(cntrl_saddr6->sin6_addr.s6_addr)) {
+            test_saddr6->sin6_scope_id = cntrl_saddr6->sin6_scope_id;
+        } else {
+            char testaddr[NI_MAXHOST];
+            char cntrladdr[NI_MAXHOST];
+            if (getnameinfo(test_saddr,test_saddrlen,
+                            testaddr,sizeof(testaddr),NULL,0,
+                            NI_NUMERICHOST) != 0) {
+                strcpy(testaddr, "unknown");
+            }
+            if (getnameinfo(cntrl_saddr,cntrl_saddrlen,cntrladdr,
+                            sizeof(cntrladdr),NULL,0,NI_NUMERICHOST) != 0) {
+                strcpy(cntrladdr, "unknown");
+            }
+            OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                     "test session address %s out of scope of control "
+                     "address %s",testaddr,cntrladdr);
+            return OWPErrFATAL;
+        }
+    }
+#endif
+
+    return OWPErrOK;
+}
+
+static void
+_OWPSetSAddrIfUnspec(OWPContext ctx,
+                     const struct sockaddr *cntrl_saddr,
+                     struct sockaddr *test_saddr)
+{
+    switch(test_saddr->sa_family){
+        struct sockaddr_in  *test_saddr4;
+        struct sockaddr_in  *cntrl_saddr4;
+#ifdef        AF_INET6
+        struct sockaddr_in6 *test_saddr6;
+        struct sockaddr_in6 *cntrl_saddr6;
+        case AF_INET6:
+            test_saddr6 = (struct sockaddr_in6*)test_saddr;
+            if(!IN6_IS_ADDR_UNSPECIFIED(&test_saddr6->sin6_addr) ||
+               cntrl_saddr->sa_family != AF_INET6)
+                return;
+            cntrl_saddr6 = (struct sockaddr_in6*)cntrl_saddr;
+            memcpy(&test_saddr6->sin6_addr,&cntrl_saddr6->sin6_addr,
+                   sizeof(test_saddr6->sin6_addr));
+            break;
+#endif
+        case AF_INET:
+            test_saddr4 = (struct sockaddr_in*)test_saddr;
+            if (test_saddr4->sin_addr.s_addr != 0 ||
+                cntrl_saddr->sa_family != AF_INET)
+                return;
+            cntrl_saddr4 = (struct sockaddr_in*)cntrl_saddr;
+            test_saddr4->sin_addr.s_addr = cntrl_saddr4->sin_addr.s_addr;
+            break;
+        default:
+            return;
+    }
+}
+
 /*
  * Function:        _OWPReadTestRequest
  *
@@ -1235,6 +1328,8 @@ _OWPReadTestRequest(
     OWPAcceptType           *accept_ptr = &accept_mem;
     int                     ival=0;
     int                     *intr=&ival;
+    const struct sockaddr   *remote_saddr;
+    socklen_t               remote_saddrlen;
 
     *test_session = NULL;
     memset(&sendaddr_rec,0,addrlen);
@@ -1242,7 +1337,7 @@ _OWPReadTestRequest(
     memset(&tspec,0,sizeof(tspec));
     memset(sid,0,sizeof(sid));
 
-    if(!_OWPStateIs(_OWPStateTestRequest,cntrl)){
+    if(!_OWPStateIs(cntrl->twoway ? _OWPStateTestRequestTW : _OWPStateTestRequest,cntrl)){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
                 "_OWPReadTestRequest: called in wrong state.");
         return OWPErrFATAL;
@@ -1306,6 +1401,7 @@ _OWPReadTestRequest(
     if( (err_ret = _OWPDecodeTestRequestPreamble(cntrl->ctx,
                     (accept_ret!=NULL),cntrl->msg,
                     _OWP_TEST_REQUEST_BLK_LEN*_OWP_RIJNDAEL_BLOCK_SIZE,
+                    cntrl->twoway,
                     (struct sockaddr*)&sendaddr_rec,
                     (struct sockaddr*)&recvaddr_rec,&addrlen,&ipvn,
                     &conf_sender,&conf_receiver,sid,&tspec)) != OWPErrOK){
@@ -1325,6 +1421,38 @@ _OWPReadTestRequest(
             *accept_ptr = OWP_CNTRL_UNSUPPORTED;
             return OWPErrFATAL;
         }
+    }
+
+    /*
+     * To support test sessions listening on IPv6 link-local
+     * addresses, the scope needs to be specified. So copy this over
+     * from the control session remote address, unless it isn't a
+     * link-local in which case the only option is to reject the
+     * request.
+     */
+    remote_saddr = I2AddrSAddr(cntrl->remote_addr,&remote_saddrlen);
+    err_ret = _OWPTestSessionSetIPv6LLScope(
+        cntrl->ctx,remote_saddr,remote_saddrlen,
+        (struct sockaddr*)&sendaddr_rec,addrlen);
+    if (err_ret != OWPErrOK) {
+        *accept_ptr = OWP_CNTRL_UNSUPPORTED;
+        return err_ret;
+    }
+    err_ret = _OWPTestSessionSetIPv6LLScope(
+        cntrl->ctx,remote_saddr,remote_saddrlen,
+        (struct sockaddr*)&recvaddr_rec,addrlen);
+    if (err_ret != OWPErrOK) {
+        *accept_ptr = OWP_CNTRL_UNSUPPORTED;
+        return err_ret;
+    }
+    if (cntrl->twoway) {
+        const struct sockaddr *local_saddr;
+        socklen_t local_saddrlen;
+        _OWPSetSAddrIfUnspec(cntrl->ctx,remote_saddr,
+                             (struct sockaddr*)&sendaddr_rec);
+        local_saddr = I2AddrSAddr(cntrl->local_addr,&local_saddrlen);
+        _OWPSetSAddrIfUnspec(cntrl->ctx,local_saddr,
+                             (struct sockaddr*)&recvaddr_rec);
     }
 
     /*
@@ -1353,50 +1481,52 @@ _OWPReadTestRequest(
         goto error;
     }
 
-    /*
-     * copy sid into tsession - if the sid still needs to be
-     * generated - it still will be in sapi.c:OWPProcessTestRequest
-     */
-    memcpy(tsession->sid,sid,sizeof(sid));
-
-    /*
-     * Allocate memory for slots...
-     */
-    if(tsession->test_spec.nslots > _OWPSLOT_BUFSIZE){
+    if(!cntrl->twoway){
         /*
-         * Will check for memory allocation failure after
-         * reading slots from socket. (We can gracefully
-         * decline the request even if we can't allocate memory
-         * to hold the slots this way.)
+         * copy sid into tsession - if the sid still needs to be
+         * generated - it still will be in sapi.c:OWPProcessTestRequest
          */
-        tsession->test_spec.slots =
-            calloc(tsession->test_spec.nslots,sizeof(OWPSlot));
-    }else{
-        tsession->test_spec.slots = tsession->slot_buffer;
-    }
+        memcpy(tsession->sid,sid,sizeof(sid));
 
-    /*
-     * Now, read the slots of the control socket.
-     */
-    if( (rc = _OWPReadTestRequestSlots(cntrl,intr,
-                    tsession->test_spec.nslots,
-                    tsession->test_spec.slots)) < OWPErrOK){
-        cntrl->state = _OWPStateInvalid;
-        err_ret = (OWPErrSeverity)rc;
-        *accept_ptr = OWP_CNTRL_INVALID;
-        goto error;
-    }
+        /*
+         * Allocate memory for slots...
+         */
+        if(tsession->test_spec.nslots > _OWPSLOT_BUFSIZE){
+            /*
+             * Will check for memory allocation failure after
+             * reading slots from socket. (We can gracefully
+             * decline the request even if we can't allocate memory
+             * to hold the slots this way.)
+             */
+            tsession->test_spec.slots =
+                calloc(tsession->test_spec.nslots,sizeof(OWPSlot));
+        }else{
+            tsession->test_spec.slots = tsession->slot_buffer;
+        }
 
-    /*
-     * We were unable to save the slots - server should decline the request.
-     */
-    if(!tsession->test_spec.slots){
-        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                "calloc(%d,OWPSlot): %M",
-                tsession->test_spec.nslots);
-        *accept_ptr = OWP_CNTRL_FAILURE;
-        err_ret = OWPErrFATAL;
-        goto error;
+        /*
+         * Now, read the slots of the control socket.
+         */
+        if( (rc = _OWPReadTestRequestSlots(cntrl,intr,
+                                           tsession->test_spec.nslots,
+                                           tsession->test_spec.slots)) < OWPErrOK){
+            cntrl->state = _OWPStateInvalid;
+            err_ret = (OWPErrSeverity)rc;
+            *accept_ptr = OWP_CNTRL_INVALID;
+            goto error;
+        }
+
+        /*
+         * We were unable to save the slots - server should decline the request.
+         */
+        if(!tsession->test_spec.slots){
+            OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                     "calloc(%d,OWPSlot): %M",
+                     tsession->test_spec.nslots);
+            *accept_ptr = OWP_CNTRL_FAILURE;
+            err_ret = OWPErrFATAL;
+            goto error;
+        }
     }
 
     /*
@@ -1582,7 +1712,7 @@ _OWPWriteStartSessions(
         return OWPErrFATAL;
     }
 
-    buf[0] = 2;        /* start-session identifier        */
+    buf[0] = OWPReqStartSessions;
 #ifndef        NDEBUG
     memset(&buf[1],0,15);        /* Unused        */
 #endif
@@ -1649,7 +1779,7 @@ _OWPReadStartSessions(
         return OWPErrFATAL;
     }
 
-    if(buf[0] != 2){
+    if(buf[0] != OWPReqStartSessions){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
                 "_OWPReadStartSessions: Not a StartSessions message...");
         cntrl->state = _OWPStateInvalid;
@@ -1902,98 +2032,106 @@ _OWPWriteStopSessions(
         return OWPErrFATAL;
     }
 
-
     /*
      * StopSessions header
      */
     memset(&buf[0],0,16);
 
-    buf[0] = 3;
+    buf[0] = OWPReqStopSessions;
     buf[1] = acceptval & 0xff;
     *(uint32_t*)&buf[4] = htonl(num_sessions);
-
-    /*
-     * Add 'header' into HMAC and send
-     */
     _OWPSendHMACAdd(cntrl,buf,1);
-    if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,retn_on_intr) != 1){
-        return _OWPFailControlSession(cntrl,OWPErrFATAL);
-    }
 
-
-    /*
-     * Loop through each session, write out a session description
-     * record for each "send" session.
-     */
-    for(sptr=cntrl->tests; sptr; sptr = sptr->next){
-        off_t       sd_size;
-
+    if (cntrl->twoway) {
         /*
-         * Check for invalid sessions
+         * Complete WriteStopSessions by writing HMAC and send as one chunk.
          */
-        if(!sptr->endpoint){
-            OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                    "_OWPWriteStopSessions: invalid session information.");
-            continue;
+        _OWPSendHMACDigestClear(cntrl,&buf[16]);
+        if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,2,retn_on_intr) != 2){
+            return _OWPFailControlSession(cntrl,OWPErrFATAL);
         }
-
+    } else {
         /*
-         * Receive sessions don't need more work here.
+         * Send 'header'
          */
-        if(!sptr->endpoint->send) continue;
-
-        _OWPSendHMACAdd(cntrl,(char *)sptr->sid,1);
-        if(_OWPSendBlocksIntr(cntrl,(uint8_t *)sptr->sid,1,retn_on_intr) != 1){
+        if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,retn_on_intr) != 1){
             return _OWPFailControlSession(cntrl,OWPErrFATAL);
         }
 
-        sd_size = sptr->endpoint->skiprecsize;
-
         /*
-         * First send out complete blocks
+         * Loop through each session, write out a session description
+         * record for each "send" session.
          */
-        while(sd_size >= 16){
-            if(I2Readni(sptr->endpoint->skiprecfd,buf,16,retn_on_intr) != 16){
+        for(sptr=cntrl->tests; sptr; sptr = sptr->next){
+            off_t       sd_size;
+
+            /*
+             * Check for invalid sessions
+             */
+            if(!sptr->endpoint){
+                OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+                         "_OWPWriteStopSessions: invalid session information.");
+                continue;
+            }
+
+            /*
+             * Receive sessions don't need more work here.
+             */
+            if(!sptr->endpoint->send) continue;
+
+            _OWPSendHMACAdd(cntrl,(char *)sptr->sid,1);
+            if(_OWPSendBlocksIntr(cntrl,(uint8_t *)sptr->sid,1,retn_on_intr) != 1){
                 return _OWPFailControlSession(cntrl,OWPErrFATAL);
             }
-            _OWPSendHMACAdd(cntrl,buf,1);
-            if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,retn_on_intr) != 1){
+
+            sd_size = sptr->endpoint->skiprecsize;
+
+            /*
+             * First send out complete blocks
+             */
+            while(sd_size >= 16){
+                if(I2Readni(sptr->endpoint->skiprecfd,buf,16,retn_on_intr) != 16){
+                    return _OWPFailControlSession(cntrl,OWPErrFATAL);
+                }
+                _OWPSendHMACAdd(cntrl,buf,1);
+                if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,retn_on_intr) != 1){
+                    return _OWPFailControlSession(cntrl,OWPErrFATAL);
+                }
+                sd_size -= 16;
+            }
+
+            /*
+             * If last skip record does not end on a block boundry, then
+             * there can be 8 octets of skip records left to send.
+             */
+            if(sd_size == 8){
+                if(I2Readni(sptr->endpoint->skiprecfd,buf,8,retn_on_intr) != 8){
+                    return _OWPFailControlSession(cntrl,OWPErrFATAL);
+                }
+                /* pad with 0 */
+                memset(&buf[8],0,8);
+                _OWPSendHMACAdd(cntrl,buf,1);
+                if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,retn_on_intr) != 1){
+                    return _OWPFailControlSession(cntrl,OWPErrFATAL);
+                }
+                sd_size -= 8;
+            }
+
+            /*
+             * If all data has not been sent, there is an error.
+             */
+            if(sd_size != 0){
                 return _OWPFailControlSession(cntrl,OWPErrFATAL);
             }
-            sd_size -= 16;
         }
 
         /*
-         * If last skip record does not end on a block boundry, then
-         * there can be 8 octets of skip records left to send.
+         * Complete WriteStopSessions by sending HMAC.
          */
-        if(sd_size == 8){
-            if(I2Readni(sptr->endpoint->skiprecfd,buf,8,retn_on_intr) != 8){
-                return _OWPFailControlSession(cntrl,OWPErrFATAL);
-            }
-            /* pad with 0 */
-            memset(&buf[8],0,8);
-            _OWPSendHMACAdd(cntrl,buf,1);
-            if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,retn_on_intr) != 1){
-                return _OWPFailControlSession(cntrl,OWPErrFATAL);
-            }
-            sd_size -= 8;
-        }
-
-        /*
-         * If all data has not been sent, there is an error.
-         */
-        if(sd_size != 0){
+        _OWPSendHMACDigestClear(cntrl,buf);
+        if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,retn_on_intr) != 1){
             return _OWPFailControlSession(cntrl,OWPErrFATAL);
         }
-    }
-
-    /*
-     * Complete WriteStopSessions by sending HMAC.
-     */
-    _OWPSendHMACDigestClear(cntrl,buf);
-    if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,retn_on_intr) != 1){
-        return _OWPFailControlSession(cntrl,OWPErrFATAL);
     }
 
     return OWPErrOK;
@@ -2097,7 +2235,7 @@ _OWPDecodeSkipRecord(
  *
  *              Correct order:
  *                  No skip records can be added into the file until
- *                  after the number of data records in the file has
+ *                  after the number of data records in the fil has
  *                  become fixed. This way ProcessFetchSessions can
  *                  use the file size to determine the number of records
  *                  if the file is not "complete". Also, the "finished"
@@ -2138,6 +2276,7 @@ _OWPReadStopSessions(
     OWPTestSession  *sptr,tptr;
     OWPTestSession  receivers = NULL;
     off_t           toff;
+    int             actual_num_sessions;
 
     if(!(_OWPStateIs(_OWPStateRequest,cntrl) &&
                 _OWPStateIs(_OWPStateTest,cntrl))){
@@ -2161,254 +2300,285 @@ _OWPReadStopSessions(
 
     _OWPRecvHMACAdd(cntrl,buf,1);
 
-    /*
-     * Parse test session list and pull recv sessions into the receivers
-     * list - the StopSessions message must account for all of them.
-     */
-    sptr = &cntrl->tests;
-    while(*sptr){
-        tptr = *sptr;
-        if(!tptr->endpoint){
-            OWPError(cntrl->ctx,OWPErrFATAL,EINVAL,
-                    "_OWPReadStopSessions: Failed - no endpoint state!");
+    actual_num_sessions = 0;
+
+    if (cntrl->twoway) {
+        /*
+         * Count number of active sessions
+         */
+        for (tptr = cntrl->tests; tptr != NULL; tptr = tptr->next) {
+            actual_num_sessions++;
+        }
+
+        if (num_sessions != actual_num_sessions) {
+            OWPError(cntrl->ctx,OWPErrWARNING,OWPErrINVALID,
+                     "_OWPReadStopSessions: Message does not account "
+                     "for all two-way sessions: %u vs. %u actual",
+                     num_sessions, actual_num_sessions);
             goto err;
         }
 
         /*
-         * Leave send sessions in the "tests" list.
+         * Put receivers back into tests list.
          */
-        if(tptr->endpoint->send){
-            sptr = &(*sptr)->next;
-            continue;
+        while(receivers){
+            tptr = receivers;
+            receivers = receivers->next;
+
+            tptr->next = cntrl->tests;
+            cntrl->tests = tptr;
         }
-
+    } else {
         /*
-         * Pull this node out of the "tests" list and add it to the
-         * receivers list.
+         * Parse test session list and pull recv sessions into the receivers
+         * list - the StopSessions message must account for all of them.
          */
-        *sptr = tptr->next;
-        tptr->next = receivers;
-        receivers = tptr;
-    }
-
-    /*
-     * Now read and decode the variable length portion of the
-     * StopSessions message.
-     */
-    for(i=0;i<num_sessions;i++){
-        FILE                        *rfp;
-        char                        sid_name[sizeof(OWPSID)*2+1];
-        _OWPSessionHeaderInitialRec fhdr;
-        struct flock                flk;
-        OWPSkipRec                  prev_skip, curr_skip;
-        uint32_t                    next_seqno;
-        uint32_t                    num_skips;
-
-        /*
-         * Read sid from session description record
-         */
-        n = _OWPReceiveBlocksIntr(cntrl,(uint8_t *)buf,1,intr);
-        if(n != 1){
-            OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                    "_OWPReadStopSessions: Failed - Unable to read session record (%d)",
-                    i);
-            goto err;
-        }
-        _OWPRecvHMACAdd(cntrl,buf,1);
-
-        /*
-         * Match TestSession record with session description record
-         */
-        sptr = &receivers;
-        tptr = NULL;
+        sptr = &cntrl->tests;
         while(*sptr){
+            tptr = *sptr;
+            if(!tptr->endpoint){
+                OWPError(cntrl->ctx,OWPErrFATAL,EINVAL,
+                         "_OWPReadStopSessions: no endpoint state!");
+                goto err;
+            }
+
             /*
-             * If this is not it, try the next one.
+             * Leave send sessions in the "tests" list.
              */
-            if(memcmp(buf,(*sptr)->sid,sizeof(OWPSID))){
+            if(tptr->endpoint->send){
                 sptr = &(*sptr)->next;
                 continue;
             }
 
             /*
-             * Found: remove this record from the receivers list
-             * and put it back in the "tests" list and break out
-             * of this loop.
+             * Pull this node out of the "tests" list and add it to the
+             * receivers list.
              */
-            tptr = *sptr;
             *sptr = tptr->next;
-            tptr->next = cntrl->tests;
-            cntrl->tests = tptr;
-            break;
+            tptr->next = receivers;
+            receivers = tptr;
+            actual_num_sessions++;
         }
 
         /*
-         * If sid not found, this is an invalid StopSessions message.
+         * Now read and decode the variable length portion of the
+         * StopSessions message.
          */
-        if(!tptr){
-            OWPError(cntrl->ctx,OWPErrFATAL,EINVAL,
-                    "_OWPReadStopSessions: Failed - sid from StopSessions not valid.");
-            goto err;
-        }
-
-        /*
-         * Read next_seqno, num_skips from SessionDescription record
-         */
-        n = _OWPReceiveBlocksIntr(cntrl,(uint8_t *)buf,1,intr);
-        if(n != 1){
-            OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                    "_OWPReadStopSessions: Failed - Unable to read session record (%d)",
-                    i);
-            goto err;
-        }
-        _OWPRecvHMACAdd(cntrl,buf,1);
-        next_seqno = ntohl(*(uint32_t*)&buf[0]);
-        num_skips = ntohl(*(uint32_t*)&buf[4]);
-
-        I2HexEncode(sid_name,tptr->sid,sizeof(OWPSID));
-
-        rfp = tptr->endpoint->datafile;
-
-        /*
-         * Lock the data file for writing. This is needed so FetchSessions
-         * coming in from other control connections will get consistent
-         * information.
-         */
-        memset(&flk,0,sizeof(flk));
-        flk.l_start = 0;
-        flk.l_len = 0;
-        flk.l_whence = SEEK_SET;
-        flk.l_type = F_WRLCK;
-
-        if( fcntl(fileno(rfp), F_SETLKW, &flk) < 0){
-            OWPError(cntrl->ctx,OWPErrFATAL,errno,
-                    "_OWPReadStopSessions: Failed - Unable to lock file sid(%s): %M",
-                    sid_name);
-            goto err;
-        }
-
-        if( !_OWPCleanDataRecs(cntrl->ctx,tptr,next_seqno,stoptime,NULL,NULL)){
-            OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                    "_OWPReadStopSessions: Failed - Unable to clean data sid(%s): %M",
-                    sid_name);
-            goto err;
-        }
-
-        /*
-         * Read needed file header info.
-         */
-        if(!_OWPReadDataHeaderInitial(cntrl->ctx,rfp,&fhdr)){
-            goto err;
-        }
-
-        /*
-         * Advance fp beyond datarecords, write skip records and write
-         * NumSkipRecords
-         */
-        if(!num_skips) goto done_skips;
-        toff = fhdr.oset_datarecs + (fhdr.num_datarecs * fhdr.rec_size);
-        if(fseeko(rfp,toff,SEEK_SET) != 0){
-            OWPError(cntrl->ctx,OWPErrFATAL,errno,"fseeko(): %M");
-            goto err;
-        }
-
-        prev_skip.begin = prev_skip.end = 0;
-        for(j=0; j < num_skips; j++){
-            uint8_t bufi;
+        for(i=0;i<num_sessions;i++){
+            FILE                        *rfp;
+            char                        sid_name[sizeof(OWPSID)*2+1];
+            _OWPSessionHeaderInitialRec fhdr;
+            struct flock                flk;
+            OWPSkipRec                  prev_skip, curr_skip;
+            uint32_t                    next_seqno;
+            uint32_t                    num_skips;
 
             /*
-             * Index into buffer for this skip record. (Either 0 or 8)
+             * Read sid from session description record
              */
-            bufi = ((j+1) % 2) * 8;
+            n = _OWPReceiveBlocksIntr(cntrl,(uint8_t *)buf,1,intr);
+            if(n != 1){
+                OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+                         "_OWPReadStopSessions: Failed - Unable to read session record (%d)",
+                         i);
+                goto err;
+            }
+            _OWPRecvHMACAdd(cntrl,buf,1);
 
             /*
-             * Only need to read another record when bufi == 0
+             * Match TestSession record with session description record
              */
-            if(!bufi){
+            sptr = &receivers;
+            tptr = NULL;
+            while(*sptr){
                 /*
-                 * Read next block
+                 * If this is not it, try the next one.
                  */
-                n = _OWPReceiveBlocksIntr(cntrl,(uint8_t *)buf,1,intr);
-                if(n != 1){
+                if(memcmp(buf,(*sptr)->sid,sizeof(OWPSID))){
+                    sptr = &(*sptr)->next;
+                    continue;
+                }
+
+                /*
+                 * Found: remove this record from the receivers list
+                 * and put it back in the "tests" list and break out
+                 * of this loop.
+                 */
+                tptr = *sptr;
+                *sptr = tptr->next;
+                tptr->next = cntrl->tests;
+                cntrl->tests = tptr;
+                break;
+            }
+
+            /*
+             * If sid not found, this is an invalid StopSessions message.
+             */
+            if(!tptr){
+                OWPError(cntrl->ctx,OWPErrFATAL,EINVAL,
+                         "_OWPReadStopSessions: Failed - sid from StopSessions not valid.");
+                goto err;
+            }
+
+            /*
+             * Read next_seqno, num_skips from SessionDescription record
+             */
+            n = _OWPReceiveBlocksIntr(cntrl,(uint8_t *)buf,1,intr);
+            if(n != 1){
+                OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+                         "_OWPReadStopSessions: Unable to read session record (%d)",
+                         i);
+                goto err;
+            }
+            _OWPRecvHMACAdd(cntrl,buf,1);
+            next_seqno = ntohl(*(uint32_t*)&buf[0]);
+            num_skips = ntohl(*(uint32_t*)&buf[4]);
+
+            I2HexEncode(sid_name,tptr->sid,sizeof(OWPSID));
+
+            rfp = tptr->endpoint->datafile;
+
+            /*
+             * Lock the data file for writing. This is needed so FetchSessions
+             * coming in from other control connections will get consistent
+             * information.
+             */
+            memset(&flk,0,sizeof(flk));
+            flk.l_start = 0;
+            flk.l_len = 0;
+            flk.l_whence = SEEK_SET;
+            flk.l_type = F_WRLCK;
+
+            if( fcntl(fileno(rfp), F_SETLKW, &flk) < 0){
+                OWPError(cntrl->ctx,OWPErrFATAL,errno,
+                         "_OWPReadStopSessions: Unable to lock file sid(%s): %M",
+                         sid_name);
+                goto err;
+            }
+
+            if( !_OWPCleanDataRecs(cntrl->ctx,tptr,next_seqno,stoptime,NULL,NULL)){
+                OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                         "_OWPReadStopSessions: Unable to clean data sid(%s): %M",
+                         sid_name);
+                goto err;
+            }
+
+            /*
+             * Read needed file header info.
+             */
+            if(!_OWPReadDataHeaderInitial(cntrl->ctx,rfp,&fhdr)){
+                goto err;
+            }
+
+            /*
+             * Advance fp beyond datarecords, write skip records and write
+             * NumSkipRecords
+             */
+            if(!num_skips) goto done_skips;
+            toff = fhdr.oset_datarecs + (fhdr.num_datarecs * fhdr.rec_size);
+            if(fseeko(rfp,toff,SEEK_SET) != 0){
+                OWPError(cntrl->ctx,OWPErrFATAL,errno,"fseeko(): %M");
+                goto err;
+            }
+
+            prev_skip.begin = prev_skip.end = 0;
+            for(j=0; j < num_skips; j++){
+                uint8_t bufi;
+
+                /*
+                 * Index into buffer for this skip record. (Either 0 or 8)
+                 */
+                bufi = ((j+1) % 2) * 8;
+
+                /*
+                 * Only need to read another record when bufi == 0
+                 */
+                if(!bufi){
+                    /*
+                     * Read next block
+                     */
+                    n = _OWPReceiveBlocksIntr(cntrl,(uint8_t *)buf,1,intr);
+                    if(n != 1){
+                        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+                                 "_OWPReadStopSessions: Unable to read skip record sid(%s)",
+                                 sid_name);
+                        goto err;
+                    }
+                    _OWPRecvHMACAdd(cntrl,buf,1);
+                }
+
+                /*
+                 * Validate skip record. (begin <= end) and this skip_range
+                 * is greater-than the previous.
+                 */
+                _OWPDecodeSkipRecord(&curr_skip,&buf[bufi]);
+                if(curr_skip.end < curr_skip.begin){
                     OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                            "_OWPReadStopSessions: Failed - Unable to read skip record sid(%s)",
-                            sid_name);
+                             "_OWPReadStopSessions: Failed - Invalid skip record sid(%s): end < begin",
+                             sid_name);
                     goto err;
                 }
-                _OWPRecvHMACAdd(cntrl,buf,1);
+                if(prev_skip.end && (curr_skip.begin < prev_skip.end)){
+                    OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+                             "_OWPReadStopSessions: Failed - Invalid skip record sid(%s): skips out of order",
+                             sid_name);
+                    goto err;
+                }
+
+                /*
+                 * Write this skip record into the file.
+                 *
+                 * Using 8 for test so this will fail immediately if skip record
+                 * size changes. This whole routine will need to be modified...
+                 */
+                if(fwrite(&buf[bufi],1,_OWP_SKIPREC_SIZE,rfp) != 8){
+                    OWPError(cntrl->ctx,OWPErrFATAL,errno,
+                             "fwrite(): Writing session file sid(%s): %M",
+                             sid_name);
+                    goto err;
+                }
+            }
+
+        done_skips:
+            /*
+             * If num_skips is even, then there should be 8 bytes of zero
+             * padding to complete the block. Verify.
+             */
+            if( !(num_skips % 2)){
+                if(memcmp(cntrl->zero,&buf[8],8)){
+                    OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+                             "_OWPReadStopSessions: Failed - Session sid(%s): Invalid zero padding",
+                             sid_name);
+                    goto err;
+                }
             }
 
             /*
-             * Validate skip record. (begin <= end) and this skip_range
-             * is greater-than the previous.
+             * Write num_skips and "finished" into file.
              */
-            _OWPDecodeSkipRecord(&curr_skip,&buf[bufi]);
-            if(curr_skip.end < curr_skip.begin){
-                OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                        "_OWPReadStopSessions: Failed - Invalid skip record sid(%s): end < begin",
-                        sid_name);
-                goto err;
-            }
-            if(prev_skip.end && (curr_skip.begin < prev_skip.end)){
-                OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                        "_OWPReadStopSessions: Failed - Invalid skip record sid(%s): skips out of order",
-                        sid_name);
+            if( !OWPWriteDataHeaderNumSkipRecs(cntrl->ctx,rfp,num_skips)){
                 goto err;
             }
 
-            /*
-             * Write this skip record into the file.
-             *
-             * Using 8 for test so this will fail immediately if skip record
-             * size changes. This whole routine will need to be modified...
-             */
-            if(fwrite(&buf[bufi],1,_OWP_SKIPREC_SIZE,rfp) != 8){
+            if( !_OWPWriteDataHeaderFinished(cntrl->ctx,rfp,OWP_SESSION_FINISHED_NORMAL,
+                                             next_seqno)){
+                goto err;
+            }
+
+            flk.l_type = F_UNLCK;
+            if( fcntl(fileno(rfp), F_SETLKW, &flk) < 0){
                 OWPError(cntrl->ctx,OWPErrFATAL,errno,
-                        "fwrite(): Failed - Writing session file sid(%s): %M",
-                        sid_name);
+                         "_OWPReadStopSessions: Failed - Unable to unlock file sid(%s): %M",
+                         sid_name);
                 goto err;
             }
         }
 
-done_skips:
-        /*
-         * If num_skips is even, then there should be 8 bytes of zero
-         * padding to complete the block. Verify.
-         */
-        if( !(num_skips % 2)){
-            if(memcmp(cntrl->zero,&buf[8],8)){
-                OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                        "_OWPReadStopSessions: Failed - Session sid(%s): Invalid zero padding",
-                        sid_name);
-                goto err;
-            }
-        }
-
-        /*
-         * Write num_skips and "finished" into file.
-         */
-        if( !OWPWriteDataHeaderNumSkipRecs(cntrl->ctx,rfp,num_skips)){
+        if(*sptr){
+            OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+                     "_OWPReadStopSessions: Failed - Message does not account for all recv sessions");
             goto err;
         }
-
-        if( !_OWPWriteDataHeaderFinished(cntrl->ctx,rfp,OWP_SESSION_FINISHED_NORMAL,
-                    next_seqno)){
-            goto err;
-        }
-
-        flk.l_type = F_UNLCK;
-        if( fcntl(fileno(rfp), F_SETLKW, &flk) < 0){
-            OWPError(cntrl->ctx,OWPErrFATAL,errno,
-                    "_OWPReadStopSessions: Failed - Unable to unlock file sid(%s): %M",
-                    sid_name);
-            goto err;
-        }
-    }
-
-    if(*sptr){
-        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
-                "_OWPReadStopSessions: Failed - Message does not account for all recv sessions");
-        goto err;
     }
 
     /*
@@ -2498,7 +2668,13 @@ _OWPWriteFetchSession(
         return OWPErrFATAL;
     }
 
-    buf[0] = 4;
+    if (cntrl->twoway) {
+        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+                "_OWPWriteFetchSession: not valid for twoway connection");
+        return OWPErrFATAL;
+    }
+
+    buf[0] = OWPReqFetchSession;
 #ifndef        NDEBUG
     memset(&buf[1],0,7);        /* Unused        */
 #endif
@@ -2535,6 +2711,12 @@ _OWPReadFetchSession(
         return OWPErrFATAL;
     }
 
+    if (cntrl->twoway) {
+        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+                "_OWPWriteFetchSession: not valid for twoway connection");
+        return OWPErrFATAL;
+    }
+
     /*
      * Already read the first block - read the rest for this message
      * type.
@@ -2561,7 +2743,7 @@ _OWPReadFetchSession(
         return OWPErrFATAL;
     }
 
-    if(buf[0] != 4){
+    if(buf[0] != OWPReqFetchSession){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
                 "_OWPReadFetchSession: Invalid message...");
         cntrl->state = _OWPStateInvalid;
@@ -2734,7 +2916,8 @@ _OWPReadFetchAck(
         cntrl->state |= _OWPStateRequest;
     }else{
         /* Otherwise prepare to read the TestRequest */
-        cntrl->state |= _OWPStateTestRequest;
+        cntrl->state |= (cntrl->twoway ? _OWPStateTestRequestTW :
+                         _OWPStateTestRequest);
     }
 
     return OWPErrOK;
@@ -2895,6 +3078,77 @@ _OWPDecodeDataRecord(
             break;
         default:
             return False;
+    }
+
+    return True;
+}
+
+/*
+ * Function:        _OWPTWEncodeDataRecord
+ *
+ * Description:
+ *         This function is used to encode the 50 octet "packet record" from
+ *         the values in the given OWPTWDataRec. It returns false if the
+ *         timestamp err estimates are invalid values.
+ *
+ * In Args:
+ *
+ * Out Args:
+ *
+ * Scope:
+ * Returns:
+ * Side Effect:
+ */
+OWPBoolean
+_OWPEncodeTWDataRecord(
+        char        buf[50],
+        OWPTWDataRec  *rec
+        )
+{
+    if (!_OWPEncodeDataRecord(&buf[0], &rec->sent)) {
+        return False;
+    }
+    if (!_OWPEncodeDataRecord(&buf[25], &rec->reflected)) {
+        return False;
+    }
+
+    return True;
+}
+
+/*
+ * Function:        OWPDecodeTWDataRecord
+ *
+ * Description:
+ *         This function is used to decode the "packet record" and
+ *         place the values in the given OWPTWDataRec. It returns false if the
+ *         timestamp err estimates are invalid values.
+ *
+ * In Args:
+ *
+ * Out Args:
+ *
+ * Scope:
+ * Returns:
+ * Side Effect:
+ */
+OWPBoolean
+_OWPDecodeTWDataRecord(
+        uint32_t    file_version,
+        OWPTWDataRec *rec,
+        char        *buf
+        )
+{
+    switch(file_version){
+    case _OWP_VERSION_TWOWAY|3:
+        if (!_OWPDecodeDataRecord(3, &rec->sent, &buf[0])) {
+            return False;
+        }
+        if (!_OWPDecodeDataRecord(3, &rec->reflected, &buf[25])) {
+            return False;
+        }
+        break;
+    default:
+        return False;
     }
 
     return True;

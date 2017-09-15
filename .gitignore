@@ -21,10 +21,16 @@ config/missing
 configure
 doc/Makefile
 doc/Makefile.in
+doc/owampd.man
+doc/owampd.conf.man
 doc/owfetch.man
 doc/owping.man
 doc/owstats.man
 doc/owup.man
+doc/twampd.man
+doc/twampd.conf.man
+doc/twampd.limits.man
+doc/twping.man
 owamp.spec
 owamp/.deps/
 owamp/Makefile
@@ -38,6 +44,7 @@ owampd/.deps/
 owampd/Makefile
 owampd/Makefile.in
 owampd/owampd
+owampd/twampd
 owping/.deps/
 owping/Makefile
 owping/Makefile.in
@@ -45,6 +52,7 @@ owping/owfetch
 owping/owping
 owping/owstats
 owping/owup
+owping/twping
 powstream/.deps/
 powstream/Makefile
 powstream/Makefile.in

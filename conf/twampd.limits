@@ -1,0 +1,158 @@
+#	This file is used to define policy for the twampd process. There
+#	are two parts to this policy. 1) authentication. 2) authorization.
+#	The authentication is done by assigning a "user class" to each
+#	new connection as it comes in. Each "user class" has a set
+#	of limits associated with it. The "user classes" are hierarchical, so
+#	a connection must pass the limit restrictions of the given
+#	"user class" as well as all "parent" classes.
+#
+#	Within this file "assign" lines are used to assign a "user class"
+#	to a given connection. "limit" lines are used to define a "user class"
+#	and set the limits associated with that "user class". You can not
+#	use a classname before it is defined using a limit line.
+#
+#	The format of this file is as follows:
+#		1) Comment lines are any line that the first non-whitespace
+#		charactor is '#'. These lines are completely ignored other
+#		than being counted so error messages can give reasonable
+#		line numbers.
+#
+#		2) Lines may be continued by using the semi-standard '\'
+#		charactor followed immediately by the newline. This is the
+#		only valid place for the '\' charactor, and if it is found
+#		anywhere else it is a syntax error.
+#
+#		3) blank lines are treated as comment lines.
+#
+#		4) All other lines much conform to the syntax of a "limit"
+#		line or an "assign" line.
+#
+#	"limit" lines:
+#
+#		These are used to define the "user class" hierarchy. They
+#		define a classname as well as the limits associated with
+#		that class. Classnames may only be defined once. The
+#		format of these lines are:
+#
+#		limit $classname with $key=$value[,$key=$value]*
+#		
+#		$classname defines the name of the class with the given
+#		limits. (whitespace is used as a separator but is otherwise
+#		ignored. Add as much as you want to make the file more
+#		readable.) $classname is used as a directory name component
+#		so care should be taken not to use charactors that would not
+#		be advisable in a directory name. (i.e. '/' would be
+#		inadvisible.)
+#
+#		The currently valid values for $key are:
+#			key		value-type			def
+#			--------------------------------------------------------
+#			parent		previously defined $classname	null
+#			bandwidth	integer bits/s			0
+#			disk		integer bytes			0
+#			delete_on_fetch	on/off				off
+#			allow_open_mode	on/off				on
+#			test_sessions	integer sessions	0
+#
+#		parent:
+#			The first "limit" line cannot have a parent since
+#			none have been defined yet. As such, the first
+#			line defines the root of your class hierarchy.
+#			All remaining limit lines MUST assign a parent.
+#			(This is hierarchical after all.)
+#
+#		bandwidth:
+#			This limits the estimated amount of bandwidth that
+#			can be consumed by all connections of the given
+#			class. 0 indicates unlimited by policy, but remember
+#			this is checked all the way to the root of the
+#			hierarchy. (If you want an unlimited class, your
+#			root must be unlimited, and the whole path down
+#			to the given class.)
+#			(default: 0 - no limit)
+#
+#		disk:
+#			This limits the amount of diskspace that can be
+#			consumed be each class. The files are stored in
+#			a hierarchical directory structure (surprise, surprise)
+#			that mirrors the class hierarchy. The disk limit
+#			has a soft/hard component to it. When a test is
+#			requested, the soft limit is used to determine
+#			if the test should be allowed. However, because
+#			of the possibility of duplicate packets, the file
+#			could end up being larger than that estimate. If
+#			that happens - the limit set by this $key will be
+#			multiplied by the "diskfudge" factor before being
+#			compared with the usage. If the file size is still
+#			larger than the limit*"diskfudge", then the file
+#			will be unlinked immediately. (Therefore, if your
+#			tests are likely to measure a larger amount of
+#			duplicates, I recommend using larger values
+#			for "diskfudge". (diskfudge is a float value between
+#			1.0 and 10.0 - it defaults to 1.0.)
+#			(default: 0 - no limit)
+#
+#		delete_on_fetch:
+#			This limit is really more of a behavior option. It
+#			is used to mark session files such that they are
+#			deleted immediately after being fetched.
+#			(default: off)
+#
+#		allow_open_mode:
+#			This limit is only useful if the class is assigned
+#			to a netmask. It is used to limit specific netmasks
+#			to only encrypted or authenticated mode transactions.
+#			(default: on)
+#
+#		test_sessions:
+#			This limits the number of test sessions that can be
+#			requested per control session. 0 indicates unlimited by
+#			policy, but remember this is checked all the way to the
+#			root of the hierarchy. (If you want an unlimited class,
+#			your root must be unlimited, and the whole path down to
+#			the given class.)
+#			(default: 0 - no limit)
+#	
+#	"assign" lines:
+#		These are used to assign a "user class" to the connection.
+#		The format is:
+#
+#		assign $assigntype [targs*] $classname
+#
+#		$assigntype defines the type of assignment. There are currently
+#		three types of assignment:
+#			default,user,net
+#
+#		"default" is used if no other assignment matches. It takes no
+#		additional args:
+#
+#		assign default jail
+#
+#		This would assign any connection that didn't match more closely
+#		to the classname jail.
+#
+#		"user" is used to match the "username" specified in the twamp
+#		protocol with a "user class". The "username" within the
+#		protocol is used as a key to fetch the "shared secret". The
+#		format of this line would be:
+#
+#		assign user joe paradise
+#
+#		This would assign a connection that was able to authenticate
+#		using the "username" joe the limits specified for the classname
+#		paradise.
+
+# setup the root node with unlimited disk and bandwidth
+limit root with disk=0,\
+		bandwidth=0,\
+                delete_on_fetch=on
+
+# Limit non-authorized users to 10G of disk storage, and 1M of bandwidth
+# (overall for all non-authorized users). Unspecified values default to
+# parent permissions
+limit regular with parent=root,\
+		disk=10G,\
+		bandwidth=20M
+
+# Default everything to regular user access
+assign default regular

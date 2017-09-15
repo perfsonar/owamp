@@ -35,7 +35,8 @@ static int
 OpenSocket(
         OWPContext  ctx,
         int         family,
-        I2Addr      addr
+        I2Addr      addr,
+        char        *def_serv
         )
 {
     struct addrinfo *fai;
@@ -43,7 +44,7 @@ OpenSocket(
     int             on;
     int             fd=-1;
 
-    if( !(fai = I2AddrAddrInfo(addr,NULL,OWP_CONTROL_SERVICE_NAME))){
+    if( !(fai = I2AddrAddrInfo(addr,NULL,def_serv))){
         return -2;
     }
 
@@ -129,10 +130,11 @@ failsock:
  * Returns:        
  * Side Effect:        
  */
-I2Addr
-OWPServerSockCreate(
+static I2Addr
+OWPServerSockCreateCommon(
         OWPContext      ctx,
         I2Addr          addr,
+        char            *def_serv,
         OWPErrSeverity  *err_ret
         )
 {
@@ -154,7 +156,7 @@ OWPServerSockCreate(
      */
     if((!addr) &&
             !(addr = I2AddrByWildcard(OWPContextErrHandle(ctx),SOCK_STREAM,
-                    OWP_CONTROL_SERVICE_NAME))){
+                    def_serv))){
         goto error;
     }
 
@@ -166,14 +168,14 @@ OWPServerSockCreate(
     /*
      * First try IPv6 addrs only
      */
-    fd = OpenSocket(ctx,AF_INET6,addr);
+    fd = OpenSocket(ctx,AF_INET6,addr,def_serv);
 
     /*
      * Fall back to IPv4 addrs if necessary.
      */
     if(fd == -1)
 #endif
-        fd = OpenSocket(ctx,AF_INET,addr);
+        fd = OpenSocket(ctx,AF_INET,addr,def_serv);
 
     /*
      * if we failed to find any IPv6 or IPv4 addresses... punt.
@@ -201,11 +203,33 @@ error:
 
 }
 
+I2Addr
+OWPServerSockCreate(
+        OWPContext      ctx,
+        I2Addr          addr,
+        OWPErrSeverity  *err_ret
+        )
+{
+    return OWPServerSockCreateCommon(ctx, addr, OWP_CONTROL_SERVICE_NAME,
+                                     err_ret);
+}
+
+I2Addr
+TWPServerSockCreate(
+        OWPContext      ctx,
+        I2Addr          addr,
+        OWPErrSeverity  *err_ret
+        )
+{
+    return OWPServerSockCreateCommon(ctx, addr, TWP_CONTROL_SERVICE_NAME,
+                                     err_ret);
+}
+
 /*
- * Function:        OWPControlAccept
+ * Function:        OWPControlAcceptCommon
  *
  * Description:        
- *                 This function is used to initialiize the communication
+ *                 This function is used to initialize the xWAMP communication
  *                 to the peer.
  *           
  * In Args:        
@@ -220,14 +244,15 @@ error:
  * 
  * Side Effect:
  */
-OWPControl
-OWPControlAccept(
+static OWPControl
+OWPControlAcceptCommon(
         OWPContext      ctx,            /* library context              */
         int             connfd,         /* connected socket             */
         struct sockaddr *connsaddr,     /* connected socket addr        */
         socklen_t       connsaddrlen,   /* connected socket addr len    */
         uint32_t        mode_offered,   /* advertised server mode       */
         OWPNum64        uptime,         /* uptime for server            */
+        OWPBoolean      twoway,
         int             *retn_on_intr,  /* if *retn_on_intr return      */
         OWPErrSeverity  *err_ret        /* err - return                 */
         )
@@ -257,7 +282,7 @@ OWPControlAccept(
 
     *err_ret = OWPErrOK;
 
-    if ( !(cntrl = _OWPControlAlloc(ctx,err_ret)))
+    if ( !(cntrl = _OWPControlAlloc(ctx,twoway,err_ret)))
         goto error;
 
     cntrl->sockfd = connfd;
@@ -348,6 +373,7 @@ OWPControlAccept(
 
     /* insure that exactly one mode is chosen */
     if((cntrl->mode != OWP_MODE_OPEN) &&
+            (!twoway || (cntrl->mode != TWP_MODE_MIXED)) &&
             (cntrl->mode != OWP_MODE_AUTHENTICATED) &&
             (cntrl->mode != OWP_MODE_ENCRYPTED)){
         *err_ret = OWPErrFATAL;
@@ -365,7 +391,7 @@ OWPControlAccept(
         goto error;
     }
 
-    if(cntrl->mode & (OWP_MODE_AUTHENTICATED|OWP_MODE_ENCRYPTED)){
+    if(cntrl->mode & OWP_MODE_DOCIPHER_CNTRL){
         OWPBoolean  getkey_success;
 
         /*
@@ -478,6 +504,78 @@ error:
     return NULL;
 }
 
+/*
+ * Function:        OWPControlAccept
+ *
+ * Description:
+ *                 This function is used to initialize the OWAMP communication
+ *                 to the peer.
+ *
+ * In Args:
+ *                 connfd,connsaddr, and connsaddrlen are all returned
+ *                 from "accept".
+ *
+ * Returns:        Valid OWPControl handle on success, NULL if
+ *              the request has been rejected, or error has occurred.
+ *              Return value does not distinguish between illegal
+ *              requests, those rejected on policy reasons, or
+ *              errors encountered by the server during execution.
+ *
+ * Side Effect:
+ */
+OWPControl
+OWPControlAccept(
+        OWPContext      ctx,            /* library context              */
+        int             connfd,         /* connected socket             */
+        struct sockaddr *connsaddr,     /* connected socket addr        */
+        socklen_t       connsaddrlen,   /* connected socket addr len    */
+        uint32_t        mode_offered,   /* advertised server mode       */
+        OWPNum64        uptime,         /* uptime for server            */
+        int             *retn_on_intr,  /* if *retn_on_intr return      */
+        OWPErrSeverity  *err_ret        /* err - return                 */
+        )
+{
+    return OWPControlAcceptCommon(ctx,connfd,connsaddr,connsaddrlen,
+                                  mode_offered,uptime,False,retn_on_intr,
+                                  err_ret);
+}
+
+/*
+ * Function:        TWPControlAccept
+ *
+ * Description:
+ *                 This function is used to initialize the TWAMP communication
+ *                 to the peer.
+ *
+ * In Args:
+ *                 connfd,connsaddr, and connsaddrlen are all returned
+ *                 from "accept".
+ *
+ * Returns:        Valid OWPControl handle on success, NULL if
+ *              the request has been rejected, or error has occurred.
+ *              Return value does not distinguish between illegal
+ *              requests, those rejected on policy reasons, or
+ *              errors encountered by the server during execution.
+ *
+ * Side Effect:
+ */
+OWPControl
+TWPControlAccept(
+        OWPContext      ctx,            /* library context              */
+        int             connfd,         /* connected socket             */
+        struct sockaddr *connsaddr,     /* connected socket addr        */
+        socklen_t       connsaddrlen,   /* connected socket addr len    */
+        uint32_t        mode_offered,   /* advertised server mode       */
+        OWPNum64        uptime,         /* uptime for server            */
+        int             *retn_on_intr,  /* if *retn_on_intr return      */
+        OWPErrSeverity  *err_ret        /* err - return                 */
+        )
+{
+    return OWPControlAcceptCommon(ctx,connfd,connsaddr,connsaddrlen,
+                                  mode_offered,uptime,True,retn_on_intr,
+                                  err_ret);
+}
+
 OWPErrSeverity
 OWPProcessTestRequest(
         OWPControl  cntrl,
@@ -588,7 +686,7 @@ OWPProcessTestRequest(
          * (control-client MUST be receiver if openmode.)
          */
 
-        if(!(cntrl->mode & OWP_MODE_DOCIPHER)){
+        if(!(cntrl->mode & OWP_MODE_DOCIPHER_CNTRL)){
             struct sockaddr *csaddr;
             socklen_t       csaddrlen;
             char            remotenode[NI_MAXHOST];
@@ -649,6 +747,117 @@ OWPProcessTestRequest(
         }
         port = I2AddrPort(tsession->receiver);
     }
+
+    if( (rc = _OWPWriteAcceptSession(cntrl,intr,OWP_CNTRL_ACCEPT,
+                    port,tsession->sid)) < OWPErrOK){
+        err_ret = (OWPErrSeverity)rc;
+        goto err2;
+    }
+
+    /*
+     * Add tsession to list of tests managed by this control connection.
+     */
+    tsession->next = cntrl->tests;
+    cntrl->tests = tsession;
+
+    return OWPErrOK;
+
+error:
+    /*
+     * If it is a non-fatal error, communication should continue, so
+     * send negative accept.
+     */
+    if(err_ret >= OWPErrWARNING)
+        (void)_OWPWriteAcceptSession(cntrl,intr,acceptval,0,NULL);
+
+err2:
+    if(tsession)
+        _OWPTestSessionFree(tsession,acceptval);
+
+    return err_ret;
+}
+
+OWPErrSeverity
+OWPProcessTestRequestTW(
+        OWPControl  cntrl,
+        int         *retn_on_intr
+        )
+{
+    OWPTestSession  tsession = NULL;
+    OWPErrSeverity  err_ret=OWPErrOK;
+    uint16_t       port;
+    int             rc;
+    OWPAcceptType   acceptval = OWP_CNTRL_FAILURE;
+    int             ival=1;
+    int             *intr = &ival;
+    struct sockaddr *rsaddr;
+    struct sockaddr *ssaddr;
+    socklen_t       saddrlen;
+
+    if(retn_on_intr){
+        intr = retn_on_intr;
+    }
+
+    /*
+     * Read the TestRequest and alloate tsession to hold the information.
+     */
+    if((rc = _OWPReadTestRequest(cntrl,intr,&tsession,&acceptval)) !=
+            OWPErrOK){
+        if(acceptval < 0)
+            return OWPErrFATAL;
+        return OWPErrWARNING;
+    }
+
+    assert(tsession);
+
+    /*
+     * Get local copies of saddr's.
+     */
+    rsaddr = I2AddrSAddr(tsession->receiver,&saddrlen);
+    ssaddr = I2AddrSAddr(tsession->sender,&saddrlen);
+    if(!rsaddr || !ssaddr){
+        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                "Invalid addresses from ReadTestRequest");
+        err_ret = OWPErrFATAL;
+        goto error;
+    }
+
+    if(_OWPCreateSID(tsession) != 0){
+        err_ret = OWPErrWARNING;
+        acceptval = OWP_CNTRL_FAILURE;
+        goto error;
+    }
+
+    /*
+     * open port and get SID. For the purposes of policy, we are a
+     * local sender - we don't require any disk space.
+     */
+    if(!_OWPCallCheckTestPolicy(cntrl,True,
+                                rsaddr,ssaddr,saddrlen,
+                                &tsession->test_spec,&tsession->closure,
+                                &err_ret)){
+        if(err_ret < OWPErrOK)
+            goto error;
+        OWPError(cntrl->ctx,OWPErrWARNING,OWPErrPOLICY,
+                 "Test not allowed");
+        acceptval = OWP_CNTRL_REJECT;
+        err_ret = OWPErrWARNING;
+        goto error;
+    }
+
+    /*
+     * Use the receiver address for the endpoint - we'll use sendto to
+     * actually send the reflected packet
+     */
+    if(!_OWPEndpointInit(cntrl,tsession,tsession->receiver,NULL,
+                         &acceptval,&err_ret)){
+        goto error;
+    }
+
+    if(!_OWPEndpointInitHook(cntrl,tsession,&acceptval,&err_ret)){
+        goto error;
+    }
+    port = I2AddrPort(tsession->receiver);
 
     if( (rc = _OWPWriteAcceptSession(cntrl,intr,OWP_CNTRL_ACCEPT,
                     port,tsession->sid)) < OWPErrOK){
@@ -1261,4 +1470,33 @@ reject:
 
     return OWPErrWARNING;
 
+}
+
+OWPErrSeverity
+OWPUnexpectedRequestType(
+    OWPControl cntrl
+    )
+{
+    int             ival=1;
+    OWPErrSeverity  rc;
+
+    /*
+     * OWAMP doesn't specify any behaviour on unexpected requests, so
+     * return fatal to cause the server to close the control session.
+     */
+    if (!cntrl->twoway) {
+        return OWPErrFATAL;
+    }
+
+    cntrl->state |= _OWPStateAcceptSession;
+
+    rc = _OWPWriteAcceptSession(cntrl,&ival,OWP_CNTRL_UNSUPPORTED,
+                                0,NULL);
+
+    /*
+     * Reset state
+     */
+    cntrl->state = _OWPStateRequest;
+
+    return rc;
 }
