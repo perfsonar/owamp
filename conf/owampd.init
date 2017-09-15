@@ -67,15 +67,18 @@ do
 	    ERROR=4
 	fi
 	;;
-	status)
-		echo $STATUS
+    status)
+	echo $STATUS
+	if [ $RUNNING -eq 0 ]; then
+	    ERROR=3
+	fi
 	;;
-	cond-restart)
+    cond-restart)
         if [ $RUNNING -eq 1 ]; then
     	    $0 stop; echo "waiting..."; sleep 10; $0 start;
         fi
 	;;
-	restart)
+    restart)
 		$0 stop; echo "waiting..."; sleep 10; $0 start;
 	;;
 #	if [ $RUNNING -eq 0 ]; then
