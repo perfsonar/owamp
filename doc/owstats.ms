@@ -22,6 +22,8 @@
 .\"
 .\"	Description:	
 .\"
+.\"Protocol name
+.ds proto OWAMP
 .TH owstats 1 "$Date$"
 .SH NAME
 owstats \- Command line application used to parse \fBOWAMP\fR data files.
