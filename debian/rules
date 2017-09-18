@@ -22,3 +22,7 @@ export DH_OPTIONS
 override_dh_auto_configure:
 	dh_auto_configure -- \
 		--with-I2util=no
+
+ifneq ($(filter $(DEB_HOST_ARCH), amd64 i386),)
+override_dh_auto_test:
+endif
