@@ -8,9 +8,9 @@ URL: http://e2epi.internet2.edu/owamp/
 Source: %{name}-%{version}.tar.gz
 Packager: Aaron Brown <aaron@internet2.edu>
 %if 0%{?el7}
-BuildRequires: libtool, I2util, systemd
+BuildRequires: libtool, I2util, openssl-devel, systemd
 %else
-BuildRequires: libtool, I2util
+BuildRequires: libtool, I2util, openssl-devel
 %endif
 Requires: owamp-client, owamp-server, I2util
 BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-buildroot
