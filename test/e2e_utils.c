@@ -306,8 +306,6 @@ int create_config_dir(
  * Returns:         non-zero in case of error
  * Side Effect:
  */
-typedef int(*output_verification_handler)(const char *);
-
 int verify_owping_output(const char *output) {
     // status_str should appear in the output twice
     char status_str[20];
