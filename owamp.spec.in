@@ -104,6 +104,9 @@ make
 %{__install} -D -p -m 0644 conf/twampd.limits %{buildroot}%{_sysconfdir}/twamp-server/twamp-server.limits
 %{__install} -D -p -m 0644 conf/twampd.limits %{buildroot}%{_sysconfdir}/twamp-server/twamp-server.limits.default
 
+%check
+make check
+
 %clean
 rm -rf $RPM_BUILD_ROOT 
 
