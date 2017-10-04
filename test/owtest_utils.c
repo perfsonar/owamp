@@ -18,7 +18,7 @@
 #include <owamp/owamp.h>
 #include <I2util/util.h>
 
-#include "owtest_utils.h"
+#include "./owtest_utils.h"
 
 
 /*
