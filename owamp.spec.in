@@ -87,7 +87,6 @@ twamp server
 %build
 %configure --with-I2util=no
 make
-make check
 
 %install
 %makeinstall
@@ -104,6 +103,9 @@ make check
 %{__install} -D -p -m 0644 conf/twampd.rpm.conf %{buildroot}%{_sysconfdir}/twamp-server/twamp-server.conf.default
 %{__install} -D -p -m 0644 conf/twampd.limits %{buildroot}%{_sysconfdir}/twamp-server/twamp-server.limits
 %{__install} -D -p -m 0644 conf/twampd.limits %{buildroot}%{_sysconfdir}/twamp-server/twamp-server.limits.default
+
+%check
+make check
 
 %clean
 rm -rf $RPM_BUILD_ROOT 
