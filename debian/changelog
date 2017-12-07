@@ -1,3 +1,9 @@
+owamp (3.5.6-1) perfsonar-jessie-release; urgency=medium
+
+  * New upstream version.
+
+ -- Valentin Vidic <Valentin.Vidic@CARNet.hr>  Thu, 07 Dec 2017 12:59:31 +0100
+
 owamp (3.5.5-1) perfsonar-jessie-release; urgency=low
 
   * New upstream version.

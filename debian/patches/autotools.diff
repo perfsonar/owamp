@@ -17,14 +17,6 @@ Cleanup configure errors.
  AC_C_CONST
  AC_HEADER_TIME
  AC_CHECK_MEMBERS([struct sockaddr.sa_len], , ,
-@@ -157,7 +155,6 @@
- AC_SEARCH_LIBS(gethostbyname, nsl)
- AC_SEARCH_LIBS(socketpair, socket)
- AC_SEARCH_LIBS(nanosleep, rt)
--AC_SEARCH_LIBS(ceil,m)
- 
- AC_CHECK_FUNCS([memset socket bind connect getaddrinfo mergesort dirfd])
- 
 @@ -216,6 +213,4 @@
  AC_SUBST(TOP_BUILD_DIRS)
  
@@ -223,7 +215,7 @@ Cleanup configure errors.
 +++ b/owping/Makefile.am
 @@ -23,7 +23,7 @@
  
- bin_PROGRAMS	= owping
+ bin_PROGRAMS	= owping twping
  owping_SOURCES	= owping.c owpingP.h
 -owping_LDADD	= $(OWPLIBS) $(MALLOCDEBUGLIBS) -lI2util
 +owping_LDADD	= $(OWPLIBS) $(MALLOCDEBUGLIBS) -lI2util -lm

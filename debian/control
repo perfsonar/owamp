@@ -2,11 +2,12 @@ Source: owamp
 Section: net
 Priority: optional
 Maintainer: Valentin Vidic <Valentin.Vidic@CARNet.hr>
-Build-Depends: debhelper (>= 9), dh-autoreconf, dh-exec, dh-systemd, libi2util-dev (>= 1.4)
-Standards-Version: 3.9.6
+Build-Depends: debhelper (>= 9), dh-autoreconf, dh-exec, dh-systemd, libi2util-dev (>= 1.4),
+ libssl-dev
+Standards-Version: 3.9.8
 Homepage: http://software.internet2.edu/owamp/
-Vcs-Git: https://code.google.com/p/perfsonar-ps.owamp/
-Vcs-Browser: https://code.google.com/p/perfsonar-ps/source/browse/?repo=owamp
+Vcs-Git: https://github.com/perfsonar/owamp
+Vcs-Browser: https://github.com/perfsonar/owamp
 
 Package: owamp-client
 Architecture: any
@@ -23,8 +24,9 @@ Description: OWAMP command line client utilities
 
 Package: owamp-server
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, adduser, ntp | time-daemon
-Description: OWAMP server
+Depends: ${shlibs:Depends}, ${misc:Depends}, adduser, lsb-base,
+ ntp | time-daemon,
+Description: OWAMP daemon
  OWAMP is a client/server package that allows one to measure the
  latency between hosts. Unlike ping, which can only measure the
  bidirectional delay, OWAMP enables you to measure the unidirectional
@@ -32,3 +34,27 @@ Description: OWAMP server
  Measurement Protocol as defined by RFC4656.
  .
  This package contains the owamp server.
+
+Package: twamp-client
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: TWAMP command line client utilities
+ TWAMP is a client/server package that allows one to measure the
+ latency between hosts. Like ping, TWAMP enables you to measure the
+ two-way or round-trip delay between two hosts.  It is an implementation
+ of the Two-Way Active Measurement Protocol as defined by RFC5357.
+ .
+ This package contains command line client utilities for performing
+ measurements with an twamp server.
+
+Package: twamp-server
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, adduser, lsb-base,
+ ntp | time-daemon
+Description: TWAMP daemon
+ TWAMP is a client/server package that allows one to measure the
+ latency between hosts. Like ping, TWAMP enables you to measure the
+ two-way or round-trip delay between two hosts.  It is an implementation
+ of the Two-Way Active Measurement Protocol as defined by RFC5357.
+ .
+ This package contains the twamp server.
