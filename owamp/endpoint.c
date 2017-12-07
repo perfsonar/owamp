@@ -400,6 +400,7 @@ _OWPEndpointInit(
     size_t                  localnodelen = sizeof(localnode);
     double                  enddelay = _OWP_DEFAULT_FUZZTIME;
     double                  *enddelayptr;
+    size_t                  snd_payload_len;
 
     *err_ret = OWPErrFATAL;
     *aval = OWP_CNTRL_UNAVAILABLE_TEMP;
@@ -414,6 +415,7 @@ _OWPEndpointInit(
         return False;
 
     ep->send = (localaddr == tsession->sender);
+    ep->twoway = cntrl->twoway;
 
     ep->tsession = tsession;
     ep->cntrl = cntrl;
@@ -424,8 +426,13 @@ _OWPEndpointInit(
         goto error;
     }
 
-    tpsize = OWPTestPacketSize(saddr->sa_family,
-            ep->cntrl->mode,tsession->test_spec.packet_size_padding);
+    if (cntrl->twoway) {
+        tpsize = OWPTestTWPacketSize(saddr->sa_family,
+                                     ep->cntrl->mode,tsession->test_spec.packet_size_padding);
+    } else {
+        tpsize = OWPTestPacketSize(saddr->sa_family,
+                                   ep->cntrl->mode,tsession->test_spec.packet_size_padding);
+    }
     tpsize += 128;        /* Add fuzz space for IP "options" */
     sbuf_size = tpsize;
     if((OWPPacketSizeT)sbuf_size != tpsize){
@@ -437,8 +444,17 @@ _OWPEndpointInit(
 
     ep->len_payload = OWPTestPayloadSize(ep->cntrl->mode,
             ep->tsession->test_spec.packet_size_padding);
+    snd_payload_len = ep->len_payload;
+    if (cntrl->twoway) {
+        /*
+         * We attempt to reflect the same sized packet back, but only
+         * if the sender has requested enough padding.
+         */
+        snd_payload_len = MAX(snd_payload_len, OWPTestTWPayloadSize(
+                                  ep->cntrl->mode, 0));
+    }
     /* use calloc to initialize the memory to 0 */
-    ep->payload = calloc(1,ep->len_payload);
+    ep->payload = calloc(1,MAX(ep->len_payload,snd_payload_len));
 
     if(!ep->payload){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,"calloc(): %M");
@@ -602,10 +618,10 @@ success:
     }
 
     /*
-     * If we are receiver, sid is valid and we need to open file.
+     * If we are two-way client or one-way receiver, allocate lost
+     * packet buffer cache.
      */
-    if(!ep->send){
-        size_t          size;
+    if((cntrl->twoway && !cntrl->server) || (!cntrl->twoway && !ep->send)){
         OWPLostPacket   alist;
 
         /*
@@ -655,6 +671,14 @@ success:
                     "_OWPEndpointInit: Unable to initialize lost packet buffer");
             goto error;
         }
+    }
+
+    /*
+     * If we are two-way client or one-way receiver, sid is valid and
+     * we need to open file.
+     */
+    if ((cntrl->twoway && !cntrl->server) || (!cntrl->twoway && !ep->send)) {
+        size_t          size;
 
         ep->fname[0] = '\0';
         if(!fp){
@@ -692,9 +716,9 @@ success:
          * Determine data rate. i.e. size/second.
          */
         size = OWPTestPacketRate(cntrl->ctx,&ep->tsession->test_spec) *
-            _OWP_DATAREC_SIZE;
+            _OWP_MAXDATAREC_SIZE;
 
-        if(size < _OWP_DATAREC_SIZE){
+        if(size < _OWP_MAXDATAREC_SIZE){
             /* If rate is less than one packet/second then unbuffered */
             setvbuf(ep->datafile,NULL,_IONBF,0);
         }
@@ -720,11 +744,13 @@ success:
             }
             setvbuf(ep->datafile,ep->fbuff,_IOFBF,size);
         }
+    }
 
+    if (cntrl->twoway || !ep->send) {
         /*
-         * receiver - need to set the recv buffer size large
-         * enough for the packet, so we can get it in a single
-         * recv.
+         * Two-way client/server or one-way receiver - need to set the
+         * recv buffer size large enough for the packet, so we can get
+         * it in a single recv.
          */
         opt_size = sizeof(sopt);
         if(getsockopt(ep->sockfd,SOL_SOCKET,SO_RCVBUF,
@@ -783,7 +809,11 @@ success:
                 goto error;
         }
     }
-    else{
+    /*
+     * Create skip records for one-way sender. Two-way client doesn't
+     * use skip records at this time.
+     */
+    if (!cntrl->twoway && ep->send){
         _OWPSkip    askip;
 
         /*
@@ -843,10 +873,12 @@ success:
             askip[i].next = ep->free_skiplist;
             ep->free_skiplist = &askip[i];
         }
+    }
 
+    if (cntrl->twoway || ep->send){
         /*
-         * Sender needs to set sockopt's to ensure test
-         * packets don't fragment in the socket api.
+         * Two-way client/server or sender needs to set sockopt's to
+         * ensure test packets don't fragment in the socket api.
          */
 
         opt_size = sizeof(sopt);
@@ -1027,6 +1059,7 @@ error:
 static int owp_usr1;
 static int owp_usr2;
 static int owp_int;
+static int owp_alrm;
 
 /*
  * This sighandler is used to ensure SIGCHLD events are sent to this process.
@@ -1063,6 +1096,7 @@ sig_catch(
             owp_int = 1;
             break;
         case SIGALRM:
+            owp_alrm = 1;
             break;
         default:
             OWPError(NULL,OWPErrFATAL,OWPErrUNKNOWN,
@@ -1330,7 +1364,7 @@ run_sender(
          * ready for the next block in the case of encrypted mode.
          */
 RETRY:
-        if(ep->cntrl->mode & OWP_MODE_DOCIPHER){
+        if(ep->cntrl->mode & OWP_MODE_DOCIPHER_TEST){
             /*
              * Initialize HMAC for this packet, and first block to it.
              */
@@ -1633,7 +1667,8 @@ alloc_node(
     ep->freelist = ep->freelist->next;
 
     node->seq = seq;
-    node->hit = 0;
+    node->hit = False;
+    node->sent = False;
     node->next = NULL;
 
     k.dptr = &node->seq;
@@ -1914,6 +1949,13 @@ flush_lost(
      * records along the way.
      */
     while(timespeccmp(&expectspec,&currtime,<)){
+        /*
+         * Stop flushing when the packet at the front of the queue
+         * hasn't actually been sent yet
+         */
+        if(ep->twoway && !ep->begin->sent){
+            break;
+        }
 
         /*
          * If !hit - and the seq number is less than
@@ -1925,38 +1967,65 @@ flush_lost(
          * queue.)
          */
         if(!ep->begin->hit){
-            OWPDataRec      lostrec;
+            OWPTWDataRec      lostrec;
+
+#ifdef OWP_EXTRA_DEBUG
+            OWPError(ep->cntrl->ctx,OWPErrDEBUG,OWPErrUNKNOWN,
+                     "flush_lost: lost packet seq %u", ep->begin->seq);
+#endif
 
             /*
              * set fields in lostrec for missing packet
              * record.
              */
             /* seq no */
-            lostrec.seq_no = ep->begin->seq;
+            lostrec.sent.seq_no = ep->begin->seq;
+
             /* presumed sent time */
-            lostrec.send.owptime = OWPNum64Add(
+            lostrec.sent.send.owptime = OWPNum64Add(
                     ep->tsession->test_spec.start_time,
                     ep->begin->relative);
-            lostrec.send.sync = 0;
-            lostrec.send.multiplier = 1;
-            lostrec.send.scale = 64;
+            lostrec.sent.send.sync = 0;
+            lostrec.sent.send.multiplier = 1;
+            lostrec.sent.send.scale = 64;
 
             /* special value recv time */
-            lostrec.recv = *errest;
-            lostrec.recv.owptime = OWPULongToNum64(0);
+            lostrec.sent.recv = *errest;
+            lostrec.sent.recv.owptime = OWPULongToNum64(0);
 
             /* recv error was set above... */
 
-            lostrec.ttl = 255;
+            lostrec.sent.ttl = 255;
 
-            if( !OWPWriteDataRecord(ep->cntrl->ctx,
-                        ep->datafile,&lostrec)){
-                OWPError(ep->cntrl->ctx,OWPErrFATAL,
-                        OWPErrUNKNOWN,
-                        "OWPWriteDataRecord()");
-                return -1;
+            if(ep->twoway){
+                lostrec.reflected.ttl = 255;
+                lostrec.reflected.seq_no = 0;
+                lostrec.reflected.send = lostrec.sent.recv;
+                lostrec.reflected.recv = lostrec.sent.recv;
+
+                if( !OWPWriteTWDataRecord(ep->cntrl->ctx,
+                            ep->datafile,&lostrec)){
+                    OWPError(ep->cntrl->ctx,OWPErrFATAL,
+                            OWPErrUNKNOWN,
+                            "OWPWriteTWDataRecord()");
+                    return -1;
+                }
+            }
+            else{
+                if( !OWPWriteDataRecord(ep->cntrl->ctx,
+                            ep->datafile,&lostrec.sent)){
+                    OWPError(ep->cntrl->ctx,OWPErrFATAL,
+                            OWPErrUNKNOWN,
+                            "OWPWriteDataRecord()");
+                    return -1;
+                }
             }
         }
+
+#ifdef OWP_EXTRA_DEBUG
+        OWPError(ep->cntrl->ctx,OWPErrDEBUG,OWPErrUNKNOWN,
+                 "flush_lost: flushing packet seq %u", ep->begin->seq);
+#endif
 
         /*
          * Pop the front off the queue.
@@ -2296,7 +2365,7 @@ again:
         /*
          * Decrypt the packet if needed.
          */
-        if(ep->cntrl->mode & OWP_MODE_DOCIPHER){
+        if(ep->cntrl->mode & OWP_MODE_DOCIPHER_TEST){
             uint8_t iv[16];
             int     r;
             uint8_t hmacd[I2HMAC_SHA1_DIGEST_SIZE];
@@ -2468,6 +2537,1182 @@ error:
     exit(OWP_CNTRL_FAILURE);
 }
 
+static void
+run_reflector(
+        OWPEndpoint ep
+        )
+{
+    struct timespec     currtime;
+    struct itimerval    wake;
+    uint32_t            *seq;
+    uint32_t            clr_mem[24]; /* 6 blocks */
+    char                *clr_buffer = (char *)clr_mem; /* legal type pun ;) */
+    char                *tstamp;
+    char                *tstamperr;
+    char                *hmac;
+    char                *padding;
+    uint32_t            esterror,lasterror=0;
+    uint32_t            recv_lasterror=0;
+    uint8_t             sync;
+    struct sockaddr     *lsaddr;
+    socklen_t           lsaddrlen;
+    struct sockaddr     *rsaddr;
+    socklen_t           rsaddrlen;
+    uint32_t            *reply_seq;
+    char                *reply_tstamp;
+    char                *reply_tstamperr;
+    char                *reply_rcv_tstamp;
+    uint32_t            *reply_snd_seq;
+    char                *reply_snd_tstamp;
+    char                *reply_snd_tstamperr;
+    char                *reply_snd_ttl;
+    char                *reply_hmac;
+    char                *reply_padding;
+    uint8_t             iv[16];
+    OWPTimeStamp        owptstamp;
+    int                 r;
+    int                 sent;
+    int                 i;
+    char                snd_tstamp_val[8];
+    uint32_t            snd_seq_val;
+    uint16_t            snd_tstamperr_val;
+    OWPTimeStamp        recv_tstamp;
+    uint8_t             ttl;
+    size_t              snd_payload_len;
+    uint32_t            testtimeout;
+
+    if( !(lsaddr = I2AddrSAddr(ep->tsession->sender,&lsaddrlen))){
+        exit(OWP_CNTRL_FAILURE);
+    }
+
+    if( !(lsaddr = I2AddrSAddr(ep->tsession->receiver,&lsaddrlen))){
+        exit(OWP_CNTRL_FAILURE);
+    }
+
+    /*
+     * Get pointer to lsaddr used for listening.
+     */
+    if( !(lsaddr = I2AddrSAddr(ep->localaddr,&lsaddrlen))){
+        exit(OWP_CNTRL_FAILURE);
+    }
+    /*
+     * Get pointer to rsaddr used to verify peer.
+     */
+    if( !(rsaddr = I2AddrSAddr(ep->remoteaddr,&rsaddrlen))){
+        exit(OWP_CNTRL_FAILURE);
+    }
+
+    memset(clr_buffer,0,96);
+
+    /*
+     * Initialize pointers to various positions in the packet buffer.
+     * (useful for the different "modes".)
+     * Note: ep->payload has been allocated such that it can be reused
+     * for the larger reply packet
+     */
+    seq = (uint32_t*)&ep->payload[0];
+    switch(ep->cntrl->mode){
+    case OWP_MODE_OPEN:
+    case TWP_MODE_MIXED:
+        tstamp = &ep->payload[4];
+        tstamperr = &ep->payload[12];
+        hmac = NULL;
+        padding = &ep->payload[14];
+
+        reply_seq = (uint32_t*)&ep->payload[0];
+        reply_tstamp = &ep->payload[4];
+        reply_tstamperr = &ep->payload[12];
+        reply_rcv_tstamp = &ep->payload[16];
+        reply_snd_seq = (uint32_t*)&ep->payload[24];
+        reply_snd_tstamp = &ep->payload[28];
+        reply_snd_tstamperr = &ep->payload[36];
+        reply_snd_ttl = &ep->payload[40];
+        reply_hmac = NULL;
+        reply_padding = &ep->payload[41];
+        break;
+    case OWP_MODE_AUTHENTICATED:
+        tstamp = &ep->payload[16];
+        tstamperr = &ep->payload[24];
+        hmac = &ep->payload[32];
+        padding = &ep->payload[48];
+
+        reply_seq = (uint32_t*)&clr_buffer[0];
+        reply_tstamp = &ep->payload[16];
+        reply_tstamperr = &ep->payload[24];
+        reply_rcv_tstamp = &ep->payload[32];
+        reply_snd_seq = (uint32_t*)&ep->payload[48];
+        reply_snd_tstamp = &ep->payload[64];
+        reply_snd_tstamperr = &ep->payload[72];
+        reply_snd_ttl = &ep->payload[80];
+        reply_hmac = &ep->payload[96];
+        reply_padding = &ep->payload[112];
+        break;
+    case OWP_MODE_ENCRYPTED:
+        tstamp = &ep->payload[16];
+        tstamperr = &ep->payload[24];
+        hmac = &ep->payload[32];
+        padding = &ep->payload[48];
+
+        reply_seq = (uint32_t*)&clr_buffer[0];
+        reply_tstamp = &clr_buffer[16];
+        reply_tstamperr = &clr_buffer[24];
+        reply_rcv_tstamp = &clr_buffer[32];
+        reply_snd_seq = (uint32_t*)&clr_buffer[48];
+        reply_snd_tstamp = &clr_buffer[64];
+        reply_snd_tstamperr = &clr_buffer[72];
+        reply_snd_ttl = &clr_buffer[80];
+        reply_hmac = &ep->payload[96];
+        reply_padding = &ep->payload[112];
+        break;
+    default:
+        /*
+         * things would have failed way earlier
+         * but putting default in to stop annoying
+         * compiler warnings...
+         */
+        exit(OWP_CNTRL_FAILURE);
+    }
+
+    /*
+     * Retrieve the test timeout - how long to wait for test packets
+     */
+    if (! OWPContextConfigGetU32(ep->cntrl->ctx,TWPTestTimeout,&testtimeout)) {
+        testtimeout = _TWP_DEFAULT_TEST_TIMEOUT;
+    }
+
+    /*
+     * initialize currtime for absolute to relative time conversion
+     * needed by timers.
+     */
+    if(!_OWPGetTimespec(ep->cntrl->ctx,&currtime,&esterror,&sync)){
+        OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                "Problem retrieving time");
+        goto error;
+    }
+
+    i = 0;
+
+    while(1){
+        struct sockaddr_storage peer_addr;
+        socklen_t               peer_addr_len;
+again:
+        /*
+         * Set the REFWAIT timer.
+         */
+        tvalclear(&wake.it_value);
+        wake.it_value.tv_sec = testtimeout;
+        tvalclear(&wake.it_interval);
+        owp_alrm = 0;
+        if(setitimer(ITIMER_REAL,&wake,NULL) != 0){
+            OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                    "setitimer(wake=%d,%d) seq=%lu: %M",
+                    wake.it_value.tv_sec,wake.it_value.tv_usec,
+                    ep->end->seq);
+            goto error;
+        }
+
+        if(owp_int){
+            goto error;
+        }
+        if(owp_usr2){
+            goto test_over;
+        }
+
+        peer_addr_len = sizeof(peer_addr);
+        memset(&peer_addr,0,sizeof(peer_addr));
+        if(!owp_usr2 &&
+                (recvfromttl(ep->cntrl->ctx,ep->sockfd,
+                    ep->payload,ep->len_payload,lsaddr,lsaddrlen,
+                    (struct sockaddr*)&peer_addr,&peer_addr_len,
+                    &ttl) != (ssize_t)ep->len_payload)){
+            if(errno != EINTR){
+                OWPError(ep->cntrl->ctx,OWPErrFATAL,
+                        OWPErrUNKNOWN,"recvfromttl(): %M");
+                goto error;
+            }
+        }
+
+        if(owp_int || owp_alrm){
+            goto error;
+        }
+        if(owp_usr2){
+            goto test_over;
+        }
+
+        /*
+         * Fetch time before ANYTHING else to minimize time errors.
+         */
+        if(!_OWPGetTimespec(ep->cntrl->ctx,&currtime,&esterror,&sync)){
+            OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                    "Problem retrieving time");
+            goto error;
+        }
+
+        /*
+         * Received a packet, so cancel REFWAIT timer.
+         */
+        tvalclear(&wake.it_value);
+        tvalclear(&wake.it_interval);
+        if(setitimer(ITIMER_REAL,&wake,NULL) != 0){
+            OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                    "setitimer(disable): %M");
+            goto error;
+        }
+
+        /*
+         * Check signals...
+         */
+        if(owp_int){
+            goto error;
+        }
+        if(owp_usr2){
+            goto test_over;
+        }
+
+        /*
+         * Save that time as a timestamp
+         */
+        (void)OWPTimespecToTimestamp(&recv_tstamp,&currtime,
+                                     &esterror,&recv_lasterror);
+        recv_lasterror = esterror;
+
+        /*
+         * Check signals...
+         */
+        if(owp_int){
+            goto error;
+        }
+        if(owp_usr2){
+            goto test_over;
+        }
+
+        /*
+         * Verify peer before looking at packet.
+         */
+        if(I2SockAddrEqual(rsaddr,rsaddrlen,
+                    (struct sockaddr*)&peer_addr,
+                    peer_addr_len,I2SADDR_ALL) <= 0){
+            goto again;
+        }
+
+#ifdef OWP_EXTRA_DEBUG
+        {
+            char remotenode[256];
+            char remoteserv[256];
+
+            r = getnameinfo((struct sockaddr *)&peer_addr,peer_addr_len,
+                            remotenode,sizeof(remotenode),
+                            remoteserv,sizeof(remoteserv),
+                            NI_NUMERICSERV|NI_NUMERICSERV);
+            if (r) {
+                OWPError(ep->cntrl->ctx,OWPErrWARNING,OWPErrPOLICY,
+                         "Reflector: getnameinfo: %s",
+                         gai_strerror(r));
+                strcpy(remotenode, "unknown");
+                strcpy(remoteserv, "unknown");
+            }
+            OWPError(ep->cntrl->ctx,OWPErrDEBUG,OWPErrUNKNOWN,
+                     "Reflector packet from [%s]:%s",
+                     remotenode,remoteserv);
+        }
+#endif
+
+        /*
+         * Decrypt the packet if needed.
+         */
+        if(ep->cntrl->mode & OWP_MODE_DOCIPHER_TEST){
+            uint8_t iv[16];
+            int     r;
+            uint8_t hmacd[I2HMAC_SHA1_DIGEST_SIZE];
+
+            /*
+             * Initialize HMAC and iv.
+             */
+            memset(iv,0,sizeof(iv));
+            I2HMACSha1Init(ep->hmac_ctx,ep->hmac_key,sizeof(ep->hmac_key));
+
+            /*
+             * Decrypt first block
+             */
+            r = blockDecrypt(iv,&ep->aeskey,(uint8_t *)&ep->payload[0],
+                    16*8,(uint8_t *)&ep->payload[0]);
+            if(r != (16*8)){
+                OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                        "run_reflector: Invalid ECB decryption");
+                goto error;
+            }
+            I2HMACSha1Append(ep->hmac_ctx,(uint8_t *)&ep->payload[0],16);
+
+
+            if(ep->cntrl->mode & OWP_MODE_ENCRYPTED){
+                /*
+                 * Decrypt second block if full encrypted mode wanted
+                 * (CBC mode done by blockDecrypt)
+                 */
+                r = blockDecrypt(iv,&ep->aeskey,(uint8_t *)&ep->payload[16],
+                        16*8,(uint8_t *)&ep->payload[16]);
+                if(r != (16*8)){
+                    OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                            "run_reflector: Invalid CBC decryption");
+                    goto error;
+                }
+                I2HMACSha1Append(ep->hmac_ctx,(uint8_t *)&ep->payload[16],16);
+            }
+
+            memset(hmacd,0,sizeof(hmacd));
+            I2HMACSha1Finish(ep->hmac_ctx,hmacd);
+            if( (memcmp(hmac,hmacd,
+                        MIN(_OWP_RIJNDAEL_BLOCK_SIZE,sizeof(hmacd))) != 0)){
+                OWPError(ep->cntrl->ctx,OWPErrWARNING,OWPErrUNKNOWN,
+                        "run_reflector: Invalid HMAC on received packet: "
+                        "ignoring");
+                goto again;
+            }
+        }
+
+        /* Cache values before we reuse the payload */
+        snd_seq_val = *seq;
+        memcpy(&snd_tstamp_val, tstamp, sizeof(snd_tstamp_val));
+        memcpy(&snd_tstamperr_val, tstamperr, sizeof(snd_tstamperr_val));
+
+        /* send-packet */
+
+        snd_payload_len = MAX(ep->len_payload, OWPTestTWPayloadSize(
+                                  ep->cntrl->mode, 0));
+
+        if (ep->len_payload > reply_padding - ep->payload) {
+            memmove(reply_padding, padding, ep->len_payload - (reply_padding - ep->payload));
+        }
+        /* Reset payload to 0 for MBZ fields */
+        memset(ep->payload, 0, reply_padding - ep->payload);
+
+        *reply_seq = htonl(i);
+        _OWPEncodeTimeStamp((uint8_t *)reply_rcv_tstamp,&recv_tstamp);
+        *reply_snd_seq = snd_seq_val;
+        memcpy(reply_snd_tstamp, &snd_tstamp_val, sizeof(snd_tstamp_val));
+        memcpy(reply_snd_tstamperr, &snd_tstamperr_val, sizeof(snd_tstamperr_val));
+        *reply_snd_ttl = ttl;
+
+RETRY:
+        /*
+         * Fetch time again for the reply timestamp
+         */
+        if(!_OWPGetTimespec(ep->cntrl->ctx,&currtime,&esterror,&sync)){
+            OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                    "Problem retrieving time");
+            goto error;
+        }
+
+        (void)OWPTimespecToTimestamp(&owptstamp,&currtime,
+                                     &esterror,&lasterror);
+        lasterror = esterror;
+        owptstamp.sync = sync;
+        _OWPEncodeTimeStamp((uint8_t *)reply_tstamp,&owptstamp);
+        if(!_OWPEncodeTimeStampErrEstimate((uint8_t *)reply_tstamperr,
+                                           &owptstamp)){
+            OWPError(ep->cntrl->ctx,OWPErrFATAL,
+                     OWPErrUNKNOWN,
+                     "Invalid Timestamp Error");
+            owptstamp.multiplier = 0xFF;
+            owptstamp.scale = 0x3F;
+            owptstamp.sync = 0;
+            (void)_OWPEncodeTimeStampErrEstimate((uint8_t *)reply_tstamperr,
+                                                 &owptstamp);
+        }
+
+        /*
+         * blockEncrypt does CBC mode. Can still use this function for
+         * both authenticated and encrypted mode because CBC with iv=0
+         * of one block is identical to ECB of one block. Then iv is
+         * ready for the next block in the case of encrypted mode.
+         */
+        if(ep->cntrl->mode & OWP_MODE_DOCIPHER_TEST){
+            /*
+             * Initialize HMAC for this packet, and first block to it.
+             */
+            I2HMACSha1Init(ep->hmac_ctx,ep->hmac_key,sizeof(ep->hmac_key));
+            I2HMACSha1Append(ep->hmac_ctx,(uint8_t *)&clr_buffer[0],16);
+
+            /*
+             * Initialize IV and encrypt the first block
+             */
+            memset(iv,0,sizeof(iv));
+            r = blockEncrypt(iv,&ep->aes_tw_reply_key,(uint8_t *)&clr_buffer[0],16*8,
+                    (uint8_t *)&ep->payload[0]);
+            if(r != (16*8)){
+                OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                        "run_reflector: Invalid ECB encryption of seq (#%ul)",i);
+                exit(OWP_CNTRL_FAILURE);
+            }
+        }
+
+        /*
+         * For ENCRYPTED mode, we have to encrypt the subsequent 5
+         * blocks after fetching the timestamp. (CBC mode)
+         */
+        if(ep->cntrl->mode & OWP_MODE_ENCRYPTED){
+            /*
+             * Append subsequent 5 blocks to HMAC
+             */
+            I2HMACSha1Append(ep->hmac_ctx,(uint8_t *)&clr_buffer[16],80);
+
+            /*
+             * Encrypt subsequent 5 blocks
+             */
+            r = blockEncrypt(iv,&ep->aes_tw_reply_key,(uint8_t *)&clr_buffer[16],80*8,
+                             (uint8_t *)&ep->payload[16]);
+            if(r != (80*8)){
+                OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                         "run_reflector: Invalid CBC encryption of seq (#%ul)",
+                         i);
+                exit(OWP_CNTRL_FAILURE);
+            }
+        }
+
+        if(reply_hmac){
+            uint8_t hmacd[I2HMAC_SHA1_DIGEST_SIZE];
+
+            memset(hmacd,0,sizeof(hmacd));
+            I2HMACSha1Finish(ep->hmac_ctx,hmacd);
+            memcpy(reply_hmac,hmacd,MIN(16,I2HMAC_SHA1_DIGEST_SIZE));
+        }
+
+        if(owp_int || owp_usr2){
+            goto error;
+        }
+
+        if( (sent = sendto(ep->sockfd,ep->payload,
+                           snd_payload_len,0,
+                           (struct sockaddr*)&peer_addr,peer_addr_len)) < 0){
+            switch(errno){
+                /* retry errors */
+            case ENOBUFS:
+                OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                        "run_reflector: no buffer space (#%ul)",i);
+                goto RETRY;
+                break;
+                /* fatal errors */
+            case EBADF:
+            case EACCES:
+            case ENOTSOCK:
+            case EFAULT:
+            case EAGAIN:
+                OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                         "Unable to send([%s]:%s:(#%d): %M",
+                         "","",i);
+                exit(OWP_CNTRL_FAILURE);
+                break;
+                /* ignore everything else */
+            default:
+                break;
+            }
+
+            /* but do note it as INFO for debugging */
+            OWPError(ep->cntrl->ctx,OWPErrINFO,OWPErrUNKNOWN,
+                     "Unable to send([%s]:%s:(#%d): %M",
+                     "","",i);
+        }
+        i++;
+
+    }
+
+test_over:
+
+    exit(OWP_CNTRL_ACCEPT);
+
+error:
+
+    if (owp_alrm) {
+        OWPError(ep->cntrl->ctx,OWPErrINFO,OWPErrUNKNOWN,
+                 "run_reflector: Exiting due to REFWAIT timeout");
+    } else {
+        OWPError(ep->cntrl->ctx,OWPErrINFO,OWPErrUNKNOWN,
+                 "run_reflector: Exiting due to error");
+    }
+
+    exit(OWP_CNTRL_FAILURE);
+}
+
+/*
+ * Function:        run_tw_test
+ *
+ * Description:
+ *                 This function is the main processing function for a "two-way test"
+ *                 sub-process.
+ *
+ * In Args:
+ *
+ * Out Args:
+ *
+ * Scope:
+ * Returns:
+ * Side Effect:
+ */
+static void
+run_tw_test(
+        OWPEndpoint ep
+        )
+{
+    struct sockaddr *lsaddr;
+    socklen_t       lsaddrlen;
+    struct sockaddr *rsaddr;
+    socklen_t       rsaddrlen;
+    char            nodename[NI_MAXHOST];
+    size_t          nodenamelen = sizeof(nodename);
+    char            nodeserv[NI_MAXSERV];
+    size_t          nodeservlen = sizeof(nodeserv);
+    uint32_t        i;
+    struct timespec currtime;
+    struct timespec nexttime;
+    struct timespec timeout;
+    struct timespec latetime;
+    struct timespec sleeptime;
+    struct itimerval wake;
+    uint32_t        esterror;
+    uint32_t        lasterror=0;
+    uint8_t         sync;
+    ssize_t         sent;
+    uint32_t        *seq;
+    uint32_t        clr_mem[8]; /* two blocks */
+    char            *clr_buffer = (char *)clr_mem; /* legal type pun ;) */
+    uint8_t         iv[16];
+    char            *padding;
+    char            *tstamp;
+    char            *tstamperr;
+    char            *hmac;
+    OWPTimeStamp    owptstamp;
+    int             r;
+    size_t          resp_len_payload;
+    struct sockaddr_storage peer_addr;
+    socklen_t       peer_addr_len;
+    uint32_t        *reply_seq;
+    char            *reply_tstamp;
+    char            *reply_tstamperr;
+    char            *reply_rcv_tstamp;
+    uint32_t        *reply_snd_seq;
+    char            *reply_snd_tstamp;
+    char            *reply_snd_tstamperr;
+    char            *reply_snd_ttl;
+    char            *reply_hmac;
+    ssize_t         resp_len;
+    OWPSessionHeaderRec hdr;
+    OWPTWDataRec    twdatarec;
+    OWPLostPacket node;
+    int flush_rc;
+
+    /*
+     * Get pointer to lsaddr used for listening.
+     */
+    if( !(lsaddr = I2AddrSAddr(ep->localaddr,&lsaddrlen))){
+        OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                 "run_tw_test: Unable to extract local saddr information");
+        exit(OWP_CNTRL_FAILURE);
+    }
+
+    if( !(rsaddr = I2AddrSAddr(ep->remoteaddr,&rsaddrlen)) ||
+                !I2AddrNodeName(ep->remoteaddr,nodename,&nodenamelen) ||
+                !I2AddrServName(ep->remoteaddr,nodeserv,&nodeservlen)){
+        OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                 "run_tw_test: Unable to extract remote saddr information");
+        exit(OWP_CNTRL_FAILURE);
+    }
+
+    /*
+     * Prepare the file header - had to wait until now to
+     * get the real starttime.
+     */
+    memset(&hdr,0,sizeof(hdr));
+    hdr.twoway = True;
+    hdr.finished = OWP_SESSION_FINISHED_INCOMPLETE;
+    memcpy(&hdr.sid,ep->tsession->sid,sizeof(hdr.sid));
+    hdr.conf_sender = ep->tsession->conf_sender;
+    hdr.conf_receiver = ep->tsession->conf_receiver;
+    hdr.test_spec = ep->tsession->test_spec;
+    memcpy(&hdr.addr_sender,lsaddr,lsaddrlen);
+    memcpy(&hdr.addr_receiver,rsaddr,rsaddrlen);
+
+    /*
+     * Write the file header.
+     */
+    if( !OWPWriteDataHeader(ep->cntrl->ctx,ep->datafile,&hdr)){
+        OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                 "run_tw_test: Unable to write data file header");
+        exit(OWP_CNTRL_FAILURE);
+    }
+
+    /*
+     * Initialize pointers to various positions in the packet buffer,
+     * for data that changes for each packet. Also set zero padding.
+     */
+    memset(clr_buffer,0,32);
+
+    switch(ep->cntrl->mode){
+        case OWP_MODE_OPEN:
+        case TWP_MODE_MIXED:
+            seq = (uint32_t*)&ep->payload[0];
+            tstamp = &ep->payload[4];
+            tstamperr = &ep->payload[12];
+            hmac = NULL;
+            padding = &ep->payload[14];
+            break;
+        case OWP_MODE_AUTHENTICATED:
+            seq = (uint32_t*)&clr_buffer[0];
+            tstamp = &ep->payload[16];
+            tstamperr = &ep->payload[24];
+            hmac = &ep->payload[32];
+            padding = &ep->payload[48];
+            break;
+        case OWP_MODE_ENCRYPTED:
+            seq = (uint32_t*)&clr_buffer[0];
+            tstamp = &clr_buffer[16];
+            tstamperr = &clr_buffer[24];
+            hmac = &ep->payload[32];
+            padding = &ep->payload[48];
+            break;
+        default:
+            /*
+             * things would have failed way earlier
+             * but put default in to stop annoying
+             * compiler warnings...
+             */
+            OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                    "run_tw_test: Bogus \"mode\" bits");
+            exit(OWP_CNTRL_FAILURE);
+    }
+
+    switch(ep->cntrl->mode){
+    case OWP_MODE_OPEN:
+    case TWP_MODE_MIXED:
+        reply_seq = (uint32_t*)&ep->payload[0];
+        reply_tstamp = &ep->payload[4];
+        reply_tstamperr = &ep->payload[12];
+        reply_rcv_tstamp = &ep->payload[16];
+        reply_snd_seq = (uint32_t*)&ep->payload[24];
+        reply_snd_tstamp = &ep->payload[28];
+        reply_snd_tstamperr = &ep->payload[36];
+        reply_snd_ttl = &ep->payload[40];
+        reply_hmac = NULL;
+        break;
+    case OWP_MODE_AUTHENTICATED:
+    case OWP_MODE_ENCRYPTED:
+        reply_seq = (uint32_t*)&ep->payload[0];
+        reply_tstamp = &ep->payload[16];
+        reply_tstamperr = &ep->payload[24];
+        reply_rcv_tstamp = &ep->payload[32];
+        reply_snd_seq = (uint32_t*)&ep->payload[48];
+        reply_snd_tstamp = &ep->payload[64];
+        reply_snd_tstamperr = &ep->payload[72];
+        reply_snd_ttl = &ep->payload[80];
+        reply_hmac = &ep->payload[96];
+        break;
+    default:
+        /*
+         * things would have failed way earlier
+         * but put default in to stop annoying
+         * compiler warnings...
+         */
+        OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                 "run_tw_test: Bogus \"mode\" bits");
+        exit(OWP_CNTRL_FAILURE);
+    }
+
+    i=0;
+
+    /*
+     * initialize tspec version of "timeout"
+     */
+    OWPNum64ToTimespec(&timeout,ep->tsession->test_spec.loss_timeout);
+
+    /*
+     * Ensure schedule generation is starting at first packet in
+     * series.
+     */
+    if(OWPScheduleContextReset(ep->tsession->sctx,NULL,NULL) != OWPErrOK){
+        OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                "ScheduleContextReset: FAILED");
+        exit(OWP_CNTRL_FAILURE);
+    }
+
+    /*
+     * Initialize packet buffer with first node
+     */
+    ep->begin = ep->end = alloc_node(ep,0);
+    if(!ep->begin){
+        exit(OWP_CNTRL_FAILURE);
+    }
+
+    ep->begin->relative = OWPScheduleContextGenerateNextDelta(
+            ep->tsession->sctx);
+    /* just using owptstamp as a temp var here. */
+    owptstamp.owptime = OWPNum64Add(ep->begin->relative,
+            ep->tsession->test_spec.start_time);
+    (void)OWPTimestampToTimespec(&ep->begin->absolute,&owptstamp);
+
+    do{
+        /*
+         * First setup "this" packet. calloc() used to allocate ep->payload,
+         * so padding will already be zero. Just leave it if zero payload
+         * is required.
+         */
+#if !defined(OWP_ZERO_TEST_PAYLOAD)
+        (void)I2RandomBytes(ep->cntrl->ctx->rand_src,(uint8_t *)padding,
+                            ep->tsession->test_spec.packet_size_padding);
+#endif
+
+        if(!(node = get_node(ep,i))){
+            goto finish_sender;
+        }
+        OWPNum64ToTimespec(&nexttime,node->relative);
+        timespecadd(&nexttime,&ep->start);
+        *seq = htonl(i);
+
+        /*
+         * blockEncrypt does CBC mode. Can still use this function for
+         * both authenticated and encrypted mode because CBC with iv=0
+         * of one block is identical to ECB of one block. Then iv is
+         * ready for the next block in the case of encrypted mode.
+         */
+RETRY:
+        if(ep->cntrl->mode & OWP_MODE_DOCIPHER_TEST){
+            /*
+             * Initialize HMAC for this packet, and first block to it.
+             */
+            I2HMACSha1Init(ep->hmac_ctx,ep->hmac_key,sizeof(ep->hmac_key));
+            I2HMACSha1Append(ep->hmac_ctx,(uint8_t *)&clr_buffer[0],16);
+
+            /*
+             * Initialize IV and encrypt the first block
+             */
+            memset(iv,0,sizeof(iv));
+            r = blockEncrypt(iv,&ep->aeskey,(uint8_t *)&clr_buffer[0],16*8,
+                    (uint8_t *)&ep->payload[0]);
+            if(r != (16*8)){
+                OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                        "run_tw_test: Invalid ECB encryption of seq (#%ul)",i);
+                exit(OWP_CNTRL_FAILURE);
+            }
+        }
+
+AGAIN:
+        if(owp_int || owp_usr2){
+            goto finish_sender;
+        }
+
+        if(!_OWPGetTimespec(ep->cntrl->ctx,&currtime,&esterror,&sync)){
+            OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                    "Problem retrieving time");
+            exit(OWP_CNTRL_FAILURE);
+        }
+
+        /*
+         * If current time is greater than next send time...
+         */
+        if(timespeccmp(&currtime,&nexttime,>)){
+
+            /*
+             * If current time is more than "timeout" past next
+             * send time, then skip actually sending.
+             */
+            latetime = timeout;
+            timespecadd(&latetime,&nexttime);
+            if(timespeccmp(&currtime,&latetime,>)){
+#ifdef OWP_EXTRA_DEBUG
+                OWPError(ep->cntrl->ctx,OWPErrDEBUG,OWPErrUNKNOWN,
+                         "run_tw_test: missed send time (not sent): seq %u",i);
+#endif
+                /*
+                 * Pretend it was sent and received so that it will
+                 * be flushed from the packet buffer
+                 */
+                node->sent = True;
+                node->hit = True;
+                goto SKIP_SEND;
+            }
+
+            /* send-packet */
+
+            (void)OWPTimespecToTimestamp(&owptstamp,&currtime,
+                                         &esterror,&lasterror);
+            lasterror = esterror;
+            owptstamp.sync = sync;
+            _OWPEncodeTimeStamp((uint8_t *)tstamp,&owptstamp);
+            if(!_OWPEncodeTimeStampErrEstimate((uint8_t *)tstamperr,
+                        &owptstamp)){
+                OWPError(ep->cntrl->ctx,OWPErrFATAL,
+                        OWPErrUNKNOWN,
+                        "Invalid Timestamp Error");
+                owptstamp.multiplier = 0xFF;
+                owptstamp.scale = 0x3F;
+                owptstamp.sync = 0;
+                (void)_OWPEncodeTimeStampErrEstimate((uint8_t *)tstamperr,
+                                                     &owptstamp);
+            }
+
+            /*
+             * For ENCRYPTED mode, we have to encrypt the second
+             * block after fetching the timestamp. (CBC mode)
+             */
+            if(ep->cntrl->mode & OWP_MODE_ENCRYPTED){
+                /*
+                 * Append second block to HMAC (timestamp block)
+                 */
+                I2HMACSha1Append(ep->hmac_ctx,(uint8_t *)&clr_buffer[16],16);
+
+                /*
+                 * Encrypt second block
+                 */
+                r = blockEncrypt(iv,&ep->aeskey,(uint8_t *)&clr_buffer[16],16*8,
+                        (uint8_t *)&ep->payload[16]);
+                if(r != (16*8)){
+                    OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                            "run_tw_test: Invalid CBC encryption of seq (#%ul)",
+                            i);
+                    exit(OWP_CNTRL_FAILURE);
+                }
+            }
+
+            if(hmac){
+                uint8_t hmacd[I2HMAC_SHA1_DIGEST_SIZE];
+
+                memset(hmacd,0,sizeof(hmacd));
+                I2HMACSha1Finish(ep->hmac_ctx,hmacd);
+                memcpy(hmac,hmacd,MIN(16,I2HMAC_SHA1_DIGEST_SIZE));
+            }
+
+            if(owp_int || owp_usr2){
+                goto finish_sender;
+            }
+
+            if( (sent = sendto(ep->sockfd,ep->payload,
+                            ep->len_payload,0,rsaddr,rsaddrlen)) < 0){
+                switch(errno){
+                    /* retry errors */
+                    case ENOBUFS:
+                        goto RETRY;
+                        break;
+                        /* fatal errors */
+                    case EBADF:
+                    case EACCES:
+                    case ENOTSOCK:
+                    case EFAULT:
+                    case EAGAIN:
+                        OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                                "Unable to send([%s]:%s:(#%d): %M",
+                                nodename,nodeserv,i);
+                        exit(OWP_CNTRL_FAILURE);
+                        break;
+                    case EINTR:
+                        goto SKIP_SEND;
+                        /* ignore everything else */
+                    default:
+                        break;
+                }
+
+                /* but do note it as INFO for debugging */
+                OWPError(ep->cntrl->ctx,OWPErrDEBUG,OWPErrUNKNOWN,
+                        "Unable to send([%s]:%s:(#%d): %M",
+                        nodename,nodeserv,i);
+            }
+            node->sent = True;
+            node->absolute = currtime;
+
+RECEIVE:
+            if(owp_int || owp_usr2){
+                goto finish_sender;
+            }
+
+            /*
+             * Set the timer.
+             */
+            tvalclear(&wake.it_interval);
+            wake.it_value.tv_sec = timeout.tv_sec;
+            wake.it_value.tv_usec = timeout.tv_nsec / 1000;
+            if(setitimer(ITIMER_REAL,&wake,NULL) != 0){
+                OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                         "setitimer(wake=%d,%d) seq=%u: %M",
+                         wake.it_value.tv_sec,wake.it_value.tv_usec,i);
+                goto finish_sender;
+            }
+
+            /*
+             * Note: ep->payload has been allocated such that it can
+             * be reused for the larger reply packet
+             */
+
+            resp_len_payload = ep->len_payload +
+                (OWPTestTWPayloadSize(ep->cntrl->mode,0) -
+                 OWPTestPayloadSize(ep->cntrl->mode,0));
+            peer_addr_len = sizeof(peer_addr);
+            memset(&peer_addr,0,sizeof(peer_addr));
+            resp_len = recvfromttl(ep->cntrl->ctx,ep->sockfd,
+                                   ep->payload,resp_len_payload,lsaddr,lsaddrlen,
+                                   (struct sockaddr*)&peer_addr,&peer_addr_len,
+                                   &twdatarec.reflected.ttl);
+            if(errno != EINTR){
+                OWPError(ep->cntrl->ctx,OWPErrFATAL,
+                         OWPErrUNKNOWN,"recvfromttl(): %M");
+                goto finish_sender;
+            }
+
+            if(owp_int || owp_usr2){
+                goto finish_sender;
+            }
+
+            /*
+             * Fetch time before ANYTHING else to minimize time errors.
+             */
+            if(!_OWPGetTimespec(ep->cntrl->ctx,&currtime,&esterror,&sync)){
+                OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                         "Problem retrieving time");
+                goto finish_sender;
+            }
+            /*
+             * Save that time as a timestamp
+             */
+            (void)OWPTimespecToTimestamp(&twdatarec.reflected.recv,&currtime,
+                                         &esterror,NULL);
+            twdatarec.reflected.recv.sync = sync;
+
+            /*
+             * Received a packet, so cancel timeout timer.
+             */
+            tvalclear(&wake.it_value);
+            tvalclear(&wake.it_interval);
+            if(setitimer(ITIMER_REAL,&wake,NULL) != 0){
+                OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                        "setitimer(disable): %M");
+                goto finish_sender;
+            }
+
+            /*
+             * Flush buffer of packets that have reached their timeout
+             */
+            flush_rc = flush_lost(ep,&currtime,&timeout,&twdatarec.reflected.recv);
+            if(flush_rc < 0){
+                goto error;
+            }
+            else if(flush_rc > 0){
+                goto finish_sender;
+            }
+
+            /*
+             * If we didn't actually receive anything then just skip
+             * to process the next packet
+             */
+            if(resp_len < OWPTestTWPayloadSize(ep->cntrl->mode, 0)){
+                goto SKIP_SEND;
+            }
+
+            /*
+             * Decrypt the packet if needed.
+             */
+            if(ep->cntrl->mode & OWP_MODE_DOCIPHER_TEST){
+                uint8_t iv[16];
+                int     r;
+                uint8_t hmacd[I2HMAC_SHA1_DIGEST_SIZE];
+
+                /*
+                 * Initialize HMAC and iv.
+                 */
+                memset(iv,0,sizeof(iv));
+                I2HMACSha1Init(ep->hmac_ctx,ep->hmac_key,sizeof(ep->hmac_key));
+
+                /*
+                 * Decrypt first block
+                 */
+                r = blockDecrypt(iv,&ep->aes_tw_reply_key,(uint8_t *)&ep->payload[0],
+                                 16*8,(uint8_t *)&ep->payload[0]);
+                if(r != (16*8)){
+                    OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                             "run_tw_test: Invalid ECB decryption");
+                    goto SKIP_SEND;
+                }
+                I2HMACSha1Append(ep->hmac_ctx,(uint8_t *)&ep->payload[0],16);
+
+                if(ep->cntrl->mode & OWP_MODE_ENCRYPTED){
+                    /*
+                     * Decrypt subsequent blocks if full encrypted mode wanted
+                     * (CBC mode done by blockDecrypt)
+                     */
+                    r = blockDecrypt(iv,&ep->aes_tw_reply_key,(uint8_t *)&ep->payload[16],
+                                     80*8,(uint8_t *)&ep->payload[16]);
+                    if(r != (80*8)){
+                        OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                                 "run_tw_test: Invalid CBC decryption");
+                        goto SKIP_SEND;
+                    }
+                    I2HMACSha1Append(ep->hmac_ctx,(uint8_t *)&ep->payload[16],80);
+                }
+
+                memset(hmacd,0,sizeof(hmacd));
+                I2HMACSha1Finish(ep->hmac_ctx,hmacd);
+                if( (memcmp(reply_hmac,hmacd,
+                            MIN(_OWP_RIJNDAEL_BLOCK_SIZE,sizeof(hmacd))) != 0)){
+                    OWPError(ep->cntrl->ctx,OWPErrWARNING,OWPErrUNKNOWN,
+                             "run_tw_test: Invalid HMAC on received packet: "
+                             "ignoring");
+                    goto SKIP_SEND;
+                }
+            }
+
+#ifdef OWP_EXTRA_DEBUG
+            OWPError(ep->cntrl->ctx,OWPErrDEBUG,OWPErrUNKNOWN,
+                     "run_tw_test: packet received: seq %u, sender seq %u, size %u",
+                     ntohl(*reply_seq), ntohl(*reply_snd_seq), resp_len);
+#endif
+
+            /*
+             * Retrieve reflected sender sequence number
+             */
+            twdatarec.sent.seq_no = ntohl(*reply_snd_seq);
+            if(twdatarec.sent.seq_no > i){
+                OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                         "Invalid reflected sender sequence number!");
+                goto finish_sender;
+            }
+
+            /*
+             * If we received a packet that has already timed out
+             * and been flushed from the buffer just go back to
+             * receive another packet
+             */
+            if(twdatarec.sent.seq_no < ep->begin->seq){
+#ifdef OWP_EXTRA_DEBUG
+                OWPError(ep->cntrl->ctx,OWPErrDEBUG,OWPErrUNKNOWN,
+                         "run_tw_test: packet discarded: seq %u, sender seq %u, size %u",
+                         ntohl(*reply_seq), ntohl(*reply_snd_seq), resp_len);
+#endif
+                goto RECEIVE;
+            }
+
+            /*
+             * What time did sender send this packet?
+             */
+            _OWPDecodeTimeStamp(&twdatarec.sent.send,(uint8_t *)reply_snd_tstamp);
+            if(!_OWPDecodeTimeStampErrEstimate(&twdatarec.sent.send,(uint8_t *)reply_snd_tstamperr)){
+                OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                         "Invalid sent send timestamp!");
+                goto finish_sender;
+            }
+            _OWPDecodeTimeStamp(&twdatarec.sent.recv,(uint8_t *)reply_rcv_tstamp);
+            if(!_OWPDecodeTimeStampErrEstimate(&twdatarec.sent.recv,(uint8_t *)reply_tstamperr)){
+                OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                         "Invalid sent recv timestamp!");
+                goto finish_sender;
+            }
+            twdatarec.sent.ttl = *reply_snd_ttl;
+
+            twdatarec.reflected.seq_no = ntohl(*reply_seq);
+            _OWPDecodeTimeStamp(&twdatarec.reflected.send,(uint8_t *)reply_tstamp);
+            if(!_OWPDecodeTimeStampErrEstimate(&twdatarec.reflected.send,(uint8_t *)reply_tstamperr)){
+                OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                         "Invalid reflected send timestamp!");
+                goto finish_sender;
+            }
+
+            if( !OWPWriteTWDataRecord(ep->cntrl->ctx,ep->datafile,
+                                      &twdatarec)){
+                OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                         "OWPWriteTWDataRecord()");
+                goto finish_sender;
+            }
+
+            /*
+             * Retrieve node from buffer for the received sender
+             * sequence number
+             */
+            if(!(node = get_node(ep,twdatarec.sent.seq_no))){
+                goto finish_sender;
+            }
+
+            /*
+             * This packet is a duplicate, so go back to receive
+             * another packet
+             */
+            if(node->hit){
+#ifdef OWP_EXTRA_DEBUG
+                OWPError(ep->cntrl->ctx,OWPErrDEBUG,OWPErrUNKNOWN,
+                         "run_tw_test: duplicate packet: seq %u, sender seq %u, size %u",
+                         ntohl(*reply_seq), ntohl(*reply_snd_seq), resp_len);
+#endif
+                goto RECEIVE;
+            }
+
+            /*
+             * Record that an original packet has been received
+             */
+            node->hit = True;
+
+            /*
+             * If we just received the last packet of the session
+             * then go back to receive so that any duplicates can
+             * be received
+             */
+            if(i == ep->tsession->test_spec.npackets-1){
+                goto RECEIVE;
+            }
+
+SKIP_SEND:
+            i++;
+        }
+        else{
+            /*
+             * Sleep until we should send the next packet.
+             */
+
+            sleeptime = nexttime;
+            timespecsub(&sleeptime,&currtime);
+            if((nanosleep(&sleeptime,NULL) == 0) || (errno == EINTR)){
+                goto AGAIN;
+            }
+            OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                    "nanosleep(%u.%u,nil): %M",
+                    sleeptime.tv_sec,sleeptime.tv_nsec);
+            exit(OWP_CNTRL_FAILURE);
+        }
+
+    } while(i < ep->tsession->test_spec.npackets);
+
+finish_sender:
+    /*
+     * Perform a final flush to ensure that all required packets are
+     * processed, if the last flush did not result in the end of the test
+     */
+    if(!flush_rc){
+        if(!_OWPGetTimespec(ep->cntrl->ctx,&currtime,&esterror,&sync)){
+            OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                     "Problem retrieving time");
+        }
+        else{
+            (void)OWPTimespecToTimestamp(&twdatarec.reflected.recv,&currtime,
+                                         &esterror,NULL);
+            twdatarec.reflected.recv.sync = sync;
+
+            if(flush_lost(ep,&currtime,&timeout,&twdatarec.reflected.recv) < 0){
+                goto error;
+            }
+        }
+    }
+
+    if(owp_int){
+        OWPError(ep->cntrl->ctx,OWPErrINFO,OWPErrUNKNOWN,
+                "run_tw_test: Exiting from signal");
+
+error:
+        _OWPWriteDataHeaderFinished(ep->cntrl->ctx,ep->datafile,OWP_SESSION_FINISHED_ERROR,0);
+        fclose(ep->datafile);
+        ep->datafile = NULL;
+        exit(OWP_CNTRL_FAILURE);
+    }
+
+    _OWPWriteDataHeaderFinished(ep->cntrl->ctx,ep->datafile,OWP_SESSION_FINISHED_NORMAL,0);
+    fclose(ep->datafile);
+    ep->datafile = NULL;
+
+    exit(OWP_CNTRL_ACCEPT);
+}
+
+
 /*
  * Note: We explicitly do NOT connect the send udp socket. This is because
  * each individual packet needs to be treated independant of the others.
@@ -2505,7 +3750,7 @@ _OWPEndpointInitHook(
     /*
      * Initialize crypto if needed
      */
-    if(ep->cntrl->mode & OWP_MODE_DOCIPHER){
+    if(ep->cntrl->mode & OWP_MODE_DOCIPHER_TEST){
         uint8_t     iv[16];
         keyInstance sidkey;
         int         r;
@@ -2527,7 +3772,21 @@ _OWPEndpointInitHook(
         rijndaelEncrypt(sidkey.rk,sidkey.Nr,ep->cntrl->aessession_key,
                 ep->aesbytes);
 
-        if(ep->send){
+        if(ep->cntrl->twoway){
+            if (ep->cntrl->server){
+                ep->aeskey.Nr = rijndaelKeySetupDec(ep->aeskey.rk,ep->aesbytes,
+                        sizeof(ep->aesbytes)*8);
+                ep->aes_tw_reply_key.Nr = rijndaelKeySetupEnc(ep->aes_tw_reply_key.rk,
+                        ep->aesbytes,sizeof(ep->aesbytes)*8);
+            }
+            else {
+                ep->aeskey.Nr = rijndaelKeySetupEnc(ep->aeskey.rk,ep->aesbytes,
+                        sizeof(ep->aesbytes)*8);
+                ep->aes_tw_reply_key.Nr = rijndaelKeySetupDec(ep->aes_tw_reply_key.rk,
+                        ep->aesbytes,sizeof(ep->aesbytes)*8);
+            }
+        }
+        else if(ep->send){
             /* send side needs encryption */
             ep->aeskey.Nr = rijndaelKeySetupEnc(ep->aeskey.rk,ep->aesbytes,
                     sizeof(ep->aesbytes)*8);
@@ -2781,10 +4040,18 @@ parenterr:
         }
 
         if(ep->send){
-            run_sender(ep);
+            if(ep->twoway){
+                run_tw_test(ep);
+            } else {
+                run_sender(ep);
+            }
         }
         else{
-            run_receiver(ep);
+            if(ep->twoway){
+                run_reflector(ep);
+            } else {
+                run_receiver(ep);
+            }
         }
     }
 

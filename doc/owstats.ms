@@ -1,27 +1,27 @@
 '\"t
-." The first line of this file must contain the '"[e][r][t][v] line
-." to tell man to run the appropriate filter "t" for table.
-." vim: set filetype=nroff :
-."
-."	$Id$
-."
-."######################################################################
-."#									#
-."#			   Copyright (C)  2004				#
-."#	     			Internet2				#
-."#			   All Rights Reserved				#
-."#									#
-."######################################################################
-."
-."	File:		owstats.man
-."
-."	Author:		Jeff Boote
-."			Internet2
-."
-."	Date:		Wed Apr 28 08:48:05 MDT 2004
-."
-."	Description:	
-."
+.\" The first line of this file must contain the '"[e][r][t][v] line
+.\" to tell man to run the appropriate filter "t" for table.
+.\" vim: set filetype=nroff :
+.\"
+.\"	$Id$
+.\"
+.\"######################################################################
+.\"#									#
+.\"#			   Copyright (C)  2004				#
+.\"#	     			Internet2				#
+.\"#			   All Rights Reserved				#
+.\"#									#
+.\"######################################################################
+.\"
+.\"	File:		owstats.man
+.\"
+.\"	Author:		Jeff Boote
+.\"			Internet2
+.\"
+.\"	Date:		Wed Apr 28 08:48:05 MDT 2004
+.\"
+.\"	Description:	
+.\"
 .TH owstats 1 "$Date$"
 .SH NAME
 owstats \- Command line application used to parse \fBOWAMP\fR data files.

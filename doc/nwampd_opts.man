@@ -1,0 +1,158 @@
+.\" The first line of this file must contain the '"[e][r][t][v] line
+.\" to tell man to run the appropriate filter "t" for table.
+.\" vim: set filetype=nroff :
+.\"
+.\"	$Id$
+.\"
+.\"######################################################################
+.\"#									#
+.\"#			   Copyright (C)  2004				#
+.\"#	     			Internet2				#
+.\"#			   All Rights Reserved				#
+.\"#									#
+.\"######################################################################
+.\"
+.\"	File:		nwampd_opts.man
+.\"
+.\"	Author:		Robert Shearman
+.\"			Brocade Communications
+.\"
+.\"	Date:		Mon Jan 19 23:15:07 GMT 2015
+.\"
+.\"	Description:	
+.\"   Based on owampd.man by Jeff Boote.
+.\"
+.BI \-a " authmode"
+Specify the authentication modes the server is willing to use for
+communication. \fIauthmode\fR should be set as a character string with
+any or all of the characters "AEO". The modes are:
+.RS
+.IP \fBA\fR
+[\fBA\fR]uthenticated. This mode encrypts the control connection and
+encrypts part of each test packet.
+.IP \fBE\fR
+[\fBE\fR]ncrypted. This mode encrypts the control connection and
+encrypts each test packet in full. (This mode forces an encryption step
+between the fetching of a timestamp and when the packet is sent. This
+adds more computational delay to the time reported by \fB
+.proto
+\fR for each
+packet.)
+.IP \fBO\fR
+[\fBO\fR]pen. No encryption of any kind is done.
+.PP
+The server can specify all the modes with which it is willing to communicate.
+The most strict mode that both the server and the client are willing to use
+will be selected.
+.IP Default:
+"AEO".
+.RE
+.TP
+.BI \-c " confdir"
+Specify the directory that holds the \fB\*[prog]\fR configuration files:
+\fB\*[prog].conf\fR, \fB\*[prog].limits\fR and \fB\*[prog].pfs\fR.
+.RS
+.IP Default:
+Current working directory.
+.RE
+.TP
+.BI \-d " datadir"
+Specify the directory that holds the buffered data files. The data files are
+the result of one-way latency tests where the server is the receiving
+host. The data files are used to buffer the data, at least until a client
+downloads the file. Policy restrictions can be used to set how much disk space
+a given connection can use, as well as to determine when each file
+is deleted. (See the \fB\*[prog].limits(5)\fR manual page.)
+.RS
+.IP Default:
+Current working directory.
+.RE
+.TP
+.BI \-e " facility"
+Syslog \fIfacility\fR to which messages are logged.
+.RS
+.IP Default:
+LOG_DAEMON
+.RE
+.TP
+.B \-f
+Disables the requirement that \fB\*[prog]\fR be run
+with \fInon-root\fR permissions. There are legitimate reasons to run
+.B \*[prog]
+as root, but it is more risky. (For example, some operating systems
+require root permissions to set some DSCP values requested by a
+client.)  This additional option was added to ensure that root
+permissions are only used when explicitly intended.
+.TP
+.BI \-G " group"
+Specify the gid for the \fB\*[prog]\fR process. \fIgroup\fR can
+be specified using a valid group name or by using \-gid. This option is
+only used if \fB\*[prog]\fR is started as root.
+.RS
+.PP
+This option can be useful to limit logfile permissions to only users in
+this group.
+.RE
+.TP
+.B \-h
+Print a help message.
+.TP
+.BI \-P " 0 | lowport-highport"
+Specify the specific port range to use on the local host for
+.I \*[proto]-Test
+packets. This can be specified in two ways. First, as 0 which would indicate
+.B \*[prog]
+should allow the system to pick the port (ephemeral). Second, as a range:
+.I lowport
+must be a smaller value than
+.I highport
+and both numbers must be valid port values. (16 bit unsigned integer values)
+.RS
+.IP Default:
+0
+.RE
+.TP
+.BI \-R " vardir"
+Specify the directory to hold the \*[prog].pid file.
+.RS
+.IP Default:
+Current working directory
+.RE
+.TP
+.BI \-S " nodename:port"
+Specify the address and port on which \fB\*[prog]\fR will listen for requests.
+\fInodename\fR can be specified using a DNS name or using the textual
+representation of the address. It is possible to set the source address,
+without setting the \fIport\fR, simply by leaving off the ':' and \fIport\fR
+specification. Likewise, a non-default port can be specified for
+all system addresses (wildcard) by starting the specification string with
+a ':'. If an IPv6 address is specified, note that the accepted format
+contains \fInodename\fR in square brackets, such as: [fe80::fe9f:62d8]. This
+ensures the port number is distinct from the address specification.
+.RS
+.IP Default:
+\fInodename\fR is wildcarded as any currently available address.
+\fIport\fR is \*[port].
+.RE
+.TP
+.BI \-U " user"
+Specify the uid the \fB\*[prog]\fR process should run as. \fIuser\fR
+can be specified using a valid user name or by using \-uid.
+This option is only used if \fB\*[prog]\fR is started as root.
+.RS
+.PP
+In the default case, \fB\*[prog]\fR should be started as root so it can bind
+the protected port \*[port]. (See \-S option.) \fB\*[prog]\fR will release root
+permissions shortly after binding to this protected port and requests will
+be serviced by processes running with permissions defined by the \fIuser\fR.
+.RE
+.TP
+.B \-v
+Set verbose output. Messages will still only go to syslog unless the \fB\-Z\fR
+option is specified.
+.TP
+.B \-Z
+Run the master \fB\*[prog]\fR process in the foreground. In this mode, error
+messages are printed to STDERR as well as being sent to syslog. Also, normal
+terminal controls are available. (i.e., <Cntr\-C> will cause the daemon to
+kill it's child processes and exit.) This is useful for debugging.

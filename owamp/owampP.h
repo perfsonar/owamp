@@ -63,14 +63,22 @@
 #define _OWP_DEFAULT_PBKDF2_COUNT   (2048)
 
 /*
+ * Default timeout for testtimeout
+ */
+#define _TWP_DEFAULT_TEST_TIMEOUT (900)
+
+/*
  * Offset's and lengths for various file versions.
  */
 #define _OWP_TESTREC_OFFSET (40)
 #define _OWP_DATARECV2_SIZE (24)
 #define _OWP_DATARECV3_SIZE (25)
+#define _OWP_DATAREC_TWV3_SIZE (50)
 #define _OWP_DATAREC_SIZE _OWP_DATARECV3_SIZE
 #define _OWP_MAXDATAREC_SIZE _OWP_DATAREC_SIZE
 #define _OWP_SKIPREC_SIZE   (8)
+
+#define _OWP_VERSION_TWOWAY (128)
 
 /*
  * Size of a single AES block
@@ -102,7 +110,7 @@
 #if (_OWP_FETCH_BUFFSIZE != (_OWP_RIJNDAEL_BLOCK_SIZE * _OWP_FETCH_AES_BLOCKS))
 #error "Fetch Buffer is mis-sized for AES block size!"
 #endif
-#if (_OWP_FETCH_BUFFSIZE != (_OWP_DATAREC_SIZE * _OWP_FETCH_DATAREC_BLOCKS))
+#if (_OWP_FETCH_BUFFSIZE != (_OWP_DATARECV3_SIZE * _OWP_FETCH_DATAREC_BLOCKS))
 #error "Fetch Buffer is mis-sized for Test Record Size!"
 #endif
 /* 
@@ -142,7 +150,8 @@
 #define _OWPStateStartSessions      (_OWPStateTestRequestSlots << 1)
 #define _OWPStateStopSessions       (_OWPStateStartSessions << 1)
 #define _OWPStateFetchSession       (_OWPStateStopSessions << 1)
-#define _OWPStateAcceptSession         (_OWPStateFetchSession << 1)
+#define _OWPStateTestRequestTW      (_OWPStateFetchSession << 1)
+#define _OWPStateAcceptSession         (_OWPStateTestRequestTW << 1)
 #define _OWPStateStartAck           (_OWPStateAcceptSession << 1)
 /* during fetch-session */
 #define _OWPStateFetchAck           (_OWPStateStartAck << 1)
@@ -167,6 +176,7 @@
 #define _OWPStateIsFetchSession(c)  _OWPStateIs(_OWPStateFetchSession,c)
 #define _OWPStateIsFetching(c)      _OWPStateIs(_OWPStateFetching,c)
 #define _OWPStateIsTest(c)          _OWPStateIs(_OWPStateTest,c)
+#define _OWPStateIsTestReqTW(c)          _OWPStateIs(_OWPStateTestRequestTW,c)
 
 /*
  * other useful constants.
@@ -211,6 +221,7 @@ struct OWPControlRec{
     OWPBoolean              server;     /* this record represents server */
     int                     state;      /* current state of connection */
     OWPSessionMode          mode;
+    OWPBoolean              twoway;
 
     /*
      * Very rough upper bound estimate of rtt.
@@ -266,6 +277,7 @@ typedef struct OWPLostPacketRec OWPLostPacketRec, *OWPLostPacket;
 struct OWPLostPacketRec{
     uint32_t       seq;
     OWPBoolean      hit;
+    OWPBoolean      sent;
     OWPNum64        relative;
     struct timespec absolute;   /* absolute time */
     OWPLostPacket   next;
@@ -293,6 +305,7 @@ typedef struct OWPEndpointRec{
     pid_t               child;
     int                 wopts;
     OWPBoolean          send;
+    OWPBoolean          twoway;
     int                 sockfd;
     int                 skiprecfd;
     off_t               skiprecsize;
@@ -304,6 +317,7 @@ typedef struct OWPEndpointRec{
      */
     uint8_t             aesbytes[_OWP_RIJNDAEL_BLOCK_SIZE];
     keyInstance         aeskey;
+    keyInstance         aes_tw_reply_key;
     uint8_t             hmac_key[32];
     I2HMACSha1Context   hmac_ctx;
 
@@ -617,6 +631,7 @@ _OWPEncodeTestRequestPreamble(
         struct sockaddr *receiver,
         OWPBoolean      server_conf_sender,
         OWPBoolean      server_conf_receiver,
+        OWPBoolean      twoway,
         OWPSID          sid,
         OWPTestSpec     *tspec
         );
@@ -627,6 +642,7 @@ _OWPDecodeTestRequestPreamble(
         OWPBoolean      request,
         uint32_t        *msg,
         uint32_t        msg_len,
+        OWPBoolean      is_twoway,
         struct sockaddr *sender,
         struct sockaddr *receiver,
         socklen_t       *socklen,
@@ -687,6 +703,20 @@ _OWPDecodeDataRecord(
         uint32_t    file_version,
         OWPDataRec  *rec,
         /* V0,V2 == [_OWP_DATARECV2_SIZE], V3 == [_OWP_DATAREC_SIZE] */
+        char        *buf
+        );
+
+extern OWPBoolean
+_OWPEncodeTWDataRecord(
+        char        buf[_OWP_DATAREC_TWV3_SIZE],
+        OWPTWDataRec *rec
+        );
+
+extern OWPBoolean
+_OWPDecodeTWDataRecord(
+        uint32_t    file_version,
+        OWPTWDataRec *rec,
+        /* (_OWP_VERSION_TWOWAY|V3) == [_OWP_DATAREC_TWV3_SIZE] */
         char        *buf
         );
 
@@ -809,6 +839,7 @@ _OWPReadStartAck(
 extern OWPControl
 _OWPControlAlloc(
         OWPContext      ctx,
+        OWPBoolean      twoway,
         OWPErrSeverity  *err_ret
         );
 

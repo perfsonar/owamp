@@ -257,12 +257,13 @@ _OWPClientConnect(
     int             rc;
     struct addrinfo *fai=NULL;
     struct addrinfo *ai=NULL;
+    char            *serv;
 #ifdef NOT
     char            nodename[NI_MAXHOST];
     size_t          nodename_len = sizeof(nodename);
     char            servname[NI_MAXSERV];
     size_t          servname_len = sizeof(servname);
-    char            *node,*serv;
+    char            *node;
 #endif
 
     if(!server_addr)
@@ -276,10 +277,16 @@ _OWPClientConnect(
         return 0;
     }
 
+    if (cntrl->twoway) {
+        serv = TWP_CONTROL_SERVICE_NAME;
+    } else {
+        serv = OWP_CONTROL_SERVICE_NAME;
+    }
+
     /*
      * Initialize addrinfo portion of server_addr record.
      */
-    if( !(fai = I2AddrAddrInfo(server_addr,NULL,OWP_CONTROL_SERVICE_NAME))){
+    if( !(fai = I2AddrAddrInfo(server_addr,NULL,serv))){
         goto error;
     }
 
@@ -350,7 +357,7 @@ error:
 }
 
 /*
- * Function:        OWPControlOpen
+ * Function:        OWPControlOpenCommon
  *
  * Description:        
  *                 Opens a connection to an owamp server. Returns after complete
@@ -363,15 +370,16 @@ error:
  *                 A valid OWPControl pointer or NULL.
  * Side Effect:        
  */
-OWPControl
-OWPControlOpen(
+static OWPControl
+OWPControlOpenCommon(
         OWPContext      ctx,            /* control context      */
         const char      *local_addr,    /* local addr or null   */
         I2Addr          server_addr,    /* server addr          */
         uint32_t        mode_req_mask,  /* requested modes      */
         OWPUserID       userid,         /* userid or NULL       */
         OWPNum64        *uptime_ret,    /* server uptime - ret  */
-        OWPErrSeverity  *err_ret        /* err - return         */
+        OWPErrSeverity  *err_ret,       /* err - return         */
+        OWPBoolean      twoway          /* is this for a two-way session? */
         )
 {
     int             rc;
@@ -395,7 +403,7 @@ OWPControlOpen(
     /*
      * First allocate memory for the control state.
      */
-    if( !(cntrl = _OWPControlAlloc(ctx,err_ret)))
+    if( !(cntrl = _OWPControlAlloc(ctx,twoway,err_ret)))
         goto error;
 
     /*
@@ -445,7 +453,7 @@ OWPControlOpen(
     /*
      * retrieve pf if needed
      */
-    if(userid && (mode_avail & OWP_MODE_DOCIPHER)){
+    if(userid && (mode_avail & OWP_MODE_DOCIPHER_CNTRL)){
         strncpy(cntrl->userid_buffer,userid,
                 sizeof(cntrl->userid_buffer)-1);
         if(_OWPCallGetPF(cntrl->ctx,cntrl->userid_buffer,
@@ -461,7 +469,7 @@ OWPControlOpen(
      * If no pf, then remove auth/crypt modes
      */
     if(!pf)
-        mode_avail &= ~OWP_MODE_DOCIPHER;
+        mode_avail &= ~OWP_MODE_DOCIPHER_CNTRL;
 
     /*
      * Pick "highest" level mode still available to this server.
@@ -484,6 +492,15 @@ OWPControlOpen(
         cntrl->mode = OWP_MODE_AUTHENTICATED;
     }
     else if((*err_ret == OWPErrOK) &&
+            twoway && (mode_avail & TWP_MODE_MIXED) &&
+            _OWPCallCheckControlPolicy(cntrl,TWP_MODE_MIXED,
+                cntrl->userid,
+                I2AddrSAddr(cntrl->local_addr,NULL),
+                I2AddrSAddr(cntrl->remote_addr,NULL),
+                err_ret)){
+        cntrl->mode = TWP_MODE_MIXED;
+    }
+    else if((*err_ret == OWPErrOK) &&
             (mode_avail & OWP_MODE_OPEN) &&
             _OWPCallCheckControlPolicy(cntrl,OWP_MODE_OPEN,cntrl->userid,
                 I2AddrSAddr(cntrl->local_addr,NULL),
@@ -503,7 +520,7 @@ OWPControlOpen(
     /*
      * Initialize all the encryption values as necessary.
      */
-    if(cntrl->mode & OWP_MODE_DOCIPHER){
+    if(cntrl->mode & OWP_MODE_DOCIPHER_CNTRL){
         /*
          * Create "token" for SetUpResponse message.
          * Section 3.1 of owamp spec:
@@ -633,6 +650,64 @@ denied:
 }
 
 /*
+ * Function:        OWPControlOpen
+ *
+ * Description:
+ *                 Opens a connection to an owamp server. Returns after complete
+ *                 control connection setup is complete. This means that encrytion
+ *                 has been intialized, and the client is authenticated to the
+ *                 server if that is necessary. However, the client has not
+ *                 verified the server at this point.
+ *
+ * Returns:
+ *                 A valid OWPControl pointer or NULL.
+ * Side Effect:
+ */
+OWPControl
+OWPControlOpen(
+        OWPContext      ctx,            /* control context      */
+        const char      *local_addr,    /* local addr or null   */
+        I2Addr          server_addr,    /* server addr          */
+        uint32_t        mode_req_mask,  /* requested modes      */
+        OWPUserID       userid,         /* userid or NULL       */
+        OWPNum64        *uptime_ret,    /* server uptime - ret  */
+        OWPErrSeverity  *err_ret        /* err - return         */
+        )
+{
+    return OWPControlOpenCommon(ctx,local_addr,server_addr,mode_req_mask,
+                                userid,uptime_ret,err_ret,False);
+}
+
+/*
+ * Function:        TWPControlOpen
+ *
+ * Description:
+ *                 Opens a connection to an twamp server. Returns after complete
+ *                 control connection setup is complete. This means that encrytion
+ *                 has been intialized, and the client is authenticated to the
+ *                 server if that is necessary. However, the client has not
+ *                 verified the server at this point.
+ *
+ * Returns:
+ *                 A valid OWPControl pointer or NULL.
+ * Side Effect:
+ */
+OWPControl
+TWPControlOpen(
+        OWPContext      ctx,            /* control context      */
+        const char      *local_addr,    /* local addr or null   */
+        I2Addr          server_addr,    /* server addr          */
+        uint32_t        mode_req_mask,  /* requested modes      */
+        OWPUserID       userid,         /* userid or NULL       */
+        OWPNum64        *uptime_ret,    /* server uptime - ret  */
+        OWPErrSeverity  *err_ret        /* err - return         */
+        )
+{
+    return OWPControlOpenCommon(ctx,local_addr,server_addr,mode_req_mask,
+                                userid,uptime_ret,err_ret,True);
+}
+
+/*
  * Function:        _OWPClientRequestTestReadResponse
  *
  * Description:        
@@ -657,7 +732,7 @@ _OWPClientRequestTestReadResponse(
         I2Addr          receiver,
         OWPBoolean      server_conf_receiver,
         OWPTestSpec     *test_spec,
-        OWPSID          sid,                /* ret iff conf_receiver else set */
+        OWPSID          sid,  /* ret iff cntrl->twoway || conf_receiver else set */
         OWPErrSeverity  *err_ret
         )
 {
@@ -672,12 +747,12 @@ _OWPClientRequestTestReadResponse(
                     I2AddrSAddr(sender,NULL),
                     I2AddrSAddr(receiver,NULL),
                     server_conf_sender, server_conf_receiver,
-                    sid, test_spec)) < OWPErrOK){
+                    cntrl->twoway ? NULL : sid, test_spec)) < OWPErrOK){
         *err_ret = (OWPErrSeverity)rc;
         return 1;
     }
 
-    if(server_conf_receiver)
+    if(cntrl->twoway || server_conf_receiver)
         sid_ret = sid;
 
     if((rc = _OWPReadAcceptSession(cntrl,retn_on_intr,&acceptval,
@@ -695,7 +770,7 @@ _OWPClientRequestTestReadResponse(
             return 1;
         }
     }
-    else if(!server_conf_sender && server_conf_receiver){
+    else if(cntrl->twoway || (!server_conf_sender && server_conf_receiver)){
         if( !I2AddrSetPort(receiver,port_ret)){
             return 1;
         }
@@ -918,7 +993,7 @@ foundaddr:
     /*
      * Configure receiver first since the sid comes from there.
      */
-    if(server_conf_receiver){
+    if(cntrl->twoway || server_conf_receiver){
         /*
          * If send local, check local policy for sender
          */
@@ -926,7 +1001,8 @@ foundaddr:
             /*
              * create the local sender
              */
-            if(!_OWPEndpointInit(cntrl,tsession,sender,NULL,
+            if(!_OWPEndpointInit(cntrl,tsession,sender,
+                        cntrl->twoway?fp:NULL,
                         &aval,err_ret)){
                 goto error;
             }
@@ -948,8 +1024,10 @@ foundaddr:
          * sender.
          */
         if((rc = _OWPClientRequestTestReadResponse(cntrl,retn_on_intr,
-                        sender,server_conf_sender,
-                        receiver,server_conf_receiver,
+                        sender,
+                        !cntrl->twoway && server_conf_sender,
+                        receiver,
+                        !cntrl->twoway && server_conf_receiver,
                         test_spec,tsession->sid,err_ret)) != 0){
             goto error;
         }
@@ -1278,6 +1356,13 @@ OWPFetchSession(
     int                 *retn_on_intr=&intr;
 
     *err_ret = OWPErrOK;
+
+    if(cntrl->twoway){
+        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+                "OWPFetchSession: not allowed on two-way connection");
+        *err_ret = OWPErrFATAL;
+        return 0;
+    }
 
     if(!fp){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,

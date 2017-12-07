@@ -364,19 +364,39 @@ OWPTestPayloadSize(
         uint32_t       padding
         )
 {
-    OWPPacketSizeT msg_size;
+    OWPPacketSizeT msg_size = 0;
 
     switch (mode) {
         case OWP_MODE_OPEN:
+        case TWP_MODE_MIXED:
             msg_size = 14;
             break;
         case OWP_MODE_AUTHENTICATED:
         case OWP_MODE_ENCRYPTED:
             msg_size = 48;
             break;
-        default:
-            return 0;
-            /* UNREACHED */
+    }
+
+    return msg_size + padding;
+}
+
+OWPPacketSizeT
+OWPTestTWPayloadSize(
+        OWPSessionMode  mode,
+        uint32_t       padding
+        )
+{
+    OWPPacketSizeT msg_size = 0;
+
+    switch (mode) {
+        case OWP_MODE_OPEN:
+        case TWP_MODE_MIXED:
+            msg_size = 41;
+            break;
+        case OWP_MODE_AUTHENTICATED:
+        case OWP_MODE_ENCRYPTED:
+            msg_size = 112;
+            break;
     }
 
     return msg_size + padding;
@@ -459,6 +479,37 @@ OWPTestPacketSize(
     }
 
     if(!(payload_size = OWPTestPayloadSize(mode,padding)))
+        return 0;
+
+    return payload_size + header_size;
+}
+
+/*
+ ** Given the protocol family, OWAMP mode and packet padding,
+ ** compute the size of resulting full IP packet.
+ */
+OWPPacketSizeT
+OWPTestTWPacketSize(
+        int             af,    /* AF_INET, AF_INET6 */
+        OWPSessionMode  mode,
+        uint32_t       padding
+        )
+{
+    OWPPacketSizeT payload_size, header_size;
+
+    switch (af) {
+        case AF_INET:
+            header_size = OWP_IP4_HDR_SIZE + OWP_UDP_HDR_SIZE;
+            break;
+        case AF_INET6:
+            header_size = OWP_IP6_HDR_SIZE + OWP_UDP_HDR_SIZE;
+            break;
+        default:
+            return 0;
+            /* UNREACHED */
+    }
+
+    if(!(payload_size = OWPTestTWPayloadSize(mode,padding)))
         return 0;
 
     return payload_size + header_size;
@@ -629,9 +680,9 @@ _OWPStopSendSessions(
         }
 
         /*
-         * Receive sessions are not done here.
+         * Two-way and receive sessions are not done here.
          */
-        if(!sptr->endpoint->send) continue;
+        if(!cntrl->twoway && !sptr->endpoint->send) continue;
 
         /*
          * Stop local sessions
@@ -642,64 +693,66 @@ _OWPStopSendSessions(
         /* count senders for inclusion in StopSessions message */
         num_senders++;
 
-        /*
-         * simple check to validate skip records:
-         * Just verify size of file matches reported number
-         * of skip records.
-         */
-        if(fstat(sptr->endpoint->skiprecfd,&sbuf) != 0){
-            OWPError(cntrl->ctx,OWPErrWARNING,errno,"fstat(skiprecfd): %M");
-            *acceptval = OWP_CNTRL_FAILURE;
-            err2 = MIN(OWPErrWARNING,err2);
-            continue;
+        if (!cntrl->twoway) {
+            /*
+             * simple check to validate skip records:
+             * Just verify size of file matches reported number
+             * of skip records.
+             */
+            if(fstat(sptr->endpoint->skiprecfd,&sbuf) != 0){
+                OWPError(cntrl->ctx,OWPErrWARNING,errno,"fstat(skiprecfd): %M");
+                *acceptval = OWP_CNTRL_FAILURE;
+                err2 = MIN(OWPErrWARNING,err2);
+                continue;
+            }
+
+            /*
+             * Seek to beginning of file for reading.
+             */
+            if(lseek(sptr->endpoint->skiprecfd,0,SEEK_SET) == -1){
+                OWPError(cntrl->ctx,OWPErrWARNING,errno,"lseek(skiprecfd,0): %M");
+                *acceptval = OWP_CNTRL_FAILURE;
+                err2 = MIN(OWPErrWARNING,err2);
+                continue;
+            }
+
+            /*
+             * Read next_seqno and num_skips for verification purposes.
+             * (IGNORE intr for this local file i/o)
+             */
+            if(I2Readn(sptr->endpoint->skiprecfd,sdr,8) != 8){
+                OWPError(cntrl->ctx,OWPErrWARNING,errno,"I2Readn(skiprecfd): %M");
+                *acceptval = OWP_CNTRL_FAILURE;
+                err2 = MIN(OWPErrWARNING,err2);
+                continue;
+            }
+
+            /*
+             * Reset fd to beginning of file for reading.
+             */
+            if(lseek(sptr->endpoint->skiprecfd,0,SEEK_SET) == -1){
+                OWPError(cntrl->ctx,OWPErrWARNING,errno,"lseek(skiprecfd,0): %M");
+                *acceptval = OWP_CNTRL_FAILURE;
+                err2 = MIN(OWPErrWARNING,err2);
+                continue;
+            }
+
+            nskip = ntohl(sdr[1]);
+
+            /*
+             * Each skip record is 8 bytes, plus 8 bytes for next_seqno and
+             * num_skip_records means: filesize == ((nskip+1)*8)
+             */
+            if((off_t)((nskip+1)*8) != sbuf.st_size){
+                OWPError(cntrl->ctx,OWPErrWARNING,EINVAL,
+                         "_OWPStopSendSessions: Invalid skiprecfd data");
+                *acceptval = OWP_CNTRL_FAILURE;
+                err2 = MIN(OWPErrWARNING,err2);
+                continue;
+            }
+
+            sptr->endpoint->skiprecsize = sbuf.st_size;
         }
-
-        /*
-         * Seek to beginning of file for reading.
-         */
-        if(lseek(sptr->endpoint->skiprecfd,0,SEEK_SET) == -1){
-            OWPError(cntrl->ctx,OWPErrWARNING,errno,"lseek(skiprecfd,0): %M");
-            *acceptval = OWP_CNTRL_FAILURE;
-            err2 = MIN(OWPErrWARNING,err2);
-            continue;
-        }
-
-        /*
-         * Read next_seqno and num_skips for verification purposes.
-         * (IGNORE intr for this local file i/o)
-         */
-        if(I2Readn(sptr->endpoint->skiprecfd,sdr,8) != 8){
-            OWPError(cntrl->ctx,OWPErrWARNING,errno,"I2Readn(skiprecfd): %M");
-            *acceptval = OWP_CNTRL_FAILURE;
-            err2 = MIN(OWPErrWARNING,err2);
-            continue;
-        }
-
-        /*
-         * Reset fd to beginning of file for reading.
-         */
-        if(lseek(sptr->endpoint->skiprecfd,0,SEEK_SET) == -1){
-            OWPError(cntrl->ctx,OWPErrWARNING,errno,"lseek(skiprecfd,0): %M");
-            *acceptval = OWP_CNTRL_FAILURE;
-            err2 = MIN(OWPErrWARNING,err2);
-            continue;
-        }
-
-        nskip = ntohl(sdr[1]);
-
-        /*
-         * Each skip record is 8 bytes, plus 8 bytes for next_seqno and
-         * num_skip_records means: filesize == ((nskip+1)*8)
-         */
-        if((off_t)((nskip+1)*8) != sbuf.st_size){
-            OWPError(cntrl->ctx,OWPErrWARNING,EINVAL,
-                    "_OWPStopSendSessions: Invalid skiprecfd data");
-            *acceptval = OWP_CNTRL_FAILURE;
-            err2 = MIN(OWPErrWARNING,err2);
-            continue;
-        }
-
-        sptr->endpoint->skiprecsize = sbuf.st_size;
     }
 
     *num_sessions = num_senders;
@@ -725,6 +778,8 @@ _OWPStopSendSessions(
 static OWPErrSeverity
 _OWPStopRecvSessions(
         OWPControl      cntrl,
+        OWPTimeStamp    stoptime,
+        OWPBoolean      nowait,
         OWPAcceptType   *acceptval_ret
         )
 {
@@ -732,6 +787,10 @@ _OWPStopRecvSessions(
     OWPAcceptType   aval=OWP_CNTRL_ACCEPT;
     OWPAcceptType   *acceptval = &aval;
     OWPTestSession  sptr;
+    struct timespec currts;
+    struct timespec stopts;
+    struct timespec lossts;
+    uint32_t        testtimeout;
 
     if(acceptval_ret){
         acceptval = acceptval_ret;
@@ -752,9 +811,42 @@ _OWPStopRecvSessions(
         }
 
         /*
-         * Send sessions not done here.
+         * One-way send sessions not done here.
          */
-        if(sptr->endpoint->send) continue;
+        if(!cntrl->twoway && sptr->endpoint->send) continue;
+
+        if (cntrl->twoway && cntrl->server && !nowait) {
+            uint32_t esterr;
+            uint8_t sync;
+
+            _OWPGetTimespec(cntrl->ctx,&currts,&esterr,&sync);
+            OWPTimestampToTimespec(&stopts, &stoptime);
+
+            /*
+             * To mitigate against potential buggy clients, make the
+             * loss timeout bound by the REFWAIT timeout.
+             */
+            if (!OWPContextConfigGetU32(cntrl->ctx,TWPTestTimeout,&testtimeout)) {
+                testtimeout = _TWP_DEFAULT_TEST_TIMEOUT;
+            }
+            testtimeout = MIN(testtimeout, sptr->test_spec.loss_timeout);
+
+            OWPNum64ToTimespec(&lossts,testtimeout);
+            timespecadd(&stopts,&lossts);
+
+            if(timespeccmp(&stopts,&currts,<))
+                break;
+
+            /*
+             * Convert from absolute to relative
+             */
+            timespecsub(&stopts,&currts);
+            /*
+             * Wait for loss timeout time to allow in-flight packets
+             * to still be reflected.
+             */
+            nanosleep(&stopts, NULL);
+        }
 
         /*
          * Stop local sessions
@@ -1321,6 +1413,21 @@ _OWPCleanUpSessions(
         acceptval = acceptval_ret;
     *acceptval = OWP_CNTRL_ACCEPT;
 
+    if (cntrl->twoway && cntrl->server) {
+        /*
+         * No cleanup required for server two-way sessions, since no
+         * datafile is created.
+         */
+        return True;
+    }
+
+    if (cntrl->twoway && !cntrl->server) {
+        /*
+         * Cleanup not implemented for TWAMP clients.
+         */
+        return True;
+    }
+
     /*
      * Parse test session list and pull recv sessions into the receivers
      * list.
@@ -1345,13 +1452,16 @@ _OWPCleanUpSessions(
         /*
          * Only need to clean recv sessions.
          */
-        if(tptr->endpoint->send){
+        if(!cntrl->twoway && tptr->endpoint->send){
             continue;
         }
 
 
         I2HexEncode(sid_name,tptr->sid,sizeof(OWPSID));
 
+        if (!tptr->endpoint->datafile) {
+            continue;
+        }
         rfp = wfp = tptr->endpoint->datafile;
 
         /*
@@ -1677,6 +1787,15 @@ OWPStopSessions(
         goto clean_sessions;
     }
 
+    if (cntrl->twoway && !cntrl->server) {
+        /*
+         * Using TWAMP, we don't expect a response from the server so
+         * skip straight to cleaning up test sessions.
+         */
+        readstop = False;
+        goto clean_sessions;
+    }
+
     msgtype = OWPReadRequestType(cntrl,intr);
     switch(msgtype){
         case OWPReqStopSessions:
@@ -1707,8 +1826,10 @@ clean_sessions:
      * Stop Recv side sessions now that we have received the
      * StopSessions message (even though it has not been completely
      * read yet).
+     *
+     * This also stops two-way sessions.
      */
-    err = _OWPStopRecvSessions(cntrl,acceptval);
+    err = _OWPStopRecvSessions(cntrl,stoptime,!readstop,acceptval);
     err2 = MIN(err,err2);
     if(err2 < OWPErrWARNING){
         goto done;
@@ -1772,7 +1893,7 @@ OWPStopSessionsWait(
     int             *intr=&ival;
     uint32_t        num_sessions=0;
     OWPTimeStamp    stoptime;
-    OWPBoolean      readstop=True;
+    OWPBoolean      readstop=!(cntrl->twoway && !cntrl->server);
 
     *err_ret = OWPErrOK;
     if(acceptval_ret){
@@ -1789,15 +1910,31 @@ OWPStopSessionsWait(
         return -1;
     }
 
+    if (cntrl->twoway && cntrl->server) {
+        if (!OWPSessionsActive(cntrl,acceptval) && (*acceptval)) {
+            /*
+             * Sessions completed with error - don't wait for
+             * StopSessions message, just return.
+             */
+            cntrl->state &= ~_OWPStateTest;
+            return 0;
+        }
+    } else {
+        if (!OWPSessionsActive(cntrl,acceptval) || (*acceptval)){
+            /*
+             * Sessions are complete - send StopSessions message.
+             */
+            *err_ret = OWPStopSessions(cntrl,intr,acceptval);
+            return 0;
+        }
+    }
+
     /*
-     * If there are no active sessions, get the status and return.
+     * Before polling, check if we have been interrupted, and if so
+     * return to caller.
      */
-    if(!OWPSessionsActive(cntrl,acceptval) || (*acceptval)){
-        /*
-         * Sessions are complete - send StopSessions message.
-         */
-        *err_ret = OWPStopSessions(cntrl,intr,acceptval);
-        return 0;
+    if (*intr){
+        return 2;
     }
 
     if(wake){
@@ -1849,6 +1986,21 @@ AGAIN:
             goto AGAIN;
         }
 
+        if (cntrl->twoway && cntrl->server) {
+            if (!OWPSessionsActive(cntrl,acceptval) && (*acceptval)) {
+                /*
+                 * Sessions completed with error - don't wait for
+                 * StopSessions message, just return.
+                 */
+                cntrl->state &= ~_OWPStateTest;
+                return 0;
+            }
+            /*
+             * Otherwise, wait for StopSessions message.
+             */
+            goto AGAIN;
+        }
+
         /*
          * Sessions are complete - send StopSessions message.
          */
@@ -1869,6 +2021,13 @@ AGAIN:
     msgtype = OWPReadRequestType(cntrl,intr);
     switch(msgtype){
         case OWPReqStopSessions:
+            if (cntrl->twoway && !cntrl->server) {
+                OWPError(cntrl->ctx,OWPErrFATAL,OWPErrINVALID,
+                         "OWPStopSessionsWait: StopSessions message should "
+                         "not be received by TWAMP client");
+                *err_ret = OWPErrFATAL;
+                goto done;
+            }
             break;
 
         case OWPReqSockClose:
@@ -1911,8 +2070,10 @@ AGAIN:
      * Stop Recv side sessions now that we have received the
      * StopSessions message (even though it has not been completely
      * read yet).
+     *
+     * This also stops two-way sessions.
      */
-    err2 = _OWPStopRecvSessions(cntrl,acceptval);
+    err2 = _OWPStopRecvSessions(cntrl,stoptime,!readstop,acceptval);
     *err_ret = MIN(*err_ret,err2);
     if(*err_ret < OWPErrWARNING){
         goto done;
@@ -1940,7 +2101,8 @@ done:
      * If errors are non-fatal (warning or better) then send the
      * stop sessions message.
      */
-    if(readstop && (*err_ret >= OWPErrWARNING)){
+    if(readstop && (*err_ret >= OWPErrWARNING) &&
+       !(cntrl->twoway && cntrl->server)){
         err2 = _OWPWriteStopSessions(cntrl,intr,*acceptval,num_sessions);
         *err_ret = MIN(*err_ret,err2);
     }
@@ -2289,6 +2451,9 @@ GetSessionFinishedType(
             break;
         case 3:
             phdr->rec_size = _OWP_DATARECV3_SIZE;
+            break;
+        case _OWP_VERSION_TWOWAY|3:
+            phdr->rec_size = _OWP_DATAREC_TWV3_SIZE;
             break;
         default:
             OWPError(ctx,OWPErrFATAL,EINVAL,
@@ -2727,15 +2892,18 @@ OWPWriteDataHeader(
 
     /*
      * encode test_spec early so failure is detected early.
+     *
+     * Pretend always that this is a one-way session, not a two-way
+     * one so that nslots and npackets are encoded.
      */
     if((_OWPEncodeTestRequestPreamble(ctx,msg,&len,
                     (struct sockaddr*)&hdr->addr_sender,
                     (struct sockaddr*)&hdr->addr_receiver,
-                    hdr->conf_sender,hdr->conf_receiver,
+                    hdr->twoway?True:hdr->conf_sender,hdr->conf_receiver,False,
                     hdr->sid,&hdr->test_spec) != 0) || !len){
         return False;
     }
-    ver = htonl(3);
+    ver = htonl((hdr->twoway?_OWP_VERSION_TWOWAY:0)|3);
 
     /*
      * Compute the offset to the end of the "header" information. Either
@@ -2930,6 +3098,47 @@ OWPWriteDataRecord(
     return True;
 }
 
+/*
+ * Function:        OWPWriteTWDataRecord
+ *
+ * Description:
+ *         Write a single data record described by rec to file fp.
+ *
+ * In Args:
+ *
+ * Out Args:
+ *
+ * Scope:
+ * Returns:
+ * Side Effect:
+ */
+OWPBoolean
+OWPWriteTWDataRecord(
+        OWPContext  ctx,
+        FILE        *fp,
+        OWPTWDataRec  *rec
+        )
+{
+    char    buf[_OWP_DATAREC_TWV3_SIZE];
+
+    if(!_OWPEncodeTWDataRecord(buf,rec)){
+        OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                "OWPTWWriteDataRecord: Unable to encode data record");
+        return False;
+    }
+
+    /*
+     * write data record
+     */
+    if(fwrite(buf,1,_OWP_DATAREC_TWV3_SIZE,fp) != _OWP_DATAREC_TWV3_SIZE){
+        OWPError(ctx,OWPErrFATAL,errno,
+                "OWPWriteDataRecord: fwrite(): %M");
+        return False;
+    }
+
+    return True;
+}
+
 
 /*
  * Function:        OWPReadDataHeader
@@ -2978,6 +3187,7 @@ OWPReadDataHeader(
     hdr_ret->version = phrec.version;
     hdr_ret->sbuf = phrec.sbuf;
     hdr_ret->rec_size = phrec.rec_size;
+    hdr_ret->twoway = ((hdr_ret->version & _OWP_VERSION_TWOWAY) ? True : False);
 
     /*
      * Decode the header if present(version 2).
@@ -3000,9 +3210,13 @@ OWPReadDataHeader(
         hdr_ret->addr_len = sizeof(hdr_ret->addr_sender);
         /*
          * Now decode it into the hdr_ret variable.
+         *
+         * Pretend this is always a one-way session, not a two-way
+         * session to allow nslot and npackets to be non-zero.
          */
         if(_OWPDecodeTestRequestPreamble(ctx,False,msg,
                     _OWP_TEST_REQUEST_PREAMBLE_SIZE,
+                    False,
                     (struct sockaddr*)&hdr_ret->addr_sender,
                     (struct sockaddr*)&hdr_ret->addr_receiver,
                     &hdr_ret->addr_len,&hdr_ret->ipvn,
@@ -3043,7 +3257,7 @@ OWPReadDataHeader(
     hdr_ret->num_skiprecs = phrec.num_skiprecs;
     hdr_ret->oset_skiprecs = phrec.oset_skiprecs;
     hdr_ret->oset_datarecs = phrec.oset_datarecs;
-    if(phrec.finished != OWP_SESSION_FINISHED_NORMAL){
+    if(phrec.finished != OWP_SESSION_FINISHED_NORMAL || hdr_ret->twoway){
         hdr_ret->num_datarecs = (phrec.sbuf.st_size - phrec.hdr_len)/
             hdr_ret->rec_size;
     }
@@ -3267,7 +3481,10 @@ OWPParseRecords(
             len_rec = _OWP_DATARECV2_SIZE;
             break;
         case 3:
-            len_rec = _OWP_DATAREC_SIZE;
+            len_rec = _OWP_DATARECV3_SIZE;
+            break;
+        case _OWP_VERSION_TWOWAY|3:
+            len_rec = _OWP_DATAREC_TWV3_SIZE;
             break;
         default:
             OWPError(ctx,OWPErrFATAL,EINVAL,
@@ -3296,6 +3513,78 @@ OWPParseRecords(
             return OWPErrFATAL;
         }
         rc = proc_rec(&rec,app_data);
+        if(!rc) continue;
+        if(rc < 0)
+            return OWPErrFATAL;
+        return OWPErrOK;
+
+    }
+
+    return OWPErrOK;
+}
+
+/*
+ * Function:        OWPParseTWRecords
+ *
+ * Description:
+ *         Fetch num_rec records from disk calling the record proc function
+ *         on each record.
+ *
+ * In Args:
+ *
+ * Out Args:
+ *
+ * Scope:
+ * Returns:
+ * Side Effect:
+ */
+OWPErrSeverity
+OWPParseTWRecords(
+        OWPContext      ctx,
+        FILE            *fp,
+        uint32_t       num_rec,
+        uint32_t       file_version,
+        OWPDoTWDataRecord proc_rec,
+        void            *app_data
+        )
+{
+    size_t      len_rec;
+    char        rbuf[_OWP_DATAREC_TWV3_SIZE];
+    uint32_t    i;
+    OWPTWDataRec twrec;
+    int         rc;
+
+    switch(file_version){
+        case _OWP_VERSION_TWOWAY|3:
+            len_rec = _OWP_DATAREC_TWV3_SIZE;
+            break;
+        default:
+            OWPError(ctx,OWPErrFATAL,EINVAL,
+                    "OWPParseTWRecords: Invalid file version (%d)",
+                    file_version);
+            return OWPErrFATAL;
+    }
+
+    for(i=0;i<num_rec;i++){
+        if(fread(rbuf,len_rec,1,fp) < 1){
+            if(ferror(fp)){
+                OWPError(ctx,OWPErrFATAL,errno,
+                        "fread(): STREAM ERROR: offset=%" PRIuPTR ",i=%" PRIu32,
+                        ftello(fp),i);
+            }
+            else if(feof(fp)){
+                OWPError(ctx,OWPErrFATAL,errno,
+                        "fread(): EOF: offset=%" PRIu64,ftello(fp));
+            }
+            return OWPErrFATAL;
+        }
+        if(!_OWPDecodeTWDataRecord(file_version,&twrec,rbuf)){
+            errno = EFTYPE;
+            OWPError(ctx,OWPErrFATAL,errno,
+                    "OWPParseTWRecords: Invalid Data Record: %M");
+            return OWPErrFATAL;
+        }
+        rc = proc_rec(&twrec,app_data);
         if(!rc) continue;
         if(rc < 0)
             return OWPErrFATAL;
@@ -3452,4 +3741,11 @@ OWPIsLostRecord(
         )
 {
     return !rec->recv.owptime;
+}
+
+OWPBoolean
+OWPControlIsTwoWay(
+    OWPControl cntrl)
+{
+    return cntrl->twoway;
 }
