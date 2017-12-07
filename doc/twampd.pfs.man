@@ -1,0 +1,62 @@
+.\" The first line of this file must contain the '"[e][r][t][v] line
+.\" to tell man to run the appropriate filter "t" for table.
+.\" vim: set filetype=nroff :
+.\"
+.\"	$Id$
+.\"
+.\"######################################################################
+.\"#									#
+.\"#			   Copyright (C)  2006				#
+.\"#	     			Internet2				#
+.\"#			   All Rights Reserved				#
+.\"#									#
+.\"######################################################################
+.\"
+.\"	File:		twampd.pfs.man
+.\"
+.\"	Author:		Jeff Boote
+.\"			Internet2
+.\"
+.\"	Date:		Sun Nov  5 14:53:10 MST 2006
+.\"
+.\"	Description:	
+.\"
+.TH twampd.pfs 5 "$Date$"
+.SH NAME
+twampd.pfs \- One-way latency server pass-phrase store
+.SH DESCRIPTION
+The \fBtwampd.pfs\fR file is used to hold the identity/pass-phrase pairs
+needed for \fBtwampd\fR to authenticate users. The format of this file
+is described in the pfstore(1) manual page. The location of this
+file is controlled by the \fB\-c\fR option to \fBtwampd\fR.
+.PP
+\fBtwampd\fR uses symmetric AES keys for authentication. These keys
+are derived from a shared secret (the pass-phrase) using the PBKDF2
+algorithm (\fBRFC 2898\fR) with an HMAC-SHA1 as the pseudorandom
+function.
+.PP
+Therefore, the
+\fBtwping\fR client must have access to the exact same pass-phrase
+that the \fBtwampd\fR server uses. Both the client and the server
+need to derive the same AES key for authentication
+to work.  It is important that the system administrator and end user
+ensure the pass-phrase is not compromised.
+.PP
+If the \fBtwping\fR client is able to authenticate using the identity and
+derived AES key, \fBtwampd\fR will use the directives found in the
+\fBtwampd.limits\fR file to map policy restrictions for this connection.
+.SH SECURITY CONSIDERATIONS
+The pass-phrases in the \fBtwampd.pfs\fR file are not encrypted in any way.
+(They are simply hex encoded.) The
+security of these pass-phrases are completely dependent upon the security
+of the filesystem and the discretion of the system administrator.
+.SH RESTRICTIONS
+\fBIdentity\fR names are restricted to 80 characters.
+.SH SEE ALSO
+pfstore(1), twping(1), twampd(8), twampd.limits(5),
+and the \%http://e2epi.internet2.edu/owamp/ web site.
+.SH ACKNOWLEDGMENTS
+This material is based in part on work supported by the National Science
+Foundation (NSF) under Grant No. ANI-0314723. Any opinions, findings and
+conclusions or recommendations expressed in this material are those of
+the author(s) and do not necessarily reflect the views of the NSF.

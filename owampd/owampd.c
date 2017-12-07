@@ -46,6 +46,23 @@
 #include "owampdP.h"
 #include "policy.h"
 
+#ifdef TWAMP
+#define NWAMPD_FILE_PREFIX "twamp-server"
+#define NWPServerSockCreate TWPServerSockCreate
+#define NWPControlAccept TWPControlAccept
+#define OWP_DFLT_CONTROL_TIMEOUT 900
+#define NWP_DEFAULT_OFFERED_MODE TWP_DEFAULT_OFFERED_MODE
+#else
+#define NWAMPD_FILE_PREFIX "owamp-server"
+#define NWPServerSockCreate OWPServerSockCreate
+#define NWPControlAccept OWPControlAccept
+#define OWP_DFLT_CONTROL_TIMEOUT 1800
+#define NWP_DEFAULT_OFFERED_MODE OWP_DEFAULT_OFFERED_MODE
+#endif
+
+#define OWAMPD_PID_FILE  NWAMPD_FILE_PREFIX".pid"
+#define OWAMPD_INFO_FILE NWAMPD_FILE_PREFIX".info"
+
 /* Global variable - the total number of allowed Control connections. */
 static pid_t                mypid;
 static int                  owpd_chld = 0;
@@ -76,17 +93,22 @@ usage(
     fprintf(stderr, "\nWhere \"options\" are:\n\n");
 
     fprintf(stderr,
+#ifdef TWAMP
+            "   -a authmode       Default supported authmodes:[E]ncrypted,[A]uthenticated,[M]ixed,[O]pen\n"
+#else
             "   -a authmode       Default supported authmodes:[E]ncrypted,[A]uthenticated,[O]pen\n"
-            "   -c confidr        Configuration directory\n"
+#endif
+            "   -c confdir        Configuration directory\n"
             "   -d datadir        Data directory\n"
             "   -e facility       Syslog \"facility\" to log errors\n"
-            "   -f                Allow owampd to run as root\n"
+            "   -f                Allow %s to run as root\n"
             "   -G group          Run as group \"group\" :-gid also valid\n"
-            "   -h                Print this message and exit\n"
+            "   -h                Print this message and exit\n",
+            progname
            );
     fprintf(stderr,
             "   -P portrange      port range for recivers to use\n"
-            "   -R vardir         directory for owamp-server.pid file\n"
+            "   -R vardir         directory for " OWAMPD_PID_FILE " file\n"
             "   -S nodename:port  Srcaddr to bind to\n"
             "   -U user           Run as user \"user\" :-uid also valid\n"
             "   -v                verbose output\n"
@@ -669,9 +691,11 @@ ACCEPT:
         I2ErrLog(errhand,"setitimer(): %M");
         exit(OWPErrFATAL);
     }
-    cntrl = OWPControlAccept(policy->ctx,connfd,
-            (struct sockaddr *)&sbuff,sbufflen,
-            mode,uptime,&owpd_intr,&out);
+    cntrl = NWPControlAccept(
+        policy->ctx,connfd,
+        (struct sockaddr *)&sbuff,sbufflen,
+        mode,uptime,&owpd_intr,&out);
+
     /*
      * session not accepted.
      */
@@ -700,9 +724,15 @@ ACCEPT:
 
         switch (msgtype){
 
+#ifdef TWAMP
+            case OWPReqTestTW:
+                rc = OWPProcessTestRequestTW(cntrl,&owpd_intr);
+                break;
+#else
             case OWPReqTest:
                 rc = OWPProcessTestRequest(cntrl,&owpd_intr);
                 break;
+#endif
 
             case OWPReqStartSessions:
                 rc = OWPProcessStartSessions(cntrl,&owpd_intr);
@@ -721,7 +751,7 @@ ACCEPT:
                     I2ErrLog(errhand,"setitimer(): %M");
                     goto done;
                 }
-                while(OWPSessionsActive(cntrl,NULL)){
+                while(True){
                     int        wstate;
 
                     rc = OWPErrOK;
@@ -741,10 +771,12 @@ ACCEPT:
                         }
                         break;
                     }
-                    if(wstate == 0){
+                    if(wstate <= 0){
                         goto nextreq;
                     }
                 }
+
+#ifndef TWAMP
                 /*
                  * Sessions are complete, but StopSessions
                  * message has not been exchanged - set the
@@ -757,9 +789,11 @@ ACCEPT:
                     goto done;
                 }
                 rc = OWPStopSessions(cntrl,&owpd_intr,NULL);
+#endif
 
                 break;
 
+#ifndef TWAMP
             case OWPReqFetchSession:
                 /*
                  * TODO: Should the timeout be suspended
@@ -774,17 +808,32 @@ ACCEPT:
                  */
                 rc = OWPProcessFetchSession(cntrl,&owpd_intr);
                 break;
+#endif
+
+            case OWPReqSockIntr:
+                break;
 
             case OWPReqSockClose:
-            default:
                 rc = OWPErrFATAL;
+                break;
+
+            default:
+                /*
+                 * Don't log an error message if already classified as
+                 * invalid request, since OWPReadRequestType will have
+                 * already logged one.
+                 */
+                if (msgtype != OWPReqInvalid) {
+                    I2ErrLog(errhand,"Unexpected message type %d", msgtype);
+                }
+                rc = OWPUnexpectedRequestType(cntrl);
                 break;
         }
 nextreq:
         if(rc < OWPErrWARNING){
             break;
         }
-        if(owpd_exit){
+        if(owpd_exit || owpd_alrm){
             break;
         }
     }
@@ -1037,6 +1086,7 @@ LoadConfig(
                 break;
             }
         }
+#ifndef TWAMP
         else if(!strncasecmp(key,"diskfudge",10)){
             char        *end=NULL;
             double        tdbl;
@@ -1060,6 +1110,7 @@ LoadConfig(
                 break;
             }
         }
+#endif
         else if(!strncasecmp(key,"dieby",6)){
             char                *end=NULL;
             uint32_t        tlng;
@@ -1141,6 +1192,23 @@ LoadConfig(
             }
             opts.maxcontrolsessions = tlng;
         }
+#ifdef TWAMP
+        else if(!strncasecmp(key,"testtimeout",
+                             strlen("testtimeout"))){
+            char        *end=NULL;
+            uint32_t    tlng;
+
+            errno = 0;
+            tlng = strtoul(val,&end,10);
+            if((end == val) || (errno == ERANGE)){
+                fprintf(stderr,"strtoul(): %s\n",
+                        strerror(errno));
+                rc=-rc;
+                break;
+            }
+            opts.testtimeout = tlng;
+        }
+#endif
         else{
             fprintf(stderr,"Unknown key=%s\n",key);
             rc = -rc;
@@ -1220,7 +1288,7 @@ int main(
     opts.user = opts.group = NULL;
     opts.diskfudge = 1.0;
     opts.dieby = 5;
-    opts.controltimeout = 1800;
+    opts.controltimeout = OWP_DFLT_CONTROL_TIMEOUT;
     opts.portspec = NULL;
     opts.maxcontrolsessions = 0;
 
@@ -1406,6 +1474,18 @@ int main(
     }
 
     /*
+     * Setup testtimeout
+     */
+#ifdef TWAMP
+    if(opts.testtimeout && !OWPContextConfigSetU32(ctx,TWPTestTimeout,
+                opts.testtimeout)){
+        I2ErrLog(errhand,
+                "OWPContextConfigSetU32(): Can't set TWPTestTimeout?!");
+        exit(1);
+    }
+#endif
+
+    /*
      * Setup enddelay
      */
     if(opts.setEndDelay && !OWPContextConfigSetV(ctx,OWPEndDelay,
@@ -1425,7 +1505,7 @@ int main(
     /*  Get exclusive lock for pid file. */
     strcpy(pid_file, opts.vardir);
     strcat(pid_file, OWP_PATH_SEPARATOR);
-    strcat(pid_file, "owamp-server.pid");
+    strcat(pid_file, OWAMPD_PID_FILE);
     if ((pid_fd = open(pid_file, O_RDWR|O_CREAT,
                     S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH)) < 0) {
         I2ErrLog(errhand, "open(%s): %M", pid_file);
@@ -1451,7 +1531,7 @@ int main(
      * Install policy for "ctx" - and return policy record.
      */
     if(!(policy = OWPDPolicyInstall(ctx,opts.datadir,opts.confdir,
-                    opts.diskfudge,&lbuf,&lbuf_max))){
+                    opts.diskfudge,NWAMPD_FILE_PREFIX,&lbuf,&lbuf_max))){
         I2ErrLog(errhand, "PolicyInit failed. Exiting...");
         exit(1);
     };
@@ -1515,7 +1595,7 @@ int main(
         }
 
         if(!setuser && !opts.allowroot){
-            I2ErrLog(errhand,"Running owampd as root is folly!");
+            I2ErrLog(errhand,"Running %s as root is folly!", progname);
             I2ErrLog(errhand,
                     "Use the -U option! (or allow root with the -f option)");
             exit(1);
@@ -1584,6 +1664,11 @@ int main(
                 case 'E':
                     opts.auth_mode |= OWP_MODE_ENCRYPTED;
                     break;
+#ifdef TWAMP
+                case 'M':
+                    opts.auth_mode |= TWP_MODE_MIXED;
+                    break;
+#endif
                 default:
                     I2ErrLogP(errhand,EINVAL,
                             "Invalid -authmode %c",*s);
@@ -1597,8 +1682,7 @@ int main(
         /*
          * Default to all modes.
          */
-        opts.auth_mode = OWP_MODE_OPEN|OWP_MODE_AUTHENTICATED|
-            OWP_MODE_ENCRYPTED;
+        opts.auth_mode = NWP_DEFAULT_OFFERED_MODE;
     }
 
     /*
@@ -1704,7 +1788,11 @@ int main(
     if(mypid > 0){
 
         /* Record pid.  */
-        ftruncate(pid_fd, 0);
+        if (ftruncate(pid_fd, 0) != 0) {
+            I2ErrLogP(errhand, errno, "ftruncate: %M");
+            kill(mypid,SIGTERM);
+            exit(1);
+        }
         fprintf(pid_fp, "%lld\n", (long long)mypid);
         if (fflush(pid_fp) < 0) {
             I2ErrLogP(errhand, errno, "fflush: %M");
@@ -1715,7 +1803,7 @@ int main(
         /* Record the start timestamp in the info file. */
         strcpy(info_file, opts.vardir);
         strcat(info_file, OWP_PATH_SEPARATOR);
-        strcat(info_file, "owamp-server.info");
+        strcat(info_file, OWAMPD_INFO_FILE);
         if ((info_fp = fopen(info_file, "w")) == NULL) {
             I2ErrLog(errhand, "fopen(%s): %M", info_file);
             kill(mypid,SIGTERM);
@@ -1746,7 +1834,7 @@ int main(
                 "Invalid source address specified: %s",opts.srcnode);
         exit(1);
     }
-    listenaddr = OWPServerSockCreate(ctx,listenaddr,&out);
+    listenaddr = NWPServerSockCreate(ctx,listenaddr,&out);
     if(!listenaddr){
         OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
                 "Unable to create server socket. Exiting...");

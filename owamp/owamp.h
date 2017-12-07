@@ -153,11 +153,13 @@
 
 /* Default mode offered by the server */
 #define OWP_DEFAULT_OFFERED_MODE         (OWP_MODE_OPEN|OWP_MODE_AUTHENTICATED|OWP_MODE_ENCRYPTED)
+#define TWP_DEFAULT_OFFERED_MODE         (OWP_DEFAULT_OFFERED_MODE|TWP_MODE_MIXED)
 
 /*
- * IANA 'blessed' port number for OWAMP
+ * IANA 'blessed' port numbers for OWAMP & TWAMP
  */
 #define OWP_CONTROL_SERVICE_NAME        "861"
+#define TWP_CONTROL_SERVICE_NAME        "862"
 
 /*
  * Default value to use for the listen backlog. We pick something large
@@ -330,7 +332,15 @@ typedef char        OWPUserID[OWP_USERID_LEN+1];        /* add 1 for '\0' */
 #define OWP_MODE_OPEN           (01)
 #define OWP_MODE_AUTHENTICATED  (02)
 #define OWP_MODE_ENCRYPTED      (04)
-#define OWP_MODE_DOCIPHER       (OWP_MODE_AUTHENTICATED|OWP_MODE_ENCRYPTED)
+#define TWP_MODE_MIXED          (010)
+/*
+ * Modes for which test sessions are authenticated or encrypted
+ */
+#define OWP_MODE_DOCIPHER_TEST  (OWP_MODE_AUTHENTICATED|OWP_MODE_ENCRYPTED)
+/*
+ * Modes for which control sessions are authenticated or encrypted
+ */
+#define OWP_MODE_DOCIPHER_CNTRL (OWP_MODE_DOCIPHER_TEST|TWP_MODE_MIXED)
 
 typedef uint32_t        OWPSessionMode;
 
@@ -692,6 +702,12 @@ typedef void (*OWPCloseFileFunc)(
  */
 #define OWPKeyDerivationCount "OWPKeyDerivationCount"
 
+
+/*
+ * Set the timeout seconds for the testtimeout function
+ */
+#define TWPTestTimeout "TWPTestTimeout"
+
 /*
  * Set the 'enddelay' (time for a sender to wait after session completion
  * to actually send the stop session message).
@@ -839,6 +855,21 @@ OWPControlConfigDelete(
  */
 extern OWPControl
 OWPControlOpen(
+        OWPContext      ctx,
+        const char      *local_addr,    /* src addr or NULL             */
+        I2Addr          server_addr,    /* server addr or NULL          */
+        uint32_t       mode_mask,      /* OR of OWPSessionMode vals    */
+        OWPUserID       userid,         /* null if unwanted             */
+        OWPNum64        *uptime_ret,    /* server uptime - ret or NULL  */
+        OWPErrSeverity  *err_ret
+        );
+
+/*
+ * TWPControlOpen is similar to OWPControlOpen, except that it
+ * connects to a TWP server
+ */
+extern OWPControl
+TWPControlOpen(
         OWPContext      ctx,
         const char      *local_addr,    /* src addr or NULL             */
         I2Addr          server_addr,    /* server addr or NULL          */
@@ -1037,6 +1068,12 @@ OWPServerSockCreate(
         OWPErrSeverity  *err_ret
         );
 
+extern I2Addr
+TWPServerSockCreate(
+        OWPContext      ctx,
+        I2Addr          addr,
+        OWPErrSeverity  *err_ret
+        );
 
 /*!
  * Function:        OWPControlAccept
@@ -1073,6 +1110,18 @@ OWPControlAccept(
         OWPErrSeverity  *err_ret        /* err - return                 */
         );
 
+extern OWPControl
+TWPControlAccept(
+        OWPContext      ctx,            /* library context              */
+        int             connfd,         /* conencted socket             */
+        struct sockaddr *connsaddr,     /* connected socket addr        */
+        socklen_t       connsaddrlen,   /* connected socket addr len    */
+        uint32_t       mode_offered,   /* advertised server mode       */
+        OWPNum64        uptime,         /* uptime report                */
+        int             *retn_on_intr,  /* return on i/o interrupt      */
+        OWPErrSeverity  *err_ret        /* err - return                 */
+        );
+
 typedef enum OWPRequestType{
     OWPReqInvalid=-1,
     OWPReqSockClose=10,
@@ -1080,7 +1129,8 @@ typedef enum OWPRequestType{
     OWPReqTest=1,
     OWPReqStartSessions=2,
     OWPReqStopSessions=3,
-    OWPReqFetchSession=4
+    OWPReqFetchSession=4,
+    OWPReqTestTW=5,
 } OWPRequestType;
 
 extern OWPRequestType
@@ -1091,6 +1141,12 @@ OWPReadRequestType(
 
 extern OWPErrSeverity
 OWPProcessTestRequest(
+        OWPControl  cntrl,
+        int         *retn_on_intr
+        );
+
+extern OWPErrSeverity
+OWPProcessTestRequestTW(
         OWPControl  cntrl,
         int         *retn_on_intr
         );
@@ -1137,6 +1193,11 @@ OWPTestPayloadSize(
         OWPSessionMode  mode,
         uint32_t       padding
         );
+extern OWPPacketSizeT
+OWPTestTWPayloadSize(
+        OWPSessionMode  mode,
+        uint32_t       padding
+    );
 /*
  * PacketSize is used to compute the full packet size - this is used to
  * determine bandwidth requirements for policy purposes.
@@ -1147,6 +1208,12 @@ OWPTestPacketSize(
         OWPSessionMode  mode,
         uint32_t       padding
         );
+extern OWPPacketSizeT
+OWPTestTWPacketSize(
+        int             af,    /* AF_INET, AF_INET6 */
+        OWPSessionMode  mode,
+        uint32_t       padding
+    );
 
 /*
  * Returns # packets/second: 0.0 on error.
@@ -1197,6 +1264,8 @@ typedef struct OWPSessionHeaderRec{
     OWPBoolean              header;         /* RO: TestSession header?  */
     uint32_t                version;        /* RO: File version         */
     uint32_t                rec_size;       /* RO: data record size     */
+    OWPBoolean              twoway;         /* RO: is this a two-way
+                                               session? */
     OWPSessionFinishedType  finished;       /* RW: is session finished?
                                                0:no,1:yes,2:unknown     */
 
@@ -1211,7 +1280,8 @@ typedef struct OWPSessionHeaderRec{
     uint8_t                 ipvn;           /* RO: ipvn of addrs        */
     socklen_t               addr_len;       /* RO: saddr_len of saddrs  */
     struct sockaddr_storage addr_sender;    /* RW                       */
-    struct sockaddr_storage addr_receiver;  /* RW                       */
+    struct sockaddr_storage addr_receiver;  /* RW: addr of reflector
+                                               for two-way */
     OWPBoolean              conf_sender;    /* RW                       */
     OWPBoolean              conf_receiver;  /* RW                       */
     OWPSID                  sid;            /* RW                       */
@@ -1303,6 +1373,14 @@ typedef struct OWPDataRec {
 } OWPDataRec;
 
 /*
+ * Two-way data record
+ */
+typedef struct OWPTWDataRec {
+    OWPDataRec sent;
+    OWPDataRec reflected;
+} OWPTWDataRec;
+
+/*
  * Write data record to a file.
  * Returns:
  * 0        Success
@@ -1312,6 +1390,13 @@ OWPWriteDataRecord(
         OWPContext  ctx,
         FILE        *fp,
         OWPDataRec  *rec
+        );
+
+extern OWPBoolean
+OWPWriteTWDataRecord(
+        OWPContext  ctx,
+        FILE        *fp,
+        OWPTWDataRec *rec
         );
 
 /*
@@ -1350,6 +1435,21 @@ OWPParseRecords(
         OWPDoDataRecord proc_rec,
         void            *udata          /* passed into proc_rec     */
         );
+
+typedef int (*OWPDoTWDataRecord)(
+        OWPTWDataRec *rec,
+        void        *udata
+        );
+
+extern OWPErrSeverity
+OWPParseTWRecords(
+        OWPContext      ctx,
+        FILE            *fp,
+        uint32_t       num_rec,
+        uint32_t       file_version,
+        OWPDoTWDataRecord proc_rec,
+        void            *app_data
+    );
 
 /*
  * OWPReadDataSkipRecs
@@ -1398,6 +1498,15 @@ OWPParsePortRange (
         char    *pspec,
         OWPPortRangeRec   *portspec
         );
+
+typedef enum {
+        TWP_FWD_PKTS,
+        TWP_BCK_PKTS,
+        OWP_PKTS = TWP_FWD_PKTS,
+} OWPPacketType;
+
+#define OWP_PKT_TYPE_NUM        2
+
 /*
  * TODO: This needs lots of clean-up to be a good public interface.
  * Most of these fields do not really need to be exposed.
@@ -1407,18 +1516,43 @@ OWPParsePortRange (
  */
 typedef struct OWPPacketRec OWPPacketRec, *OWPPacket;
 struct OWPPacketRec{
-    OWPPacket   next;
-    uint32_t    seq;        /* packet seq no */
-    OWPNum64    schedtime;  /* scheduled send time */
-    uint32_t    seen;       /* how many times seen? */
-    OWPBoolean  lost;
+    OWPPacket     next;
+    uint32_t      seq;        /* packet seq no */
+    OWPNum64      schedtime;  /* scheduled send time */
+    uint32_t      seen;       /* how many times seen? */
+    OWPBoolean    lost;
+
+    /* Other direction sequence number (for two way sessions) */
+    uint32_t      associated_seq;
+    OWPPacketType type;
 };
+
+typedef enum {
+        OWP_DELAY,
+        TWP_FWD_DELAY,
+        TWP_BCK_DELAY,
+        TWP_PROC_DELAY,
+} OWPDelayType;
+
+#define OWP_DELAY_TYPE_NUM                 3
+#define OWP_DELAY_TYPE_NUM_INC_PROC        OWP_DELAY_TYPE_NUM + 1
+
+typedef enum {
+        TWP_FWD_TTL,
+        TWP_BCK_TTL,
+        OWP_TTL = TWP_FWD_TTL,
+} OWPTtlType;
+
+#define OWP_TTL_TYPE_NUM        2
 
 typedef struct OWPBucketRec OWPBucketRec, *OWPBucket;
 struct OWPBucketRec{
     OWPBucket   next;
     int         b;      /* bucket index */
-    uint32_t    n;      /* samples in this bucket */
+
+    /* The processing jitter isn't an interesting metric since it
+     * doesn't say anything about the network */
+    uint32_t    delay_samples[OWP_DELAY_TYPE_NUM]; /* [total][fwd][bck] */
 };
 
 typedef struct OWPStatsRec{
@@ -1460,7 +1594,7 @@ typedef struct OWPStatsRec{
      * TestSession information
      */
     OWPScheduleContext  sctx;
-    uint32_t            isctx;      /* index for next seq_no */
+    uint32_t            isctx[OWP_PKT_TYPE_NUM]; /* index for next seq_no */
     OWPNum64            endnum;     /* current sched time for (isctx-1) */
 
     OWPNum64            start_time; /* send time for first scheduled packet */
@@ -1484,12 +1618,12 @@ typedef struct OWPStatsRec{
     /*
      * Packet records (used to count dups/lost)
      */
-    I2Table         ptable;
+    I2Table         ptable[OWP_PKT_TYPE_NUM];
     long int        plistlen;
-    OWPPacket       pallocated;
-    OWPPacket       pfreelist;
-    OWPPacket       pbegin;
-    OWPPacket       pend;
+    OWPPacket       pallocated[OWP_PKT_TYPE_NUM];
+    OWPPacket       pfreelist[OWP_PKT_TYPE_NUM];
+    OWPPacket       pbegin[OWP_PKT_TYPE_NUM];
+    OWPPacket       pend[OWP_PKT_TYPE_NUM];
 
     /*
      * Delay histogram
@@ -1507,7 +1641,7 @@ typedef struct OWPStatsRec{
     /*
      * TTL info - histogram of received TTL values.
      */
-    uint8_t        ttl_count[256];
+    unsigned long   ttl_count[OWP_TTL_TYPE_NUM][256];
 
     /*
      * Reordering buffers
@@ -1522,12 +1656,13 @@ typedef struct OWPStatsRec{
      * Summary Stats
      */
     double          inf_delay;
-    double          min_delay;
-    double          max_delay;
+    double          min_delay[OWP_DELAY_TYPE_NUM_INC_PROC];  /* [total][fwd][bck][proc] */
+    double          max_delay[OWP_DELAY_TYPE_NUM_INC_PROC];  /* [total][fwd][bck][proc] */
+    OWPBoolean      clocks_offset;
     OWPBoolean      sync;
-    double          maxerr;
+    double          maxerr[OWP_DELAY_TYPE_NUM];    /* [total][fwd][bck] */
 
-    uint32_t       dups;
+    uint32_t       dups[OWP_PKT_TYPE_NUM];
     uint32_t       lost;
 
 } OWPStatsRec, *OWPStats;
@@ -1732,5 +1867,15 @@ OWPTimestampToTimespec(
         struct timespec *tval,
         OWPTimeStamp    *tstamp
         );
+
+extern OWPErrSeverity
+OWPUnexpectedRequestType(
+    OWPControl cntrl
+    );
+
+extern OWPBoolean
+OWPControlIsTwoWay(
+    OWPControl cntrl
+    );
 
 #endif        /* OWAMP_H */
