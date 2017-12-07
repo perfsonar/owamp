@@ -22,7 +22,11 @@
 #define _OWAMPDP_H_
 
 #ifndef OWAMPD_CONF_FILE
+#ifdef TWAMP
+#define OWAMPD_CONF_FILE        "twamp-server.conf"
+#else
 #define OWAMPD_CONF_FILE        "owamp-server.conf"
+#endif
 #endif
 
 /*
@@ -54,6 +58,9 @@ typedef struct {
     double          diskfudge;
     uint32_t        dieby;
     uint32_t        controltimeout;
+#ifdef TWAMP
+    uint32_t        testtimeout;
+#endif
     uint32_t        pbkdf2_count;
     uint32_t        maxcontrolsessions;
 #ifndef        NDEBUG

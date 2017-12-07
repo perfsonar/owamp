@@ -1,26 +1,26 @@
-." The first line of this file must contain the '"[e][r][t][v] line
-." to tell man to run the appropriate filter "t" for table.
-." vim: set filetype=nroff :
-."
-."	$Id$
-."
-."######################################################################
-."#									#
-."#			   Copyright (C)  2006				#
-."#	     			Internet2				#
-."#			   All Rights Reserved				#
-."#									#
-."######################################################################
-."
-."	File:		owampd.pfs.man
-."
-."	Author:		Jeff Boote
-."			Internet2
-."
-."	Date:		Sun Nov  5 14:53:10 MST 2006
-."
-."	Description:	
-."
+.\" The first line of this file must contain the '"[e][r][t][v] line
+.\" to tell man to run the appropriate filter "t" for table.
+.\" vim: set filetype=nroff :
+.\"
+.\"	$Id$
+.\"
+.\"######################################################################
+.\"#									#
+.\"#			   Copyright (C)  2006				#
+.\"#	     			Internet2				#
+.\"#			   All Rights Reserved				#
+.\"#									#
+.\"######################################################################
+.\"
+.\"	File:		owampd.pfs.man
+.\"
+.\"	Author:		Jeff Boote
+.\"			Internet2
+.\"
+.\"	Date:		Sun Nov  5 14:53:10 MST 2006
+.\"
+.\"	Description:	
+.\"
 .TH owampd.pfs 5 "$Date$"
 .SH NAME
 owampd.pfs \- One-way latency server pass-phrase store

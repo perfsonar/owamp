@@ -33,7 +33,6 @@
 #include <string.h>
 #include <ctype.h>
 #include <netdb.h>
-#include <unistd.h>
 #include <errno.h>
 #include <assert.h>
 #include <time.h>
@@ -54,6 +53,16 @@ static int          owp_intr = 0;
 static char         dirpath[PATH_MAX];
 static uint32_t     file_oset,tstamp_oset,ext_oset;
 
+#ifdef TWAMP
+#define NWPControlOpen TWPControlOpen
+#define NWP_DEFAULT_OFFERED_MODE TWP_DEFAULT_OFFERED_MODE
+#else
+#define NWPControlOpen OWPControlOpen
+#define NWP_DEFAULT_OFFERED_MODE OWP_DEFAULT_OFFERED_MODE
+#endif
+
+#define OWP_PADDING_UNSET (~0)
+
 static void
 print_conn_args(
         void
@@ -61,10 +70,19 @@ print_conn_args(
 {
     fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n",
             "              [Connection Args]",
+#ifdef TWAMP
+            "   -A authmode    requested modes: [A]uthenticated, [E]ncrypted, [M]ixed, [O]pen",
+            "   -k passphrasefile     passphrasefile to use with Authenticated/Encrypted/Mixed modes",
+#else
             "   -A authmode    requested modes: [A]uthenticated, [E]ncrypted, [O]pen",
             "   -k passphrasefile     passphrasefile to use with Authenticated/Encrypted modes",
+#endif
             "   -S srcaddr     specify the local address or interface for control connection and tests",
+#ifdef TWAMP
+            "   -u username    username to use with Authenticated/Encrypted/Mixed modes",
+#else
             "   -u username    username to use with Authenticated/Encrypted modes",
+#endif
             "   -4             connect using IPv4 addresses only",
             "   -6             connect using IPv6 addresses only"
            );
@@ -75,17 +93,23 @@ print_test_args(
         void
         )
 {
-    fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n",
-            "              [Test Args]",
-            "   -c count       number of test packets",
-            "   -D DSCP        RFC 2474 style DSCP value for TOS byte",
-            "   -f | -F file   perform one-way test from testhost [and save results to file]",
-            "   -i wait        mean average time between packets (seconds)",
-            "   -L timeout     maximum time to wait for a packet before declaring it lost (seconds)",
-            "   -P portrange   port range to use during the test",
-            "   -s padding     size of the padding added to each packet (bytes)",
-            "   -t | -T file   perform one-way test to testhost [and save results to file]",
-            "   -z delayStart  time to wait before executing test (seconds)"
+    fprintf(stderr,
+            "              [Test Args]\n"
+            "   -c count       number of test packets\n"
+            "   -D DSCP        RFC 2474 style DSCP value for TOS byte\n"
+#ifdef TWAMP
+            "   -F file        save results to file\n"
+#else
+            "   -f | -F file   perform one-way test from testhost [and save results to file]\n"
+#endif
+            "   -i wait        mean average time between packets (seconds)\n"
+            "   -L timeout     maximum time to wait for a packet before declaring it lost (seconds)\n"
+            "   -P portrange   port range to use during the test\n"
+            "   -s padding     size of the padding added to each packet (bytes)\n"
+#ifndef TWAMP
+            "   -t | -T file   perform one-way test to testhost [and save results to file]\n"
+#endif
+            "   -z delayStart  time to wait before executing test (seconds)\n"
            );
 }
 
@@ -102,7 +126,11 @@ print_output_args(
             "   -n units       \'n\',\'u\',\'m\', or \'s\'",
             "   -N count       number of test packets (to summarize per sub-session)\n"
             "   -Q             run the test and exit without reporting statistics",
+#ifdef TWAMP
+            "   -R             print RAW data: \"SSEQ STIME SS SERR SRTIME SRS SRERR STTL RSEQ RSTIME RSS RSERR RTIME RS RERR RTTL\\n\"",
+#else
             "   -R             print RAW data: \"SEQNO STIME SS SERR RTIME RS RERR TTL\\n\"",
+#endif
             "   -v[N]          print out individual delays. You can supply an optional N here to limit the print to the first N packets",
             "   -U             Adds UNIX timestamps when printing individual delays"
            );
@@ -115,7 +143,7 @@ usage(
         )
 {
     if(msg) fprintf(stderr, "%s: %s\n", progname, msg);
-    if (!strcmp(progname, "owping")) {
+    if (!strcmp(progname, "owping") || !strcmp(progname, "twping")) {
         fprintf(stderr,
                 "usage: %s %s\n%s\n", 
                 progname, "[arguments] testaddr [servaddr]",
@@ -206,8 +234,8 @@ FailSession(
 }
 
 /*
- * RAW ascii format is:
- * "SEQ STIME SS SERR RTIME RS RERR\n"
+ * RAW ascii format for OWAMP is:
+ * "SEQ STIME SS SERR RTIME RS RERR TTL\n"
  * name     desc                type
  * SEQ      sequence number     unsigned long
  * STIME    sendtime            owptimestamp (%020 PRIu64)
@@ -237,6 +265,53 @@ printraw(
 }
 
 /*
+ * RAW ascii format for TWAMP is:
+ * "SSEQ STIME SS SERR SRTIME SRS SRERR STTL RSEQ RSTIME RSS RSERR RTIME RS RERR RTTL\n"
+ * name     desc                           type
+ * SSEQ     send sequence number           unsigned long
+ * STIME    sendtime                       owptimestamp (%020 PRIu64)
+ * SS       send synchronized              boolean unsigned
+ * SERR     send err estimate              float (%g)
+ * SRTIME   send (receive) time            owptimestamp (%020 PRIu64)
+ * SRS      send (receive) synchronized    boolean unsigned
+ * SRERR    send (receive) err estimate    float (%g)
+ * STTL     send ttl                       unsigned short
+ * RSEQ     reflect sequence number        unsigned long
+ * RTIME    reflected (send) time          owptimestamp (%020 PRIu64)
+ * RS       reflected (send) synchronized  boolean unsigned
+ * RERR     reflected (send) err estimate  float (%g)
+ * RTIME    recvtime                       owptimestamp (%020 PRIu64)
+ * RS       recv synchronized              boolean unsigned
+ * RERR     recv err estimate              float (%g)
+ * RTTL     reflected ttl                  unsigned short
+ */
+static int
+printrawTW(
+        OWPTWDataRec    *rec,
+        void            *udata
+        )
+{
+    FILE        *out = (FILE*)udata;
+
+    fprintf(out,
+            "%lu " OWP_TSTAMPFMT " %u %g " OWP_TSTAMPFMT " %u %g %u "
+            "%lu " OWP_TSTAMPFMT " %u %g " OWP_TSTAMPFMT " %u %g %u\n",
+            (unsigned long)rec->sent.seq_no,
+            rec->sent.send.owptime,rec->sent.send.sync,
+            OWPGetTimeStampError(&rec->sent.send),
+            rec->sent.recv.owptime,rec->sent.recv.sync,
+            OWPGetTimeStampError(&rec->sent.recv),
+            rec->sent.ttl,
+            (unsigned long)rec->reflected.seq_no,
+            rec->reflected.send.owptime,rec->reflected.send.sync,
+            OWPGetTimeStampError(&rec->reflected.send),
+            rec->reflected.recv.owptime,rec->reflected.recv.sync,
+            OWPGetTimeStampError(&rec->reflected.recv),
+            rec->reflected.ttl);
+    return 0;
+}
+
+/*
  * Does statistical output parsing.
  */
 int
@@ -244,7 +319,8 @@ do_stats(
         OWPContext    ctx,
         FILE        *fp,
         char        *from,
-        char        *to
+        char        *to,
+        OWPTestSpec *tspec
         )
 {
     OWPSessionHeaderRec hdr;
@@ -268,11 +344,19 @@ do_stats(
      * If raw data is requested, no summary information is needed.
      */
     if(ping_ctx.opt.raw){
+#ifdef TWAMP
+        if(OWPParseTWRecords(ctx,fp,num_rec,hdr.version,printrawTW,stdout)
+                < OWPErrWARNING){
+            I2ErrLog(eh,"OWPParseTWRecords(): %M");
+            return -1;
+        }
+#else
         if(OWPParseRecords(ctx,fp,num_rec,hdr.version,printraw,stdout)
                 < OWPErrWARNING){
             I2ErrLog(eh,"OWPParseRecords(): %M");
             return -1;
         }
+#endif
         return 0;
     }
 
@@ -292,6 +376,18 @@ do_stats(
     /* Set the timestamp flag here */
     if (ping_ctx.opt.display_unix_ts == True)
       stats->display_unix_ts = True;
+
+#ifdef TWAMP
+    /*
+     * For two-way sessions the number of packets is always 0 in
+     * the test request preamble, which is used to populate hdr.test_spec
+     *
+     * Override this so that sub-session summaries work correctly
+     * for two-way sessions.
+     */
+    if(tspec)
+        hdr.test_spec.npackets = tspec->npackets;
+#endif
 
     /*
      * How many summaries?
@@ -664,6 +760,11 @@ DONE:
                 case 'E':
                     pctx->auth_mode |= OWP_MODE_ENCRYPTED;
                     break;
+#ifdef TWAMP
+                case 'M':
+                    pctx->auth_mode |= TWP_MODE_MIXED;
+                    break;
+#endif
                 default:
                     I2ErrLogP(eh,EINVAL,"Invalid -authmode %c",*s);
                     usage(progname, NULL);
@@ -677,8 +778,7 @@ DONE:
          * Default to all modes.
          * If identity not set - library will ignore A/E.
          */
-        pctx->auth_mode = OWP_MODE_OPEN|OWP_MODE_AUTHENTICATED|
-            OWP_MODE_ENCRYPTED;
+        pctx->auth_mode = NWP_DEFAULT_OFFERED_MODE;
     }
 }
 
@@ -1092,7 +1192,7 @@ main(
     OWPSlot             slot;
     OWPNum64            rtt_bound;
     OWPNum64            delayStart;
-    OWPSID              tosid, fromsid;
+    OWPSID              tosid;
     OWPAcceptType       acceptval;
     OWPErrSeverity      err;
     FILE                *fromfp=NULL;
@@ -1105,9 +1205,12 @@ main(
     char                *endptr = NULL;
     char                optstring[128];
     static char         *conn_opts = "64A:k:S:u:";
-    static char         *test_opts = "c:D:E:fF:i:L:P:s:tT:z:";
+    static char         *test_opts = "c:D:E:F:i:L:P:s:z:";
     static char         *out_opts = "a:b:d:Mn:N:pQRv::U";
     static char         *gen_opts = "h";
+#ifndef TWAMP
+    static char         *ow_opts = "ftT:";
+#endif
 #ifndef    NDEBUG
     static char         *debug_opts = "w";
 #endif
@@ -1165,7 +1268,7 @@ main(
     ping_ctx.opt.lossThreshold = 0.0;
     ping_ctx.opt.delayStart = 0.0;
     ping_ctx.opt.percentiles = NULL;
-    ping_ctx.opt.padding = 0;
+    ping_ctx.opt.padding = OWP_PADDING_UNSET;
     ping_ctx.mean_wait = (float)0.1;
     ping_ctx.opt.units = 'm';
     ping_ctx.opt.numBucketPackets = 0;
@@ -1177,7 +1280,7 @@ main(
     ping_ctx.opt.portspec->high = 9960;
 
     /* Create options strings for this program. */
-    if (!strcmp(progname, "owping")) {
+    if (!strcmp(progname, "owping") || !strcmp(progname, "twping")) {
         strcpy(optstring, conn_opts);
         strcat(optstring, test_opts);
         strcat(optstring, out_opts);
@@ -1197,6 +1300,9 @@ main(
     strcat(optstring, gen_opts);
 #ifndef    NDEBUG
     strcat(optstring,debug_opts);
+#endif
+#ifndef TWAMP
+    strcat(optstring, ow_opts);
 #endif
 
     while((ch = getopt(argc, argv, optstring)) != -1){
@@ -1506,7 +1612,7 @@ main(
     /*
      * Handle 3 possible cases (owping, owfetch, owstats) one by one.
      */
-    if (!strcmp(progname, "owping")){
+    if (!strcmp(progname, "owping") || !strcmp(progname, "twping")){
 
         if((argc < 1) || (argc > 2)){
             usage(progname, NULL);
@@ -1521,6 +1627,22 @@ main(
             ping_ctx.remote_serv = argv[1];
         else
             ping_ctx.remote_serv = ping_ctx.remote_test;
+
+        if(ping_ctx.opt.padding == OWP_PADDING_UNSET){
+#ifdef TWAMP
+            /*
+             * If padding hasn't been set explicitly then set it to
+             * the difference between the sender payload size and the
+             * response payload size (i.e. such that the sending
+             * payload has enough space that the reflector generates a
+             * packet with the same size, albeit with no padding).
+             */
+            ping_ctx.opt.padding = OWPTestTWPayloadSize(ping_ctx.auth_mode,0) -
+                OWPTestPayloadSize(ping_ctx.auth_mode,0);
+#else
+            ping_ctx.opt.padding = 0;
+#endif
+        }
 
         /*
          * This is in reality dependent upon the actual protocol used
@@ -1594,7 +1716,7 @@ main(
          * Open connection to owampd.
          */
 
-        ping_ctx.cntrl = OWPControlOpen(ctx, 
+        ping_ctx.cntrl = NWPControlOpen(ctx,
                 ping_ctx.opt.srcaddr,
                 I2AddrByNode(eh, ping_ctx.remote_serv),
                 ping_ctx.auth_mode,ping_ctx.opt.identity,
@@ -1680,6 +1802,25 @@ main(
 
         if(owp_intr) exit(2);
 
+#ifdef TWAMP
+        if (ping_ctx.opt.save_from_test) {
+            fromfp = fopen(ping_ctx.opt.save_from_test,
+                           "w+b");
+            if(!fromfp){
+                I2ErrLog(eh,"fopen(%s): %M",
+                         ping_ctx.opt.save_from_test);
+                exit(1);
+            }
+        } else if( !(fromfp = tfile(eh))){
+            exit(1);
+        }
+
+        if (!OWPSessionRequest(ping_ctx.cntrl, NULL, False,
+                               I2AddrByNode(eh,ping_ctx.remote_test),
+                               True,(OWPTestSpec*)&tspec,
+                               fromfp,tosid,&err_ret))
+            FailSession(ping_ctx.cntrl);
+#else
         /*
          * Prepare paths for datafiles. Unlink if not keeping data.
          */
@@ -1694,6 +1835,7 @@ main(
         if(owp_intr) exit(2);
 
         if(ping_ctx.opt.from) {
+            OWPSID fromsid;
 
             if (ping_ctx.opt.save_from_test) {
                 fromfp = fopen(ping_ctx.opt.save_from_test,
@@ -1713,7 +1855,7 @@ main(
                         fromfp,fromsid,&err_ret))
                 FailSession(ping_ctx.cntrl);
         }
-
+#endif
 
         if(OWPStartSessions(ping_ctx.cntrl) < OWPErrINFO)
             FailSession(ping_ctx.cntrl);
@@ -1827,6 +1969,7 @@ main(
             I2AddrFree(laddr);
         }
 
+#ifndef TWAMP
         if(ping_ctx.opt.to && (ping_ctx.opt.save_to_test ||
                     !ping_ctx.opt.quiet || ping_ctx.opt.raw)){
             FILE    *tofp;
@@ -1838,20 +1981,21 @@ main(
                 I2ErrLog(eh,"Unable to fetch data for sid(%s)",sname);
             }
             else if(!ping_ctx.opt.quiet || ping_ctx.opt.raw){
-                if( do_stats(ctx,tofp,local,remote)){
-                    I2ErrLog(eh, "do_stats(\"to\" session): %M");
+                if( do_stats(ctx,tofp,local,remote,NULL)){
+                    I2ErrLog(eh, "do_stats(\"to\" session)");
                 }
             }
             if(tofp && fclose(tofp)){
                 I2ErrLog(eh,"close(): %M");
             }
         }
+#endif
 
         if(owp_intr > 1) exit(2);
 
         if(fromfp && (!ping_ctx.opt.quiet || ping_ctx.opt.raw)){
-            if( do_stats(ctx,fromfp,remote,local)){
-                I2ErrLog(eh, "do_stats(\"from\" session): %M");
+            if( do_stats(ctx,fromfp,remote,local,&tspec)){
+                I2ErrLog(eh, "do_stats(\"from\" session)");
             }
         }
 
@@ -1872,7 +2016,7 @@ main(
                 exit(1);
             }
 
-            if ( do_stats(ctx,fp,NULL,NULL)){
+            if ( do_stats(ctx,fp,NULL,NULL,NULL)){
                 I2ErrLog(eh,"do_stats() failed.");
                 exit(1);
             }
@@ -1922,7 +2066,7 @@ main(
                 I2ErrLog(eh,"Unable to fetch sid(%s)",sname);
             }
             else if((!ping_ctx.opt.quiet || ping_ctx.opt.raw) &&
-                    do_stats(ctx,fp,NULL,NULL)){
+                    do_stats(ctx,fp,NULL,NULL,NULL)){
                 I2ErrLog(eh,"do_stats() failed.");
             }
             else if(fclose(fp)){

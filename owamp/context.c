@@ -334,6 +334,7 @@ OWPControlClose(
 OWPControl
 _OWPControlAlloc(
         OWPContext      ctx,
+        OWPBoolean      twoway,
         OWPErrSeverity  *err_ret
         )
 {
@@ -353,6 +354,7 @@ _OWPControlAlloc(
      * Init state fields
      */
     cntrl->ctx = ctx;
+    cntrl->twoway = twoway;
 
     /*
      * Initialize control policy state hash.
