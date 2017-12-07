@@ -184,7 +184,7 @@ static void encrypt_outgoing(
         AES_ENCRYPT);
 
     memcpy(cipher, output_tmp, message_size);
-    memcpy(iv_bytes, &cipher[message_size-16], 16);
+    memcpy(iv_bytes, &((uint8_t *)cipher)[message_size-16], 16);
     free(output_tmp);
 }
 
@@ -214,7 +214,7 @@ static void decrypt_incoming(
     if (message_size == 0) { return; }
 
     uint8_t next_iv[16];
-    memcpy(next_iv, &cipher[message_size-16], 16);
+    memcpy(next_iv, &((uint8_t *)cipher)[message_size-16], 16);
 
     AES_KEY key;
     AES_set_decrypt_key(key_bytes, 128, &key);

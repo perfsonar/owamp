@@ -331,17 +331,11 @@ _OWPWriteServerStart(
     }
 
     /*
-     * Write first two blocks of message - not encrypted
+     * Set first two blocks of message - not encrypted
      */
     memset(&buf[0],0,15);
     *(uint8_t *)&buf[15] = code & 0xff;
     memcpy(&buf[16],cntrl->writeIV,16);
-    if((len = I2Writeni(cntrl->sockfd,buf,32,intr)) != 32){
-        if((len < 0) && *intr && (errno == EINTR)){
-            return OWPErrFATAL;
-        }
-        return OWPErrFATAL;
-    }
 
     if(code == OWP_CNTRL_ACCEPT){
         /*
@@ -349,26 +343,30 @@ _OWPWriteServerStart(
          * func.
          */
         tstamp.owptime = uptime;
-        _OWPEncodeTimeStamp((uint8_t *)&buf[0],&tstamp);
-        memset(&buf[8],0,8);
+        _OWPEncodeTimeStamp((uint8_t *)&buf[32],&tstamp);
+        memset(&buf[40],0,8);
 
         cntrl->state = _OWPStateRequest;
     }
     else{
         /* encryption not valid - reset to clear mode and reject */
         cntrl->mode = OWP_MODE_OPEN;
-        memset(&buf[0],0,16);
+        memset(&buf[32],0,16);
         cntrl->state = _OWPStateInvalid;
     }
 
     /*
-     * Add this block to HMAC, and then send it.
+     * Add final block to HMAC, and then send all 3 blocks
      * No HMAC digest field in this message - so this block gets
      * include as part of the text for the next digest sent in the
      * 'next' message.
      */
-    _OWPSendHMACAdd(cntrl,buf,1);
-    if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,intr) != 1){
+    _OWPSendHMACAdd(cntrl,&buf[32],1);
+
+    if (cntrl->mode & OWP_MODE_DOCIPHER_CNTRL)
+        _OWPEncryptBlocks(cntrl, (uint8_t *)&buf[32], 1, &buf[32]);
+
+    if((len = I2Writeni(cntrl->sockfd,buf,48,intr)) != 48){
         if((len < 0) && *intr && (errno == EINTR)){
             return OWPErrFATAL;
         }
@@ -1210,6 +1208,80 @@ _OWPReadTestRequestSlots(
     return OWPErrOK;
 }
 
+static OWPErrSeverity
+_OWPTestSessionSetIPv6LLScope(OWPContext ctx,
+                              const struct sockaddr *cntrl_saddr,
+                              socklen_t cntrl_saddrlen,
+                              struct sockaddr *test_saddr,
+                              socklen_t test_saddrlen)
+{
+#ifdef AF_INET6
+    const struct sockaddr_in6 *cntrl_saddr6 =
+        (const struct sockaddr_in6 *)cntrl_saddr;
+    struct sockaddr_in6 *test_saddr6 =
+        (struct sockaddr_in6 *)test_saddr;
+    if (test_saddr->sa_family == AF_INET6 &&
+        IN6_IS_ADDR_LINKLOCAL(test_saddr6->sin6_addr.s6_addr)) {
+        if (cntrl_saddr && cntrl_saddr->sa_family == AF_INET6 &&
+            IN6_IS_ADDR_LINKLOCAL(cntrl_saddr6->sin6_addr.s6_addr)) {
+            test_saddr6->sin6_scope_id = cntrl_saddr6->sin6_scope_id;
+        } else {
+            char testaddr[NI_MAXHOST];
+            char cntrladdr[NI_MAXHOST];
+            if (getnameinfo(test_saddr,test_saddrlen,
+                            testaddr,sizeof(testaddr),NULL,0,
+                            NI_NUMERICHOST) != 0) {
+                strcpy(testaddr, "unknown");
+            }
+            if (getnameinfo(cntrl_saddr,cntrl_saddrlen,cntrladdr,
+                            sizeof(cntrladdr),NULL,0,NI_NUMERICHOST) != 0) {
+                strcpy(cntrladdr, "unknown");
+            }
+            OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                     "test session address %s out of scope of control "
+                     "address %s",testaddr,cntrladdr);
+            return OWPErrFATAL;
+        }
+    }
+#endif
+
+    return OWPErrOK;
+}
+
+static void
+_OWPSetSAddrIfUnspec(OWPContext ctx,
+                     const struct sockaddr *cntrl_saddr,
+                     struct sockaddr *test_saddr)
+{
+    switch(test_saddr->sa_family){
+        struct sockaddr_in  *test_saddr4;
+        struct sockaddr_in  *cntrl_saddr4;
+#ifdef        AF_INET6
+        struct sockaddr_in6 *test_saddr6;
+        struct sockaddr_in6 *cntrl_saddr6;
+        case AF_INET6:
+            test_saddr6 = (struct sockaddr_in6*)test_saddr;
+            if(!IN6_IS_ADDR_UNSPECIFIED(&test_saddr6->sin6_addr) ||
+               cntrl_saddr->sa_family != AF_INET6)
+                return;
+            cntrl_saddr6 = (struct sockaddr_in6*)cntrl_saddr;
+            memcpy(&test_saddr6->sin6_addr,&cntrl_saddr6->sin6_addr,
+                   sizeof(test_saddr6->sin6_addr));
+            break;
+#endif
+        case AF_INET:
+            test_saddr4 = (struct sockaddr_in*)test_saddr;
+            if (test_saddr4->sin_addr.s_addr != 0 ||
+                cntrl_saddr->sa_family != AF_INET)
+                return;
+            cntrl_saddr4 = (struct sockaddr_in*)cntrl_saddr;
+            test_saddr4->sin_addr.s_addr = cntrl_saddr4->sin_addr.s_addr;
+            break;
+        default:
+            return;
+    }
+}
+
 /*
  * Function:        _OWPReadTestRequest
  *
@@ -1256,6 +1328,8 @@ _OWPReadTestRequest(
     OWPAcceptType           *accept_ptr = &accept_mem;
     int                     ival=0;
     int                     *intr=&ival;
+    const struct sockaddr   *remote_saddr;
+    socklen_t               remote_saddrlen;
 
     *test_session = NULL;
     memset(&sendaddr_rec,0,addrlen);
@@ -1347,6 +1421,38 @@ _OWPReadTestRequest(
             *accept_ptr = OWP_CNTRL_UNSUPPORTED;
             return OWPErrFATAL;
         }
+    }
+
+    /*
+     * To support test sessions listening on IPv6 link-local
+     * addresses, the scope needs to be specified. So copy this over
+     * from the control session remote address, unless it isn't a
+     * link-local in which case the only option is to reject the
+     * request.
+     */
+    remote_saddr = I2AddrSAddr(cntrl->remote_addr,&remote_saddrlen);
+    err_ret = _OWPTestSessionSetIPv6LLScope(
+        cntrl->ctx,remote_saddr,remote_saddrlen,
+        (struct sockaddr*)&sendaddr_rec,addrlen);
+    if (err_ret != OWPErrOK) {
+        *accept_ptr = OWP_CNTRL_UNSUPPORTED;
+        return err_ret;
+    }
+    err_ret = _OWPTestSessionSetIPv6LLScope(
+        cntrl->ctx,remote_saddr,remote_saddrlen,
+        (struct sockaddr*)&recvaddr_rec,addrlen);
+    if (err_ret != OWPErrOK) {
+        *accept_ptr = OWP_CNTRL_UNSUPPORTED;
+        return err_ret;
+    }
+    if (cntrl->twoway) {
+        const struct sockaddr *local_saddr;
+        socklen_t local_saddrlen;
+        _OWPSetSAddrIfUnspec(cntrl->ctx,remote_saddr,
+                             (struct sockaddr*)&sendaddr_rec);
+        local_saddr = I2AddrSAddr(cntrl->local_addr,&local_saddrlen);
+        _OWPSetSAddrIfUnspec(cntrl->ctx,local_saddr,
+                             (struct sockaddr*)&recvaddr_rec);
     }
 
     /*
@@ -1934,17 +2040,24 @@ _OWPWriteStopSessions(
     buf[0] = OWPReqStopSessions;
     buf[1] = acceptval & 0xff;
     *(uint32_t*)&buf[4] = htonl(num_sessions);
-
-    /*
-     * Add 'header' into HMAC and send
-     */
     _OWPSendHMACAdd(cntrl,buf,1);
-    if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,retn_on_intr) != 1){
-        return _OWPFailControlSession(cntrl,OWPErrFATAL);
-    }
 
+    if (cntrl->twoway) {
+        /*
+         * Complete WriteStopSessions by writing HMAC and send as one chunk.
+         */
+        _OWPSendHMACDigestClear(cntrl,&buf[16]);
+        if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,2,retn_on_intr) != 2){
+            return _OWPFailControlSession(cntrl,OWPErrFATAL);
+        }
+    } else {
+        /*
+         * Send 'header'
+         */
+        if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,retn_on_intr) != 1){
+            return _OWPFailControlSession(cntrl,OWPErrFATAL);
+        }
 
-    if (!cntrl->twoway) {
         /*
          * Loop through each session, write out a session description
          * record for each "send" session.
@@ -2011,14 +2124,14 @@ _OWPWriteStopSessions(
                 return _OWPFailControlSession(cntrl,OWPErrFATAL);
             }
         }
-    }
 
-    /*
-     * Complete WriteStopSessions by sending HMAC.
-     */
-    _OWPSendHMACDigestClear(cntrl,buf);
-    if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,retn_on_intr) != 1){
-        return _OWPFailControlSession(cntrl,OWPErrFATAL);
+        /*
+         * Complete WriteStopSessions by sending HMAC.
+         */
+        _OWPSendHMACDigestClear(cntrl,buf);
+        if(_OWPSendBlocksIntr(cntrl,(uint8_t *)buf,1,retn_on_intr) != 1){
+            return _OWPFailControlSession(cntrl,OWPErrFATAL);
+        }
     }
 
     return OWPErrOK;

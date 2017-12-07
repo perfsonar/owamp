@@ -8,9 +8,9 @@ URL: http://e2epi.internet2.edu/owamp/
 Source: %{name}-%{version}.tar.gz
 Packager: Aaron Brown <aaron@internet2.edu>
 %if 0%{?el7}
-BuildRequires: libtool, I2util, systemd
+BuildRequires: libtool, I2util, openssl-devel, systemd
 %else
-BuildRequires: libtool, I2util
+BuildRequires: libtool, I2util, openssl-devel
 %endif
 Requires: owamp-client, owamp-server, I2util
 BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-buildroot
@@ -22,15 +22,31 @@ enables you to measure the unidirectional delay between two hosts.
 
 %files
 
+%package -n twamp
+Summary: twamp - two-way delay tester
+Requires: twamp-client, twamp-server, I2util
 
-%package client
+%description -n twamp
+TWAMP is a client/server package that allows one to measure the latency between
+hosts.
+
+%files -n twamp
+
+%package -n owamp-client
 Summary: owamp client
 Group: Applications/Network
-%description client
+%description -n owamp-client
 owamp command line utilities for performing owamp measurements with an owamp
 server.
 
-%package server
+%package -n twamp-client
+Summary: twamp client
+Group: Applications/Network
+%description -n twamp-client
+twamp command line utilities for performing twamp measurements with an twamp
+server.
+
+%package -n owamp-server
 Summary: owamp server
 Group: Applications/Network
 %if 0%{?el7}
@@ -39,8 +55,20 @@ Requires: shadow-utils, coreutils
 %else
 Requires: chkconfig, initscripts, shadow-utils, coreutils
 %endif
-%description server
+%description -n owamp-server
 owamp server
+
+%package -n twamp-server
+Summary: twamp server
+Group: Applications/Network
+%if 0%{?el7}
+Requires: shadow-utils, coreutils
+%{?systemd_requires: %systemd_requires}
+%else
+Requires: chkconfig, initscripts, shadow-utils, coreutils
+%endif
+%description -n twamp-server
+twamp server
 
 #%package devel
 #Group: Development/Libraries
@@ -64,21 +92,31 @@ make
 %makeinstall
 %{__install} -D -p -m 0644 conf/owampd.service %{buildroot}%{_unitdir}/owamp-server.service
 %{__install} -D -p -m 0755 conf/owampd.init %{buildroot}%{_sysconfdir}/rc.d/init.d/owamp-server
-%{__install} -D -p -m 0755 conf/owampd.limits %{buildroot}%{_sysconfdir}/owamp-server/owamp-server.limits
-%{__install} -D -p -m 0755 conf/owampd.rpm.conf %{buildroot}%{_sysconfdir}/owamp-server/owamp-server.conf
-%{__install} -D -p -m 0755 conf/owampd.limits %{buildroot}%{_sysconfdir}/owamp-server/owamp-server.limits.default
-%{__install} -D -p -m 0755 conf/owampd.rpm.conf %{buildroot}%{_sysconfdir}/owamp-server/owampd.conf.default
+%{__install} -D -p -m 0644 conf/owampd.limits %{buildroot}%{_sysconfdir}/owamp-server/owamp-server.limits
+%{__install} -D -p -m 0644 conf/owampd.rpm.conf %{buildroot}%{_sysconfdir}/owamp-server/owamp-server.conf
+%{__install} -D -p -m 0644 conf/owampd.limits %{buildroot}%{_sysconfdir}/owamp-server/owamp-server.limits.default
+%{__install} -D -p -m 0644 conf/owampd.rpm.conf %{buildroot}%{_sysconfdir}/owamp-server/owampd.conf.default
+
+%{__install} -D -p -m 0644 conf/twampd.service %{buildroot}%{_unitdir}/twamp-server.service
+%{__install} -D -p -m 0755 conf/twampd.init %{buildroot}%{_sysconfdir}/rc.d/init.d/twamp-server
+%{__install} -D -p -m 0644 conf/twampd.rpm.conf %{buildroot}%{_sysconfdir}/twamp-server/twamp-server.conf
+%{__install} -D -p -m 0644 conf/twampd.rpm.conf %{buildroot}%{_sysconfdir}/twamp-server/twamp-server.conf.default
+%{__install} -D -p -m 0644 conf/twampd.limits %{buildroot}%{_sysconfdir}/twamp-server/twamp-server.limits
+%{__install} -D -p -m 0644 conf/twampd.limits %{buildroot}%{_sysconfdir}/twamp-server/twamp-server.limits.default
+
+%check
+make check
 
 %clean
 rm -rf $RPM_BUILD_ROOT 
 
-%post server
+%post -n owamp-server
 %if 0%{?el7}
 %systemd_post owamp-server.service
 if [ "$1" = "1" ]; then
 	/usr/sbin/useradd -r -s /bin/nologin -d /tmp owamp || :
 	mkdir -p /var/lib/owamp
-	chown owamp:owamp /var/lib/owamp
+	chown -R owamp:owamp /var/lib/owamp
 	systemctl enable owamp-server.service
 	systemctl start owamp-server.service
 fi
@@ -87,7 +125,7 @@ if [ "$1" = "1" ]; then
 	/sbin/chkconfig --add owamp-server
 	/usr/sbin/useradd -r -s /bin/nologin -d /tmp owamp || :
 	mkdir -p /var/lib/owamp
-	chown owamp:owamp /var/lib/owamp
+	chown -R owamp:owamp /var/lib/owamp
 else
     #handle pre 1.6 upgrade
     if [ -e "/etc/owampd/owampd.conf" ]; then
@@ -119,7 +157,7 @@ else
 fi
 %endif
 
-%preun server
+%preun -n owamp-server
 %if 0%{?el7}
 %systemd_preun owamp-server.service
 %else
@@ -129,7 +167,7 @@ if [ "$1" = "0" ]; then
 fi
 %endif
 
-%postun server
+%postun -n owamp-server
 %if 0%{?el7}
 %systemd_postun_with_restart owamp-server.service
 %endif
@@ -137,7 +175,55 @@ if [ "$1" = "0" ]; then
 	/usr/sbin/userdel owamp || :
 fi
 
-%files client
+%post -n twamp-server
+%if 0%{?el7}
+%systemd_post twamp-server.service
+if [ "$1" = "1" ]; then
+	/usr/sbin/useradd -r -s /bin/nologin -d /tmp twamp || :
+	mkdir -p /var/lib/twamp
+	chown -R twamp:twamp /var/lib/twamp
+	systemctl enable twamp-server.service
+	systemctl start twamp-server.service
+fi
+%else
+if [ "$1" = "1" ]; then
+	/sbin/chkconfig --add twamp-server
+	/usr/sbin/useradd -r -s /bin/nologin -d /tmp twamp || :
+	mkdir -p /var/lib/twamp
+	chown -R twamp:twamp /var/lib/twamp
+else
+    #make sure twamp-server starts if twampd was running
+    /sbin/service twampd stop 2> /dev/null  || :
+    chkconfig --list twampd 2> /dev/null | grep -q on
+    if [ $? -eq 0 ]; then
+        /sbin/chkconfig --add twamp-server
+        /sbin/service twamp-server restart
+    else
+        /sbin/service twamp-server cond-restart
+    fi
+    /sbin/chkconfig --del twampd 2> /dev/null  || :
+fi
+%endif
+
+%preun -n twamp-server
+%if 0%{?el7}
+%systemd_preun twamp-server.service
+%else
+if [ "$1" = "0" ]; then
+    /sbin/chkconfig --del twamp-server
+    /sbin/service twamp-server stop
+fi
+%endif
+
+%postun -n twamp-server
+%if 0%{?el7}
+%systemd_postun_with_restart twamp-server.service
+%endif
+if [ "$1" = "0" ]; then
+	/usr/sbin/userdel twamp || :
+fi
+
+%files -n owamp-client
 %defattr(-,root,root,0755)
 %doc README
 %{_bindir}/owfetch
@@ -151,16 +237,33 @@ fi
 %{_mandir}/man1/owup.1.gz
 %{_mandir}/man1/powstream.1.gz
 
-%files server
+%files -n twamp-client
+%defattr(-,root,root,0755)
+%{_bindir}/twping
+%{_mandir}/man1/twping.1.gz
+
+%files -n owamp-server
 %defattr(-,root,root,0755)
 %{_bindir}/owampd
-%{_mandir}/man5/*
-%{_mandir}/man8/*
+%{_mandir}/man5/owamp*
+%{_mandir}/man8/owamp*
 %config(noreplace) %{_sysconfdir}/owamp-server/*
 %if 0%{?el7}
 %{_unitdir}/owamp-server.service
 %else
 %{_sysconfdir}/rc.d/init.d/owamp-server
+%endif
+
+%files -n twamp-server
+%defattr(-,root,root,0755)
+%{_bindir}/twampd
+%{_mandir}/man5/twamp*
+%{_mandir}/man8/twamp*
+%config(noreplace) %{_sysconfdir}/twamp-server/*
+%if 0%{?el7}
+%{_unitdir}/twamp-server.service
+%else
+%{_sysconfdir}/rc.d/init.d/twamp-server
 %endif
 
 #%files devel

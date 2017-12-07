@@ -7,6 +7,7 @@
  *        Description:  Utilities for launching a *wping client
  *                      and setting up a control session
  */
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -125,10 +126,13 @@ int session_setup_test(
     // create a tmp file to use as the unix socket
     server_params.socket_path = (char *) malloc(sizeof TMP_SOCK_FILENAME_TPL + 1);
     strcpy(server_params.socket_path, TMP_SOCK_FILENAME_TPL);
-    if(!mktemp(server_params.socket_path)) {
-        perror("mktemp error");
+    int tmpfd = mkstemp(server_params.socket_path);
+    if(tmpfd < 0) {
+        perror("mkstemp error");
         goto cleanup;
     }
+    close(tmpfd);
+    unlink(server_params.socket_path);
 
     // start the server thread
     errno = pthread_create(&server_thread, NULL, server_proc, &server_params);
@@ -152,7 +156,8 @@ int session_setup_test(
     strncpy(addr.sun_path, server_params.socket_path, sizeof addr.sun_path - 1);
 
     int connected = 0;
-    for(int i=0; i<10 && !connected; i++) {
+    int i;
+    for(i=0; i<10 && !connected; i++) {
         if(connect(fd, (struct sockaddr *) &addr, sizeof addr) == -1) {
             perror("waiting for server");
             sleep(1);
@@ -161,7 +166,7 @@ int session_setup_test(
         }
     }
     if (!connected) {
-        printf("giving up connection to test server");
+        printf("giving up connection to test server\n");
         goto cleanup;
     }
 
@@ -205,7 +210,7 @@ int session_setup_test(
     tspec.nslots = num_test_slots;
     tspec.slots = (OWPSlot *) calloc(num_test_slots, sizeof(OWPSlot));
     memset(tspec.slots, 0, num_test_slots * sizeof(OWPSlot));
-    for(int i=0; i<num_test_slots; i++) {
+    for(i=0; i<num_test_slots; i++) {
         tspec.slots[i].slot_type = OWPSlotLiteralType;
         tspec.slots[i].literal.offset = OWPDoubleToNum64((double) i);
     }
@@ -219,6 +224,7 @@ int session_setup_test(
                 &tspec,
                 NULL,
                 sid_ret, &err_ret)) {
+        printf("OWPSessionRequest returned error\n ");
         goto cleanup;
     }
 
@@ -232,10 +238,18 @@ int session_setup_test(
 cleanup:
 
     if (thread_valid) {
-        // possible, but unlikely race condition
+
+        for(i=0; i<5; i++) {
+            sleep(1);
+            if (test_params->output.test_complete) {
+                break;
+            }
+        }
+
         if (test_params->output.test_complete) {
             pthread_join(server_thread, NULL);
         } else {
+            printf("warning: server thread didn't exit\n");
             pthread_cancel(server_thread);
         }
     }

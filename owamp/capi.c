@@ -743,6 +743,16 @@ _OWPClientRequestTestReadResponse(
     char            nodename_buf[255];
     size_t          nodename_buflen;
 
+    /*
+     * For two way tests if a receiver port number has not been set then
+     * request that the server use the same port as was chosen for the local
+     * client port.
+     */
+    if(cntrl->twoway && !I2AddrPort(receiver)){
+        if (!I2AddrSetPort(receiver,I2AddrPort(sender)))
+            return 1;
+    }
+
     if( (rc = _OWPWriteTestRequest(cntrl,retn_on_intr,
                     I2AddrSAddr(sender,NULL),
                     I2AddrSAddr(receiver,NULL),

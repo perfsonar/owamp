@@ -31,12 +31,12 @@
 #define NUM_TEST_PACKETS 10
 
 #define OWAMPD_CONF_FILENAME "owamp-server.conf"
-#define OWAMPD_LIMITS_FILENAME "owampd-server.limits"
-#define OWAMPD_PFS_FILENAME "owampd-server.pfs"
+#define OWAMPD_LIMITS_FILENAME "owamp-server.limits"
+#define OWAMPD_PFS_FILENAME "owamp-server.pfs"
 
 #define TWAMPD_CONF_FILENAME "twamp-server.conf"
-#define TWAMPD_LIMITS_FILENAME "twampd-server.limits"
-#define TWAMPD_PFS_FILENAME "twampd-server.pfs"
+#define TWAMPD_LIMITS_FILENAME "twamp-server.limits"
+#define TWAMPD_PFS_FILENAME "twamp-server.pfs"
 
 
 const char USERID[] = "fake-user";
@@ -154,7 +154,10 @@ int launch_xwampd(
 FILE *launch_xwping(PROTOCOL protocol, uint16_t port, const char *authmode, const char *config_dir, pid_t *child_pid) {
    
     int pipefd[2];
-    pipe(pipefd);
+    if(pipe(pipefd)) {
+        perror("pipe creation error");
+        return NULL;
+    }
  
     if ((*child_pid = fork()) < 0) {
         perror("fork error");
@@ -303,8 +306,6 @@ int create_config_dir(
  * Returns:         non-zero in case of error
  * Side Effect:
  */
-typedef int(*output_verification_handler)(const char *);
-
 int verify_owping_output(const char *output) {
     // status_str should appear in the output twice
     char status_str[20];
