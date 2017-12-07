@@ -1,0 +1,7 @@
+#!/bin/sh
+
+set -e
+
+service twamp-server status
+
+pgrep -l twampd
