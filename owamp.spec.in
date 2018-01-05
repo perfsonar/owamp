@@ -224,13 +224,13 @@ if [ "$1" = "0" ]; then
 fi
 
 %files -n owamp-client
-%defattr(-,root,root,0755)
+%defattr(0644,root,root,0755)
 %doc README
-%{_bindir}/owfetch
-%{_bindir}/owping
-%{_bindir}/owstats
-%{_bindir}/owup
-%{_bindir}/powstream
+%attr(0755,root,root) %{_bindir}/owfetch
+%attr(0755,root,root) %{_bindir}/owping
+%attr(0755,root,root) %{_bindir}/owstats
+%attr(0755,root,root) %{_bindir}/owup
+%attr(0755,root,root) %{_bindir}/powstream
 %{_mandir}/man1/owfetch.1.gz
 %{_mandir}/man1/owping.1.gz
 %{_mandir}/man1/owstats.1.gz
@@ -238,13 +238,13 @@ fi
 %{_mandir}/man1/powstream.1.gz
 
 %files -n twamp-client
-%defattr(-,root,root,0755)
-%{_bindir}/twping
+%defattr(0644,root,root,0755)
+%attr(0755,root,root) %{_bindir}/twping
 %{_mandir}/man1/twping.1.gz
 
 %files -n owamp-server
-%defattr(-,root,root,0755)
-%{_bindir}/owampd
+%defattr(0644,root,root,0755)
+%attr(0755,root,root) %{_bindir}/owampd
 %{_mandir}/man5/owamp*
 %{_mandir}/man8/owamp*
 %config(noreplace) %{_sysconfdir}/owamp-server/*
@@ -255,8 +255,8 @@ fi
 %endif
 
 %files -n twamp-server
-%defattr(-,root,root,0755)
-%{_bindir}/twampd
+%defattr(0644,root,root,0755)
+%attr(0755,root,root) %{_bindir}/twampd
 %{_mandir}/man5/twamp*
 %{_mandir}/man8/twamp*
 %config(noreplace) %{_sysconfdir}/twamp-server/*
@@ -267,7 +267,7 @@ fi
 %endif
 
 #%files devel
-#%defattr(-,root,root,0755)
+%defattr(0644,root,root,0755)
 #%{_libdir}/libbwlib.a
 #%{_includedir}/owamp/*
 
