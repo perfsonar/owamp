@@ -16,6 +16,8 @@ PIDFILE=${TWAMPDVARDIR}/twamp-server.pid
 
 TWAMPD="${TWAMPDBINDIR}/twampd -c ${CONFDIR} -R ${TWAMPDVARDIR}"
 
+ulimit -n 4096
+
 ERROR=0
 ARGV="$@"
 if [ "x$ARGV" = "x" ] ; then 
