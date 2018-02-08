@@ -16,6 +16,8 @@ PIDFILE=${OWAMPDVARDIR}/owamp-server.pid
 
 OWAMPD="${OWAMPDBINDIR}/owampd -c ${CONFDIR} -R ${OWAMPDVARDIR}"
 
+ulimit -n 4096
+
 ERROR=0
 ARGV="$@"
 if [ "x$ARGV" = "x" ] ; then 
