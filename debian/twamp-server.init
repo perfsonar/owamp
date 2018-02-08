@@ -25,6 +25,9 @@ SCRIPTNAME=/etc/init.d/$NAME
 # Arguments to run the daemon with
 DAEMON_ARGS="-c /etc/twamp-server -R /var/run"
 
+# Set resource limits for the service
+ulimit -n 4096
+
 # Exit if the package is not installed
 [ -x $DAEMON ] || exit 0
 
