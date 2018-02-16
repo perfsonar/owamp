@@ -694,11 +694,13 @@ _OWPEncodeTestRequestPreamble(
         saddr4 = (struct sockaddr_in*)sender;
         *(uint32_t*)&buf[16] = saddr4->sin_addr.s_addr;
         *(uint16_t*)&buf[12] = saddr4->sin_port;
+        memset(&buf[20],0,12);
 
         /* receiver address and port  */
         saddr4 = (struct sockaddr_in*)receiver;
         *(uint32_t*)&buf[32] = saddr4->sin_addr.s_addr;
         *(uint16_t*)&buf[14] = saddr4->sin_port;
+        memset(&buf[36],0,12);
 
         break;
         default:
