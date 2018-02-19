@@ -775,10 +775,13 @@ DONE:
     }
     else{
         /*
-         * Default to all modes.
-         * If identity not set - library will ignore A/E.
+         * Default to all modes if identity set.
          */
-        pctx->auth_mode = NWP_DEFAULT_OFFERED_MODE;
+        if (pctx->opt.identity) {
+            pctx->auth_mode = NWP_DEFAULT_OFFERED_MODE;
+        } else {
+            pctx->auth_mode = OWP_MODE_OPEN;
+        }
     }
 }
 
@@ -1628,6 +1631,8 @@ main(
         else
             ping_ctx.remote_serv = ping_ctx.remote_test;
 
+        owp_set_auth(ctx, progname, &ping_ctx);
+
         if(ping_ctx.opt.padding == OWP_PADDING_UNSET){
 #ifdef TWAMP
             /*
@@ -1651,8 +1656,6 @@ main(
          */
         if(ping_ctx.opt.padding > MAX_PADDING_SIZE)
             ping_ctx.opt.padding = MAX_PADDING_SIZE;
-
-        owp_set_auth(ctx, progname, &ping_ctx); 
 
         /*
          * Determine schedule.
