@@ -504,6 +504,16 @@ _OWPEndpointInit(
 
     portrange = (OWPPortRange)OWPContextConfigGetV(cntrl->ctx, OWPTestPortRange);
 
+    /*
+     * If the requested TWAMP port is not within the testports range,
+     * ignore it and use a random port instead.
+     */
+    if(cntrl->twoway && cntrl->server && port && portrange){
+        if(port < portrange->low || port > portrange->high){
+            port = 0;
+        }
+    }
+
     if(port){
         /*
          * port specified by saddr
