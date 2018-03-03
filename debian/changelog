@@ -1,3 +1,10 @@
+owamp (3.5.6-1) perfsonar-jessie-release; urgency=low
+
+  * New upstream version.
+  * Increasing number of open files limit in service and init scripts to 4096.
+
+ -- Antoine Delvaux <antoine.delvaux@man.poznan.pl>  Sat, 03 Mar 2018 23:18:18 +0000
+
 owamp (3.5.5-1) perfsonar-jessie-release; urgency=low
 
   * New upstream version.
