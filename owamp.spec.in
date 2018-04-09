@@ -251,7 +251,7 @@ fi
 %if 0%{?el7}
 %{_unitdir}/owamp-server.service
 %else
-%{_sysconfdir}/rc.d/init.d/owamp-server
+%attr(0755,root,root) %{_sysconfdir}/rc.d/init.d/owamp-server
 %endif
 
 %files -n twamp-server
