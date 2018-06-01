@@ -2,7 +2,7 @@ Name: owamp
 Summary: owamp - one-way delay tester
 Version: @VERSION@
 Release: @PATCH_LEVEL@%{?dist}
-License: Apache License v2.0
+License: ASL 2.0 
 Group: *Development/Libraries*
 URL: http://e2epi.internet2.edu/owamp/
 Source: %{name}-%{version}.tar.gz
@@ -143,7 +143,7 @@ else
         mv %{_sysconfdir}/owamp-server/owamp-server.limits %{_sysconfdir}/owamp-server/owamp-server.limits.bak
         mv /etc/owampd/owampd.limits.rpmsave %{_sysconfdir}/owamp-server/owamp-server.limits
     fi
-    
+
     #make sure owamp-server starts if owampd was running
     /sbin/service owampd stop 2> /dev/null  || :
     chkconfig --list owampd 2> /dev/null | grep -q on
@@ -225,6 +225,7 @@ fi
 
 %files -n owamp-client
 %defattr(0644,root,root,0755)
+%license LICENSE
 %doc README
 %attr(0755,root,root) %{_bindir}/owfetch
 %attr(0755,root,root) %{_bindir}/owping
@@ -239,10 +240,12 @@ fi
 
 %files -n twamp-client
 %defattr(0644,root,root,0755)
+%license LICENSE
 %attr(0755,root,root) %{_bindir}/twping
 %{_mandir}/man1/twping.1.gz
 
 %files -n owamp-server
+%license LICENSE
 %defattr(0644,root,root,0755)
 %attr(0755,root,root) %{_bindir}/owampd
 %{_mandir}/man5/owamp*
@@ -256,6 +259,7 @@ fi
 
 %files -n twamp-server
 %defattr(0644,root,root,0755)
+%license LICENSE
 %attr(0755,root,root) %{_bindir}/twampd
 %{_mandir}/man5/twamp*
 %{_mandir}/man8/twamp*
@@ -267,7 +271,8 @@ fi
 %endif
 
 #%files devel
-%defattr(0644,root,root,0755)
+#%defattr(0644,root,root,0755)
+#%license LICENSE
 #%{_libdir}/libbwlib.a
 #%{_includedir}/owamp/*
 
