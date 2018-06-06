@@ -2,7 +2,7 @@ Name: owamp
 Summary: owamp - one-way delay tester
 Version: @VERSION@
 Release: @PATCH_LEVEL@%{?dist}
-License: Apache License v2.0
+License: ASL 2.0 
 Group: *Development/Libraries*
 URL: http://e2epi.internet2.edu/owamp/
 Source: %{name}-%{version}.tar.gz
@@ -143,7 +143,7 @@ else
         mv %{_sysconfdir}/owamp-server/owamp-server.limits %{_sysconfdir}/owamp-server/owamp-server.limits.bak
         mv /etc/owampd/owampd.limits.rpmsave %{_sysconfdir}/owamp-server/owamp-server.limits
     fi
-    
+
     #make sure owamp-server starts if owampd was running
     /sbin/service owampd stop 2> /dev/null  || :
     chkconfig --list owampd 2> /dev/null | grep -q on
@@ -224,13 +224,14 @@ if [ "$1" = "0" ]; then
 fi
 
 %files -n owamp-client
-%defattr(-,root,root,0755)
+%defattr(0644,root,root,0755)
+%license LICENSE
 %doc README
-%{_bindir}/owfetch
-%{_bindir}/owping
-%{_bindir}/owstats
-%{_bindir}/owup
-%{_bindir}/powstream
+%attr(0755,root,root) %{_bindir}/owfetch
+%attr(0755,root,root) %{_bindir}/owping
+%attr(0755,root,root) %{_bindir}/owstats
+%attr(0755,root,root) %{_bindir}/owup
+%attr(0755,root,root) %{_bindir}/powstream
 %{_mandir}/man1/owfetch.1.gz
 %{_mandir}/man1/owping.1.gz
 %{_mandir}/man1/owstats.1.gz
@@ -238,25 +239,28 @@ fi
 %{_mandir}/man1/powstream.1.gz
 
 %files -n twamp-client
-%defattr(-,root,root,0755)
-%{_bindir}/twping
+%defattr(0644,root,root,0755)
+%license LICENSE
+%attr(0755,root,root) %{_bindir}/twping
 %{_mandir}/man1/twping.1.gz
 
 %files -n owamp-server
-%defattr(-,root,root,0755)
-%{_bindir}/owampd
+%license LICENSE
+%defattr(0644,root,root,0755)
+%attr(0755,root,root) %{_bindir}/owampd
 %{_mandir}/man5/owamp*
 %{_mandir}/man8/owamp*
 %config(noreplace) %{_sysconfdir}/owamp-server/*
 %if 0%{?el7}
 %{_unitdir}/owamp-server.service
 %else
-%{_sysconfdir}/rc.d/init.d/owamp-server
+%attr(0755,root,root) %{_sysconfdir}/rc.d/init.d/owamp-server
 %endif
 
 %files -n twamp-server
-%defattr(-,root,root,0755)
-%{_bindir}/twampd
+%defattr(0644,root,root,0755)
+%license LICENSE
+%attr(0755,root,root) %{_bindir}/twampd
 %{_mandir}/man5/twamp*
 %{_mandir}/man8/twamp*
 %config(noreplace) %{_sysconfdir}/twamp-server/*
@@ -267,7 +271,8 @@ fi
 %endif
 
 #%files devel
-#%defattr(-,root,root,0755)
+#%defattr(0644,root,root,0755)
+#%license LICENSE
 #%{_libdir}/libbwlib.a
 #%{_includedir}/owamp/*
 
