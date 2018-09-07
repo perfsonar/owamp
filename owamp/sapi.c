@@ -804,8 +804,10 @@ OWPProcessTestRequestTW(
     if((rc = _OWPReadTestRequest(cntrl,intr,&tsession,&acceptval)) !=
             OWPErrOK){
         if(acceptval < 0)
-            return OWPErrFATAL;
-        return OWPErrWARNING;
+            err_ret = OWPErrFATAL;
+        else
+            err_ret = OWPErrWARNING;
+        goto error;
     }
 
     assert(tsession);
