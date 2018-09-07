@@ -858,6 +858,13 @@ OWPProcessTestRequestTW(
         goto error;
     }
     port = I2AddrPort(tsession->receiver);
+    if(!port){
+        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                "Failed to determine test port for session");
+        err_ret = OWPErrWARNING;
+        acceptval = OWP_CNTRL_FAILURE;
+        goto error;
+    }
 
     if( (rc = _OWPWriteAcceptSession(cntrl,intr,OWP_CNTRL_ACCEPT,
                     port,tsession->sid)) < OWPErrOK){
