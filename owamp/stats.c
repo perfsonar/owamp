@@ -701,36 +701,36 @@ OWPStatsCreate(
      */
     if( (getnameinfo((struct sockaddr*)&hdr->addr_sender,
                 hdr->addr_len,
-                stats->fromhost,NI_MAXHOST,
+                stats->fromaddr,NI_MAXHOST,
                 stats->fromserv,NI_MAXSERV,
-                NI_NUMERICSERV) != 0)){
-        strcpy(stats->fromhost,"***");
+                NI_NUMERICSERV | NI_NUMERICHOST) != 0)){
+        strcpy(stats->fromaddr,"***");
         stats->fromserv[0] = '\0';
+    }
+    if( (getnameinfo((struct sockaddr*)&hdr->addr_sender,
+                hdr->addr_len,stats->fromhost,NI_MAXHOST,
+                NULL,0,0) != 0)){
+        strcpy(stats->fromhost,"***");
     }
     if(fromhost){
         strncpy(stats->fromhost,fromhost,NI_MAXHOST-1);
     }
-    if( (getnameinfo((struct sockaddr*)&hdr->addr_sender,
-                hdr->addr_len,stats->fromaddr,NI_MAXHOST,
-                NULL,0,NI_NUMERICHOST) != 0)){
-        strcpy(stats->fromaddr,"***");
-    }
 
     if( (getnameinfo((struct sockaddr*)&hdr->addr_receiver,
                 hdr->addr_len,
-                stats->tohost,NI_MAXHOST,
+                stats->toaddr,NI_MAXHOST,
                 stats->toserv,NI_MAXSERV,
-                NI_NUMERICSERV) != 0)){
-        strcpy(stats->tohost,"***");
+                NI_NUMERICSERV | NI_NUMERICHOST) != 0)){
+        strcpy(stats->toaddr,"***");
         stats->toserv[0] = '\0';
+    }
+    if( (getnameinfo((struct sockaddr*)&hdr->addr_receiver,
+                hdr->addr_len,stats->tohost,NI_MAXHOST,
+                NULL,0,0) != 0)){
+        strcpy(stats->tohost,"***");
     }
     if(tohost){
         strncpy(stats->tohost,tohost,NI_MAXHOST-1);
-    }
-    if( (getnameinfo((struct sockaddr*)&hdr->addr_receiver,
-                hdr->addr_len,stats->toaddr,NI_MAXHOST,
-                NULL,0,NI_NUMERICHOST) != 0)){
-        strcpy(stats->toaddr,"***");
     }
 
     /*
