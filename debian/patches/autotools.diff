@@ -1,8 +1,8 @@
 Cleanup configure errors.
 Index: owamp/configure.ac
 ===================================================================
---- owamp.orig/configure.ac	2018-10-13 21:56:39.857245478 +0000
-+++ owamp/configure.ac	2018-10-13 21:58:52.463149857 +0000
+--- owamp.orig/configure.ac	2018-10-13 22:08:04.051038697 +0000
++++ owamp/configure.ac	2018-10-13 22:09:11.032132745 +0000
 @@ -102,7 +102,6 @@
  AC_SUBST(OWPLIBDEPS)
  
@@ -30,7 +30,7 @@ Index: owamp/configure.ac
 Index: owamp/COPYING
 ===================================================================
 --- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ owamp/COPYING	2018-10-13 21:58:52.464713654 +0000
++++ owamp/COPYING	2018-10-13 22:09:11.034103895 +0000
 @@ -0,0 +1,175 @@
 +
 +                                 Apache License
@@ -210,19 +210,19 @@ Index: owamp/COPYING
 Index: owamp/AUTHORS
 ===================================================================
 --- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ owamp/AUTHORS	2018-10-13 21:58:52.465188959 +0000
++++ owamp/AUTHORS	2018-10-13 22:09:11.034811451 +0000
 @@ -0,0 +1 @@
 +Aaron Brown (aaron@internet2.edu)
 Index: owamp/NEWS
 ===================================================================
 --- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ owamp/NEWS	2018-10-13 21:58:52.465618756 +0000
++++ owamp/NEWS	2018-10-13 22:09:11.035417085 +0000
 @@ -0,0 +1 @@
 +Placeholder
 Index: owamp/owping/Makefile.am
 ===================================================================
---- owamp.orig/owping/Makefile.am	2018-06-06 16:23:06.728963096 +0000
-+++ owamp/owping/Makefile.am	2018-10-13 21:58:52.467055136 +0000
+--- owamp.orig/owping/Makefile.am	2018-10-13 21:58:53.632884000 +0000
++++ owamp/owping/Makefile.am	2018-10-13 22:09:11.036394984 +0000
 @@ -23,7 +23,7 @@
  
  bin_PROGRAMS	= owping twping
@@ -234,8 +234,8 @@ Index: owamp/owping/Makefile.am
  RM = rm -f
 Index: owamp/powstream/Makefile.am
 ===================================================================
---- owamp.orig/powstream/Makefile.am	2016-11-15 14:29:17.000000000 +0000
-+++ owamp/powstream/Makefile.am	2018-10-13 21:58:52.468169479 +0000
+--- owamp.orig/powstream/Makefile.am	2018-10-13 21:58:53.632884000 +0000
++++ owamp/powstream/Makefile.am	2018-10-13 22:09:11.038508157 +0000
 @@ -24,5 +24,5 @@
  bin_PROGRAMS	= powstream
  
