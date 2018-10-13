@@ -119,17 +119,31 @@ void free_test_case_defs(struct _test_case **test_case_defs) {
  * returns non-zero in case of error
  */
 int openssl_api_test(struct _test_case *tc) {
-    HMAC_CTX ctx;
-    HMAC_CTX_init(&ctx);
+    HMAC_CTX *ctx;
 
-    HMAC_Init_ex(&ctx, tc->key, tc->key_len, EVP_sha1(), NULL);
-    HMAC_Update(&ctx, tc->data, tc->data_len);
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+    ctx = HMAC_CTX_new();
+#else
+    HMAC_CTX _ctx;
+    HMAC_CTX_init(&_ctx);
+    ctx = &_ctx;
+#endif
+
+    if (! ctx)
+        return -1;
+
+    HMAC_Init_ex(ctx, tc->key, tc->key_len, EVP_sha1(), NULL);
+    HMAC_Update(ctx, tc->data, tc->data_len);
 
     uint8_t digest[20];
     unsigned int digest_len = sizeof digest;
-    HMAC_Final(&ctx, digest, &digest_len);
+    HMAC_Final(ctx, digest, &digest_len);
 
-    HMAC_CTX_cleanup(&ctx);
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+    HMAC_CTX_free(ctx);
+#else
+    HMAC_CTX_cleanup(ctx);
+#endif
 
     return memcmp(tc->digest, digest, 20);
 }

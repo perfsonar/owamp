@@ -255,10 +255,25 @@ int do_control_setup_server(int s, void *context) {
 
     struct _schedule_slot_description *slots = NULL;
 
-    HMAC_CTX send_hmac_ctx;
-    HMAC_CTX receive_hmac_ctx;
-    HMAC_CTX_init(&send_hmac_ctx);
-    HMAC_CTX_init(&receive_hmac_ctx);
+    HMAC_CTX *send_hmac_ctx;
+    HMAC_CTX *receive_hmac_ctx;
+
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+    send_hmac_ctx = HMAC_CTX_new();
+    receive_hmac_ctx = HMAC_CTX_new();
+#else
+    HMAC_CTX _send_hmac_ctx, _receive_hmac_ctx;
+
+    HMAC_CTX_init(&_send_hmac_ctx);
+    HMAC_CTX_init(&_receive_hmac_ctx);
+    send_hmac_ctx = &_send_hmac_ctx;
+    receive_hmac_ctx = &_receive_hmac_ctx;
+#endif
+
+    if (! send_hmac_ctx || ! receive_hmac_ctx) {
+        perror("error creating HMAC CTX");
+        goto cleanup;
+    }
 
     uint8_t expected_hmac[20];
     unsigned int hmac_len = sizeof expected_hmac;
@@ -340,10 +355,10 @@ int do_control_setup_server(int s, void *context) {
     memcpy(enc_session_iv, SERVER_TEST_IV, sizeof enc_session_iv);
     memcpy(dec_session_iv, setup_response.Client_IV, sizeof dec_session_iv);
 
-    HMAC_Init_ex(&send_hmac_ctx,
+    HMAC_Init_ex(send_hmac_ctx,
             clear_session_token.hmac_session_key, sizeof clear_session_token.hmac_session_key,
             EVP_sha1(), NULL);
-    HMAC_Init_ex(&receive_hmac_ctx,
+    HMAC_Init_ex(receive_hmac_ctx,
             clear_session_token.hmac_session_key, sizeof clear_session_token.hmac_session_key,
             EVP_sha1(), NULL);
 
@@ -353,7 +368,7 @@ int do_control_setup_server(int s, void *context) {
     server_start.StartTime = htonll(time(NULL));
     memcpy(server_start.Server_IV, SERVER_TEST_IV, sizeof server_start.Server_IV);
 
-    HMAC_Update(&send_hmac_ctx, (unsigned char *) &server_start.StartTime, 16);
+    HMAC_Update(send_hmac_ctx, (unsigned char *) &server_start.StartTime, 16);
     if (mode & OWP_MODE_ENCRYPTED) {
         encrypt_outgoing(&server_start.StartTime, &server_start.StartTime, 16,
                 clear_session_token.aes_session_key, enc_session_iv);
@@ -377,11 +392,11 @@ int do_control_setup_server(int s, void *context) {
                 clear_session_token.aes_session_key, dec_session_iv);
     }
 
-    HMAC_Update(&receive_hmac_ctx, (unsigned char *) &request_session, (sizeof request_session) - 16);
+    HMAC_Update(receive_hmac_ctx, (unsigned char *) &request_session, (sizeof request_session) - 16);
     hmac_len = sizeof expected_hmac;
-    HMAC_Final(&receive_hmac_ctx, expected_hmac, &hmac_len);
+    HMAC_Final(receive_hmac_ctx, expected_hmac, &hmac_len);
     assert(hmac_len == 20);
-    HMAC_Init_ex(&receive_hmac_ctx, NULL, 0, NULL, NULL);
+    HMAC_Init_ex(receive_hmac_ctx, NULL, 0, NULL, NULL);
 
     if (mode & (OWP_MODE_ENCRYPTED|OWP_MODE_AUTHENTICATED)) {
         if (memcmp(expected_hmac, request_session.HMAC, 16)) {
@@ -418,11 +433,11 @@ int do_control_setup_server(int s, void *context) {
                     clear_session_token.aes_session_key, dec_session_iv);
         }
 
-        HMAC_Update(&receive_hmac_ctx, (unsigned char *) slots, slots_num_bytes);
+        HMAC_Update(receive_hmac_ctx, (unsigned char *) slots, slots_num_bytes);
         hmac_len = sizeof expected_hmac;
-        HMAC_Final(&receive_hmac_ctx, expected_hmac, &hmac_len);
+        HMAC_Final(receive_hmac_ctx, expected_hmac, &hmac_len);
         assert(hmac_len == 20);
-        HMAC_Init_ex(&receive_hmac_ctx, NULL, 0, NULL, NULL);
+        HMAC_Init_ex(receive_hmac_ctx, NULL, 0, NULL, NULL);
 
         struct _hmac hmac;
         if (recv(s, &hmac, sizeof hmac, MSG_WAITALL) != sizeof hmac) {
@@ -449,12 +464,12 @@ int do_control_setup_server(int s, void *context) {
     memcpy(&accept_session.SID, test_context->input.sid, sizeof accept_session.SID);
     accept_session.Port = htons(SESSION_PORT);
 
-    HMAC_Update(&send_hmac_ctx, (unsigned char *) &accept_session, (sizeof accept_session) - 16);
+    HMAC_Update(send_hmac_ctx, (unsigned char *) &accept_session, (sizeof accept_session) - 16);
     hmac_len = sizeof expected_hmac;
-    HMAC_Final(&send_hmac_ctx, expected_hmac, &hmac_len);
+    HMAC_Final(send_hmac_ctx, expected_hmac, &hmac_len);
     assert(hmac_len == 20);
     memcpy(accept_session.HMAC, expected_hmac, sizeof accept_session.HMAC);
-    HMAC_Init_ex(&send_hmac_ctx, NULL, 0, NULL, NULL); // reset in case we continue
+    HMAC_Init_ex(send_hmac_ctx, NULL, 0, NULL, NULL); // reset in case we continue
     if (mode & OWP_MODE_ENCRYPTED) {
         encrypt_outgoing(&accept_session, &accept_session, sizeof accept_session,
                 clear_session_token.aes_session_key, enc_session_iv);
@@ -475,8 +490,13 @@ cleanup:
         free(slots);
     }
 
-    HMAC_CTX_cleanup(&send_hmac_ctx);
-    HMAC_CTX_cleanup(&receive_hmac_ctx);
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+    HMAC_CTX_free(send_hmac_ctx);
+    HMAC_CTX_free(receive_hmac_ctx);
+#else
+    HMAC_CTX_cleanup(send_hmac_ctx);
+    HMAC_CTX_cleanup(receive_hmac_ctx);
+#endif
 
     return 0;
 }
