@@ -1997,7 +1997,13 @@ main(
         if(owp_intr > 1) exit(2);
 
         if(fromfp && (!ping_ctx.opt.quiet || ping_ctx.opt.raw)){
-            if( do_stats(ctx,fromfp,remote,local,&tspec)){
+            if( do_stats(ctx,fromfp,
+#ifdef TWAMP
+                         local,remote,
+#else
+                         remote,local,
+#endif
+                         &tspec)){
                 I2ErrLog(eh, "do_stats(\"from\" session)");
             }
         }
