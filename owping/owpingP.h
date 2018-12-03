@@ -81,6 +81,7 @@ typedef    struct {
         char            *savedir;           /* -d */
         I2Boolean       printfiles;         /* -p */
         char            *srcaddr;           /* -S */
+        char            *interface;         /* -B */
 
         OWPPortRange    portspec;           /* -P */
 
