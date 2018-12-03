@@ -91,6 +91,15 @@ the IP addresses. (IPv6 addresses are of course supported.)
 Unspecified (wild-card address selection).
 .RE
 .TP
+\fB\-B\fR \fIinterface\fR
+.br
+Bind the client sockets to the network interface \fIinterface\fR with
+SO_BINDTODEVICE.
+.RS
+.IP Default:
+Unspecified (sockets not bound to a particular interface).
+.RE
+.TP
 \fB\-u\fR \fIusername\fR
 .br
 Specify the username that identifies the shared secret (pass-phrase)
