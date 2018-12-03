@@ -249,6 +249,7 @@ struct OWPControlRec{
      */
     I2Addr                  remote_addr;
     I2Addr                  local_addr;
+    char                    *interface;
     int                     sockfd;
 
     /*
@@ -1022,5 +1023,12 @@ extern OWPBoolean
 _OWPIsInterface(
         const char *interface
         );
+
+extern OWPBoolean
+OWPSocketInterfaceBind(
+    OWPControl      cntrl,
+    int             fd,
+    const char      *interface
+);
 
 #endif        /* OWAMPP_H */
