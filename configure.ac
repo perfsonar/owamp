@@ -94,6 +94,9 @@ OWPINCS='-I${top_srcdir}'
 
 OWP_dir='${top_srcdir}/owamp'
 OWPLDFLAGS="-L$OWP_dir"
+
+AC_CHECK_LIB([cap], [cap_set_proc])
+
 OWPLIBS="$OWPLDFLAGS -lowamp"
 OWPLIBDEPS="$OWP_dir/libowamp.a"
 
