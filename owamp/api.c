@@ -3749,3 +3749,36 @@ OWPControlIsTwoWay(
 {
     return cntrl->twoway;
 }
+
+/*
+ * Function:        OWPSocketInterfaceBind
+ *
+ * Description:
+ *         Bind the specified socket to the specified interface using
+ *         SO_BINDTODEVICE.
+ *
+ * In Args:
+ *
+ * Out Args:
+ *
+ * Scope:
+ * Returns:
+ * Side Effect:
+ */
+OWPBoolean
+OWPSocketInterfaceBind(
+    OWPControl      cntrl,
+    int             fd,
+    const char      *interface
+    )
+{
+    assert(interface);
+
+    if(setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE,
+                  interface, strlen(interface))){
+        OWPError(cntrl->ctx, OWPErrFATAL, errno,
+                 "SO_BINDTODEVICE %s: %M", interface);
+        return False;
+    }
+    return True;
+}

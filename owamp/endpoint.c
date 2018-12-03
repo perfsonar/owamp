@@ -475,6 +475,10 @@ _OWPEndpointInit(
         goto error;
     }
 
+    if(cntrl->interface &&
+       !OWPSocketInterfaceBind(cntrl, ep->sockfd, cntrl->interface))
+        goto error;
+
     /*
      * Determine what port to try:
      */

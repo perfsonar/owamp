@@ -326,6 +326,8 @@ OWPControlClose(
     I2AddrFree(cntrl->remote_addr);
     I2AddrFree(cntrl->local_addr);
 
+    free(cntrl->interface);
+
     free(cntrl);
 
     return err;
