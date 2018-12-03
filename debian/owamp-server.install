@@ -6,3 +6,4 @@ usr/share/man/man8/owampd.8
 usr/bin/owampd usr/sbin
 conf/owampd.limits => etc/owamp-server/owamp-server.limits
 conf/owampd.rpm.conf => etc/owamp-server/owamp-server.conf
+debian/apparmor/usr.sbin.owampd etc/apparmor.d

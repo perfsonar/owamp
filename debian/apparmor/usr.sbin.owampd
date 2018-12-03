@@ -1,0 +1,24 @@
+# vim:syntax=apparmor
+
+#include <tunables/global>
+
+/usr/sbin/owampd {
+  #include <abstractions/base>
+  #include <abstractions/nameservice>
+  #include <abstractions/user-tmp>
+
+  capability setgid,
+  capability setuid,
+
+  /etc/owamp-server/** r,
+
+  /var/lib/owamp/** rwk,
+
+  / r,
+
+  /{,var/}run/owamp-server.pid rwk,
+  /{,var/}run/owamp-server.info rw,
+
+  # Site-specific additions and overrides. See local/README for details.
+  #include <local/usr.sbin.owampd>
+}

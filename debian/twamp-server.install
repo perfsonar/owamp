@@ -6,3 +6,4 @@ usr/share/man/man8/twampd.8
 usr/bin/twampd usr/sbin
 conf/twampd.limits => etc/twamp-server/twamp-server.limits
 conf/twampd.rpm.conf => etc/twamp-server/twamp-server.conf
+debian/apparmor/usr.sbin.twampd etc/apparmor.d

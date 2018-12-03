@@ -17,7 +17,7 @@
 export DH_OPTIONS
 
 %:
-	dh $@ --with autoreconf,systemd
+	dh $@ --with apparmor,autoreconf,systemd
 
 override_dh_auto_configure:
 	dh_auto_configure -- \
@@ -26,3 +26,7 @@ override_dh_auto_configure:
 ifeq ($(filter $(DEB_HOST_ARCH), amd64),)
 override_dh_auto_test:
 endif
+
+override_dh_apparmor:
+	dh_apparmor --profile-name=usr.sbin.owampd -p owamp-server
+	dh_apparmor --profile-name=usr.sbin.twampd -p twamp-server
