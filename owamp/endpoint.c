@@ -3454,6 +3454,32 @@ RECEIVE:
             tvalclear(&wake.it_interval);
             wake.it_value.tv_sec = timeout.tv_sec;
             wake.it_value.tv_usec = timeout.tv_nsec / 1000;
+
+            /* How long do we have till the next send? */
+            if(i < ep->tsession->test_spec.npackets - 1){
+                node = get_node(ep, i+1);
+                OWPNum64ToTimespec(&nexttime,node->relative);
+                timespecadd(&nexttime,&ep->start);
+
+                /* Next send is already late? */
+                if(timespeccmp(&nexttime,&currtime,<)){
+                    goto SKIP_SEND;
+                }
+
+                /* Next send real soon now? */
+                sleeptime = nexttime;
+                timespecsub(&sleeptime,&currtime);
+                if(sleeptime.tv_sec == 0 && sleeptime.tv_nsec < 1000000){
+                    goto SKIP_SEND;
+                }
+
+                /* Set timer till next send (but not longer than timeout) */
+                if(timespeccmp(&sleeptime,&timeout,<)){
+                    wake.it_value.tv_sec = sleeptime.tv_sec;
+                    wake.it_value.tv_usec = sleeptime.tv_nsec / 1000;
+                }
+            }
+
             if(setitimer(ITIMER_REAL,&wake,NULL) != 0){
                 OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
                          "setitimer(wake=%d,%d) seq=%u: %M",
@@ -3671,13 +3697,9 @@ RECEIVE:
             node->hit = True;
 
             /*
-             * If we just received the last packet of the session
-             * then go back to receive so that any duplicates can
-             * be received
+             * Try receive again, maybe there is still time till next send
              */
-            if(i == ep->tsession->test_spec.npackets-1){
-                goto RECEIVE;
-            }
+            goto RECEIVE;
 
 SKIP_SEND:
             i++;
