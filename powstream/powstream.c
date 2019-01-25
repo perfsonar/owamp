@@ -111,7 +111,7 @@ print_conn_args(){
 "   -A authmode    requested modes: [A]uthenticated, [E]ncrypted, [O]pen\n"
 "   -k pffile      pass-phrase file to use with Authenticated/Encrypted modes\n"
 "   -S srcaddr     specify the local address or interface for control connection and tests\n"
-"   -B interface   specify the interface to use for control connection and tests",
+"   -B interface   specify the interface to use for control connection and tests\n"
 "   -u username    username to use with Authenticated/Encrypted modes\n"
 "   -I retryDelay  time to wait between failed connections (default: 60 seconds)\n"
         );
