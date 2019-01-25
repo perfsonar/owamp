@@ -8,9 +8,9 @@ URL: http://e2epi.internet2.edu/owamp/
 Source: %{name}-%{version}.tar.gz
 Packager: Aaron Brown <aaron@internet2.edu>
 %if 0%{?el7}
-BuildRequires: libtool, I2util, openssl-devel, systemd, selinux-policy-devel
+BuildRequires: libtool, I2util, libcap-devel, openssl-devel, systemd, selinux-policy-devel
 %else
-BuildRequires: libtool, I2util, openssl-devel
+BuildRequires: libtool, I2util, libcap-devel, openssl-devel
 %endif
 Requires: owamp-client, owamp-server, I2util
 BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-buildroot
@@ -124,6 +124,10 @@ make check
 %clean
 rm -rf $RPM_BUILD_ROOT 
 
+%post -n owamp-client
+setcap "cap_net_raw+p" %{_bindir}/owping
+setcap "cap_net_raw+p" %{_bindir}/powstream
+
 %post -n owamp-server
 %if 0%{?el7}
 semodule -n -i %{_datadir}/selinux/packages/owamp-server.pp
@@ -210,6 +214,9 @@ fi
 if [ "$1" = "0" ]; then
 	/usr/sbin/userdel owamp || :
 fi
+
+%post -n twamp-client
+setcap "cap_net_raw+p" %{_bindir}/twping
 
 %post -n twamp-server
 %if 0%{?el7}
