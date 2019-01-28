@@ -39,6 +39,7 @@
 #include <assert.h>
 #include <syslog.h>
 #include <math.h>
+#include <net/if.h>
 
 
 #if defined HAVE_DECL_OPTRESET && !HAVE_DECL_OPTRESET
@@ -110,6 +111,7 @@ print_conn_args(){
 "   -A authmode    requested modes: [A]uthenticated, [E]ncrypted, [O]pen\n"
 "   -k pffile      pass-phrase file to use with Authenticated/Encrypted modes\n"
 "   -S srcaddr     specify the local address or interface for control connection and tests\n"
+"   -B interface   specify the interface to use for control connection and tests\n"
 "   -u username    username to use with Authenticated/Encrypted modes\n"
 "   -I retryDelay  time to wait between failed connections (default: 60 seconds)\n"
         );
@@ -385,8 +387,9 @@ FetchSession(
     uint32_t       num_rec;
 
     if (p->fetch == NULL) {
-        p->fetch = OWPControlOpen(p->ctx,
+        p->fetch = OWPControlOpenInterface(p->ctx,
                         appctx.opt.srcaddr,
+                        appctx.opt.interface,
                         I2AddrByNode(eh, appctx.remote_serv),
                         appctx.auth_mode,appctx.opt.identity,
                         NULL,&err);
@@ -1043,8 +1046,9 @@ SetupSession(
     }
 
 
-    if(!(p->cntrl = OWPControlOpen(ctx,
+    if(!(p->cntrl = OWPControlOpenInterface(ctx,
                     appctx.opt.srcaddr,
+                    appctx.opt.interface,
                     I2AddrByNode(eh, appctx.remote_serv),
                     appctx.auth_mode,appctx.opt.identity,
                     NULL,&err))){
@@ -1263,7 +1267,7 @@ main(
     int                 ch;
     char                *endptr = NULL;
     char                optstring[128];
-    static char         *conn_opts = "46A:k:S:u:I:";
+    static char         *conn_opts = "46A:k:S:B:u:I:";
     static char         *test_opts = "c:E:i:L:s:tz:P:";
     static char         *out_opts = "b:d:e:g:N:pRvU";
     static char         *gen_opts = "hw";
@@ -1443,6 +1447,16 @@ main(
                 break;
             case 'S':
                 if (!(appctx.opt.srcaddr = strdup(optarg))) {
+                    I2ErrLog(eh,"malloc: %M");
+                    exit(1);
+                }
+                break;
+            case 'B':
+                if(appctx.opt.interface){
+                    usage(progname,"-B can only be used once");
+                    exit(1);
+                }
+                if(!(appctx.opt.interface = strndup(optarg, IFNAMSIZ))){
                     I2ErrLog(eh,"malloc: %M");
                     exit(1);
                 }

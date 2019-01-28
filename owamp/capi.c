@@ -170,6 +170,7 @@ TryAddr(
         OWPControl      cntrl,
         struct addrinfo *ai,
         const char      *local_addr,
+        const char      *interface,
         I2Addr          server_addr
        )
 {
@@ -179,6 +180,14 @@ TryAddr(
     fd = socket(ai->ai_family,ai->ai_socktype,ai->ai_protocol);
     if(fd < 0)
         return 1;
+
+    if(interface){
+        if(!OWPSocketInterfaceBind(cntrl,fd,interface))
+            goto cleanup;
+
+        if(!(cntrl->interface = strdup(interface)))
+            goto cleanup;
+    }
 
     if(local_addr){
         if(!_OWPClientBind(cntrl,fd,local_addr,ai,&addr_ok)){
@@ -250,6 +259,7 @@ static int
 _OWPClientConnect(
         OWPControl      cntrl,
         const char      *local_addr,
+        const char      *interface,
         I2Addr          server_addr,
         OWPErrSeverity  *err_ret
         )
@@ -302,7 +312,7 @@ _OWPClientConnect(
 
             if(ai->ai_family != AF_INET6) continue;
 
-            if( (rc = TryAddr(cntrl,ai,local_addr,server_addr)) == 0)
+            if( (rc = TryAddr(cntrl,ai,local_addr,interface,server_addr)) == 0)
                 return 0;
             if(rc < 0)
                 goto error;
@@ -317,7 +327,7 @@ _OWPClientConnect(
 
             if(ai->ai_family != AF_INET) continue;
 
-            if( (rc = TryAddr(cntrl,ai,local_addr,server_addr)) == 0)
+            if( (rc = TryAddr(cntrl,ai,local_addr,interface,server_addr)) == 0)
                 return 0;
             if(rc < 0)
                 goto error;
@@ -372,13 +382,14 @@ error:
  */
 static OWPControl
 OWPControlOpenCommon(
-        OWPContext      ctx,            /* control context      */
-        const char      *local_addr,    /* local addr or null   */
-        I2Addr          server_addr,    /* server addr          */
-        uint32_t        mode_req_mask,  /* requested modes      */
-        OWPUserID       userid,         /* userid or NULL       */
-        OWPNum64        *uptime_ret,    /* server uptime - ret  */
-        OWPErrSeverity  *err_ret,       /* err - return         */
+        OWPContext      ctx,            /* control context                */
+        const char      *local_addr,    /* local addr or null             */
+        const char      *interface,     /* interface to bind to or null   */
+        I2Addr          server_addr,    /* server addr                    */
+        uint32_t        mode_req_mask,  /* requested modes                */
+        OWPUserID       userid,         /* userid or NULL                 */
+        OWPNum64        *uptime_ret,    /* server uptime - ret            */
+        OWPErrSeverity  *err_ret,       /* err - return                   */
         OWPBoolean      twoway          /* is this for a two-way session? */
         )
 {
@@ -425,7 +436,7 @@ OWPControlOpenCommon(
      * Connect to the server.
      * Address policy check happens in here.
      */
-    if(_OWPClientConnect(cntrl,local_addr,server_addr,err_ret) != 0)
+    if(_OWPClientConnect(cntrl,local_addr,interface,server_addr,err_ret) != 0)
         goto error;
 
     if(!cntrl->local_addr){
@@ -674,8 +685,35 @@ OWPControlOpen(
         OWPErrSeverity  *err_ret        /* err - return         */
         )
 {
-    return OWPControlOpenCommon(ctx,local_addr,server_addr,mode_req_mask,
+    return OWPControlOpenCommon(ctx,local_addr,NULL,server_addr,mode_req_mask,
                                 userid,uptime_ret,err_ret,False);
+}
+
+/*
+ * Function:       OWPControlOpenInterface
+ *
+ * Description:
+ *                 Behaves identically to OWPControlOpen but binds to the
+ *                 specified interface.
+ *
+ * Returns:
+ *                 A valid OWPControl pointer or NULL.
+ * Side Effect:
+ */
+OWPControl
+OWPControlOpenInterface(
+        OWPContext      ctx,            /* control context                */
+        const char      *local_addr,    /* local addr or null             */
+        const char      *interface,     /* interface to bind to or null   */
+        I2Addr          server_addr,    /* server addr                    */
+        uint32_t        mode_req_mask,  /* requested modes                */
+        OWPUserID       userid,         /* userid or NULL                 */
+        OWPNum64        *uptime_ret,    /* server uptime - ret            */
+        OWPErrSeverity  *err_ret        /* err - return                   */
+        )
+{
+    return OWPControlOpenCommon(ctx,local_addr,interface,server_addr,
+                                mode_req_mask,userid,uptime_ret,err_ret,False);
 }
 
 /*
@@ -703,8 +741,35 @@ TWPControlOpen(
         OWPErrSeverity  *err_ret        /* err - return         */
         )
 {
-    return OWPControlOpenCommon(ctx,local_addr,server_addr,mode_req_mask,
+    return OWPControlOpenCommon(ctx,local_addr,NULL,server_addr,mode_req_mask,
                                 userid,uptime_ret,err_ret,True);
+}
+
+/*
+ * Function:       TWPControlOpenInterface
+ *
+ * Description:
+ *                 Behaves identically to TWPControlOpen but binds to the
+ *                 specified interface.
+ *
+ * Returns:
+ *                 A valid OWPControl pointer or NULL.
+ * Side Effect:
+ */
+OWPControl
+TWPControlOpenInterface(
+        OWPContext      ctx,            /* control context      */
+        const char      *local_addr,    /* local addr or null   */
+        const char      *interface,     /* interface to bind to or null */
+        I2Addr          server_addr,    /* server addr          */
+        uint32_t        mode_req_mask,  /* requested modes      */
+        OWPUserID       userid,         /* userid or NULL       */
+        OWPNum64        *uptime_ret,    /* server uptime - ret  */
+        OWPErrSeverity  *err_ret        /* err - return         */
+        )
+{
+    return OWPControlOpenCommon(ctx,local_addr,interface,server_addr,
+                                mode_req_mask,userid,uptime_ret,err_ret,True);
 }
 
 /*
