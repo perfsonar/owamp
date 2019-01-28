@@ -66,6 +66,7 @@ typedef        struct {
         OWPBoolean  v6only;             /* -6 */
 
         char        *srcaddr;           /* -S */
+        char        *interface;         /* -B */
         char        *authmode;          /* -A */
         char        *identity;          /* -u */
         char        *pffile;            /* -k */

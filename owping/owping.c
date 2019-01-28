@@ -37,6 +37,7 @@
 #include <assert.h>
 #include <time.h>
 #include <signal.h>
+#include <net/if.h>
 
 #include "./owpingP.h"
 
@@ -54,10 +55,10 @@ static char         dirpath[PATH_MAX];
 static uint32_t     file_oset,tstamp_oset,ext_oset;
 
 #ifdef TWAMP
-#define NWPControlOpen TWPControlOpen
+#define NWPControlOpen TWPControlOpenInterface
 #define NWP_DEFAULT_OFFERED_MODE TWP_DEFAULT_OFFERED_MODE
 #else
-#define NWPControlOpen OWPControlOpen
+#define NWPControlOpen OWPControlOpenInterface
 #define NWP_DEFAULT_OFFERED_MODE OWP_DEFAULT_OFFERED_MODE
 #endif
 
@@ -68,7 +69,7 @@ print_conn_args(
         void
         )
 {
-    fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n",
+    fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n",
             "              [Connection Args]",
 #ifdef TWAMP
             "   -A authmode    requested modes: [A]uthenticated, [E]ncrypted, [M]ixed, [O]pen",
@@ -78,6 +79,7 @@ print_conn_args(
             "   -k passphrasefile     passphrasefile to use with Authenticated/Encrypted modes",
 #endif
             "   -S srcaddr     specify the local address or interface for control connection and tests",
+            "   -B interface   specify the interface to use for control connection and tests",
 #ifdef TWAMP
             "   -u username    username to use with Authenticated/Encrypted/Mixed modes",
 #else
@@ -1207,7 +1209,7 @@ main(
     int                 ch;
     char                *endptr = NULL;
     char                optstring[128];
-    static char         *conn_opts = "64A:k:S:u:";
+    static char         *conn_opts = "64A:k:S:u:B:";
     static char         *test_opts = "c:D:E:F:i:L:P:s:z:";
     static char         *out_opts = "a:b:d:Mn:N:pQRv::U";
     static char         *gen_opts = "h";
@@ -1264,9 +1266,10 @@ main(
     ping_ctx.opt.records = ping_ctx.opt.from = ping_ctx.opt.to =
     ping_ctx.opt.quiet = ping_ctx.opt.raw = ping_ctx.opt.machine = False;
     ping_ctx.opt.childwait = NULL;
-    ping_ctx.opt.save_from_test = ping_ctx.opt.save_to_test 
-        = ping_ctx.opt.identity = ping_ctx.opt.pffile 
-        = ping_ctx.opt.srcaddr = ping_ctx.opt.authmode = NULL;
+    ping_ctx.opt.save_from_test = ping_ctx.opt.save_to_test
+        = ping_ctx.opt.identity = ping_ctx.opt.pffile
+        = ping_ctx.opt.srcaddr = ping_ctx.opt.authmode
+        = ping_ctx.opt.interface = NULL;
     ping_ctx.opt.numPackets = 100;
     ping_ctx.opt.lossThreshold = 0.0;
     ping_ctx.opt.delayStart = 0.0;
@@ -1332,6 +1335,16 @@ main(
                 break;
             case 'S':
                 if(!(ping_ctx.opt.srcaddr = strdup(optarg))){
+                    I2ErrLog(eh,"malloc: %M");
+                    exit(1);
+                }
+                break;
+            case 'B':
+                if(ping_ctx.opt.interface){
+                    usage(progname,"-B can only be used once");
+                    exit(1);
+                }
+                if(!(ping_ctx.opt.interface = strndup(optarg, IFNAMSIZ))){
                     I2ErrLog(eh,"malloc: %M");
                     exit(1);
                 }
@@ -1721,6 +1734,7 @@ main(
 
         ping_ctx.cntrl = NWPControlOpen(ctx,
                 ping_ctx.opt.srcaddr,
+                ping_ctx.opt.interface,
                 I2AddrByNode(eh, ping_ctx.remote_serv),
                 ping_ctx.auth_mode,ping_ctx.opt.identity,
                 NULL,&err_ret);
@@ -2051,8 +2065,9 @@ main(
         /*
          * Open connection to owampd.
          */
-        ping_ctx.cntrl = OWPControlOpen(ctx, 
+        ping_ctx.cntrl = OWPControlOpenInterface(ctx,
                 ping_ctx.opt.srcaddr,
+                ping_ctx.opt.interface,
                 I2AddrByNode(eh, ping_ctx.remote_serv),
                 ping_ctx.auth_mode,ping_ctx.opt.identity,
                 NULL,&err_ret);
@@ -2105,8 +2120,9 @@ main(
         /*
          * Open connection to owampd.
          */
-        ping_ctx.cntrl = OWPControlOpen(ctx, 
+        ping_ctx.cntrl = OWPControlOpenInterface(ctx,
                 ping_ctx.opt.srcaddr,
+                ping_ctx.opt.interface,
                 I2AddrByNode(eh, ping_ctx.remote_serv),
                 ping_ctx.auth_mode,ping_ctx.opt.identity,
                 &tstamp.owptime,&err_ret);
