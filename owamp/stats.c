@@ -707,13 +707,14 @@ OWPStatsCreate(
         strcpy(stats->fromaddr,"***");
         stats->fromserv[0] = '\0';
     }
-    if( (getnameinfo((struct sockaddr*)&hdr->addr_sender,
+
+    if(fromhost){
+        strncpy(stats->fromhost,fromhost,NI_MAXHOST-1);
+    }
+    else if( (getnameinfo((struct sockaddr*)&hdr->addr_sender,
                 hdr->addr_len,stats->fromhost,NI_MAXHOST,
                 NULL,0,0) != 0)){
         strcpy(stats->fromhost,"***");
-    }
-    if(fromhost){
-        strncpy(stats->fromhost,fromhost,NI_MAXHOST-1);
     }
 
     if( (getnameinfo((struct sockaddr*)&hdr->addr_receiver,
@@ -724,13 +725,14 @@ OWPStatsCreate(
         strcpy(stats->toaddr,"***");
         stats->toserv[0] = '\0';
     }
-    if( (getnameinfo((struct sockaddr*)&hdr->addr_receiver,
+
+    if(tohost){
+        strncpy(stats->tohost,tohost,NI_MAXHOST-1);
+    }
+    else if( (getnameinfo((struct sockaddr*)&hdr->addr_receiver,
                 hdr->addr_len,stats->tohost,NI_MAXHOST,
                 NULL,0,0) != 0)){
         strcpy(stats->tohost,"***");
-    }
-    if(tohost){
-        strncpy(stats->tohost,tohost,NI_MAXHOST-1);
     }
 
     /*

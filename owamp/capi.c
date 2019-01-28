@@ -269,6 +269,8 @@ _OWPClientConnect(
     struct addrinfo *ai=NULL;
     char            *serv;
 #ifdef NOT
+    struct sockaddr *servaddr;
+    socklen_t       servaddrlen;
     char            nodename[NI_MAXHOST];
     size_t          nodename_len = sizeof(nodename);
     char            servname[NI_MAXSERV];
@@ -345,17 +347,18 @@ error:
      * Unable to connect! If we have a server name report it in
      * the error message.
      */
-    if(I2AddrNodeName(server_addr,nodename,&nodename_len)){
-        node = nodename;
-    }
-    else
+    serveraddr = I2AddrSAddr(server_addr, &serveraddrlen);
+    if(!serveraddr || getnameinfo(serveraddr, serveraddrlen,
+                        nodename, nodename_len,
+                        servname, servname_len,
+                        NI_NUMERICSERV | NI_NUMERICHOST) != 0){
         node = "**unknown**";
-
-    if(I2AddrServName(server_addr,servname,&servname_len)){
+        serv = OWP_CONTROL_SERVICE_NAME;
+    }
+    else{
+        node = nodename;
         serv = servname;
     }
-    else
-        serv = OWP_CONTROL_SERVICE_NAME;
 
     OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
             "Unable to connect to \"[%s]:%s\"",node,serv);
@@ -615,12 +618,20 @@ OWPControlOpenCommon(
      * TODO: enumerate reason for rejection
      */
     if(acceptval != OWP_CNTRL_ACCEPT){
-        char nodename_buf[255];
+        char nodename_buf[NI_MAXHOST];
         size_t nodename_buflen;
+        struct sockaddr *serveraddr;
+        socklen_t serveraddrlen;
 
         nodename_buflen = sizeof(nodename_buf);
+        serveraddr = I2AddrSAddr(server_addr, &serveraddrlen);
+        if(!serveraddr || getnameinfo(serveraddr, serveraddrlen, nodename_buf,
+                            nodename_buflen, NULL, 0, NI_NUMERICHOST) != 0){
+            sprintf(nodename_buf, "unknown");
+        }
+
         OWPError(cntrl->ctx,OWPErrWARNING,OWPErrPOLICY,
-                "Server denied access: %s", I2AddrNodeName(server_addr, nodename_buf, &nodename_buflen));
+                "Server denied access: %s", nodename_buf);
         goto denied;
     }
 
@@ -805,8 +816,10 @@ _OWPClientRequestTestReadResponse(
     OWPAcceptType   acceptval;
     uint16_t        port_ret=0;
     uint8_t         *sid_ret=NULL;
-    char            nodename_buf[255];
+    char            nodename_buf[NI_MAXHOST];
     size_t          nodename_buflen;
+    struct sockaddr *remoteaddr;
+    socklen_t       remoteaddrlen;
 
     /*
      * For two way tests if a receiver port number has not been set then
@@ -858,7 +871,13 @@ _OWPClientRequestTestReadResponse(
      * TODO: enumerate failure reasons
      */
     nodename_buflen = sizeof(nodename_buf);
-    OWPError(cntrl->ctx,OWPErrWARNING,OWPErrPOLICY, "Server denied test: %s", I2AddrNodeName(cntrl->remote_addr, nodename_buf, &nodename_buflen));
+    remoteaddr = I2AddrSAddr(cntrl->remote_addr, &remoteaddrlen);
+    if(!remoteaddr || getnameinfo(remoteaddr, remoteaddrlen, nodename_buf,
+                        nodename_buflen, NULL, 0, NI_NUMERICHOST) != 0){
+        sprintf(nodename_buf, "unknown");
+    }
+    OWPError(cntrl->ctx,OWPErrWARNING,OWPErrPOLICY, "Server denied test: %s",
+                nodename_buf);
 
     *err_ret = OWPErrOK;
     return 1;

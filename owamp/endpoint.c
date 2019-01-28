@@ -406,9 +406,16 @@ _OWPEndpointInit(
     *err_ret = OWPErrFATAL;
     *aval = OWP_CNTRL_UNAVAILABLE_TEMP;
 
-    if( !I2AddrNodeName(localaddr,localnode,&localnodelen)){
+    if( !(saddr = I2AddrSAddr(localaddr,&saddrlen))){
         OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                "I2AddrNodeName(): failed for localaddr");
+                "_EndpointInit: Unable to get saddr information");
+        return False;
+    }
+
+    if(getnameinfo(saddr, saddrlen, localnode, localnodelen, NULL, 0,
+            NI_NUMERICHOST) != 0){
+        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                "getnameinfo(): failed for localaddr");
         return False;
     }
 
@@ -420,12 +427,6 @@ _OWPEndpointInit(
 
     ep->tsession = tsession;
     ep->cntrl = cntrl;
-
-    if( !(saddr = I2AddrSAddr(localaddr,&saddrlen))){
-        OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                "_EndpointInit: Unable to get saddr information");
-        goto error;
-    }
 
     if (cntrl->twoway) {
         tpsize = OWPTestTWPacketSize(saddr->sa_family,
@@ -1303,8 +1304,9 @@ run_sender(
     int             r;
 
     if( !(saddr = I2AddrSAddr(ep->remoteaddr,&saddrlen)) ||
-                !I2AddrNodeName(ep->remoteaddr,nodename,&nodenamelen) ||
-                !I2AddrServName(ep->remoteaddr,nodeserv,&nodeservlen)){
+                (getnameinfo(saddr, saddrlen, nodename, nodenamelen,
+                        nodeserv, nodeservlen,
+                        NI_NUMERICHOST | NI_NUMERICHOST) != 0)){
             OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
                     "run_sender: Unable to extract saddr information");
             exit(OWP_CNTRL_FAILURE);
@@ -3141,8 +3143,9 @@ run_tw_test(
     }
 
     if( !(rsaddr = I2AddrSAddr(ep->remoteaddr,&rsaddrlen)) ||
-                !I2AddrNodeName(ep->remoteaddr,nodename,&nodenamelen) ||
-                !I2AddrServName(ep->remoteaddr,nodeserv,&nodeservlen)){
+                (getnameinfo(rsaddr, rsaddrlen, nodename, nodenamelen,
+                             nodeserv, nodeservlen,
+                             NI_NUMERICHOST | NI_NUMERICSERV) != 0)){
         OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
                  "run_tw_test: Unable to extract remote saddr information");
         exit(OWP_CNTRL_FAILURE);
