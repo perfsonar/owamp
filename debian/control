@@ -3,7 +3,7 @@ Section: net
 Priority: optional
 Maintainer: Valentin Vidic <Valentin.Vidic@CARNet.hr>
 Build-Depends: debhelper (>= 9), dh-apparmor, dh-autoreconf, dh-exec, dh-systemd, libi2util-dev (>= 1.4),
- libssl-dev
+ libcap-dev, libssl-dev
 Standards-Version: 3.9.8
 Homepage: http://software.internet2.edu/owamp/
 Vcs-Git: https://github.com/perfsonar/owamp
@@ -11,7 +11,7 @@ Vcs-Browser: https://github.com/perfsonar/owamp
 
 Package: owamp-client
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}
+Depends: ${shlibs:Depends}, ${misc:Depends}, libcap2-bin
 Description: OWAMP command line client utilities
  OWAMP is a client/server package that allows one to measure the
  latency between hosts. Unlike ping, which can only measure the
@@ -37,7 +37,7 @@ Description: OWAMP daemon
 
 Package: twamp-client
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}
+Depends: ${shlibs:Depends}, ${misc:Depends}, libcap2-bin
 Description: TWAMP command line client utilities
  TWAMP is a client/server package that allows one to measure the
  latency between hosts. Like ping, TWAMP enables you to measure the
