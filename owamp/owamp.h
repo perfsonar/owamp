@@ -919,6 +919,7 @@ OWPSessionRequest(
         OWPBoolean      server_conf_sender,
         I2Addr          receiver,
         OWPBoolean      server_conf_receiver,
+        OWPBoolean      zero_addr,
         OWPTestSpec     *test_spec,
         FILE            *fp,
         OWPSID          sid_ret,

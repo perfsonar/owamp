@@ -68,23 +68,24 @@ print_conn_args(
         void
         )
 {
-    fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n",
-            "              [Connection Args]",
+    fprintf(stderr,
+            "              [Connection Args]\n\n"
 #ifdef TWAMP
-            "   -A authmode    requested modes: [A]uthenticated, [E]ncrypted, [M]ixed, [O]pen",
-            "   -k passphrasefile     passphrasefile to use with Authenticated/Encrypted/Mixed modes",
+            "   -A authmode    requested modes: [A]uthenticated, [E]ncrypted, [M]ixed, [O]pen\n"
+            "   -k passphrasefile     passphrasefile to use with Authenticated/Encrypted/Mixed modes\n"
 #else
-            "   -A authmode    requested modes: [A]uthenticated, [E]ncrypted, [O]pen",
-            "   -k passphrasefile     passphrasefile to use with Authenticated/Encrypted modes",
+            "   -A authmode    requested modes: [A]uthenticated, [E]ncrypted, [O]pen\n"
+            "   -k passphrasefile     passphrasefile to use with Authenticated/Encrypted modes\n"
 #endif
-            "   -S srcaddr     specify the local address or interface for control connection and tests",
+            "   -S srcaddr     specify the local address or interface for control connection and tests\n"
 #ifdef TWAMP
-            "   -u username    username to use with Authenticated/Encrypted/Mixed modes",
+            "   -u username    username to use with Authenticated/Encrypted/Mixed modes\n"
+            "   -Z             send zero-addresses to make the server use the addresses from the TCP control connection also for the UDP test connection, which can fix issues caused by NAT\n"
 #else
-            "   -u username    username to use with Authenticated/Encrypted modes",
+            "   -u username    username to use with Authenticated/Encrypted modes\n"
 #endif
-            "   -4             connect using IPv4 addresses only",
-            "   -6             connect using IPv6 addresses only"
+            "   -4             connect using IPv4 addresses only\n"
+            "   -6             connect using IPv6 addresses only\n"
            );
 }
 
@@ -94,7 +95,7 @@ print_test_args(
         )
 {
     fprintf(stderr,
-            "              [Test Args]\n"
+            "              [Test Args]\n\n"
             "   -c count       number of test packets\n"
             "   -D DSCP        RFC 2474 style DSCP value for TOS byte\n"
 #ifdef TWAMP
@@ -1211,7 +1212,9 @@ main(
     static char         *test_opts = "c:D:E:F:i:L:P:s:z:";
     static char         *out_opts = "a:b:d:Mn:N:pQRv::U";
     static char         *gen_opts = "h";
-#ifndef TWAMP
+#ifdef TWAMP
+    static char         *tw_opts = "Z";
+#else
     static char         *ow_opts = "ftT:";
 #endif
 #ifndef    NDEBUG
@@ -1260,7 +1263,7 @@ main(
     ctx = ping_ctx.lib_ctx;
 
     /* Set default options. */
-    ping_ctx.opt.v4only = ping_ctx.opt.v6only =
+    ping_ctx.opt.v4only = ping_ctx.opt.v6only = ping_ctx.opt.zero_addr =
     ping_ctx.opt.records = ping_ctx.opt.from = ping_ctx.opt.to =
     ping_ctx.opt.quiet = ping_ctx.opt.raw = ping_ctx.opt.machine = False;
     ping_ctx.opt.childwait = NULL;
@@ -1304,7 +1307,9 @@ main(
 #ifndef    NDEBUG
     strcat(optstring,debug_opts);
 #endif
-#ifndef TWAMP
+#ifdef TWAMP
+    strcat(optstring, tw_opts);
+#else
     strcat(optstring, ow_opts);
 #endif
 
@@ -1341,6 +1346,9 @@ main(
                     I2ErrLog(eh,"malloc: %M");
                     exit(1);
                 }
+                break;
+            case 'Z':
+                ping_ctx.opt.zero_addr = True;
                 break;
 
                 /* Test options. */
@@ -1820,8 +1828,9 @@ main(
 
         if (!OWPSessionRequest(ping_ctx.cntrl, NULL, False,
                                I2AddrByNode(eh,ping_ctx.remote_test),
-                               True,(OWPTestSpec*)&tspec,
-                               fromfp,tosid,&err_ret))
+                               True, ping_ctx.opt.zero_addr,
+                               (OWPTestSpec*)&tspec,
+                               fromfp, tosid, &err_ret))
             FailSession(ping_ctx.cntrl);
 #else
         /*
@@ -1830,8 +1839,9 @@ main(
         if(ping_ctx.opt.to) {
             if (!OWPSessionRequest(ping_ctx.cntrl, NULL, False,
                         I2AddrByNode(eh,ping_ctx.remote_test),
-                        True,(OWPTestSpec*)&tspec,
-                        NULL,tosid,&err_ret))
+                        True, ping_ctx.opt.zero_addr,
+                        (OWPTestSpec*)&tspec,
+                        NULL, tosid, &err_ret))
                 FailSession(ping_ctx.cntrl);
         }
 
@@ -1854,8 +1864,9 @@ main(
 
             if (!OWPSessionRequest(ping_ctx.cntrl,
                         I2AddrByNode(eh,ping_ctx.remote_test),
-                        True, NULL, False,(OWPTestSpec*)&tspec,
-                        fromfp,fromsid,&err_ret))
+                        True, NULL, False, ping_ctx.opt.zero_addr,
+                        (OWPTestSpec*)&tspec,
+                        fromfp, fromsid, &err_ret))
                 FailSession(ping_ctx.cntrl);
         }
 #endif

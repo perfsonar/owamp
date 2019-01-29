@@ -2899,8 +2899,8 @@ OWPWriteDataHeader(
     if((_OWPEncodeTestRequestPreamble(ctx,msg,&len,
                     (struct sockaddr*)&hdr->addr_sender,
                     (struct sockaddr*)&hdr->addr_receiver,
-                    hdr->twoway?True:hdr->conf_sender,hdr->conf_receiver,False,
-                    hdr->sid,&hdr->test_spec) != 0) || !len){
+                    hdr->twoway?True:hdr->conf_sender,hdr->conf_receiver,
+                    False,False,hdr->sid,&hdr->test_spec) != 0) || !len){
         return False;
     }
     ver = htonl((hdr->twoway?_OWP_VERSION_TWOWAY:0)|3);
