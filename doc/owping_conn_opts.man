@@ -100,6 +100,16 @@ SO_BINDTODEVICE.
 Unspecified (sockets not bound to a particular interface).
 .RE
 .TP
+\fB\-Z\fR
+.br
+Do not specify sender and receiver IP addresses for tests packets when
+creating a TWAMP session. This allows the UDP test packets to pass through
+some types of NAT. This option is not available for OWAMP.
+.RS
+.IP Default:
+Unspecified (addresses for test packets are defined by the client).
+.RE
+.TP
 \fB\-u\fR \fIusername\fR
 .br
 Specify the username that identifies the shared secret (pass-phrase)
