@@ -54,4 +54,10 @@ To get the list of available options use:
 
 	% owping -h
 
+
+To setup local authentication, create an owamp-server.pfs file using the
+pfstore I2util command.  For more information see the owampd.pfs(5) man page:
+
+	% pfstore -f owamp-server.pfs -n [username]
+
 Problems/Questions can be reported to owamp@internet2.edu
