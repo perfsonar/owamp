@@ -82,6 +82,7 @@ typedef    struct {
         I2Boolean       printfiles;         /* -p */
         char            *srcaddr;           /* -S */
         char            *interface;         /* -B */
+        I2Boolean       zero_addr;          /* -Z */
 
         OWPPortRange    portspec;           /* -P */
 

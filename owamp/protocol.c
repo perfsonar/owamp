@@ -588,6 +588,7 @@ _OWPEncodeTestRequestPreamble(
         OWPBoolean      server_conf_sender, 
         OWPBoolean      server_conf_receiver,
         OWPBoolean      twoway,
+        OWPBoolean      zero_addr,
         OWPSID          sid,
         OWPTestSpec     *tspec
         )
@@ -679,7 +680,7 @@ _OWPEncodeTestRequestPreamble(
         case 6:
         /* sender address  and port */
         saddr6 = (struct sockaddr_in6*)sender;
-        if (twoway)
+        if (zero_addr)
             memset(&buf[16], 0, 16);
         else
             memcpy(&buf[16],saddr6->sin6_addr.s6_addr,16);
@@ -687,7 +688,7 @@ _OWPEncodeTestRequestPreamble(
 
         /* receiver address and port  */
         saddr6 = (struct sockaddr_in6*)receiver;
-        if (twoway)
+        if (zero_addr)
             memset(&buf[32], 0, 16);
         else
             memcpy(&buf[32],saddr6->sin6_addr.s6_addr,16);
@@ -698,13 +699,13 @@ _OWPEncodeTestRequestPreamble(
         case 4:
         /* sender address and port  */
         saddr4 = (struct sockaddr_in*)sender;
-        *(uint32_t*)&buf[16] = twoway ? 0 : saddr4->sin_addr.s_addr;
+        *(uint32_t*)&buf[16] = zero_addr ? 0 : saddr4->sin_addr.s_addr;
         *(uint16_t*)&buf[12] = saddr4->sin_port;
         memset(&buf[20],0,12);
 
         /* receiver address and port  */
         saddr4 = (struct sockaddr_in*)receiver;
-        *(uint32_t*)&buf[32] = twoway ? 0 : saddr4->sin_addr.s_addr;
+        *(uint32_t*)&buf[32] = zero_addr ? 0 : saddr4->sin_addr.s_addr;
         *(uint16_t*)&buf[14] = saddr4->sin_port;
         memset(&buf[36],0,12);
 
@@ -1010,6 +1011,7 @@ _OWPWriteTestRequest(
         struct sockaddr *receiver,
         OWPBoolean      server_conf_sender,
         OWPBoolean      server_conf_receiver,
+        OWPBoolean      zero_addr,
         OWPSID          sid,
         OWPTestSpec     *test_spec
         )
@@ -1033,7 +1035,8 @@ _OWPWriteTestRequest(
      */
     if((_OWPEncodeTestRequestPreamble(cntrl->ctx,cntrl->msg,&buf_len,
                     sender,receiver,server_conf_sender,
-                    server_conf_receiver,cntrl->twoway,sid,test_spec) != 0) ||
+                    server_conf_receiver,cntrl->twoway,
+                    zero_addr,sid,test_spec) != 0) ||
             (buf_len != 112)){
         return OWPErrFATAL;
     }

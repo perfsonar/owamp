@@ -807,6 +807,7 @@ _OWPClientRequestTestReadResponse(
         OWPBoolean      server_conf_sender,
         I2Addr          receiver,
         OWPBoolean      server_conf_receiver,
+        OWPBoolean      zero_addr,
         OWPTestSpec     *test_spec,
         OWPSID          sid,  /* ret iff cntrl->twoway || conf_receiver else set */
         OWPErrSeverity  *err_ret
@@ -835,6 +836,7 @@ _OWPClientRequestTestReadResponse(
                     I2AddrSAddr(sender,NULL),
                     I2AddrSAddr(receiver,NULL),
                     server_conf_sender, server_conf_receiver,
+                    zero_addr,
                     cntrl->twoway ? NULL : sid, test_spec)) < OWPErrOK){
         *err_ret = (OWPErrSeverity)rc;
         return 1;
@@ -907,6 +909,7 @@ OWPSessionRequest(
         OWPBoolean      server_conf_sender,
         I2Addr          receiver,
         OWPBoolean      server_conf_receiver,
+        OWPBoolean      zero_addr,
         OWPTestSpec     *test_spec,
         FILE            *fp,
         OWPSID          sid_ret,
@@ -1122,6 +1125,7 @@ foundaddr:
                         !cntrl->twoway && server_conf_sender,
                         receiver,
                         !cntrl->twoway && server_conf_receiver,
+                        zero_addr,
                         test_spec,tsession->sid,err_ret)) != 0){
             goto error;
         }
@@ -1204,6 +1208,7 @@ foundaddr:
             if((rc = _OWPClientRequestTestReadResponse(cntrl,retn_on_intr,
                             sender,server_conf_sender,
                             receiver,server_conf_receiver,
+                            zero_addr,
                             test_spec,tsession->sid,err_ret)) != 0){
                 goto error;
             }
