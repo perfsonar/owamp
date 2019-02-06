@@ -25,10 +25,10 @@
 .SH NAME
 owampd.pfs \- One-way latency server pass-phrase store
 .SH DESCRIPTION
-The \fBowampd.pfs\fR file (owamp-server.pfs by default) is used to hold the
-identity/pass-phrase pairs needed for \fBowampd\fR to authenticate users.
-The format of this file is described in the pfstore(1) manual page. The
-location of this file is controlled by the \fB\-c\fR option to \fBowampd\fR.
+The \fBowampd.pfs\fR file is used to hold the identity/pass-phrase pairs
+needed for \fBowampd\fR to authenticate users. The format of this file
+is described in the pfstore(1) manual page. The location of this
+file is controlled by the \fB\-c\fR option to \fBowampd\fR.
 .PP
 \fBowampd\fR uses symmetric AES keys for authentication. These keys
 are derived from a shared secret (the pass-phrase) using the PBKDF2
