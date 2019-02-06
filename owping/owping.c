@@ -69,7 +69,11 @@ print_conn_args(
         void
         )
 {
+#ifdef TWAMP
+    fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n",
+#else
     fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n",
+#endif
             "              [Connection Args]",
 #ifdef TWAMP
             "   -A authmode    requested modes: [A]uthenticated, [E]ncrypted, [M]ixed, [O]pen",
@@ -81,6 +85,7 @@ print_conn_args(
             "   -S srcaddr     specify the local address or interface for control connection and tests",
             "   -B interface   specify the interface to use for control connection and tests",
 #ifdef TWAMP
+            "   -Z             do not specify IP addresses for tests packets (NAT traversal)",
             "   -u username    username to use with Authenticated/Encrypted/Mixed modes",
 #else
             "   -u username    username to use with Authenticated/Encrypted modes",
@@ -96,7 +101,7 @@ print_test_args(
         )
 {
     fprintf(stderr,
-            "              [Test Args]\n"
+            "              [Test Args]\n\n"
             "   -c count       number of test packets\n"
             "   -D DSCP        RFC 2474 style DSCP value for TOS byte\n"
 #ifdef TWAMP
@@ -1213,7 +1218,9 @@ main(
     static char         *test_opts = "c:D:E:F:i:L:P:s:z:";
     static char         *out_opts = "a:b:d:Mn:N:pQRv::U";
     static char         *gen_opts = "h";
-#ifndef TWAMP
+#ifdef TWAMP
+    static char         *tw_opts = "Z";
+#else
     static char         *ow_opts = "ftT:";
 #endif
 #ifndef    NDEBUG
@@ -1262,7 +1269,7 @@ main(
     ctx = ping_ctx.lib_ctx;
 
     /* Set default options. */
-    ping_ctx.opt.v4only = ping_ctx.opt.v6only =
+    ping_ctx.opt.v4only = ping_ctx.opt.v6only = ping_ctx.opt.zero_addr =
     ping_ctx.opt.records = ping_ctx.opt.from = ping_ctx.opt.to =
     ping_ctx.opt.quiet = ping_ctx.opt.raw = ping_ctx.opt.machine = False;
     ping_ctx.opt.childwait = NULL;
@@ -1307,7 +1314,9 @@ main(
 #ifndef    NDEBUG
     strcat(optstring,debug_opts);
 #endif
-#ifndef TWAMP
+#ifdef TWAMP
+    strcat(optstring, tw_opts);
+#else
     strcat(optstring, ow_opts);
 #endif
 
@@ -1354,6 +1363,9 @@ main(
                     I2ErrLog(eh,"malloc: %M");
                     exit(1);
                 }
+                break;
+            case 'Z':
+                ping_ctx.opt.zero_addr = True;
                 break;
 
                 /* Test options. */
@@ -1834,7 +1846,8 @@ main(
 
         if (!OWPSessionRequest(ping_ctx.cntrl, NULL, False,
                                I2AddrByNode(eh,ping_ctx.remote_test),
-                               True,(OWPTestSpec*)&tspec,
+                               True,ping_ctx.opt.zero_addr,
+                               (OWPTestSpec*)&tspec,
                                fromfp,tosid,&err_ret))
             FailSession(ping_ctx.cntrl);
 #else
@@ -1844,7 +1857,8 @@ main(
         if(ping_ctx.opt.to) {
             if (!OWPSessionRequest(ping_ctx.cntrl, NULL, False,
                         I2AddrByNode(eh,ping_ctx.remote_test),
-                        True,(OWPTestSpec*)&tspec,
+                        True,ping_ctx.opt.zero_addr,
+                        (OWPTestSpec*)&tspec,
                         NULL,tosid,&err_ret))
                 FailSession(ping_ctx.cntrl);
         }
@@ -1868,7 +1882,8 @@ main(
 
             if (!OWPSessionRequest(ping_ctx.cntrl,
                         I2AddrByNode(eh,ping_ctx.remote_test),
-                        True, NULL, False,(OWPTestSpec*)&tspec,
+                        True, NULL, False, ping_ctx.opt.zero_addr,
+                        (OWPTestSpec*)&tspec,
                         fromfp,fromsid,&err_ret))
                 FailSession(ping_ctx.cntrl);
         }
