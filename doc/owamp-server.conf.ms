@@ -2,6 +2,8 @@
 .\" to tell man to run the appropriate filter "t" for table.
 .\" vim: set filetype=nroff :
 .\"
+.\"	$Id$
+.\"
 .\"######################################################################
 .\"#									#
 .\"#			   Copyright (C)  2004				#
@@ -10,7 +12,7 @@
 .\"#									#
 .\"######################################################################
 .\"
-.\"	File:		owampd.conf.ms
+.\"	File:		owamp-server.conf.ms
 .\"
 .\"	Author:		Jeff Boote
 .\"			Internet2
@@ -20,17 +22,19 @@
 .\"	Description:	
 .\"
 .\"Program name
-.ds prog twampd
+.ds prog owampd
+.\"Config name
+.ds conf owamp-server
 .\"Protocol name
-.ds proto TWAMP
+.ds proto OWAMP
 .\"Port number
-.ds port 862
-.TH twampd.conf 5
+.ds port 861
+.TH owamp-server.conf 5 "$Date$"
 .SH NAME
-twampd.conf \- Two-way active measurement daemon configuration file.
+owamp-server.conf \- One-way latency daemon configuration file.
 .so nwampd_conf_desc.man
 .SH SEE ALSO
-twping(1), twampd(8), twampd.limits(5), twampd.pfs(5), pfstore(1),
+owping(1), owampd(8), owamp-server.limits(5), owamp-server.pfs(5), pfstore(1),
 and the \%http://e2epi.internet2.edu/owamp/ web site.
 .SH ACKNOWLEDGMENTS
 This material is based in part on work supported by the National Science

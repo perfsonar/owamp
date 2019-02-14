@@ -23,7 +23,7 @@
 .\"	Description:	
 .\"
 .SH DESCRIPTION
-The \fB\*[prog].limits\fR file is used to define the policy configuration
+The \fB\*[conf].limits\fR file is used to define the policy configuration
 for the \fB\*[prog]\fR program. It allows the system administrator to
 allocate the resources in a variety of ways.
 .PP
@@ -44,7 +44,7 @@ associated with it. The \fIlimitclass\fRes are hierarchical, so a connection
 must pass the limit restrictions of the given \fIlimitclass\fR as well as all
 parent classes.
 .PP
-Within the \fB\*[prog].limits\fR file, \fIassign\fR lines are used to
+Within the \fB\*[conf].limits\fR file, \fIassign\fR lines are used to
 assign a \fIlimitclass\fR to a given connection. \fIlimit\fR lines are
 used to define a \fIlimitclass\fR and set the limits associated with that
 \fIlimitclass\fR. The file is read sequentially, and it is not permitted
@@ -189,14 +189,14 @@ an invalid \fIsubnet\fR due to the bit set in the fourth octet.
 .TP
 .BI user " user"
 Assign a specific \fIuser\fR to a given \fIlimitclass\fR.
-The \fIuser\fR must be defined in the \fB\*[prog].pfs\fR file.
+The \fIuser\fR must be defined in the \fB\*[conf].pfs\fR file.
 .SH AUTHENTICATION PROCESS
 \fB\*[prog]\fR determines if it should allow a connection from
 the client based upon the authentication mode of the request and the source
 IP address of the connection. If the client connection is in authenticated or
 encrypted mode, the daemon does not do any filtering based upon the
 source address of the connection. (See the \fIauthmode\fR option in
-\fB\*[prog].conf\fR.)
+\fB\*[conf].conf\fR.)
 In these modes \fB\*[prog]\fR simply uses the \fIidentity\fR of the
 connection to determine the \fIlimitclass\fR limits. If the connection
 is made in open mode,  then \fB\*[prog]\fR first uses the source address to
@@ -205,4 +205,4 @@ that subnet at all. (This is
 the purpose of the \fIallow_open_mode limtype\fR described above.)
 If open mode is allowed from this subnet, then the \fIlimitclass\fR
 is determined by the closest subnet match defined by the \fIassign net\fR
-lines in the \fB\*[prog].limits\fR file.
+lines in the \fB\*[conf].limits\fR file.

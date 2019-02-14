@@ -12,7 +12,7 @@
 .\"#									#
 .\"######################################################################
 .\"
-.\"	File:		owampd.pfs.man
+.\"	File:		owamp-server.pfs.man
 .\"
 .\"	Author:		Jeff Boote
 .\"			Internet2
@@ -21,14 +21,14 @@
 .\"
 .\"	Description:	
 .\"
-.TH owampd.pfs 5 "$Date$"
+.TH owamp-server.pfs 5 "$Date$"
 .SH NAME
-owampd.pfs \- One-way latency server pass-phrase store
+owamp-server.pfs \- One-way latency server pass-phrase store
 .SH DESCRIPTION
-The \fBowampd.pfs\fR file is used to hold the identity/pass-phrase pairs
-needed for \fBowampd\fR to authenticate users. The format of this file
-is described in the pfstore(1) manual page. The location of this
-file is controlled by the \fB\-c\fR option to \fBowampd\fR.
+The \fBowamp-server.pfs\fR file (owamp-server.pfs by default) is used to hold the
+identity/pass-phrase pairs needed for \fBowampd\fR to authenticate users.
+The format of this file is described in the pfstore(1) manual page. The
+location of this file is controlled by the \fB\-c\fR option to \fBowampd\fR.
 .PP
 \fBowampd\fR uses symmetric AES keys for authentication. These keys
 are derived from a shared secret (the pass-phrase) using the PBKDF2
@@ -44,16 +44,16 @@ ensure the pass-phrase is not compromised.
 .PP
 If the \fBowping\fR client is able to authenticate using the identity and
 derived AES key, \fBowampd\fR will use the directives found in the
-\fBowampd.limits\fR file to map policy restrictions for this connection.
+\fBowamp-server.limits\fR file to map policy restrictions for this connection.
 .SH SECURITY CONSIDERATIONS
-The pass-phrases in the \fBowampd.pfs\fR file are not encrypted in any way.
+The pass-phrases in the \fBowamp-server.pfs\fR file are not encrypted in any way.
 (They are simply hex encoded.) The
 security of these pass-phrases are completely dependent upon the security
 of the filesystem and the discretion of the system administrator.
 .SH RESTRICTIONS
 \fBIdentity\fR names are restricted to 80 characters.
 .SH SEE ALSO
-pfstore(1), owping(1), owampd(8), owampd.limits(5),
+pfstore(1), owping(1), owampd(8), owamp-server.limits(5),
 and the \%http://e2epi.internet2.edu/owamp/ web site.
 .SH ACKNOWLEDGMENTS
 This material is based in part on work supported by the National Science

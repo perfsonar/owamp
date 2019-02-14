@@ -633,6 +633,7 @@ _OWPEncodeTestRequestPreamble(
         OWPBoolean      server_conf_sender,
         OWPBoolean      server_conf_receiver,
         OWPBoolean      twoway,
+        OWPBoolean      zero_addr,
         OWPSID          sid,
         OWPTestSpec     *tspec
         );
@@ -673,6 +674,7 @@ _OWPWriteTestRequest(
         struct sockaddr *receiver,
         OWPBoolean      server_conf_sender,
         OWPBoolean      server_conf_receiver,
+        OWPBoolean      zero_addr,
         OWPSID          sid,
         OWPTestSpec     *test_spec
         );

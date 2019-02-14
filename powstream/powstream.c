@@ -1147,7 +1147,7 @@ SetupSession(
     if(appctx.opt.sender){
         if(!OWPSessionRequest(p->cntrl,NULL,(OWPBoolean)False,
                     I2AddrByNode(eh,appctx.remote_test),(OWPBoolean)True,
-                    (OWPTestSpec*)&tspec,NULL,p->sid,&err)){
+                    (OWPBoolean)False,(OWPTestSpec*)&tspec,NULL,p->sid,&err)){
             I2ErrLog(eh,"OWPSessionRequest: Failed");
             /*
             if(err == OWPErrFATAL){
@@ -1160,7 +1160,7 @@ SetupSession(
     }
     else{
         if(!OWPSessionRequest(p->cntrl,I2AddrByNode(eh,appctx.remote_test),
-                    True, NULL, False,(OWPTestSpec*)&tspec,p->testfp,
+                    True, NULL, False, False, (OWPTestSpec*)&tspec, p->testfp,
                     p->sid,&err)){
             I2ErrLog(eh,"OWPSessionRequest: Failed");
             /*
