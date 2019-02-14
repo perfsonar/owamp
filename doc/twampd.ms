@@ -111,7 +111,7 @@ Used to tell a spawned off receiver/sender process to terminate a session
 early. (This is an indication that a StopSessions message was received
 for those familiar with the \fBTWAMP\fR protocol.)
 .SH FILES
-twampd.pid
+twamp-server.pid
 .br
 twamp-server.conf
 .br

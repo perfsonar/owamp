@@ -115,7 +115,7 @@ Used to tell a spawned off receiver/sender process to terminate a session
 early. (This is an indication that a StopSessions message was received
 for those familiar with the \fBOWAMP\fR protocol.)
 .SH FILES
-owampd.pid
+owamp-server.pid
 .br
 owamp-server.conf
 .br
