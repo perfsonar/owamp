@@ -52,7 +52,7 @@ configured by the system administrator.
 uses the classic accept/fork model of handling new requests.
 .PP
 Most of the command line options for \fBtwampd\fR have analogous options
-in the \fBtwampd.conf\fR file. The command line takes precedence.
+in the \fBtwamp-server.conf\fR file. The command line takes precedence.
 .SH OPTIONS
 .TP
 .so nwampd_opts.man
@@ -113,11 +113,11 @@ for those familiar with the \fBTWAMP\fR protocol.)
 .SH FILES
 twampd.pid
 .br
-twampd.conf
+twamp-server.conf
 .br
-twampd.limits
+twamp-server.limits
 .br
-twampd.pfs
+twamp-server.pfs
 .SH ENVIRONMENT VARIABLES
 \fBtwampd\fR uses environment variables for some debugging options.
 .TS
@@ -130,8 +130,8 @@ OWAMP_DEBUG_TIMEOFFSET	Offset time by this amount (seconds)
 .TE
 .SH SEE ALSO
 There are more details on configuring the \fBtwampd\fR daemon in the
-twampd.conf(5) manual page. Details on configuring the policy
-are in the twampd.limits(5) and twampd.pfs(5) manual pages.
+twamp-server.conf(5) manual page. Details on configuring the policy
+are in the twamp-server.limits(5) and twamp-server.pfs(5) manual pages.
 Information on the client is in the twping(1) manual page.
 For more of an overview of the full functionality and architecture, see
 the \%http://e2epi.internet2.edu/owamp/ web site.
