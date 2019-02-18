@@ -602,7 +602,7 @@ owp_fetch_sid(
         OWPSID        sid
         )
 {
-    char        *path;
+    char        *path = NULL;
     FILE        *fp;
     uint32_t    num_rec;
     OWPErrSeverity    rc=OWPErrOK;
