@@ -1827,6 +1827,7 @@ recvfromttl(
         struct cmsghdr  cm;
         char            control[CMSG_SPACE(sizeof(uint8_t))];
     } cmdmsgdata;
+    int ttl_int;
 
     *ttl = 255;        /* initialize to default value */
 
@@ -1866,7 +1867,8 @@ recvfromttl(
                      * IPV6_HOPLIMIT is defined as an int, type coercion
                      * will convert it to a uint8_t.
                      */
-                    *ttl = *(int *)CMSG_DATA(cmdmsgptr);
+                    memcpy(&ttl_int, CMSG_DATA(cmdmsgptr), sizeof(int));
+                    *ttl = (uint8_t)ttl_int;
                     goto NEXTCMSG;
                 }
 #endif
@@ -1897,7 +1899,8 @@ recvfromttl(
 #endif
                 if(cmdmsgptr->cmsg_level == IPPROTO_IP &&
                         cmdmsgptr->cmsg_type == IP_TTL){
-                    *ttl = *(int *)CMSG_DATA(cmdmsgptr);
+                    memcpy(&ttl_int, CMSG_DATA(cmdmsgptr), sizeof(int));
+                    *ttl = (uint8_t)ttl_int;
                     goto NEXTCMSG;
                 }
                 break;
