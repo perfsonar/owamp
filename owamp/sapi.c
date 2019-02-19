@@ -1044,7 +1044,7 @@ OWPProcessFetchSession(
     uint32_t                    end;
     OWPSID                      sid;
 
-    FILE                        *fp;
+    FILE                        *fp = NULL;
     char                        fname[PATH_MAX];
 
     _OWPSessionHeaderInitialRec fhdr;
