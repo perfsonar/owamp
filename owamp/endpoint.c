@@ -393,7 +393,7 @@ _OWPEndpointInit(
     OWPTimeStamp            tstamp;
     uint16_t                port=0;
     uint16_t                p;
-    uint16_t                range;
+    uint16_t                range=0;
     OWPPortRange            portrange=NULL;
     OWPPortRangeRec         dynamic_portrange;
     int                     saveerr=0;
