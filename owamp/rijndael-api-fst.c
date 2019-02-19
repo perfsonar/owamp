@@ -145,7 +145,7 @@ blockEncrypt(
         )
 {
     int i, numBlocks;
-    u8  block[16], *iv;
+    u8 *block, *iv, buff[16];
 
     if (binIV == NULL || key == NULL)
         return BAD_CIPHER_STATE;
@@ -157,6 +157,7 @@ blockEncrypt(
 
     numBlocks = inputLen/128;
 
+    block = &buff[0];
     iv = binIV;
     for (i = numBlocks; i > 0; i--) {
         ((u32*)block)[0] = ((u32*)input)[0] ^ ((u32*)iv)[0];
@@ -190,7 +191,7 @@ blockDecrypt(
         )
 {
     int i, numBlocks;
-    u8  block[16], *iv;
+    u8 *block, *iv, buff[16];
 
     if (binIV == NULL || key == NULL) 
         return BAD_CIPHER_STATE;
@@ -200,6 +201,7 @@ blockDecrypt(
 
     numBlocks = inputLen/128;
 
+    block = &buff[0];
     iv = binIV;
     for (i = numBlocks; i > 0; i--) {
         rijndaelDecrypt(key->rk, key->Nr, input, block);
