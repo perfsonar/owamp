@@ -597,7 +597,7 @@ OWPProcessTestRequest(
 {
     OWPTestSession  tsession = NULL;
     OWPErrSeverity  err_ret=OWPErrOK;
-    uint16_t       port;
+    uint16_t        port = 0;
     int             rc;
     OWPAcceptType   acceptval = OWP_CNTRL_FAILURE;
     int             ival=1;
