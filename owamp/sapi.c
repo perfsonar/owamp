@@ -597,7 +597,7 @@ OWPProcessTestRequest(
 {
     OWPTestSession  tsession = NULL;
     OWPErrSeverity  err_ret=OWPErrOK;
-    uint16_t       port;
+    uint16_t        port = 0;
     int             rc;
     OWPAcceptType   acceptval = OWP_CNTRL_FAILURE;
     int             ival=1;
@@ -1044,7 +1044,7 @@ OWPProcessFetchSession(
     uint32_t                    end;
     OWPSID                      sid;
 
-    FILE                        *fp;
+    FILE                        *fp = NULL;
     char                        fname[PATH_MAX];
 
     _OWPSessionHeaderInitialRec fhdr;

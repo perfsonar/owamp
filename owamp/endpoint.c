@@ -393,7 +393,7 @@ _OWPEndpointInit(
     OWPTimeStamp            tstamp;
     uint16_t                port=0;
     uint16_t                p;
-    uint16_t                range;
+    uint16_t                range=0;
     OWPPortRange            portrange=NULL;
     OWPPortRangeRec         dynamic_portrange;
     int                     saveerr=0;
@@ -1827,6 +1827,7 @@ recvfromttl(
         struct cmsghdr  cm;
         char            control[CMSG_SPACE(sizeof(uint8_t))];
     } cmdmsgdata;
+    int ttl_int;
 
     *ttl = 255;        /* initialize to default value */
 
@@ -1866,7 +1867,8 @@ recvfromttl(
                      * IPV6_HOPLIMIT is defined as an int, type coercion
                      * will convert it to a uint8_t.
                      */
-                    *ttl = *(int *)CMSG_DATA(cmdmsgptr);
+                    memcpy(&ttl_int, CMSG_DATA(cmdmsgptr), sizeof(int));
+                    *ttl = (uint8_t)ttl_int;
                     goto NEXTCMSG;
                 }
 #endif
@@ -1897,7 +1899,8 @@ recvfromttl(
 #endif
                 if(cmdmsgptr->cmsg_level == IPPROTO_IP &&
                         cmdmsgptr->cmsg_type == IP_TTL){
-                    *ttl = *(int *)CMSG_DATA(cmdmsgptr);
+                    memcpy(&ttl_int, CMSG_DATA(cmdmsgptr), sizeof(int));
+                    *ttl = (uint8_t)ttl_int;
                     goto NEXTCMSG;
                 }
                 break;
@@ -2274,6 +2277,7 @@ run_receiver(
     while(1){
         struct sockaddr_storage peer_addr;
         socklen_t               peer_addr_len;
+        struct timespec wake_ts;
 again:
         /*
          * set itimer to go off just past loss_timeout after the time
@@ -2282,14 +2286,14 @@ again:
          * (With luck, a received packet will actually wake this up,
          * and not the timer.)
          */
-        tvalclear(&wake.it_value);
-        timespecadd((struct timespec*)&wake.it_value,
-                &ep->end->absolute);
-        timespecadd((struct timespec*)&wake.it_value,&lostspec);
-        timespecadd((struct timespec*)&wake.it_value,&fudgespec);
-        timespecsub((struct timespec*)&wake.it_value,&currtime);
+        timespecclear(&wake_ts);
+        timespecadd(&wake_ts,&ep->end->absolute);
+        timespecadd(&wake_ts,&lostspec);
+        timespecadd(&wake_ts,&fudgespec);
+        timespecsub(&wake_ts,&currtime);
 
-        wake.it_value.tv_usec /= 1000;        /* convert nsec to usec        */
+        wake.it_value.tv_sec = wake_ts.tv_sec;
+        wake.it_value.tv_usec = wake_ts.tv_nsec / 1000; /* convert nsec to usec */
         while (wake.it_value.tv_usec >= 1000000) {
             wake.it_value.tv_usec -= 1000000;
             wake.it_value.tv_sec++;

@@ -364,7 +364,7 @@ _OWPWriteServerStart(
     _OWPSendHMACAdd(cntrl,&buf[32],1);
 
     if (cntrl->mode & OWP_MODE_DOCIPHER_CNTRL)
-        _OWPEncryptBlocks(cntrl, (uint8_t *)&buf[32], 1, &buf[32]);
+        _OWPEncryptBlocks(cntrl, (uint8_t *)&buf[32], 1, (uint8_t *)&buf[32]);
 
     if((len = I2Writeni(cntrl->sockfd,buf,48,intr)) != 48){
         if((len < 0) && *intr && (errno == EINTR)){

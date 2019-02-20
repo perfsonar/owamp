@@ -240,6 +240,7 @@ FailSession(
     exit(1);
 }
 
+#ifndef TWAMP
 /*
  * RAW ascii format for OWAMP is:
  * "SEQ STIME SS SERR RTIME RS RERR TTL\n"
@@ -271,6 +272,7 @@ printraw(
     return 0;
 }
 
+#else
 /*
  * RAW ascii format for TWAMP is:
  * "SSEQ STIME SS SERR SRTIME SRS SRERR STTL RSEQ RSTIME RSS RSERR RTIME RS RERR RTTL\n"
@@ -317,6 +319,7 @@ printrawTW(
             rec->reflected.ttl);
     return 0;
 }
+#endif
 
 /*
  * Does statistical output parsing.
@@ -599,7 +602,7 @@ owp_fetch_sid(
         OWPSID        sid
         )
 {
-    char        *path;
+    char        *path = NULL;
     FILE        *fp;
     uint32_t    num_rec;
     OWPErrSeverity    rc=OWPErrOK;
