@@ -8,6 +8,8 @@
  *                      and setting up a control session
  */
 
+#include <owamp/owamp.h>
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -18,8 +20,6 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 
-
-#include <owamp/owamp.h>
 #include <owamp/owampP.h>
 #include <I2util/util.h>
 #include <I2util/addr.h>

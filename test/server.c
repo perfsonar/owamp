@@ -6,6 +6,7 @@
  *
  *        Description:  Basic twping control server emulation
  */
+#include <owamp/owamp.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -14,7 +15,6 @@
 #include <time.h>
 #include <sys/socket.h>
 
-#include <owamp/owamp.h>
 #
 #include "./server.h"
 

@@ -6,6 +6,8 @@
  *
  *        Description:  shared test methods/structs
  */
+#include <owamp/owamp.h>
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -15,7 +17,6 @@
 #include <sys/un.h>
 #include <dirent.h>
 
-#include <owamp/owamp.h>
 #include <I2util/util.h>
 
 #include "./owtest_utils.h"

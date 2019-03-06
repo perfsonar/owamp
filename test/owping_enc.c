@@ -7,12 +7,12 @@
  *        Description:  Basic owping client control setup test in encrypted/authenticated mode
  */
 
+#include <owamp/owamp.h>
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
-
-#include <owamp/owamp.h>
 
 #include "./server.h"
 #include "./session_setup.h"

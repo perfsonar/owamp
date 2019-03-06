@@ -6,13 +6,14 @@
  *
  *        Description:  Basic session parsing & statistics sanity check
  */
+#include <owamp/owamp.h>
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 #include <assert.h>
 
-#include <owamp/owamp.h>
 #include <I2util/util.h>
 
 #include "./owtest_utils.h"
