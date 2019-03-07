@@ -7,6 +7,8 @@
  *        Description:  end-to-end process utililities
  */
 
+#include <owamp/owamp.h>
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -19,7 +21,6 @@
 #include <sys/wait.h>
 #include <signal.h>
 
-#include <owamp/owamp.h>
 #include <owamp/owampP.h>
 #include <owampd/owampdP.h>
 #include <I2util/util.h>
