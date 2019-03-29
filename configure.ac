@@ -218,6 +218,6 @@ AM_CONDITIONAL([HAVE_MAN2HTML], test x$do_man2html = xtrue)
 AC_SUBST(TOP_BUILD_DIRS)
 
 AC_SUBST(ac_aux_dir)
-AC_OUTPUT([Makefile owamp/Makefile owampd/Makefile owping/Makefile powstream/Makefile conf/Makefile test/Makefile doc/Makefile owamp.spec],
+AC_OUTPUT([Makefile owamp/Makefile owampd/Makefile owping/Makefile powstream/Makefile conf/Makefile test/Makefile doc/Makefile selinux/Makefile owamp.spec],
 	[test -z "$CONFIG_HEADERS" || echo timestamp > owamp/stamp-h.in])
 
