@@ -106,6 +106,7 @@ make -f /usr/share/selinux/devel/Makefile -C selinux twamp-server.pp
 %{__install} -D -p -m 0644 conf/owampd.rpm.conf %{buildroot}%{_sysconfdir}/owamp-server/owamp-server.conf
 %{__install} -D -p -m 0644 conf/owampd.limits %{buildroot}%{_sysconfdir}/owamp-server/owamp-server.limits.default
 %{__install} -D -p -m 0644 conf/owampd.rpm.conf %{buildroot}%{_sysconfdir}/owamp-server/owampd.conf.default
+%{__install} -D -p -m 0755 conf/owampd-cleanup %{buildroot}%{_sysconfdir}/cron.daily/owamp-server
 
 %{__install} -D -p -m 0644 conf/twampd.service %{buildroot}%{_unitdir}/twamp-server.service
 %{__install} -D -p -m 0755 conf/twampd.init %{buildroot}%{_sysconfdir}/rc.d/init.d/twamp-server
@@ -322,6 +323,7 @@ fi
 %else
 %attr(0755,root,root) %{_sysconfdir}/rc.d/init.d/owamp-server
 %endif
+%attr(0755,root,root) %{_sysconfdir}/cron.daily/owamp-server
 
 %files -n twamp-server
 %defattr(0644,root,root,0755)
