@@ -1,0 +1,24 @@
+# vim:syntax=apparmor
+
+#include <tunables/global>
+
+/usr/sbin/twampd {
+  #include <abstractions/base>
+  #include <abstractions/nameservice>
+  #include <abstractions/user-tmp>
+
+  capability setgid,
+  capability setuid,
+
+  /etc/twamp-server/** r,
+
+  /var/lib/twamp/** rwk,
+
+  / r,
+
+  /{,var/}run/twamp-server.pid rwk,
+  /{,var/}run/twamp-server.info rw,
+
+  # Site-specific additions and overrides. See local/README for details.
+  #include <local/usr.sbin.twampd>
+}

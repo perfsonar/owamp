@@ -1,0 +1,12 @@
+[Unit]
+Description=OWAMP server
+After=network.target
+
+[Service]
+Type=forking
+PIDFile=/var/run/owamp-server.pid
+ExecStart=/usr/sbin/owampd -c /etc/owamp-server -R /var/run
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target
