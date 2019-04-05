@@ -1,7 +1,9 @@
 Source: owamp
 Section: net
 Priority: optional
-Maintainer: Valentin Vidic <Valentin.Vidic@CARNet.hr>
+Maintainer: perfSONAR developers <debian@perfsonar.net>
+Uploaders: Antoine Delvaux <antoine.delvaux@man.poznan.pl>,
+ Valentin Vidic <Valentin.Vidic@CARNet.hr>
 Build-Depends: debhelper (>= 9), dh-apparmor, dh-autoreconf, dh-exec, dh-systemd, libi2util-dev (>= 1.4),
  libcap-dev, libssl-dev
 Standards-Version: 3.9.8
