@@ -1,8 +1,8 @@
-owamp (3.6~0-1) perfsonar-jessie-release; urgency=medium
+owamp (3.5.9~0-1) perfsonar-patch-snapshot; urgency=low
 
   * New upstream version.
 
- -- Antoine Delvaux <antoine.delvaux@man.poznan.pl>  Sat, 13 Oct 2018 22:02:49 +0000
+ -- Antoine Delvaux <antoine.delvaux@man.poznan.pl>  Fri, 05 Apr 2019 12:18:14 +0000
 
 owamp (3.5.8-1) perfsonar-jessie-release; urgency=medium
 

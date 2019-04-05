@@ -1,9 +1,11 @@
 Source: owamp
 Section: net
 Priority: optional
-Maintainer: Valentin Vidic <Valentin.Vidic@CARNet.hr>
-Build-Depends: debhelper (>= 9), dh-apparmor, dh-autoreconf, dh-exec, dh-systemd, libi2util-dev (>= 1.4),
- libssl-dev
+Maintainer: perfSONAR developers <debian@perfsonar.net>
+Uploaders: Antoine Delvaux <antoine.delvaux@man.poznan.pl>,
+ Valentin Vidic <Valentin.Vidic@CARNet.hr>
+Build-Depends: debhelper (>= 9), dh-apparmor, dh-autoreconf, dh-exec,
+ dh-systemd, libi2util-dev (>= 1.4), libssl-dev
 Standards-Version: 3.9.8
 Homepage: http://software.internet2.edu/owamp/
 Vcs-Git: https://github.com/perfsonar/owamp
