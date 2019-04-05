@@ -1,17 +1,17 @@
 Cleanup configure errors.
 Index: owamp/configure.ac
 ===================================================================
---- owamp.orig/configure.ac	2018-06-26 17:29:47.000000000 +0000
-+++ owamp/configure.ac	2018-06-26 17:30:35.000000000 +0000
-@@ -102,7 +102,6 @@
+--- owamp.orig/configure.ac	2019-04-05 15:23:56.617856000 +0000
++++ owamp/configure.ac	2019-04-05 15:26:05.717277175 +0000
+@@ -105,7 +105,6 @@
  AC_SUBST(OWPLIBDEPS)
  
  AC_CANONICAL_HOST
 -AC_DEFINE(_GNU_SOURCE, 1, "Use glibc features.")
  AC_SYS_LARGEFILE
- # AC_DEFINE(_LARGEFILE_SOURCE, 1, "Use large file API.")
  
-@@ -129,7 +128,6 @@
+ case $host in
+@@ -131,7 +130,6 @@
  AC_CHECK_HEADERS([errno.h netdb.h stdlib.h sys/param.h sys/socket.h sys/time.h sys/types.h sys/mman.h sys/timex.h])
  
  # Checks for typedefs, structures, and compiler characteristics.
@@ -19,18 +19,18 @@ Index: owamp/configure.ac
  AC_C_CONST
  AC_HEADER_TIME
  AC_CHECK_MEMBERS([struct sockaddr.sa_len], , ,
-@@ -216,6 +214,4 @@
+@@ -218,6 +216,5 @@
  AC_SUBST(TOP_BUILD_DIRS)
  
  AC_SUBST(ac_aux_dir)
--AC_OUTPUT([Makefile owamp/Makefile owampd/Makefile owping/Makefile powstream/Makefile conf/Makefile test/Makefile doc/Makefile owamp.spec],
+-AC_OUTPUT([Makefile owamp/Makefile owampd/Makefile owping/Makefile powstream/Makefile conf/Makefile test/Makefile doc/Makefile selinux/Makefile owamp.spec],
 -	[test -z "$CONFIG_HEADERS" || echo timestamp > owamp/stamp-h.in])
--
-+AC_OUTPUT([Makefile owamp/Makefile owampd/Makefile owping/Makefile powstream/Makefile conf/Makefile test/Makefile doc/Makefile owamp.spec])
++AC_OUTPUT([Makefile owamp/Makefile owampd/Makefile owping/Makefile powstream/Makefile conf/Makefile test/Makefile doc/Makefile selinux/Makefile owamp.spec])
+ 
 Index: owamp/COPYING
 ===================================================================
 --- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ owamp/COPYING	2018-06-26 17:30:35.000000000 +0000
++++ owamp/COPYING	2019-04-05 15:26:05.718335326 +0000
 @@ -0,0 +1,175 @@
 +
 +                                 Apache License
@@ -210,19 +210,19 @@ Index: owamp/COPYING
 Index: owamp/AUTHORS
 ===================================================================
 --- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ owamp/AUTHORS	2018-06-26 17:30:35.000000000 +0000
++++ owamp/AUTHORS	2019-04-05 15:26:05.718766084 +0000
 @@ -0,0 +1 @@
 +Aaron Brown (aaron@internet2.edu)
 Index: owamp/NEWS
 ===================================================================
 --- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ owamp/NEWS	2018-06-26 17:30:35.000000000 +0000
++++ owamp/NEWS	2019-04-05 15:26:05.719022983 +0000
 @@ -0,0 +1 @@
 +Placeholder
 Index: owamp/owping/Makefile.am
 ===================================================================
---- owamp.orig/owping/Makefile.am	2018-06-26 17:29:47.000000000 +0000
-+++ owamp/owping/Makefile.am	2018-06-26 17:30:35.000000000 +0000
+--- owamp.orig/owping/Makefile.am	2019-04-05 15:23:56.617856000 +0000
++++ owamp/owping/Makefile.am	2019-04-05 15:26:05.719421783 +0000
 @@ -23,7 +23,7 @@
  
  bin_PROGRAMS	= owping twping
@@ -234,8 +234,8 @@ Index: owamp/owping/Makefile.am
  RM = rm -f
 Index: owamp/powstream/Makefile.am
 ===================================================================
---- owamp.orig/powstream/Makefile.am	2018-06-26 17:29:47.000000000 +0000
-+++ owamp/powstream/Makefile.am	2018-06-26 17:30:35.000000000 +0000
+--- owamp.orig/powstream/Makefile.am	2019-04-05 15:23:56.617856000 +0000
++++ owamp/powstream/Makefile.am	2019-04-05 15:26:05.719882313 +0000
 @@ -24,5 +24,5 @@
  bin_PROGRAMS	= powstream
  
