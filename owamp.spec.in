@@ -89,6 +89,22 @@ twamp server
 # Thrulay and I2Util get installed, but really, shouldn't be instaled.
 %define _unpackaged_files_terminate_build      0
 
+%pre -n owamp-client
+/usr/sbin/groupadd -r owamp 2> /dev/null || :
+/usr/sbin/useradd -g owamp -r -s /bin/nologin -d /tmp owamp || :
+
+%pre -n twamp-client
+/usr/sbin/groupadd -r twamp 2> /dev/null || :
+/usr/sbin/useradd -g twamp -r -s /bin/nologin -d /tmp twamp || :
+
+%pre -n owamp-server
+/usr/sbin/groupadd -r owamp 2> /dev/null || :
+/usr/sbin/useradd -g owamp -r -s /bin/nologin -d /tmp owamp || :
+
+%pre -n twamp-server
+/usr/sbin/groupadd -r twamp 2> /dev/null || :
+/usr/sbin/useradd -g twamp -r -s /bin/nologin -d /tmp twamp || :
+
 %prep
 %setup -q
 
@@ -143,7 +159,6 @@ fi
 
 %systemd_post owamp-server.service
 if [ "$1" = "1" ]; then
-	/usr/sbin/useradd -r -s /bin/nologin -d /tmp owamp || :
 	mkdir -p /var/lib/owamp
 	chown -R owamp:owamp /var/lib/owamp
 	systemctl enable owamp-server.service
@@ -152,7 +167,6 @@ fi
 %else
 if [ "$1" = "1" ]; then
 	/sbin/chkconfig --add owamp-server
-	/usr/sbin/useradd -r -s /bin/nologin -d /tmp owamp || :
 	mkdir -p /var/lib/owamp
 	chown -R owamp:owamp /var/lib/owamp
 else
@@ -233,7 +247,6 @@ fi
 
 %systemd_post twamp-server.service
 if [ "$1" = "1" ]; then
-	/usr/sbin/useradd -r -s /bin/nologin -d /tmp twamp || :
 	mkdir -p /var/lib/twamp
 	chown -R twamp:twamp /var/lib/twamp
 	systemctl enable twamp-server.service
@@ -242,7 +255,6 @@ fi
 %else
 if [ "$1" = "1" ]; then
 	/sbin/chkconfig --add twamp-server
-	/usr/sbin/useradd -r -s /bin/nologin -d /tmp twamp || :
 	mkdir -p /var/lib/twamp
 	chown -R twamp:twamp /var/lib/twamp
 else
