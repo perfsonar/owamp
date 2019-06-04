@@ -237,6 +237,11 @@ fi
 setcap "cap_net_raw+p" %{_bindir}/twping
 
 %post -n twamp-server
+
+#create data dir (must be prior to selinux)
+mkdir -p /var/lib/twamp
+chown -R twamp:twamp /var/lib/twamp
+
 %if 0%{?el7}
 semodule -n -i %{_datadir}/selinux/packages/twamp-server.pp
 semanage port -a -t twamp_port_t -p tcp 862 2>/dev/null
@@ -250,10 +255,8 @@ fi
 
 %systemd_post twamp-server.service
 if [ "$1" = "1" ]; then
-	mkdir -p /var/lib/twamp
-	chown -R twamp:twamp /var/lib/twamp
-	systemctl enable twamp-server.service
-	systemctl start twamp-server.service
+    systemctl enable twamp-server.service
+    systemctl start twamp-server.service
 fi
 %else
 if [ "$1" = "1" ]; then
