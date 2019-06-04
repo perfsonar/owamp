@@ -1,5 +1,9 @@
 policy_module(twamp-server, 1.0.0)
 
+require {
+    type passwd_file_t;
+};
+
 ########################################
 #
 # Declarations
@@ -35,6 +39,7 @@ corenet_port(twamp_test_port_t);
 # daemonize
 allow twampd_t self:capability { setgid setuid };
 allow twampd_t self:process { fork setpgid setrlimit signal_perms };
+allow twampd_t passwd_file_t:file { getattr open read };
 
 # syslog
 logging_send_syslog_msg(twampd_t)
