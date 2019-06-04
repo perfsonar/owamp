@@ -1,5 +1,9 @@
 policy_module(owamp-server, 1.0.0)
 
+require {
+    type passwd_file_t;
+};
+
 ########################################
 #
 # Declarations
@@ -38,6 +42,7 @@ corenet_port(owamp_test_port_t);
 # daemonize
 allow owampd_t self:capability { setgid setuid };
 allow owampd_t self:process { fork setpgid setrlimit signal_perms };
+allow owampd_t passwd_file_t:file { getattr open read };
 
 # syslog
 logging_send_syslog_msg(owampd_t)

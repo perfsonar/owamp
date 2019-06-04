@@ -89,6 +89,22 @@ twamp server
 # Thrulay and I2Util get installed, but really, shouldn't be instaled.
 %define _unpackaged_files_terminate_build      0
 
+%pre -n owamp-client
+/usr/sbin/groupadd -r owamp 2> /dev/null || :
+/usr/sbin/useradd -g owamp -r -s /bin/nologin -d /tmp owamp 2> /dev/null || :
+
+%pre -n twamp-client
+/usr/sbin/groupadd -r twamp 2> /dev/null || :
+/usr/sbin/useradd -g twamp -r -s /bin/nologin -d /tmp twamp 2> /dev/null || :
+
+%pre -n owamp-server
+/usr/sbin/groupadd -r owamp 2> /dev/null || :
+/usr/sbin/useradd -g owamp -r -s /bin/nologin -d /tmp owamp 2> /dev/null || :
+
+%pre -n twamp-server
+/usr/sbin/groupadd -r twamp 2> /dev/null || :
+/usr/sbin/useradd -g twamp -r -s /bin/nologin -d /tmp twamp 2> /dev/null || :
+
 %prep
 %setup -q
 
@@ -130,6 +146,11 @@ setcap "cap_net_raw+p" %{_bindir}/owping
 setcap "cap_net_raw+p" %{_bindir}/powstream
 
 %post -n owamp-server
+
+#create data dir (must be prior to selinux)
+mkdir -p /var/lib/owamp
+chown -R owamp:owamp /var/lib/owamp
+
 %if 0%{?el7}
 semodule -n -i %{_datadir}/selinux/packages/owamp-server.pp
 semanage port -a -t owamp_port_t -p tcp 861 2>/dev/null
@@ -143,16 +164,12 @@ fi
 
 %systemd_post owamp-server.service
 if [ "$1" = "1" ]; then
-	/usr/sbin/useradd -r -s /bin/nologin -d /tmp owamp || :
-	mkdir -p /var/lib/owamp
-	chown -R owamp:owamp /var/lib/owamp
-	systemctl enable owamp-server.service
-	systemctl start owamp-server.service
+    systemctl enable owamp-server.service
+    systemctl start owamp-server.service
 fi
 %else
 if [ "$1" = "1" ]; then
 	/sbin/chkconfig --add owamp-server
-	/usr/sbin/useradd -r -s /bin/nologin -d /tmp owamp || :
 	mkdir -p /var/lib/owamp
 	chown -R owamp:owamp /var/lib/owamp
 else
@@ -233,7 +250,6 @@ fi
 
 %systemd_post twamp-server.service
 if [ "$1" = "1" ]; then
-	/usr/sbin/useradd -r -s /bin/nologin -d /tmp twamp || :
 	mkdir -p /var/lib/twamp
 	chown -R twamp:twamp /var/lib/twamp
 	systemctl enable twamp-server.service
@@ -242,7 +258,6 @@ fi
 %else
 if [ "$1" = "1" ]; then
 	/sbin/chkconfig --add twamp-server
-	/usr/sbin/useradd -r -s /bin/nologin -d /tmp twamp || :
 	mkdir -p /var/lib/twamp
 	chown -R twamp:twamp /var/lib/twamp
 else
@@ -352,7 +367,7 @@ fi
 * Thu Mar 26 2009 aaron@internet2.edu 1.0-3
 - Make sure that /var/lib/owamp is created on install
 
-* Fri Feb 02 2009 aaron@internet2.edu 1.0-2
+* Mon Feb 02 2009 aaron@internet2.edu 1.0-2
 - Fix the example owampd.limits location
 
 * Fri Aug 22 2008 aaron@internet2.edu 1.0-1
