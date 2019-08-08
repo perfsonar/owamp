@@ -1,6 +1,6 @@
 Cleanup configure errors.
---- a/configure.ac	2019-04-29 11:27:59.368499000 +0000
-+++ b/configure.ac	2019-07-22 19:36:29.847283000 +0000
+--- a/configure.ac	2019-08-08 19:07:54.383440704 +0000
++++ b/configure.ac	2019-08-08 19:07:54.588443124 +0000
 @@ -105,7 +105,6 @@
  AC_SUBST(OWPLIBDEPS)
  
@@ -26,7 +26,7 @@ Cleanup configure errors.
 +AC_OUTPUT([Makefile owamp/Makefile owampd/Makefile owping/Makefile powstream/Makefile conf/Makefile test/Makefile doc/Makefile selinux/Makefile owamp.spec])
  
 --- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ b/COPYING	2019-07-22 19:36:29.847577000 +0000
++++ b/COPYING	2019-08-08 19:07:54.588443124 +0000
 @@ -0,0 +1,175 @@
 +
 +                                 Apache License
@@ -204,15 +204,15 @@ Cleanup configure errors.
 +      incurred by, or claims asserted against, such Contributor by reason
 +      of your accepting any such warranty or additional liability.
 --- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ b/AUTHORS	2019-07-22 19:36:29.847709000 +0000
++++ b/AUTHORS	2019-08-08 19:07:54.588443124 +0000
 @@ -0,0 +1 @@
 +Aaron Brown (aaron@internet2.edu)
 --- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ b/NEWS	2019-07-22 19:36:29.847836000 +0000
++++ b/NEWS	2019-08-08 19:07:54.588443124 +0000
 @@ -0,0 +1 @@
 +Placeholder
---- a/owping/Makefile.am	2019-04-05 15:34:02.844589000 +0000
-+++ b/owping/Makefile.am	2019-07-22 19:36:29.848179000 +0000
+--- a/owping/Makefile.am	2019-08-08 19:07:53.969435818 +0000
++++ b/owping/Makefile.am	2019-08-08 19:07:54.588443124 +0000
 @@ -23,7 +23,7 @@
  
  bin_PROGRAMS	= owping twping
@@ -222,8 +222,8 @@ Cleanup configure errors.
  owping_DEPENDENCIES = $(OWPLIBDEPS) $(I2UTILLIBDEPS)
  # Unfortunately, automake doesn't follow the BSD tradition here...
  RM = rm -f
---- a/powstream/Makefile.am	2019-04-05 15:34:02.845269000 +0000
-+++ b/powstream/Makefile.am	2019-07-22 19:36:29.848583000 +0000
+--- a/powstream/Makefile.am	2019-08-08 19:07:53.969435818 +0000
++++ b/powstream/Makefile.am	2019-08-08 19:07:54.588443124 +0000
 @@ -24,5 +24,5 @@
  bin_PROGRAMS	= powstream
  

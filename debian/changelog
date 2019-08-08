@@ -1,8 +1,8 @@
-owamp (4.2.0~1.b1-1) perfsonar-minor-staging; urgency=low
+owamp (4.2.0~b2.1-1) perfsonar-minor-staging; urgency=low
 
   * New upstream version.
 
- -- Antoine Delvaux <antoine.delvaux@man.poznan.pl>  Mon, 22 Jul 2019 19:36:29 +0000
+ -- Andy Lake <andy@es.net>  Thu, 08 Aug 2019 19:07:54 +0000
 
 owamp (3.5.8-1) perfsonar-jessie-release; urgency=medium
 
