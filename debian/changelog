@@ -1,3 +1,8 @@
+owamp (4.2.1-1) perfsonar-patch-snapshot; urgency=low
+
+  * New upstream version.
+
+ -- perfSONAR developers <debian@perfsonar.net>  \Thu, \15 \Aug \2019 :21:06 \+0000
 owamp (4.2.0-1) perfsonar-minor-staging; urgency=low
 
   * New upstream version.
