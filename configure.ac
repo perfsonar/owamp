@@ -94,6 +94,9 @@ OWPINCS='-I${top_srcdir}'
 
 OWP_dir='${top_srcdir}/owamp'
 OWPLDFLAGS="-L$OWP_dir"
+
+AC_CHECK_LIB([cap], [cap_set_proc])
+
 OWPLIBS="$OWPLDFLAGS -lowamp"
 OWPLIBDEPS="$OWP_dir/libowamp.a"
 
@@ -104,7 +107,6 @@ AC_SUBST(OWPLIBDEPS)
 AC_CANONICAL_HOST
 AC_DEFINE(_GNU_SOURCE, 1, "Use glibc features.")
 AC_SYS_LARGEFILE
-# AC_DEFINE(_LARGEFILE_SOURCE, 1, "Use large file API.")
 
 case $host in
     *-*-solaris* ) 
@@ -216,6 +218,6 @@ AM_CONDITIONAL([HAVE_MAN2HTML], test x$do_man2html = xtrue)
 AC_SUBST(TOP_BUILD_DIRS)
 
 AC_SUBST(ac_aux_dir)
-AC_OUTPUT([Makefile owamp/Makefile owampd/Makefile owping/Makefile powstream/Makefile conf/Makefile test/Makefile doc/Makefile owamp.spec],
+AC_OUTPUT([Makefile owamp/Makefile owampd/Makefile owping/Makefile powstream/Makefile conf/Makefile test/Makefile doc/Makefile selinux/Makefile owamp.spec],
 	[test -z "$CONFIG_HEADERS" || echo timestamp > owamp/stamp-h.in])
 

@@ -1,0 +1,10 @@
+/etc/owamp-server(/.*)?				gen_context(system_u:object_r:owampd_etc_t,s0)
+
+/usr/bin/owampd				--	gen_context(system_u:object_r:owampd_exec_t,s0)
+
+/usr/lib/systemd/system/owamp-server\.service		--	gen_context(system_u:object_r:owampd_unit_file_t,s0)
+
+/var/lib/owamp(/.*)?				gen_context(system_u:object_r:owampd_var_lib_t,s0)
+
+/var/run/owamp-server\.info		--	gen_context(system_u:object_r:owampd_pid_t,s0)
+/var/run/owamp-server\.pid		--	gen_context(system_u:object_r:owampd_pid_t,s0)

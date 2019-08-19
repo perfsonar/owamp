@@ -1,0 +1,37 @@
+#!/usr/bin/make -f
+# -*- makefile -*-
+# Sample debian/rules that uses debhelper.
+#
+# This file was originally written by Joey Hess and Craig Small.
+# As a special exception, when this file is copied by dh-make into a
+# dh-make output file, you may use that output file without restriction.
+# This special exception was added by Craig Small in version 0.37 of dh-make.
+#
+# Modified to make a template file for a multi-binary package with separated
+# build-arch and build-indep targets  by Bill Allombert 2001
+
+# Uncomment this to turn on verbose mode.
+#export DH_VERBOSE=1
+
+# see FEATURE AREAS in dpkg-buildflags(1)
+export DEB_BUILD_MAINT_OPTIONS = reproducible=-timeless
+export DEB_BUILD_OPTIONS = noopt
+
+# This has to be exported to make some magic below work.
+export DH_OPTIONS
+
+%:
+	dh $@ --with autoreconf,systemd
+
+override_dh_auto_configure:
+	dh_auto_configure -- \
+		--with-I2util=no
+
+ifeq ($(filter $(DEB_HOST_ARCH), amd64),)
+override_dh_auto_test:
+endif
+
+override_dh_install:
+	dh_install
+	dh_apparmor --profile-name=usr.sbin.owampd -p owamp-server
+	dh_apparmor --profile-name=usr.sbin.twampd -p twamp-server

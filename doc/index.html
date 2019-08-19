@@ -127,7 +127,7 @@ pass phrase) combination or, alternatively, based upon an IP/netmask. Once
 the connection is classified, the <b>owampd</b> can determine the exact
 test parameters that will be allowed. (More details on the policy controls
 can be found in the
-<a href="owampd.limits.man.html">owampd.limits(8)</a>
+<a href="owamp-server.limits.man.html">owamp-server.limits(8)</a>
 manual page.)
 <h3>
 
@@ -271,34 +271,34 @@ Please report any build problems to <a href="mailto:owamp-users@internet2.edu">o
 
 <hr WIDTH="100%">Configuring owampd</h3>
 The basic procedure to configure <b>owampd</b> is to create an
-<a href="owampd.conf.man.html">owampd.conf</a>
-and, optionally, an <a href="owampd.limits.man.html">owampd.limits</a>
+<a href="owamp-server.conf.man.html">owamp-server.conf</a>
+and, optionally, an <a href="owamp-server.limits.man.html">owamp-server.limits</a>
 file and an
-<a href="owampd.pfs.man.html">owampd.pfs</a> file. These
+<a href="owamp-server.pfs.man.html">owamp-server.pfs</a> file. These
 files need to be installed in the same directory that is specified with
 the <b>-c</b> option to <b>owampd</b>. The recommended directory is
 <i>/inst/root/etc</i>.
 (The <i>etc</i> directory below your install root.) There are examples
 of these files in the <i>owamp-$VERS/conf&nbsp;</i> subdirectory of the
 distribution.
-<p><b>owampd.conf:</b>
+<p><b>owamp-server.conf:</b>
 <br>Used to configure basic operation of the daemon, such as server listening
 port and error logging. For a detailed description of the options available,
-see the <a href="owampd.conf.man.html">owampd.conf(8)</a> manual page.
-<p><b>owampd.limits:</b>
+see the <a href="owamp-server.conf.man.html">owamp-server.conf(8)</a> manual page.
+<p><b>owamp-server.limits:</b>
 <br>Used to configure the policy limits for the daemon. There are two parts
 to this policy: 1) authentication and 2) authorization. The authentication
 is done by assigning a class to each new connection. Each class has a set
 of limits associated with it. The classes are hierarchical, so a connection
 must pass the limit restrictions of the assigned class as well as all parent
 classes. For a detailed description of the options available, see the
-<a href="owampd.limits.man.html">owampd.limits(5)</a>
+<a href="owamp-server.limits.man.html">owamp-server.limits(5)</a>
 manual page.
-<p><b>owampd.pfs:</b>
+<p><b>owamp-server.pfs:</b>
 <br>Used to associate identities with pass-phrases (shared secrets).
 These identities are then
-mapped to a class by the <b>owampd.limits</b> file. For a more detailed
-description, see the <a href="owampd.pfs.man.html">owampd.pfs(5)</a>
+mapped to a class by the <b>owamp-server.limits</b> file. For a more detailed
+description, see the <a href="owamp-server.pfs.man.html">owamp-server.pfs(5)</a>
 manual page.
 <h3>
 

@@ -865,6 +865,21 @@ OWPControlOpen(
         );
 
 /*
+ * Identical to OWPControlOpen but binds to the specified interface.
+ */
+extern OWPControl
+OWPControlOpenInterface(
+        OWPContext      ctx,            /* control context                */
+        const char      *local_addr,    /* local addr or null             */
+        const char      *interface,     /* interface to bind to or NULL   */
+        I2Addr          server_addr,    /* server addr                    */
+        uint32_t        mode_req_mask,  /* requested modes                */
+        OWPUserID       userid,         /* userid or NULL                 */
+        OWPNum64        *uptime_ret,    /* server uptime - ret            */
+        OWPErrSeverity  *err_ret        /* err - return                   */
+        );
+
+/*
  * TWPControlOpen is similar to OWPControlOpen, except that it
  * connects to a TWP server
  */
@@ -874,6 +889,21 @@ TWPControlOpen(
         const char      *local_addr,    /* src addr or NULL             */
         I2Addr          server_addr,    /* server addr or NULL          */
         uint32_t       mode_mask,      /* OR of OWPSessionMode vals    */
+        OWPUserID       userid,         /* null if unwanted             */
+        OWPNum64        *uptime_ret,    /* server uptime - ret or NULL  */
+        OWPErrSeverity  *err_ret
+        );
+
+/*
+ * Identical to TWPControlOpen but binds to the specified interface.
+ */
+extern OWPControl
+TWPControlOpenInterface(
+        OWPContext      ctx,
+        const char      *local_addr,    /* src addr or NULL             */
+        const char      *interface,     /* interface to bind to or NULL */
+        I2Addr          server_addr,    /* server addr or NULL          */
+        uint32_t        mode_mask,      /* OR of OWPSessionMode vals    */
         OWPUserID       userid,         /* null if unwanted             */
         OWPNum64        *uptime_ret,    /* server uptime - ret or NULL  */
         OWPErrSeverity  *err_ret
@@ -919,6 +949,7 @@ OWPSessionRequest(
         OWPBoolean      server_conf_sender,
         I2Addr          receiver,
         OWPBoolean      server_conf_receiver,
+        OWPBoolean      zero_addr,
         OWPTestSpec     *test_spec,
         FILE            *fp,
         OWPSID          sid_ret,

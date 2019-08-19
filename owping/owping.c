@@ -37,6 +37,7 @@
 #include <assert.h>
 #include <time.h>
 #include <signal.h>
+#include <net/if.h>
 
 #include "./owpingP.h"
 
@@ -54,10 +55,10 @@ static char         dirpath[PATH_MAX];
 static uint32_t     file_oset,tstamp_oset,ext_oset;
 
 #ifdef TWAMP
-#define NWPControlOpen TWPControlOpen
+#define NWPControlOpen TWPControlOpenInterface
 #define NWP_DEFAULT_OFFERED_MODE TWP_DEFAULT_OFFERED_MODE
 #else
-#define NWPControlOpen OWPControlOpen
+#define NWPControlOpen OWPControlOpenInterface
 #define NWP_DEFAULT_OFFERED_MODE OWP_DEFAULT_OFFERED_MODE
 #endif
 
@@ -68,7 +69,11 @@ print_conn_args(
         void
         )
 {
-    fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n",
+#ifdef TWAMP
+    fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n",
+#else
+    fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n",
+#endif
             "              [Connection Args]",
 #ifdef TWAMP
             "   -A authmode    requested modes: [A]uthenticated, [E]ncrypted, [M]ixed, [O]pen",
@@ -78,7 +83,9 @@ print_conn_args(
             "   -k passphrasefile     passphrasefile to use with Authenticated/Encrypted modes",
 #endif
             "   -S srcaddr     specify the local address or interface for control connection and tests",
+            "   -B interface   specify the interface to use for control connection and tests",
 #ifdef TWAMP
+            "   -Z             do not specify IP addresses for tests packets (NAT traversal)",
             "   -u username    username to use with Authenticated/Encrypted/Mixed modes",
 #else
             "   -u username    username to use with Authenticated/Encrypted modes",
@@ -94,7 +101,7 @@ print_test_args(
         )
 {
     fprintf(stderr,
-            "              [Test Args]\n"
+            "              [Test Args]\n\n"
             "   -c count       number of test packets\n"
             "   -D DSCP        RFC 2474 style DSCP value for TOS byte\n"
 #ifdef TWAMP
@@ -233,6 +240,7 @@ FailSession(
     exit(1);
 }
 
+#ifndef TWAMP
 /*
  * RAW ascii format for OWAMP is:
  * "SEQ STIME SS SERR RTIME RS RERR TTL\n"
@@ -264,6 +272,7 @@ printraw(
     return 0;
 }
 
+#else
 /*
  * RAW ascii format for TWAMP is:
  * "SSEQ STIME SS SERR SRTIME SRS SRERR STTL RSEQ RSTIME RSS RSERR RTIME RS RERR RTTL\n"
@@ -310,6 +319,7 @@ printrawTW(
             rec->reflected.ttl);
     return 0;
 }
+#endif
 
 /*
  * Does statistical output parsing.
@@ -592,7 +602,7 @@ owp_fetch_sid(
         OWPSID        sid
         )
 {
-    char        *path;
+    char        *path = NULL;
     FILE        *fp;
     uint32_t    num_rec;
     OWPErrSeverity    rc=OWPErrOK;
@@ -1207,11 +1217,13 @@ main(
     int                 ch;
     char                *endptr = NULL;
     char                optstring[128];
-    static char         *conn_opts = "64A:k:S:u:";
+    static char         *conn_opts = "64A:k:S:u:B:";
     static char         *test_opts = "c:D:E:F:i:L:P:s:z:";
     static char         *out_opts = "a:b:d:Mn:N:pQRv::U";
     static char         *gen_opts = "h";
-#ifndef TWAMP
+#ifdef TWAMP
+    static char         *tw_opts = "Z";
+#else
     static char         *ow_opts = "ftT:";
 #endif
 #ifndef    NDEBUG
@@ -1260,13 +1272,14 @@ main(
     ctx = ping_ctx.lib_ctx;
 
     /* Set default options. */
-    ping_ctx.opt.v4only = ping_ctx.opt.v6only =
+    ping_ctx.opt.v4only = ping_ctx.opt.v6only = ping_ctx.opt.zero_addr =
     ping_ctx.opt.records = ping_ctx.opt.from = ping_ctx.opt.to =
     ping_ctx.opt.quiet = ping_ctx.opt.raw = ping_ctx.opt.machine = False;
     ping_ctx.opt.childwait = NULL;
-    ping_ctx.opt.save_from_test = ping_ctx.opt.save_to_test 
-        = ping_ctx.opt.identity = ping_ctx.opt.pffile 
-        = ping_ctx.opt.srcaddr = ping_ctx.opt.authmode = NULL;
+    ping_ctx.opt.save_from_test = ping_ctx.opt.save_to_test
+        = ping_ctx.opt.identity = ping_ctx.opt.pffile
+        = ping_ctx.opt.srcaddr = ping_ctx.opt.authmode
+        = ping_ctx.opt.interface = NULL;
     ping_ctx.opt.numPackets = 100;
     ping_ctx.opt.lossThreshold = 0.0;
     ping_ctx.opt.delayStart = 0.0;
@@ -1304,7 +1317,9 @@ main(
 #ifndef    NDEBUG
     strcat(optstring,debug_opts);
 #endif
-#ifndef TWAMP
+#ifdef TWAMP
+    strcat(optstring, tw_opts);
+#else
     strcat(optstring, ow_opts);
 #endif
 
@@ -1336,11 +1351,24 @@ main(
                     exit(1);
                 }
                 break;
+            case 'B':
+                if(ping_ctx.opt.interface){
+                    usage(progname,"-B can only be used once");
+                    exit(1);
+                }
+                if(!(ping_ctx.opt.interface = strndup(optarg, IFNAMSIZ))){
+                    I2ErrLog(eh,"malloc: %M");
+                    exit(1);
+                }
+                break;
             case 'u':
                 if(!(ping_ctx.opt.identity = strdup(optarg))){
                     I2ErrLog(eh,"malloc: %M");
                     exit(1);
                 }
+                break;
+            case 'Z':
+                ping_ctx.opt.zero_addr = True;
                 break;
 
                 /* Test options. */
@@ -1721,6 +1749,7 @@ main(
 
         ping_ctx.cntrl = NWPControlOpen(ctx,
                 ping_ctx.opt.srcaddr,
+                ping_ctx.opt.interface,
                 I2AddrByNode(eh, ping_ctx.remote_serv),
                 ping_ctx.auth_mode,ping_ctx.opt.identity,
                 NULL,&err_ret);
@@ -1820,7 +1849,8 @@ main(
 
         if (!OWPSessionRequest(ping_ctx.cntrl, NULL, False,
                                I2AddrByNode(eh,ping_ctx.remote_test),
-                               True,(OWPTestSpec*)&tspec,
+                               True,ping_ctx.opt.zero_addr,
+                               (OWPTestSpec*)&tspec,
                                fromfp,tosid,&err_ret))
             FailSession(ping_ctx.cntrl);
 #else
@@ -1830,7 +1860,8 @@ main(
         if(ping_ctx.opt.to) {
             if (!OWPSessionRequest(ping_ctx.cntrl, NULL, False,
                         I2AddrByNode(eh,ping_ctx.remote_test),
-                        True,(OWPTestSpec*)&tspec,
+                        True,ping_ctx.opt.zero_addr,
+                        (OWPTestSpec*)&tspec,
                         NULL,tosid,&err_ret))
                 FailSession(ping_ctx.cntrl);
         }
@@ -1854,7 +1885,8 @@ main(
 
             if (!OWPSessionRequest(ping_ctx.cntrl,
                         I2AddrByNode(eh,ping_ctx.remote_test),
-                        True, NULL, False,(OWPTestSpec*)&tspec,
+                        True, NULL, False, ping_ctx.opt.zero_addr,
+                        (OWPTestSpec*)&tspec,
                         fromfp,fromsid,&err_ret))
                 FailSession(ping_ctx.cntrl);
         }
@@ -2051,8 +2083,9 @@ main(
         /*
          * Open connection to owampd.
          */
-        ping_ctx.cntrl = OWPControlOpen(ctx, 
+        ping_ctx.cntrl = OWPControlOpenInterface(ctx,
                 ping_ctx.opt.srcaddr,
+                ping_ctx.opt.interface,
                 I2AddrByNode(eh, ping_ctx.remote_serv),
                 ping_ctx.auth_mode,ping_ctx.opt.identity,
                 NULL,&err_ret);
@@ -2105,8 +2138,9 @@ main(
         /*
          * Open connection to owampd.
          */
-        ping_ctx.cntrl = OWPControlOpen(ctx, 
+        ping_ctx.cntrl = OWPControlOpenInterface(ctx,
                 ping_ctx.opt.srcaddr,
+                ping_ctx.opt.interface,
                 I2AddrByNode(eh, ping_ctx.remote_serv),
                 ping_ctx.auth_mode,ping_ctx.opt.identity,
                 &tstamp.owptime,&err_ret);

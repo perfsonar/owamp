@@ -8,6 +8,8 @@
  *                      and setting up a control session
  */
 
+#include <owamp/owamp.h>
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -18,8 +20,6 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 
-
-#include <owamp/owamp.h>
 #include <owamp/owampP.h>
 #include <I2util/util.h>
 #include <I2util/addr.h>
@@ -221,6 +221,7 @@ int session_setup_test(
                 // not a real test, but these params run through the basic setup
                 I2AddrByNode(ctx->eh, "127.0.0.1"), True,
                 I2AddrByNode(ctx->eh, "127.0.0.1"), True,
+                False,
                 &tspec,
                 NULL,
                 sid_ret, &err_ret)) {

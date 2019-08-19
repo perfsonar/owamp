@@ -52,7 +52,7 @@ configured by the system administrator.
 uses the classic accept/fork model of handling new requests.
 .PP
 Most of the command line options for \fBowampd\fR have analogous options
-in the \fBowampd.conf\fR file. The command line takes precedence.
+in the \fBowamp-server.conf\fR file. The command line takes precedence.
 .SH OPTIONS
 .TP
 .so nwampd_opts.man
@@ -115,13 +115,13 @@ Used to tell a spawned off receiver/sender process to terminate a session
 early. (This is an indication that a StopSessions message was received
 for those familiar with the \fBOWAMP\fR protocol.)
 .SH FILES
-owampd.pid
+owamp-server.pid
 .br
-owampd.conf
+owamp-server.conf
 .br
-owampd.limits
+owamp-server.limits
 .br
-owampd.pfs
+owamp-server.pfs
 .SH ENVIRONMENT VARIABLES
 \fBOWAMP\fR uses environment variables for some debugging options.
 .TS
@@ -134,8 +134,8 @@ OWAMP_DEBUG_TIMEOFFSET	Offset time by this amount (seconds)
 .TE
 .SH SEE ALSO
 There are more details on configuring the \fBowampd\fR daemon in the
-owampd.conf(5) manual page. Details on configuring the policy
-are in the owampd.limits(5) and owampd.pfs(5) manual pages.
+owamp-server.conf(5) manual page. Details on configuring the policy
+are in the owamp-server.limits(5) and owamp-server.pfs(5) manual pages.
 Information on the client is in the owping(1) manual page.
 For more of an overview of the full functionality and architecture, see
 the \%http://e2epi.internet2.edu/owamp/ web site.

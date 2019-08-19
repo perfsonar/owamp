@@ -50,7 +50,7 @@ will be selected.
 .TP
 .BI \-c " confdir"
 Specify the directory that holds the \fB\*[prog]\fR configuration files:
-\fB\*[prog].conf\fR, \fB\*[prog].limits\fR and \fB\*[prog].pfs\fR.
+\fB\*[conf].conf\fR, \fB\*[conf].limits\fR and \fB\*[conf].pfs\fR.
 .RS
 .IP Default:
 Current working directory.
@@ -62,7 +62,7 @@ the result of one-way latency tests where the server is the receiving
 host. The data files are used to buffer the data, at least until a client
 downloads the file. Policy restrictions can be used to set how much disk space
 a given connection can use, as well as to determine when each file
-is deleted. (See the \fB\*[prog].limits(5)\fR manual page.)
+is deleted. (See the \fB\*[conf].limits(5)\fR manual page.)
 .RS
 .IP Default:
 Current working directory.
@@ -113,7 +113,7 @@ and both numbers must be valid port values. (16 bit unsigned integer values)
 .RE
 .TP
 .BI \-R " vardir"
-Specify the directory to hold the \*[prog].pid file.
+Specify the directory to hold the \*[conf].pid file.
 .RS
 .IP Default:
 Current working directory

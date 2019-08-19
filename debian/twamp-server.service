@@ -1,0 +1,12 @@
+[Unit]
+Description=TWAMP server
+After=network.target
+
+[Service]
+Type=forking
+PIDFile=/var/run/twamp-server.pid
+ExecStart=/usr/sbin/twampd -c /etc/twamp-server -R /var/run
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target

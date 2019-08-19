@@ -314,6 +314,7 @@ FreeChldState(
 
 static void
 ReapChildren(
+        OWPContext ctx,
         struct pollfd **fds,
         nfds_t      *nfds
         )
@@ -331,7 +332,7 @@ ReapChildren(
     while ( (child = waitpid(-1, &status, WNOHANG)) > 0){
         key.dsize = child;
         if(!I2HashFetch(pidtable,key,&val)){
-            OWPError(cstate->policy->ctx,OWPErrWARNING,
+            OWPError(ctx,OWPErrWARNING,
                     OWPErrUNKNOWN,
                     "pid(%d) not in pidtable!?!",child);
         }
@@ -524,7 +525,7 @@ ACCEPT:
                  * accept since it could make more free
                  * connections.
                  */
-                ReapChildren(fds,nfds);
+                ReapChildren(policy->ctx,fds,nfds);
                 goto ACCEPT;
                 break;
             case ECONNABORTED:
@@ -545,7 +546,7 @@ ACCEPT:
          * the max control sessions since it could make more free
          * connections.
          */
-        ReapChildren(fds,nfds);
+        ReapChildren(policy->ctx,fds,nfds);
         if (control_sessions + 1 > opts.maxcontrolsessions) {
             OWPError(policy->ctx,OWPErrWARNING,OWPErrPOLICY,
                      "Resource usage exceeds limits %s "
@@ -1905,7 +1906,7 @@ int main(
                 if(owpd_exit){
                     break;
                 }
-                ReapChildren(&fds,&nfds);
+                ReapChildren(ctx,&fds,&nfds);
                 continue;
             }
             OWPError(ctx,OWPErrFATAL,errno,"select(): %M");
@@ -1930,7 +1931,7 @@ int main(
             break;
         }
 
-        ReapChildren(&fds,&nfds);
+        ReapChildren(ctx,&fds,&nfds);
     }
 
     I2ErrLog(errhand,"%s: exiting...",progname);
@@ -1968,7 +1969,7 @@ int main(
         if(!owpd_chld){
             (void)sigsuspend(&sigs);
         }
-        ReapChildren(&fds,&nfds);
+        ReapChildren(ctx,&fds,&nfds);
     }
 
     /*

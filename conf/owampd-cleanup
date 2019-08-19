@@ -1,0 +1,88 @@
+#!/usr/bin/perl -w
+
+use strict;
+
+use File::Basename;
+use File::Find;
+use Getopt::Std;
+
+my %opts;
+getopts('a:d:l:nv', \%opts);
+
+my $age      = $opts{a} || 86400;
+my $data_dir = $opts{d} || '/var/lib/owamp/hierarchy/';
+my $link_dir = $opts{l} || '/var/lib/owamp/catalog/';
+my $dry_run  = $opts{n};
+my $verbose  = $opts{v};
+
+# find owampd processes
+my @owampd;
+my @procs = glob "'/proc/*/comm'";
+for my $comm (@procs) {
+  if (open(my $fh, "<", $comm)) {
+    my $name = readline($fh);
+    close($fh);
+    if ($name eq "owampd\n") {
+      push @owampd, dirname($comm)
+    }
+  }
+}
+
+# find open data files
+my %active;
+for my $proc (@owampd) {
+  for my $fd (glob "'${proc}/fd/*'") {
+    my $filename = readlink($fd);
+    if ($filename =~ m/^$data_dir/) {
+      $active{$filename} = 1;
+    }
+  }
+}
+
+# remove old data files
+my $ts = time - $age;
+find(sub{
+  my $current = $File::Find::name;
+
+  if ($active{$current}) {
+    if ($verbose) {
+      print "Skipping active file: $current\n";
+    }
+    return;
+  }
+
+  if (-f $_) {
+    my $mtime = (stat(_))[9];
+    if ($mtime < $ts) {
+      if ($verbose) {
+        print "Removing old file: $current\n";
+      }
+
+      if (!$dry_run) {
+        if (!unlink($_)) {
+          print "Could not remove file $current: $!\n";
+        }
+      }
+    }
+  }
+}, $data_dir);
+
+# remove old links
+find(sub{
+  my $current = $File::Find::name;
+
+  if (-l $_) {
+    my $mtime = (lstat(_))[9];
+    if ($mtime < $ts and ! -f $_) {
+      if ($verbose) {
+        print "Removing old symlink: $current\n";
+      }
+
+      if (!$dry_run) {
+        if (!unlink($_)) {
+          print "Could not remove link $current: $!\n";
+        }
+      }
+    }
+  }
+}, $link_dir);

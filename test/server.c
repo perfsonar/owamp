@@ -6,6 +6,8 @@
  *
  *        Description:  Basic twping control server emulation
  */
+#include <owamp/owamp.h>
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -14,8 +16,6 @@
 #include <time.h>
 #include <sys/socket.h>
 
-#include <owamp/owamp.h>
-#
 #include "./server.h"
 
 //#include <I2util/util.h>
@@ -25,7 +25,7 @@
 #include <openssl/hmac.h>
 
 
-#define SESSION_PORT 0xABCD // not verified 
+#define SESSION_PORT 0xABCD // not verified
 #define GREETING_COUNT 1024
 #define GREETING_CHALLENGE "just a challenge"
 #define GREETING_SALT "some funny saltT"

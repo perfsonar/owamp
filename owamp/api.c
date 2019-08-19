@@ -32,6 +32,10 @@
 #include <libgen.h>
 #include <poll.h>
 
+#ifdef HAVE_LIBCAP
+#include <sys/capability.h>
+#endif
+
 
 /*
  * Function:        OWPGetContext
@@ -2900,7 +2904,7 @@ OWPWriteDataHeader(
                     (struct sockaddr*)&hdr->addr_sender,
                     (struct sockaddr*)&hdr->addr_receiver,
                     hdr->twoway?True:hdr->conf_sender,hdr->conf_receiver,False,
-                    hdr->sid,&hdr->test_spec) != 0) || !len){
+                    False,hdr->sid,&hdr->test_spec) != 0) || !len){
         return False;
     }
     ver = htonl((hdr->twoway?_OWP_VERSION_TWOWAY:0)|3);
@@ -3748,4 +3752,162 @@ OWPControlIsTwoWay(
     OWPControl cntrl)
 {
     return cntrl->twoway;
+}
+
+#ifdef HAVE_LIBCAP
+
+/*
+ * Function:        OWPSetEffectiveCapability
+ *
+ * Description:
+ *         Performs an operation on the specified capability within the
+ *         process' effective capability set.
+ *
+ * In Args:
+ *
+ * Out Args:
+ *
+ * Scope:
+ * Returns:
+ * Side Effect:
+ */
+static OWPBoolean
+OWPSetEffectiveCapability(
+        OWPContext          ctx,
+        char                *capability_name,
+        cap_flag_value_t    operation
+        )
+{
+    cap_t capabilities = NULL;
+    cap_value_t capability;
+    OWPBoolean ret = False;
+
+    assert(capability_name);
+
+    if(cap_from_name(capability_name, &capability) == -1){
+        OWPError(ctx, OWPErrFATAL, OWPErrUNKNOWN,
+                 "Unknown capability: %s", capability_name);
+        return False;
+    }
+
+    if(!(capabilities = cap_get_proc())){
+        OWPError(ctx, OWPErrWARNING, errno,
+                 "Could not get process capabilities: %M");
+        return False;
+    }
+
+    if(cap_set_flag(capabilities, CAP_EFFECTIVE, 1, &capability, operation)){
+        OWPError(ctx, OWPErrWARNING, errno,
+                 "Could not %s capability %s in the CAP_EFFECTIVE set: %M",
+                 operation == CAP_SET ? "set" : "clear", capability_name);
+        goto finish;
+    }
+
+    if(cap_set_proc(capabilities)){
+        OWPError(ctx, OWPErrWARNING, errno,
+                 "Could not %s capability %s: %M",
+                 operation == CAP_SET ? "add" : "remove", capability_name);
+        goto finish;
+    }
+
+    ret = True;
+finish:
+    if(cap_free(capabilities)){
+        OWPError(ctx, OWPErrWARNING, errno, "Capability free failure: %M");
+        ret = False;
+    }
+
+    return ret;
+}
+
+/*
+ * Function:        OWPAddEffectiveCapability
+ *
+ * Description:
+ *         Adds the specified capability to the process' effective set.
+ *
+ * In Args:
+ *
+ * Out Args:
+ *
+ * Scope:
+ * Returns:
+ * Side Effect:
+ */
+OWPBoolean
+OWPAddEffectiveCapability(
+        OWPContext  ctx,
+        char *capability_name
+    )
+{
+    return OWPSetEffectiveCapability(ctx, capability_name, CAP_SET);
+}
+
+/*
+ * Function:        OWPRemoveEffectiveCapability
+ *
+ * Description:
+ *         Removes the specified capability from the process' effective set.
+ *
+ * In Args:
+ *
+ * Out Args:
+ *
+ * Scope:
+ * Returns:
+ * Side Effect:
+ */
+OWPBoolean
+OWPRemoveEffectiveCapability(
+        OWPContext  ctx,
+        char *capability_name
+    )
+{
+    return OWPSetEffectiveCapability(ctx, capability_name, CAP_CLEAR);
+}
+#endif /* HAVE_LIBCAP */
+
+/*
+ * Function:        OWPSocketInterfaceBind
+ *
+ * Description:
+ *         Bind the specified socket to the specified interface using
+ *         SO_BINDTODEVICE.
+ *
+ * In Args:
+ *
+ * Out Args:
+ *
+ * Scope:
+ * Returns:
+ * Side Effect:
+ */
+OWPBoolean
+OWPSocketInterfaceBind(
+    OWPControl      cntrl,
+    int             fd,
+    const char      *interface
+    )
+{
+    int rc;
+    assert(interface);
+
+#ifdef HAVE_LIBCAP
+    OWPAddEffectiveCapability(cntrl->ctx, "cap_net_raw");
+#endif
+
+    rc = setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE,
+                    interface, strlen(interface));
+
+#ifdef HAVE_LIBCAP
+    OWPRemoveEffectiveCapability(cntrl->ctx, "cap_net_raw");
+#endif
+
+    if(rc != 0){
+        OWPError(cntrl->ctx, OWPErrFATAL, errno,
+                 "SO_BINDTODEVICE %s: %M", interface);
+        return False;
+    }
+
+    return True;
 }

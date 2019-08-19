@@ -1,0 +1,68 @@
+policy_module(twamp-server, 1.0.0)
+
+require {
+    type passwd_file_t;
+};
+
+########################################
+#
+# Declarations
+#
+
+type twampd_t;
+type twampd_exec_t;
+init_daemon_domain(twampd_t, twampd_exec_t)
+
+type twampd_etc_t;
+files_type(twampd_etc_t)
+
+type twampd_unit_file_t;
+systemd_unit_file(twampd_unit_file_t)
+
+type twampd_var_lib_t;
+files_type(twampd_var_lib_t)
+
+type twampd_pid_t;
+files_pid_file(twampd_pid_t)
+
+type twamp_port_t;
+corenet_port(twamp_port_t);
+
+type twamp_test_port_t;
+corenet_port(twamp_test_port_t);
+
+########################################
+#
+# twampd policy
+#
+
+# daemonize
+allow twampd_t self:capability { setgid setuid };
+allow twampd_t self:process { fork setpgid setrlimit signal_perms };
+allow twampd_t passwd_file_t:file { getattr open read };
+
+# syslog
+logging_send_syslog_msg(twampd_t)
+
+# resolver
+sysnet_dns_name_resolve(twampd_t)
+
+# read configuration
+allow twampd_t twampd_etc_t:dir search_dir_perms;
+allow twampd_t twampd_etc_t:file read_file_perms;
+
+# write pid files
+allow twampd_t twampd_pid_t:file { create_file_perms rw_file_perms };
+files_pid_filetrans(twampd_t, twampd_pid_t, file)
+
+# write /var/lib/twamp
+manage_dirs_pattern(twampd_t, twampd_var_lib_t, twampd_var_lib_t)
+manage_files_pattern(twampd_t, twampd_var_lib_t, twampd_var_lib_t)
+
+# network server
+allow twampd_t self:capability net_bind_service;
+corenet_tcp_bind_generic_node(twampd_t)
+allow twampd_t twamp_port_t:tcp_socket { name_bind };
+allow twampd_t self:tcp_socket { listen accept };
+corenet_udp_bind_generic_node(twampd_t)
+allow twampd_t twamp_test_port_t:udp_socket { name_bind };

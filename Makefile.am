@@ -19,7 +19,7 @@
 #	Description:	toplevel build for owamp project
 #
 ACLOCAL_AMFLAGS = -I config
-SUBDIRS = @TOP_BUILD_DIRS@ owamp owampd owping conf powstream test doc
+SUBDIRS = @TOP_BUILD_DIRS@ owamp owampd owping conf powstream test doc selinux
 #SUBDIRS = owamp owampd owping owdigest conf powstream scripts
 
 EXTRA_DIST	=	LICENSE

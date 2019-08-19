@@ -1,5 +1,4 @@
 Check datadir is writable on startup: fail if not
-option to SO_BINDTODEVICE
 Modify to treat I2util as independent package
 Fix version string in help message (Now reports I2util version)
 Document missing packet format for -R output

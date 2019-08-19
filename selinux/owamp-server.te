@@ -1,0 +1,76 @@
+policy_module(owamp-server, 1.0.0)
+
+require {
+    type passwd_file_t;
+};
+
+########################################
+#
+# Declarations
+#
+
+type owampd_t;
+type owampd_exec_t;
+init_daemon_domain(owampd_t, owampd_exec_t)
+
+type owampd_etc_t;
+files_type(owampd_etc_t)
+
+type owampd_unit_file_t;
+systemd_unit_file(owampd_unit_file_t)
+
+type owampd_var_lib_t;
+files_type(owampd_var_lib_t)
+
+type owampd_pid_t;
+files_pid_file(owampd_pid_t)
+
+type owampd_tmp_t;
+files_tmp_file(owampd_tmp_t);
+
+type owamp_port_t;
+corenet_port(owamp_port_t);
+
+type owamp_test_port_t;
+corenet_port(owamp_test_port_t);
+
+########################################
+#
+# owampd policy
+#
+
+# daemonize
+allow owampd_t self:capability { setgid setuid };
+allow owampd_t self:process { fork setpgid setrlimit signal_perms };
+allow owampd_t passwd_file_t:file { getattr open read };
+
+# syslog
+logging_send_syslog_msg(owampd_t)
+
+# resolver
+sysnet_dns_name_resolve(owampd_t)
+
+# read configuration
+allow owampd_t owampd_etc_t:dir search_dir_perms;
+allow owampd_t owampd_etc_t:file read_file_perms;
+
+# write pid files
+allow owampd_t owampd_pid_t:file { create_file_perms rw_file_perms };
+files_pid_filetrans(owampd_t, owampd_pid_t, file)
+
+# write /var/lib/owamp
+manage_dirs_pattern(owampd_t, owampd_var_lib_t, owampd_var_lib_t)
+manage_files_pattern(owampd_t, owampd_var_lib_t, owampd_var_lib_t)
+manage_lnk_files_pattern(owampd_t, owampd_var_lib_t, owampd_var_lib_t)
+
+# create files in /tmp
+manage_files_pattern(owampd_t, owampd_tmp_t, owampd_tmp_t)
+files_tmp_filetrans(owampd_t, owampd_tmp_t, file)
+
+# network server
+allow owampd_t self:capability net_bind_service;
+corenet_tcp_bind_generic_node(owampd_t)
+allow owampd_t owamp_port_t:tcp_socket { name_bind };
+allow owampd_t self:tcp_socket { listen accept };
+corenet_udp_bind_generic_node(owampd_t)
+allow owampd_t owamp_test_port_t:udp_socket { name_bind };

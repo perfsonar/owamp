@@ -1,0 +1,9 @@
+#! /usr/bin/dh-exec
+usr/share/man/man5/twamp-server.conf.5
+usr/share/man/man5/twamp-server.limits.5
+usr/share/man/man5/twamp-server.pfs.5
+usr/share/man/man8/twampd.8
+usr/bin/twampd usr/sbin
+conf/twampd.limits => etc/twamp-server/twamp-server.limits
+conf/twampd.rpm.conf => etc/twamp-server/twamp-server.conf
+debian/apparmor/usr.sbin.twampd etc/apparmor.d
