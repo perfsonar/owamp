@@ -1,8 +1,6 @@
 Cleanup configure errors.
-Index: owamp/configure.ac
-===================================================================
---- owamp.orig/configure.ac	2019-08-26 11:18:42.414135000 +0000
-+++ owamp/configure.ac	2019-08-26 11:31:08.227824275 +0000
+--- a/configure.ac	2019-09-27 13:16:53.461052752 -0400
++++ b/configure.ac	2019-09-27 13:16:53.603736588 -0400
 @@ -105,7 +105,6 @@
  AC_SUBST(OWPLIBDEPS)
  
@@ -27,10 +25,8 @@ Index: owamp/configure.ac
 -	[test -z "$CONFIG_HEADERS" || echo timestamp > owamp/stamp-h.in])
 +AC_OUTPUT([Makefile owamp/Makefile owampd/Makefile owping/Makefile powstream/Makefile conf/Makefile test/Makefile doc/Makefile selinux/Makefile owamp.spec])
  
-Index: owamp/COPYING
-===================================================================
 --- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ owamp/COPYING	2019-08-26 11:31:08.228918193 +0000
++++ b/COPYING	2019-09-27 13:16:53.604873248 -0400
 @@ -0,0 +1,175 @@
 +
 +                                 Apache License
@@ -207,22 +203,16 @@ Index: owamp/COPYING
 +      defend, and hold each Contributor harmless for any liability
 +      incurred by, or claims asserted against, such Contributor by reason
 +      of your accepting any such warranty or additional liability.
-Index: owamp/AUTHORS
-===================================================================
 --- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ owamp/AUTHORS	2019-08-26 11:31:08.229346452 +0000
++++ b/AUTHORS	2019-09-27 13:16:53.605242301 -0400
 @@ -0,0 +1 @@
 +Aaron Brown (aaron@internet2.edu)
-Index: owamp/NEWS
-===================================================================
 --- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ owamp/NEWS	2019-08-26 11:31:08.229592577 +0000
++++ b/NEWS	2019-09-27 13:16:53.605538246 -0400
 @@ -0,0 +1 @@
 +Placeholder
-Index: owamp/owping/Makefile.am
-===================================================================
---- owamp.orig/owping/Makefile.am	2019-08-26 11:18:42.414135000 +0000
-+++ owamp/owping/Makefile.am	2019-08-26 11:31:08.230065056 +0000
+--- a/owping/Makefile.am	2019-09-27 13:16:52.327778367 -0400
++++ b/owping/Makefile.am	2019-09-27 13:16:53.605881370 -0400
 @@ -23,7 +23,7 @@
  
  bin_PROGRAMS	= owping twping
@@ -232,10 +222,8 @@ Index: owamp/owping/Makefile.am
  owping_DEPENDENCIES = $(OWPLIBDEPS) $(I2UTILLIBDEPS)
  # Unfortunately, automake doesn't follow the BSD tradition here...
  RM = rm -f
-Index: owamp/powstream/Makefile.am
-===================================================================
---- owamp.orig/powstream/Makefile.am	2019-08-26 11:18:42.414135000 +0000
-+++ owamp/powstream/Makefile.am	2019-08-26 11:31:08.230711495 +0000
+--- a/powstream/Makefile.am	2019-09-27 13:16:52.328563559 -0400
++++ b/powstream/Makefile.am	2019-09-27 13:16:53.606379001 -0400
 @@ -24,5 +24,5 @@
  bin_PROGRAMS	= powstream
  
