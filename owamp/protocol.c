@@ -1724,10 +1724,7 @@ _OWPWriteStartSessions(
     }
 
     buf[0] = OWPReqStartSessions;
-#ifndef        NDEBUG
-    memset(&buf[1],0,15);        /* Unused        */
-#endif
-    memset(&buf[16],0,16);        /* Zero padding */
+    memset(&buf[1],0,31);        /* MBZ + zeroed HMAC */
 
     /*
      * Add text to HMAC and put digest in second block of message
