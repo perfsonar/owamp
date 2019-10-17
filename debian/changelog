@@ -1,3 +1,9 @@
+owamp (4.2.3~a0.0-1) perfsonar-4.2-snapshot; urgency=low
+
+  * New upstream version.
+
+ -- Antoine Delvaux <antoine.delvaux@man.poznan.pl>  Thu, 17 Oct 2019 15:27:26 +0200
+
 owamp (4.2.1-1) perfsonar-4.2; urgency=low
 
   * New upstream version.
