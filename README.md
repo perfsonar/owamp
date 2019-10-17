@@ -1,5 +1,5 @@
-| CentOS        | [![Build Status (CentOS)](https://perfsonar-dev3.grnoc.iu.edu/jenkins/buildStatus/icon?job=owamp-centos)](https://perfsonar-dev3.grnoc.iu.edu/jenkins/view/Debian/job/owamp-centos/) | Debian      | [![Build Status (Debian)](https://perfsonar-dev3.grnoc.iu.edu/jenkins/buildStatus/icon?job=owamp-debian-source)](https://perfsonar-dev3.grnoc.iu.edu/jenkins/view/Debian/job/owamp-debian-source/) |
-| -------------|-------------|-------------|-------------|
+| [![release](https://img.shields.io/github/release/perfsonar/owamp.svg)](https://github.com/perfsonar/owamp/releases) | CentOS        | [![Build Status (CentOS)](https://perfsonar-dev3.grnoc.iu.edu/jenkins/buildStatus/icon?job=owamp-centos)](https://perfsonar-dev3.grnoc.iu.edu/jenkins/view/Debian/job/owamp-centos/) | Debian      | [![Build Status (Debian)](https://perfsonar-dev3.grnoc.iu.edu/jenkins/buildStatus/icon?job=owamp-debian-source)](https://perfsonar-dev3.grnoc.iu.edu/jenkins/view/Debian/job/owamp-debian-source/) |
+| -------------|-------------|-------------|-------------|-------------|
 
 # OWAMP
 
