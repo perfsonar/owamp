@@ -2683,9 +2683,7 @@ _OWPWriteFetchSession(
     }
 
     buf[0] = OWPReqFetchSession;
-#ifndef        NDEBUG
-    memset(&buf[1],0,7);        /* Unused        */
-#endif
+    memset(&buf[1],0,7);
     *(uint32_t*)&buf[8] = htonl(begin);
     *(uint32_t*)&buf[12] = htonl(end);
     memcpy(&buf[16],sid,16);
