@@ -47,7 +47,7 @@ case "$1" in
                 --no-create-home --disabled-login owamp
         fi
 
-        install -d -oowamp -gowamp -m750 /var/lib/owamp
+        install -d -oowamp -gowamp -m750 /var/lib/owamp /var/lib/owamp/hierarchy
     ;;
 
     abort-upgrade|abort-remove|abort-deconfigure)

@@ -148,7 +148,7 @@ setcap "cap_net_raw+p" %{_bindir}/powstream
 %post -n owamp-server
 
 #create data dir (must be prior to selinux)
-mkdir -p /var/lib/owamp
+mkdir -p /var/lib/owamp/hierarchy
 chown -R owamp:owamp /var/lib/owamp
 
 %if 0%{?el7}
@@ -170,7 +170,7 @@ fi
 %else
 if [ "$1" = "1" ]; then
 	/sbin/chkconfig --add owamp-server
-	mkdir -p /var/lib/owamp
+	mkdir -p /var/lib/owamp/hierarchy
 	chown -R owamp:owamp /var/lib/owamp
 else
     #handle pre 1.6 upgrade

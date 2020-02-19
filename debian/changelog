@@ -4,19 +4,24 @@ owamp (4.3.0~a1.0-1) perfsonar-4.3-snapshot; urgency=low
 
  -- Antoine Delvaux <antoine.delvaux@man.poznan.pl>  Mon, 26 Aug 2019 18:39:54 +0000
 
-owamp (4.3.0-1) perfsonar-minor-snapshot; urgency=low
+owamp (4.2.3~a0.0-1) perfsonar-4.2-snapshot; urgency=low
 
   * New upstream version.
 
- -- perfSONAR developers <debian@perfsonar.net>  \Thu, \15 \Aug \2019 :21:10 \+0000
-owamp (4.2.1-1) perfsonar-patch-snapshot; urgency=low
+ -- Antoine Delvaux <antoine.delvaux@man.poznan.pl>  Thu, 17 Oct 2019 15:27:26 +0200
+
+owamp (4.2.1-1) perfsonar-4.2; urgency=low
 
   * New upstream version.
 
- -- perfSONAR developers <debian@perfsonar.net>  \Thu, \15 \Aug \2019 :21:06 \+0000
+ -- perfSONAR developers <debian@perfsonar.net>  Fri, 27 Sep 2019 13:16:53 -0400
+
 owamp (4.2.0-1) perfsonar-minor-staging; urgency=low
 
   * New upstream version.
+  * Adding apparmor support for owampd and twampd
+  * Adding Build-Depends: on libcap-dev and Depends: on libcap2-bin
+  * Building on Stretch.
 
  -- Andy Lake <andy@es.net>  Thu, 15 Aug 2019 01:10:36 +0000
 
