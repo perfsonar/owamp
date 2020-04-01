@@ -4,11 +4,11 @@ owamp (4.2.5~a1.0-1) perfsonar-4.2-snapshot; urgency=low
 
  -- perfSONAR developers <debian@perfsonar.net>  Wed, 01 Apr 2020 13:38:29 -0400
 
-owamp (4.2.4~a0.0-1) perfsonar-4.2-snapshot; urgency=low
+owamp (4.2.4-1) perfsonar-4.2; urgency=low
 
   * New upstream version.
 
- -- Antoine Delvaux <antoine.delvaux@man.poznan.pl>  Tue, 17 Mar 2020 09:58:45 +0100
+ -- perfSONAR developers <debian@perfsonar.net>  Thu, 26 Mar 2020 10:03:17 -0400
 
 owamp (4.2.3-1) perfsonar-4.2; urgency=low
 
