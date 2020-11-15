@@ -1,4 +1,9 @@
-owamp (4.3.2~a1.0-1) perfsonar-4.3-snapshot; urgency=low\n\n  * New upstream version.\n\n -- perfSONAR developers <debian@perfsonar.net>  Mon, 09 Nov 2020 15:30:49 +0000\n
+owamp (4.3.2~a1.0-1) perfsonar-4.3-snapshot; urgency=low
+
+  * New upstream version.
+
+ -- Antoine Delvaux <antoine.delvaux@man.poznan.pl>  Sun, 15 Nov 2020 21:08:01 +0000
+
 owamp (4.3.0-1) perfsonar-4.3; urgency=low
 
   * New upstream version.
