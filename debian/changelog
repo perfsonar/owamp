@@ -10,114 +10,24 @@ owamp (4.3.4-1) perfsonar-4.3; urgency=low
 
  -- perfSONAR developers <debian@perfsonar.net>  Wed, 17 Mar 2021 01:09:52 +0000
 
+owamp (4.3.3-1) perfsonar-4.3; urgency=low
+
+  * New upstream version.
+
+ -- perfSONAR developers <debian@perfsonar.net>  Tue, 02 Feb 2021 16:37:00 +0000
+
+owamp (4.3.2-1) perfsonar-4.3; urgency=low
+
+  * New upstream version.
+
+ -- perfSONAR developers <debian@perfsonar.net>  Wed, 18 Nov 2020 15:42:45 +0000
+
 owamp (4.3.0-1) perfsonar-4.3; urgency=low
 
   * New upstream version.
 
  -- perfSONAR developers <debian@perfsonar.net>  Fri, 30 Oct 2020 13:50:59 +0000
 
-owamp (4.2.3-1) perfsonar-4.2; urgency=low
-
-  * New upstream version.
-
- -- perfSONAR developers <debian@perfsonar.net>  Wed, 19 Feb 2020 15:37:43 +0000
-
-owamp (4.2.1-1) perfsonar-4.2; urgency=low
-
-  * New upstream version.
-
- -- perfSONAR developers <debian@perfsonar.net>  Fri, 27 Sep 2019 13:16:53 -0400
-
-owamp (4.2.0-1) perfsonar-minor-staging; urgency=low
-
-  * New upstream version.
-  * Adding apparmor support for owampd and twampd
-  * Adding Build-Depends: on libcap-dev and Depends: on libcap2-bin
-  * Building on Stretch.
-
- -- Andy Lake <andy@es.net>  Thu, 15 Aug 2019 01:10:36 +0000
-
-owamp (3.5.8-1) perfsonar-jessie-release; urgency=medium
-
-  * New upstream version.
-
- -- Antoine Delvaux <antoine.delvaux@man.poznan.pl>  Sat, 13 Oct 2018 21:58:52 +0000
-
-owamp (3.5.7-1) perfsonar-jessie-release; urgency=medium
-
-  * New upstream version.
-  * Adding dependency to lsb-base
-  * Adding twamp-client and twamp-server packages
-
- -- Antoine Delvaux <antoine.delvaux@man.poznan.pl>  Tue, 26 Jun 2018 17:30:35 +0000
-
-owamp (3.5.6-1) perfsonar-jessie-release; urgency=medium
-
-  * New upstream version.
-
- -- Valentin Vidic <Valentin.Vidic@CARNet.hr>  Thu, 07 Dec 2017 12:59:31 +0100
-
-owamp (3.5.5-1) perfsonar-jessie-release; urgency=low
-
-  * New upstream version.
-
- -- Antoine Delvaux <antoine.delvaux@man.poznan.pl>  Fri, 29 Sep 2017 10:30:26 +0000
-
-owamp (3.5.4-1) perfsonar-jessie-release; urgency=low
-
-  * New upstream version.
-
- -- Antoine Delvaux <antoine.delvaux@man.poznan.pl>  Fri, 24 Feb 2017 15:35:48 +0100
-
-owamp (3.5.2-1) perfsonar-jessie-release; urgency=low
-
-  * New upstream version.
-  * Adding autopkgtests.
-
- -- Antoine Delvaux <antoine.delvaux@man.poznan.pl>  Tue, 15 Nov 2016 15:28:51 +0100
-
-owamp (3.5.1-1) perfsonar-jessie-release; urgency=low
-
-  * New upstream version.
-
- -- Antoine Delvaux <antoine.delvaux@gmail.com>  Fri, 23 Sep 2016 14:57:07 +0000
-
-owamp (3.5.0-2) perfsonar-jessie-release; urgency=low
-
-  * Call rm_conffile before update-rc.d
-
- -- Valentin Vidic <Valentin.Vidic@CARNet.hr>  Tue, 15 Mar 2016 08:40:02 +0100
-
-owamp (3.5.0-1) perfsonar-jessie-release; urgency=low
-
-  * Port to Jessie
-  * New upstream version.
-  * Renamed service to owamp-server
-  * Moved configuration directory to /etc/owamp-server
-  * Renamed configuration file to owamp-server.conf
-
- -- Antoine Delvaux <adelvaux@man.poznan.pl>  Fri, 04 Mar 2016 10:32:18 +0100
-
-owamp (3.4.14-1) perfsonar-wheezy-staging; urgency=low
-
-  * Improved logging capabilities (-g)
-  * Support for UNIX timestamps in summary (-U)
-  * Default bandwidth limit increased to 20M in owampd.limits
-
- -- Antoine Delvaux <adelvaux@man.poznan.pl>  Sat, 19 Sep 2015 22:38:11 +0000
-
-owamp (3.4.11-1) perfsonar-wheezy-staging; urgency=low
-
-  * New upstream version
-  * Options for limiting the number of active control and test sessions
-
- -- Antoine Delvaux <antoine.delvaux@dante.net>  Wed, 08 Jul 2015 19:03:58 +0000
-
-owamp (3.4.10-1) unstable; urgency=low
-
-  * Initial release
-
- -- Valentin Vidic <Valentin.Vidic@CARNet.hr>  Thu, 16 Apr 2015 21:43:31 +0000
 owamp (4.2.4-1) perfsonar-4.2; urgency=low
 
   * New upstream version.
