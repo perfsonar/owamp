@@ -112,7 +112,7 @@ usage(
             "   -S nodename:port  Srcaddr to bind to\n"
             "   -U user           Run as user \"user\" :-uid also valid\n"
             "   -v                verbose output\n"
-#ifndef        NDEBUG
+#ifdef DEBUG
             "   -w                Debugging: busy-wait children after fork to allow attachment\n"
             "   -Z                Debugging: Run in foreground\n"
 #endif
@@ -619,7 +619,7 @@ ACCEPT:
 
     /* Rest of function is child */
 
-#ifndef        NDEBUG
+#ifdef DEBUG
     {
         void *childwait;
 
@@ -1257,7 +1257,7 @@ int main(
     struct sigaction    ignact,setact;
     sigset_t            sigs;
 
-#ifndef NDEBUG
+#ifdef DEBUG
     char                *optstring = "a:c:d:e:fG:hP:R:S:U:vwZ";
 #else        
     char                *optstring = "a:c:d:e:fG:hP:R:S:U:vZ";
@@ -1433,7 +1433,7 @@ int main(
             case 'e':
             case 'Z':
                 break;
-#ifndef NDEBUG
+#ifdef DEBUG
             case 'w':
                 opts.childwait = (void*)True;
                 break;

@@ -4057,7 +4057,7 @@ parenterr:
      * busy loop for systems where debugger doesn't support
      * child follow_fork mode functionality...
      */
-#ifndef        NDEBUG
+#ifdef DEBUG
     {
         void *waitfor = OWPContextConfigGetV(ctx,OWPChildWait);
 

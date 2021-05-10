@@ -1517,7 +1517,7 @@ main(
                 appctx.opt.display_unix_ts = True;
                 break;
             /* undocumented debug options */
-#ifndef        NDEBUG
+#ifdef DEBUG
             case 'w':
                 appctx.opt.childwait = True;
                 break;
@@ -1787,7 +1787,7 @@ main(
         exit(1);
     }
 
-#ifndef NDEBUG
+#ifdef DEBUG
     /*
      * Setup debugging of child prcesses.
      */

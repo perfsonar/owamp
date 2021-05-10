@@ -56,7 +56,7 @@ main(
 
 
     ia.line_info = (I2NAME | I2MSG);
-#ifndef        NDEBUG
+#ifdef DEBUG
     ia.line_info |= (I2LINE | I2FILE);
 #endif
     ia.fp = stderr;
