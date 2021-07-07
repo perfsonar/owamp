@@ -103,8 +103,8 @@ _OWPInitNTP(
         struct timex        ntp_conf;
 
 	memset(&ntp_conf,0,sizeof(ntp_conf));
-        if(ntp_adjtime(&ntp_conf) < 0){
-            OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"ntp_adjtime(): %M");
+        if(adjtimex(&ntp_conf) < 0){
+            OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"adjtimex(): %M");
             return 1;
         }
 
@@ -209,8 +209,8 @@ _OWPGetTimespec(
         struct timex        ntp_conf;
 
         memset(&ntp_conf,0,sizeof(ntp_conf));
-        if(ntp_adjtime(&ntp_conf) < 0){
-            OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"ntp_adjtime(): %M");
+        if(adjtimex(&ntp_conf) < 0){
+            OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"adjtimex(): %M");
             return NULL;
         }
 
