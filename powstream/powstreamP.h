@@ -70,7 +70,7 @@ typedef        struct {
         char        *authmode;          /* -A */
         char        *identity;          /* -u */
         char        *pffile;            /* -k */
-#ifndef        NDEBUG
+#ifdef DEBUG
         I2Boolean   childwait;          /* -w */
 #endif
 

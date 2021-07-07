@@ -1,7 +1,7 @@
 Description: Fix manpage warnings
 
---- a/doc/owping_report.man	2021-03-17 01:09:51.404366990 +0000
-+++ b/doc/owping_report.man	2021-03-17 01:09:52.319390494 +0000
+--- a/doc/owping_report.man	2021-07-07 15:19:41.425816528 +0000
++++ b/doc/owping_report.man	2021-07-07 15:19:42.604833775 +0000
 @@ -83,5 +83,5 @@
  .br
  Finally \fB\*[proto]\fR reports the amount of re-ordering it observed. A
@@ -10,8 +10,8 @@ Description: Fix manpage warnings
 -\%http://www.internet2.edu/performance/owamp/draft-shalunov-reordering-definition-02.txt.html
 +.nf
 +http://www.internet2.edu/performance/owamp/draft-shalunov-reordering-definition-02.txt.html
---- a/doc/owping_test_opts.man	2021-03-17 01:09:51.404366990 +0000
-+++ b/doc/owping_test_opts.man	2021-03-17 01:09:52.319390494 +0000
+--- a/doc/owping_test_opts.man	2021-07-07 15:19:41.425816528 +0000
++++ b/doc/owping_test_opts.man	2021-07-07 15:19:42.604833775 +0000
 @@ -70,15 +70,15 @@
  _
  CS3	011000	Broadcast Video	TV & live events

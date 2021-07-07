@@ -674,7 +674,7 @@ typedef void (*OWPCloseFileFunc)(
         OWPAcceptType   aval
         );
 
-#ifndef NDEBUG
+#ifdef DEBUG
 /*
  * This integer type is used to aid in child-debugging. If OWPChildWait is
  * set and non-zero forked off endpoints will go into a busy-wait loop to
@@ -682,7 +682,7 @@ typedef void (*OWPCloseFileFunc)(
  * attached and the loop variable modified with the debugger. This should
  * not strictly be needed, but the gdb on many of the test plateforms I
  * used did not implement the follow-fork-mode option.) This was a quick
- * fix. (This will not be used if owamp is compiled with -DNDEBUG.)
+ * fix. (This will only be used if owamp is compiled with -DDEBUG.)
  */
 #define OWPChildWait        "OWPChildWait"
 #endif

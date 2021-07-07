@@ -452,8 +452,8 @@ _OWPEndpointInit(
          * We attempt to reflect the same sized packet back, but only
          * if the sender has requested enough padding.
          */
-        snd_payload_len = MAX(snd_payload_len, OWPTestTWPayloadSize(
-                                  ep->cntrl->mode, 0));
+        snd_payload_len = MAX(snd_payload_len, ep->len_payload + OWPTestTWPayloadSize(
+                                  ep->cntrl->mode, 0) - OWPTestPayloadSize(ep->cntrl->mode,0));
     }
     /* use calloc to initialize the memory to 0 */
     ep->payload = calloc(1,MAX(ep->len_payload,snd_payload_len));
@@ -4057,7 +4057,7 @@ parenterr:
      * busy loop for systems where debugger doesn't support
      * child follow_fork mode functionality...
      */
-#ifndef        NDEBUG
+#ifdef DEBUG
     {
         void *waitfor = OWPContextConfigGetV(ctx,OWPChildWait);
 
