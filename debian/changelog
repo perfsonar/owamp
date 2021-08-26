@@ -1,3 +1,9 @@
+owamp (4.4.1-1) perfsonar-4.4; urgency=low
+
+  * New upstream version.
+
+ -- Antoine Delvaux <antoine.delvaux@man.poznan.pl>  Thu, 26 Aug 2021 02:38:26 +0100
+
 owamp (4.4.0-1) perfsonar-4.4; urgency=low
 
   * New upstream version.
