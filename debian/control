@@ -3,8 +3,8 @@ Section: net
 Priority: optional
 Maintainer: perfSONAR developers <debian@perfsonar.net>
 Uploaders: Antoine Delvaux <antoine.delvaux@man.poznan.pl>
-Build-Depends: debhelper (>= 9), dh-apparmor, dh-autoreconf, dh-exec, debhelper (>= 9.20160709) | dh-systemd, libi2util-dev (>= 1.4),
- libcap-dev, libssl-dev
+Build-Depends: debhelper (>= 10), dh-apparmor, dh-exec, 
+ libi2util-dev (>= 1.4), libcap-dev, libssl-dev
 Standards-Version: 3.9.8
 Homepage: http://software.internet2.edu/owamp/
 Vcs-Git: https://github.com/perfsonar/owamp
