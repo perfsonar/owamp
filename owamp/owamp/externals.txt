@@ -1,0 +1,8 @@
+# Do not delete or edit this file unless you REALLY know what you are doing!
+# Use this file with "svn propset svn:externals -F externals.txt ."
+# -jeff
+# this should normally be at 'trunk' of I2util. Once this is 'branched'
+# it should be modified in the 'branch' to point at a specific
+# version of I2util
+#I2util    http://anonsvn.internet2.edu/svn/I2util/tags/I2util_1.1
+I2util    http://anonsvn.internet2.edu/svn/I2util/trunk

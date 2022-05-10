@@ -1,0 +1,126 @@
+<!doctype html public "-//w3c//dtd html 4.0 transitional//en">
+<html>
+<head>
+   <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+   <meta name="Author" content="Jeff W. Boote">
+   <title>OWAMP Version History</title>
+<!--									-->
+<!--	$Id$	-->
+<!--									-->
+<!------------------------------------------------------------------------>
+<!--									-->
+<!--			   Copyright (C)  2007				-->
+<!--				Internet2				-->
+<!--			   All Rights Reserved				-->
+<!--									-->
+<!------------------------------------------------------------------------>
+<!--									-->
+<!--	File:		milestones.html					-->
+<!--									-->
+<!--	Author:		Jeff Boote					-->
+<!--			Internet2					-->
+<!--									-->
+<!--	Date:		Tue Jan  2 15:52:33 MST 2007                    -->
+<!--									-->
+<!--	Description:							-->
+<!--	Milestone documentation for owamp.				-->
+<!--									-->
+</head>
+<body>
+
+<center>
+<h1> OWAMP Version History</h1></center>
+
+<center><a href="http://e2epi.internet2.edu/owamp/">http://e2epi.internet2.edu/owamp/</a></center>
+
+<center>
+<h5>$Date$</h5></center>
+<p>
+This document is an attempt to outline the major changes associated with each
+new release. This is not a comprehensive list. For complete details please see
+the cvs log messages as archived in the Changes file in the distribution.
+</p>
+<h3>Version 3.1 - 15-Jan-2008</h3>
+    <ul>
+        <li>Minor protocol compliance fixes</li>
+        <li>RPM support</li>
+        <li>Documentation updates</li>
+		<li>Add packet reordering to -M output</li>
+		<li>Enable powstream to do both inbound and outbound tests</li>
+    </ul>
+
+<h3>Version 3.0c - 24-Feb-2007</h3>
+    <ul>
+        <li>Many documentation fixes</li>
+        <li>
+        Added option to sub-set test results. See the new <em>-N</em> option
+        of owping.
+        </li>
+        <li>
+        Fixed bugs in powstream relating to summary data not always being
+        properly flushed before powstream printed the filename.
+        </li>
+    </ul>
+
+<h3>Version 3.0b - 02-Jan-2007</h3>
+    <ul>
+        <li>Fixes a bug in the end-of-test waiting code for the receiver</li>
+    </ul>
+
+<h3>Version 3.0a - 05-Dec-2006</h3>
+    <ul>
+        <li>Now compliant with RFC4656</li>
+        <ul>
+            <li>Standard port number for owamp-control: TCP/861</li>
+            <li>Minor protocol changes - encryption bits changed</li>
+        </ul>
+        <li>Includes man-page for powstream</li>
+    </ul>
+
+<h3>Version 2.0c - 25-May-2006</h3>
+    <ul>
+        <li>Fixed a bug in the statistics code that incorrectly magnified
+        loss. (A single lost packet would cause a pattern of lost packets:
+        one every 'timeout' later.)</li>
+    </ul>
+
+<h3>Version 2.0b - 11-May-2006</h3>
+    <ul>
+       <li>Major enhancements to signal handling aspects of all applications
+       in the distribution</li>
+       <li>Graceful termination of sessions added using signal handling
+       enhancements</li>
+       <li>Man-page for owup(1) added</li>
+    </ul>
+
+<h3>Version 2.0a - 23-Mar-2006</h3>
+    <ul>
+        <li>Added owup command-line utility</li>
+        <li>Fixed bug in statistics output (maxerr was reporting maxdelay)</li>
+        <li>Fixed bug in owampd server greeting message (incorrect start
+        time was being reported)</li>
+    </ul>
+
+<h3>Version 2.0 - 15-Mar-2006</h3>
+    <ul>
+        <li>Major changes to protocol - mostly in support of early termination
+        of sessions</li>
+        <li>Additional statistics now reported: TTL, Delay Variation
+        (Jitter)</li>
+        <li>NTP requirements relaxed</li>
+        <li>Additional system ports:
+        <ul>
+            <li>FreeBSD 4.7, 5.4, 6.0 (64-bit)</li>
+            <li>Linux 2.4.21 (32-bit), 2.6.11 (64-bit)</li>
+            <li>MacOS X 10.4.5</li>
+            <li>Solaris 5.8</li>
+        </ul>
+        <li>Man-pages for all supported applications</li>
+        <li>Firewall options: Can specify port-ranges for tests</li>
+        <li>Many, many bug fixes</li>
+    </ul>
+
+<pre> <hr WIDTH="100%">$Id$</pre>
+
+</body>
+</html>

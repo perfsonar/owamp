@@ -1,0 +1,19 @@
+$Id$
+
+1. (Server) Develop as a standalone server
+        A. Standalone
+                not all systems run inetd
+                easier to debug
+		only reasonible way to apply system-wide resource limits
+
+2. Send/Recieve roles should be separate processes from client/server
+        A. select of single file descriptor - perhaps more accurate time
+        B. localize clock mgmt to send/recv code/process
+	C. Able to use same send/recv code in client and server
+
+3. Concurrent server model
+	use traditional accept/fork/exec
+		resource limits applied using controlling parent process
+		(Threads not portable enough yet... grr.)
+		(pre-forking not worth it - few long-lived connections)
+		(async i/o - not worth the complexity.)

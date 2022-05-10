@@ -1,0 +1,6 @@
+version: '3.8'
+services:
+  alma8:
+    image: perfsonar/unibuild-alma8:latest
+    volumes:
+      -  .:/app

@@ -1,0 +1,179 @@
+$Id$
+******************************************************************
+******************************************************************
+A. Client-Sender <--> Server-Receiver scenario.
+******************************************************************
+            Client                              Server
+1. Open OwampControl                    * bind/listen/sockoptions.
+   to Server.                                   * fork off num_children.
+                                        * enter sig_child loop
+                                          [wait to hear from the child
+                                          saying it got busy].
+                                        *  children block in accept.  
+                                        
+                                        2. Capabilities sent to Client.
+                                        * also challenge.
+                                        * sig sent to parent.
+
+3. Client selects wanted mode.
+   Generates & sends Client-IV.
+
+                                        4. Save Client-IV.
+                                        * send Accept/Decline
+                                        * send Server-IV
+
+5. Allocate send_port.
+* choose Start Time.
+* send Session-Request(Conf-Rcv=1)
+* send send_port.  
+* Fix Times Distribution.  
+                                        6. Check policy match with
+                                        request & config files.
+                                        * Generate sid.
+
+                                        6.1 Allocate & init recv_port.
+                                        * Fix Times Distribution.
+                                        * Fork off a receiver.
+                                        * send Accept-Session(Accept=0,
+                                        port=recv_port, SID=sid)
+
+7. * Fork off a sender.
+
+8. send Session-Start
+
+                                        9. goto start_session.
+                                        * send Control-Ack
+                                        * signals recv_child
+
+10. signals sender_child
+    to start.
+
+                                        11. receive packets, make timestamps
+                                        and save.
+
+**************************************************************************
+**************************************************************************
+B. Client-Receiver <--> Server-Sender scenario.
+******************************************************************
+            Client                              Server
+1. Open OwampControl                    * bind/listen/sockoptions.
+   to Server.                                   * fork off num_children.
+                                        * enter sig_child loop
+                                          [wait to hear from the child
+                                          saying it got busy].
+                                        *  children block in accept.  
+                                        
+                                        2. Capabilities sent to Client.
+                                        * also challenge.
+                                        * sig sent to parent.
+
+3. Client selects wanted mode.
+   Generates & sends Client-IV.
+
+                                        4. Save Client-IV.
+                                        * send Accept/Decline
+                                        * send Server-IV
+
+5. Allocate rcv_port.
+* Fix Times Distribution.  
+* choose Start Time.
+* generate sid
+* send Session-Request(Conf-Rcv=1,
+        port=rcv_port, SID=sid)
+                                        6. Check policy match with
+                                        request & config files.
+
+                                        6.1 Allocate & init send_port.
+                                        * Fix Times Distribution.
+                                        * Fork off a sender.
+                                        * send Accept-Session(Accept=0,
+                                        port=send_port)
+
+7. * Fork off a receiver.
+        *
+        *
+        *
+        *
+        *
+
+8. send Session-Start
+*  signals rcv_child
+   to start.
+
+                                        9. goto start_session.
+                                        * send Control-Ack
+                                        * signals send_child
+
+
+11. receive packets, make timestamps                                    
+and save.                                                               
+
+******************************************************************
+******************************************************************
+C. Client-Collector  <--> Server-Receiver <--> Server-Sender scenario.
+******************************************************************
+******************************************************************
+    client              Server-Recv(SR)         Server-Send(SS)
+==================================================================
+0                       bind/listen/prefork     bind/listen/prefork
+                        chld block accept
+
+1   open owamp-C to SR
+
+2                       *capab sent to C
+                        *challenge
+                        sig sent to parent
+
+3   select mode wanted
+    send C-IV
+
+4                       save C-IV
+                        send accept/decline
+                        send S-IV
+
+5   send Session-Req
+    *conf-send=1
+    *conf-recv=1
+    *senderaddr=IP
+    *recvaddr=IP
+    *lambda=lambda
+
+6                       check local policy
+                        open owamp-control to SS
+
+7                                               send chal/mode(SR)
+
+8                       select mode
+                        send C-IV'
+
+9                                               save C-IV'
+                                                send accept/S-IV'
+
+10                      generate SID
+                        alloc/init recv port
+                        fix time dist
+                        send Session-Req
+                        *conf-send=1
+                        *conf-recv=0
+                        *recvaddr=SRIP
+                        *lambda=lambda
+
+11                                              check local policy
+                                                alloc/init send_port
+                                                fix time dist
+                                                fork sender
+                                                AcceptSession(SR)
+
+12                      Fork recv
+                        AcceptSession(C)
+
+.....
+13   StartSessions(SR)
+
+14                      StartSessions(SS)
+
+15                                              Control-Ack(SR)
+                                                signal sender
+
+16                      Control-Ack(C)
+                        signal recv

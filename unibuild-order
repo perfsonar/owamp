@@ -1,0 +1,22 @@
+changequote(<!,!>)dnl
+changecom()dnl
+#
+# Build Order for pScheduler Packages for use with Unibuild
+#
+
+# Packages must be listed in an order where dependent packages are
+# built after their dependencies.
+#
+# Options that can be added to a package line:
+#
+#  --bundle b   Include the package in bundle b and not the default
+#               full bundle.
+#
+# Note that there is no need to make decisions for RPM- or Debian-only
+# builds in this file; if there is no packaging information for an OS
+# family in with the sources, it will not be built.
+#
+
+
+I2util
+owamp

@@ -1,0 +1,218 @@
+.\" ex: set tabstop=4 ai expandtab softtabstop=4 shiftwidth=4:
+.\" -*- mode: c-basic-indent: 4; tab-width: 4; indent-tabs-mode: nil -*-
+.\" The first line of this file must contain the '"[e][r][t][v] line
+.\" to tell man to run the appropriate filter "t" for table.
+.\" vim: set filetype=nroff :
+.\"
+.\"    $Id$
+.\"
+.\"######################################################################
+.\"#                                                                    #
+.\"#                        Copyright (C)  2007                         #
+.\"#                            Internet2                               #
+.\"#                        All Rights Reserved                         #
+.\"#                                                                    #
+.\"######################################################################
+.\"
+.\"    File:        owping_out_opts.man
+.\"
+.\"    Author:      Jeff W. Boote
+.\"                 Internet2
+.\"
+.\"    Date:        Sat Feb 24 04:03:02 MST 2007
+.\"
+.\"    Description:    
+.\"      This file is included into owping.1, owfetch.1, owstats.1 and
+.\"      is not useful as a man-page on its own.
+.\"
+.SH Output Options:
+.TP
+\fB\-a\fR \fIpercentile_list\fR
+.br
+.I percentile_list
+indicates the list of quantiles to be reported out in addition to
+median. This is done by specifying a list of \fIpercentiles\fR in
+a comma separated string (spaces are not allowed). Each \fIpercentile\fR
+is indicated by a floating point value between 0.0 and 100.0.
+
+This value is only used if reporting summary statistics.
+.RS
+.IP Default:
+Unset.
+.RE
+.TP
+\fB\-b\fR \fIbucket_width\fR
+.br
+A histogram of delays is created to compute the summary statistics.
+(This is used to compute percentiles of delay such as median.) The
+.I bucket_width
+indicates the resolution of the bins in the histogram. This value
+is specified using a floating point value and the units are seconds.
+
+Because a histogram to compute the median (and
+other percentiles of delay) the results can be misleading if the
+.I bucket_width
+is not appropriate. For example, if all of the delays in the sample are
+smaller than the value of
+.I bucket_width
+then the median will be reported as
+.I bucket_width,
+a value that is greater than the maximum delay in the sample. To avoid this,
+.I bucket_width
+should be picked to be smaller than (max - min). The default value
+was selected to be reasonable for most real network paths, it is not
+appropriate for tests to the localhost however.
+
+This value is only used if reporting summary statistics.
+.RS
+.IP Default:
+0.0001 (100 usecs)
+.RE
+.TP
+\fB\-d\fR \fIdir\fR
+.br
+.I dir
+indicates the directory in which to save summary files if the \fI\-p\fR
+option is used.
+.RS
+.IP Default:
+(current working directory)
+.RE
+.TP
+\fB\-M\fR
+.br
+Print summary information in a more computer pars-able format. Specifically,
+values are printed out in a key/value style. Units are seconds for all time
+values.
+
+The \fI\-M\fR option is ignored if \fI\-Q\fR is set.
+.RS
+.IP Default:
+Unset.
+.RE
+.TP
+\fB\-N\fR \fIcount\fR
+.br
+Number of test packets to put in sub-session summaries when computing
+statistics on owamp session data. 
+
+This option is used to break down the summary statistics in smaller
+sample sizes than a complete owp file. This is useful when breaking
+up very long running sessions.
+
+This option is only used for statistical
+output, and therefore has no effect on the \fB\-R\fR output mode.
+.RS
+.IP Default:
+Unset. (complete files are treated as the sample size)
+.RE
+.TP
+\fB\-n\fR \fIunits\fR
+.br
+.I units
+indicates what units time values should be reported in. \fIunits\fR is
+specified using a single character specifying the units wanted.
+.RS
+.PP
+The available units are:
+.br
+.TS
+li l .
+\'n\'	nanoseconds (ns)
+\'u\'	microseconds (us)
+\'m\'	milliseconds (ms)
+\'s\'	seconds (s)
+.TE
+.PP
+This is only used for the human-readable summary statistics and
+the \fB\-v\fR mode of
+reporting individual records. In particular, it is not used for the
+\fB\-R\fR or \fB\-M\fR output modes.
+.IP Default:
+Unset.
+.RE
+.TP
+\fB\-p\fR
+.br
+Save output summary information into files instead of printing it to
+STDOUT. Also, print the names of the files to STDOUT. The files will
+be saved in the directory specified by the
+.I \-d
+option.
+
+The summary filenames are in the format:
+.br
+
+${START_TIME}_${END_TIME}.${FILETYPE}
+
+.I STARTTIME
+and
+.I ENDTIME
+are the start and end timestamps for the session or sub-session. The
+timestamps are ASCII representation of 64 bit integers with the
+high-order 32 bits representing the number of seconds since
+Jan 1, 1900 and the low-order 32 bits representing fractional seconds.
+The
+.I FILETYPE
+is \fIsum\fR for \fI\-M\fR summary files,
+and \fItxt\fR for the default human-readable summary information.
+
+This option is ignored if the \fI\-R\fR option is specified.
+.RS
+.IP Default:
+Unset.
+.RE
+.TP
+\fB\-Q\fR
+.br
+Suppress the printing of all summary statistics and human-readable individual
+delays (\fI\-v\fR).
+.RS
+.IP Default:
+Unset.
+.RE
+.TP
+\fB\-R\fR
+.br
+Print individual packet records one per line in the raw format:
+.RS
+.PP
+\fISEQNO SENDTIME SSYNC SERR RECVTIME RSYNC RERR TTL\fR
+.br
+.TS
+li l .
+SEQNO	Sequence number.
+SENDTIME	Send timestamp.
+SSYNC	Sending system synchronized (0 or 1).
+SERR	Estimate of SENDTIME error.
+RECVTIME	Receive timestamp.
+RSYNC	Receiving system synchronized (0 or 1).
+RERR	Estimate of RECVTIME error.
+TTL	TTL IP field.
+.TE
+.PP
+The timestamps are ASCII representation of 64 bit integers with the
+high-order 32 bits representing the number of seconds since Jan 1, 1900
+and the low-order 32 bits representing fractional seconds.
+Lost packet records are indicated with a RECVTIME of 0 (zero).
+The sequence
+number is simply an integer. The error estimates are printed as floating-point
+numbers using scientific notation. TTL is the IP field from the packet.
+The TTL in sending packets should be initialized to 255, so the number of
+hops the packet traversed can be computed. If the receiving host is not
+able to determine the TTL field, this will be reported as 255. (Some
+socket API's do not expose the TTL field.)
+.PP
+The \fI\-R\fR option implies \fI\-Q\fR.
+.IP Default:
+Unset.
+.RE
+.TP
+\fB\-v\fR
+.br
+Print delays for individual packet records. This option is disabled by
+the \fI\-Q\fR and \fI\-R\fR options.
+.RS
+.IP Default:
+Unset.
+.RE

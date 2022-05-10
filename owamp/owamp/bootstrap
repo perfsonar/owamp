@@ -1,0 +1,60 @@
+#!/bin/sh
+#
+#      $Id$
+#
+#########################################################################
+#									#
+#			   Copyright (C)  2002				#
+#	     			Internet2				#
+#			   All Rights Reserved				#
+#									#
+#########################################################################
+#
+#	File:		bootstrap
+#
+#	Author:		Jeff Boote
+#			Internet2
+#
+#	Date:		Wed Apr 17 13:15:07 EDT 2002
+#
+#	Description:	
+#			This script is used to bootstrap the autobuild
+#			process.
+#
+#			RUNNING THIS SCRIPT IS NOT RECOMMENDED
+#			(You should just use the "configure" script
+#			that was bundled with the distribution if
+#			at all possible.)
+#
+
+case "$1" in
+	ac257)
+		alias autoconf=autoconf257
+		alias autoheader=autoheader257
+		alias automake=automake17
+		alias aclocal=aclocal17
+		export AUTOCONF=autoconf257
+		;;
+	*)
+		;;
+esac
+
+if test -x I2util/bootstrap.sh; then
+	echo
+	echo "## I2util/bootstrap.sh"
+	echo
+	cd I2util
+	./bootstrap.sh
+	cd ..
+	echo
+	echo "## Finished I2util/bootstrap.sh"
+	echo
+fi
+
+set -x
+aclocal -I config
+autoheader
+automake --add-missing --copy
+autoconf
+# run configure by hand.
+# ./configure $*

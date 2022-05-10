@@ -1,0 +1,466 @@
+'\"t
+.\" The first line of this file must contain the '"[e][r][t][v] line
+.\" to tell man to run the appropriate filter "t" for table.
+.\" vim: set filetype=nroff :
+.\"
+.\"	$Id$
+.\"
+.\"######################################################################
+.\"#									#
+.\"#			   Copyright (C)  2004				#
+.\"#	     			Internet2				#
+.\"#			   All Rights Reserved				#
+.\"#									#
+.\"######################################################################
+.\"
+.\"	File:		powstream.1
+.\"
+.\"	Author:		Jeff Boote
+.\"			Internet2
+.\"
+.\"	Date:		Sun Dec  3 09:16:52 MST 2006
+.\"
+.\"	Description:	
+.\"
+.TH powstream 1 "$Date$"
+.SH NAME
+powstream \- Client daemon application for continuous one-way latency tests.
+.SH SYNOPSIS
+.B powstream 
+[\fIoptions\fR] testpeer [server]
+.SH DESCRIPTION
+\fBpowstream\fR is a command line client daemon application that is used to
+initiate a continuous stream of one-way latency tests from the
+.I testpeer
+to the client host.
+.PP
+Round-trip latency measurements (ping) are
+an accepted technique to look for network problems; one-way measurements
+have the potential to be even more useful. With round-trip measurements,
+it is difficult to isolate the direction in which congestion is experienced.
+Traffic is often asymmetric with many sites being either primarily producers
+or consumers of data. One-way measurements allow more informative
+measurements. It is much easier to isolate the effects of traffic on
+specific parts of a network.
+.PP
+.B powstream
+creates a continuous stream of one-way packet samples by stitching together
+multiple
+.B OWAMP
+test sessions. It was designed to allow for continuous monitoring of
+one-way latencies. To create a continuous stream of packets,
+.B powstream
+actually opens two control sockets to the server and, effectively,
+double-buffers
+.B OWAMP
+test sessions. The start-time of each subsequent session is defined by
+the computed send time of the last packet in the previous session.
+.PP
+There are special considerations for this type of
+application that do not exist for the \fBowping\fR application.
+Specifically, it is important to reduce the amount of control communication
+that occurs to minimize any session resets that could occur due to breakdowns
+in control communication. (We really want to see periods of time where
+the network is broken.) Therefore, it is important to create fairly long
+.B OWAMP
+test sessions. On the other hand, it is nice to get fairly immediate feedback
+if there is packet loss. To facilitate this,
+.B powstream
+can summarize data for smaller time periods than the actual test session
+periods it uses. The \fI\-N\fR option is used to indicate how many packet
+records should be in these smaller sub-session files while
+the \fI\-c\fR option is used
+to indicate how many packet records should be in the complete
+session.
+.PP
+.B powstream
+outputs a data file and a summary file for each time period defined by
+the \fI\-c\fR option. The files will be placed in the directory
+indicated by the \fI\-d\fR option. Additionally,
+.B powstream
+will output a summary file for each time period defined
+by the \fI\-N\fR option. The smaller summary sub-session files should be
+thought of as preliminary data.
+The later, larger complete session files will have additional information
+available to determine the validity of the data. Specifically the larger file
+is created after the Stop-Sessions message has been received from
+the sender host over the control socket. This message includes information about
+any packet records that the sender did not send; therefore, the preliminary
+data could show packet loss when, in reality, the sending process never sent
+the expected packets.
+.PP
+.B powstream
+saves data files and summary files for each session in the current directory,
+or the directory specified by the \fI\-d\fR option. The filesnames are in
+the format:
+.RS
+.IP ${START_TIME}_${END_TIME}.${FILETYPE}
+
+.RE
+.I STARTTIME
+and
+.I ENDTIME
+are the start and end timestamps for the session or sub-session. The
+timestamps are ASCII representation of 64 bit integers with the
+high-order 32 bits representing the number of seconds since
+Jan 1, 1900 and the low-order 32 bits representing fractional seconds.
+The
+.I FILETYPE
+is \fIowp\fR for raw data files and \fIsum\fR for textual summary
+files.
+.PP
+.B powstream
+works by
+contacting an \fBowampd\fR daemon on the remote peer host.
+\fBowampd\fR manages the resources of the host on which it runs.
+.PP
+.I testpeer
+can be specified using rfc2396 and rfc2732 syntax for both host and
+port specification:
+.TP
+.I node:port
+.br
+IPv4 syntax where node is either a DNS name or a numeric host address string
+consisting of a dotted decimal IPv4 address. The \fI\:port\fR is an optional
+specifier to contact servers running on a non-default port and
+can be left off in most cases.
+This syntax also works for IPv6 addresses specified using DNS names.
+.TP
+.I [node]:port
+IPv6 syntax where node is specified using a numeric IPv6 host address
+string. The []'s are required only if the optional \fI\:port\fR port
+specifier is used.
+.PP
+.I server
+is an optional argument that indicates the \fBOWAMP\fR server address
+if it is different from the \fItestpeer\fR. This is mostly useful in
+the case of hosts with more than one network interface where the
+\fBOWAMP\fR server is not listening on the interface that you want to test.
+The \fIserver\fR can be specified using the same syntax as the \fItestpeer\fR.
+\.
+.PP
+The \fBpowstream\fR client-daemon is used to request the intensity of
+the test.
+Specifically, the parameters allow the user to select the mean packet interval
+for a pseudo-exponential distribution, the packet size, and the loss
+timeout.
+.PP
+With no options specified, \fBpowstream\fR will perform tests of 300
+packets each at a rate of approximately 1 packet every 0.1
+seconds from the \fItestpeer\fR. With no options specified, the test sessions
+will not be subdivided to provide intermediate results.
+.PP
+.B powstream
+produces data in two formats: raw owamp data files and summary statistics.
+The data files are the same binary format saved from \fBowping\fR
+and can be parsed using \fBowstats\fR. The summary files are identical to the
+.I \-M
+output format from \fBowstats\fR.
+.SH OPTIONS
+.TP
+\fB\-h\fR
+.br
+Print a usage message and exit.
+.RS
+.IP Default:
+Unset.
+.RE
+.SS Test Configuration Options:
+.TP
+\fB\-c\fR \fIcount\fR
+.br
+Number of test packets to send in each test session.
+.RS
+.IP Default:
+300
+.RE
+.TP
+\fB\-E\fR \fIenddelay\fR
+.br
+Amount of time for a sender to wait after session completion (last packet
+send-time plus \fItimeout\fR) before sending the stop sessions message.
+
+This is important if the sender clock is running ahead of the receiver clock.
+
+A session is complete \fItimeout\fR after the send time of the final packet.
+If the sender clock is ahead of the receiver clock, the sender will declare
+the session complete before the receiver. The receiver
+is only allowed to retain records for the packets that were sent at least
+\fItimeout\fR before it receives the stop sessions message from
+the sender. Therefore, if the sender clock is running ahead of the receiver
+clock, the receiver will be forced to delete some number of the final
+packets from the session.
+
+This parameter directs the sender to wait \fIenddelay\fR after
+session completion allowing the receiver clock to be essentially \fIenddelay\fR
+later than the sender clock and still retain full sessions.
+.RS
+.IP Default:
+1.0 (seconds)
+.RE
+.TP
+\fB\-i\fR \fImeanwait\fR
+.br
+.I meanwait
+indicates the average time to wait between sending packets.
+.B powstream
+uses an exponentially distributed
+pseudo-random distribution with a mean interval about the \fIvalue\fR given.
+The intent of this is to negate periodicity effects.
+.RS
+.IP Default:
+0.1 (seconds)
+.RE
+.TP
+\fB\-L\fR \fItimeout\fR
+.br
+Amount of time to wait for a packet to be received before declaring it
+lost. As such, it is also the amount of time the test session has to
+stay active after the last packet is sent to be able to count duplicate
+packets. I.e., add this number to the duration of your session to determine
+how long to expect a test session to take.
+
+For the \fBOWAMP\fR results to be
+statistically relevant the \fItimeout\fR option should be specified
+the same for comparable sessions.
+.RS
+.IP Default:
+10 seconds
+.RE
+.TP
+\fB\-s\fR \fIsize\fR
+.br
+Size of the padding to add to each minimally-sized test packet. The minimal
+size for a test packet in \fIopen\fR mode is 14 bytes. The minimal size
+for a test packet in \fIauthenticated\fR or \fIencrypted\fR mode is 32 bytes.
+.RS
+.IP Default:
+0 (bytes)
+.RE
+.TP
+\fB\-t\fR
+.br
+Indicates that \fBpowstream\fR should set up sender-side \fBOWAMP\fR
+test sessions instead of the default receiver-side sessions.
+This mode of operation is more problematic because intermediate summary
+data must be fetched from the remote server on regular intervals using
+an additional socket connection instead of just summarizing portions
+of a local data file.
+.RS
+.IP Default:
+unset
+.RE
+.TP
+\fB\-z\fR \fIdelayStart\fR
+.br
+Time to wait before starting the test. \fBpowstream\fR waits
+approximately 10 seconds before starting the first test by default. The
+.I delayStart
+value is added to this amount.
+.RS
+.IP Default:
+0
+.RE
+.SS Connection/Authentication Options:
+.TP
+\fB\-A\fR \fIauthmode\fB
+.br
+Specify the authentication modes the client is willing to use for
+communication. \fIauthmode\fR should be set as a character string with
+any or all of the characters "AEO". The modes are:
+.RS
+.IP \fBA\fR
+[\fBA\fR]uthenticated. This mode encrypts the control connection and
+digitally signs part of each test packet.
+.IP \fBE\fR
+[\fBE\fR]ncrypted. This mode encrypts the control connection and
+encrypts each test packet in full. This mode forces an encryption step
+between the fetching of a timestamp and when the packet is sent. This
+adds more computational delay to the time reported by \fBOWAMP\fR for each
+packet.
+.IP \fBO\fR
+[\fBO\fR]pen. No encryption of any kind is done.
+.PP
+The client can specify all the modes with which it is willing to communicate.
+The most strict mode that both the \fBOWAMP\fR server and the \fBOWAMP\fR
+client are willing to use
+will be selected. Authenticated and Encrypted modes require a "shared secret"
+in the form of a pass-phrase that is used to generate the AES and HMAC-SHA1
+session keys.
+.IP Default:
+"AEO"
+.RE
+.TP
+\fB\-k\fR \fIpfsfile\fR
+.br
+Indicates that \fBpowstream\fR should use the pass-phrase in \fIpfsfile\fR for
+\fIusername\fR to derive the symmetric AES key used for encryption.
+\fIusername\fR must have a valid entry in \fIpfsfile\fR.
+\fIpfsfile\fR can be generated as described in the pfstore(1) manual
+page.
+.RS
+.IP Default:
+Unset. (If the \fB\-u\fR option was specified without the \fB-k\fR, the
+user will be prompted for a \fIpass-phrase\fR.)
+.RE
+.TP
+\fB\-S\fR \fIsrcaddr\fR
+.br
+Bind the local address of the client socket to \fIsrcaddr\fR. \fIsrcaddr\fR
+can be specified using a DNS name or using standard textual notations for
+the IP addresses. (IPv6 addresses are, of course, supported.)
+.RS
+.IP Default:
+Unspecified (wild-card address selection)
+.RE
+.TP
+\fB\-B\fR \fIinterface\fR
+.br
+Bind the client sockets to the network interface \fIinterface\fR with
+SO_BINDTODEVICE.
+.RS
+.IP Default:
+Unspecified (sockets not bound to a particular interface).
+.RE
+.TP
+\fB\-u\fR \fIusername\fR
+.br
+Specify the username that is used to identify the shared secret (pass-phrase)
+used to derive the AES and HMAC-SHA1 session keys for
+authenticated and encrypted modes. If the \fB\-k\fR option is specified,
+the pass-phrase is retrieved from the \fIpfsfile\fR
+otherwise \fBpowstream\fR prompts
+the user for a pass-phrase.
+.RS
+.IP Default:
+Unset
+.RE
+.SS Output Options:
+.TP
+\fB\-b\fR \fIbucket_width\fR
+.br
+To reasonably compute the delay summary statistics, \fBpowstream\fR creates
+a histogram of the delays. (This can be used to compute percentiles of
+delay, such as median.) The
+.I bucket_width
+indicates the resolution of the bins in the histogram. This value
+is specified using a floating point value and the units are seconds.
+
+The histogram is presented within the summary statistics file.
+.RS
+.IP Default:
+0.0001 (100 usecs)
+.RE
+.TP
+\fB\-d\fR \fIdir\fR
+.br
+.I dir
+indicates the directory in which to save all raw \fIowp\fR data files and all
+textual summary data files.
+.RS
+.IP Default:
+(current working directory)
+.RE
+.TP
+\fB\-e\fR \fIfacility\fR
+.br
+.I facility
+indicates the syslog facility to which
+.B powstream
+should send all error messages.
+.RS
+.IP Default:
+LOG_USER
+.RE
+.TP
+\fB\-N\fR \fIcount\fR
+.br
+Number of test packets to put in sub-session summary files.
+
+.B powstream
+can use large session durations to minimize control communication during
+execution. This option is used to make
+.B powstream
+output sub-session summary files at shorter periods. The data should be
+considered preliminary because it is being generated before the actual
+end of the test session. The
+.B OWAMP
+control protocol shares information from the sending process to the
+receiver about any packets it skipped sending when the test session
+ends. Because this data is being generated before the session actually
+ends, any packets the sending process did not get a chance to send will
+show up as lost packet records in these files.
+
+This is the trade-off for getting more immediate access to the data.
+
+If this option is not set, then sub-session summary files will
+not be produced.
+
+This value must be a divisor of the value specified for the \fI\-c\fR
+option.
+.RS
+.IP Default:
+unset
+.RE
+.TP
+\fB\-p\fR
+.br
+Print the names of data files and summary statistic files to STDOUT
+when they are completed.
+.RS
+.IP Default:
+unset
+.RE
+.TP
+\fB\-R\fR
+.br
+Suppress printing error messages to STDERR. They will still be sent
+to syslog.
+.RS
+.IP Default:
+unset (errors print to STDERR and syslog)
+.RE
+.TP
+\fB\-v\fR
+.br
+Print more verbose information in error messages.
+.RS
+.IP Default:
+unset
+.RE
+.SH ENVIRONMENT VARIABLES
+.TS
+lb lb
+_ _
+li l .
+OWAMP Environment Variable	Description
+
+OWAMP_DEBUG_TIMEOFFSET	Offset time by this amount (float)
+.TE
+.SH EXAMPLES
+.LP
+\fBpowstream somehost.com\fR
+.IP
+Contact somehost.com and request ongoing tests with a sending rate
+of a packet approximately every 0.1 seconds, with 300 packets per
+session. (Each session will last about 30 seconds.) Save the data and summary
+files in the current directory.
+.LP
+\fBpowstream -L 10 -i 1 -c 10800 -N 30 -d datadir -p somehost.com\fR
+.IP
+Contact somehost.com and request ongoing tests. Use a timeout
+duration of 10 seconds. Tests will have a sending rate
+of a packet approximately every 1 second, with 10800 packets per
+complete session. (Each session will last about 3 hours.) Create sub-session
+summary statistic files, as well, with 30 packets per
+sub-session. (Each sub-session will provide a sample period of about
+30 seconds.) Save the data and summary files in the current directory
+and print each filename as it is produced.
+.SH SEE ALSO
+owampd(8), owping(1), owstats(1), owfetch(1) and the
+\%http://e2epi.internet2.edu/owamp/ web site.
+.SH ACKNOWLEDGMENTS
+This material is based, in part, on work supported by the National Science
+Foundation (NSF) under Grant No. ANI-0314723. Any opinions, findings, and
+conclusions or recommendations expressed in this material are those of
+the author(s) and do not necessarily reflect the views of the NSF.

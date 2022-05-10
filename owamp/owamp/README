@@ -1,0 +1,25 @@
+$Id$
+
+	owamp
+
+This release is an implementation of the OWAMP (one-way active measurement
+protocol) defined by
+ http://www.internet2.edu/~shalunov/ippm/draft-ietf-ippm-owdp-14.txt.
+
+It is organized as follows:
+
+I2util/		convienient utility functions... Error reporting, hash funcs...
+owamp/		directory for owamp api - a high level abstraction for
+		speaking the owamp protocol.
+owampd/		An owamp server implementation.
+owping/		A command line owamp client (one way ping).
+powstream/	A client-daemon for continuous one-way tests.
+                (This is a one-off application that Internet2
+                uses to run continuous tests on a mesh of Abilene
+                measurement hosts. There is currently no documentation
+                and only limited support for this tool. If it interests
+                you, please say so and it may get better support in the
+                future.)
+conf/           Example config files. (not installed - EXAMPLES!)
+doc/            html and man page descriptions of owamp tools.
+test/           validate programs.

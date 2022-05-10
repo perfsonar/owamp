@@ -1,0 +1,96 @@
+<html>
+    <head>
+        <title>OWAMP TCP/UDP Port Usage and Firewall Configuration</title>
+    </head>
+    <body>
+        <h2>OWAMP TCP/UDP Port Usage and Firewall Configuration</h2>
+
+        <p>owamp uses 2 different sets of ports:</p>
+
+        <ol>
+            <li>Main daemon listening port for control connection
+            (<em>Default: TCP/861</em>)</li> <br> <dl> <dt>Defined using the
+                <em>port</em> portion of the <em>srcnode</em> configuration
+                option from <a
+                    href="owamp-server.conf.man.html">owamp-server.conf</a>.</dt> <dd>
+                <p>For example, to enable this on a typical RHEL 4 system, you
+                would need to add the following line to
+                /etc/sysconfig/iptables:</p>
+<pre>
+-A RH-Firewall-1-INPUT -m state --state NEW -m tcp -p tcp --dport 861 -j ACCEPT
+</pre>
+                <p> This should be
+                added somewhere *after* the line that allows ESTABLISHED and
+                RELATED connections through.</p> <p> (Note that this does not
+                use the system-config-securitylevel script from Redhat. I have
+                not been able to get that to do all the things I needed.) </p>
+                </dd> </dl>
+
+            <li>OWAMP test flows (<em>Default: UDP/ephemeral range</em>)</li>
+            <br> <dl>
+                <dt>Defined using the <em>testports</em> configuration
+                option from <a href="owamp-server.conf.man.html">owamp-server.conf</a>, or
+                the <em>-P</em> option to <a
+                    href="owping.man.html">owping</a>.
+                </dt>
+                <dd>
+                <p>If you
+                specified <em>testports</em> as
+                <a href="#badrange">910-950 *</a>, you would then need to enable
+                this range in your firewall configuration. (If you do not
+                specify a range, owamp will only work reliably if you have open
+                access for the entire ephemeral port range.)</p> <p>It is
+                important to note, that you can only specify the port for the
+                local side of the test. This same range is used for specifying
+                the local port for both sending and receiving test packets.
+                Therefore, your firewall configuration will need to accept any
+                packets arriving for this port range, or departing from this
+                port range.  </p> <p>On a typical RHEL 4 system, you would need
+                to add the following line to /etc/sysconfig/iptables given this
+                range:</p>
+<pre>
+-A RH-Firewall-1-INPUT -m udp -p udp --dport 910:950 -j ACCEPT
+</pre>
+                <p> The default rule for the OUTPUT chain is to allow
+                anything through. If your firewall is more strict than this,
+                you will need to explicitly allow this same range of UDP ports
+                through that chain using the --sport option.
+                </p>
+                <p>
+                <a name="badrange">* Note that this specific range would be a
+                    very bad idea because non-root users would not be able to
+                    run owping. (They could not bind the low-numbered port.) I
+                    have specifically picked this because I don't want my
+                    example to become a de facto port range specification for
+                    owamp test traffic, thereby allowing owamp traffic to be
+                    classified.</a>
+                </p>
+                </dd> </dl>
+
+            </ol>
+            <h3>Example RHEL 4 /etc/sysconfig/iptables file</h3>
+<pre>
+*filter
+:INPUT ACCEPT [0:0]
+:FORWARD ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+:RH-Firewall-1-INPUT - [0:0]
+-A INPUT -j RH-Firewall-1-INPUT
+-A FORWARD -j RH-Firewall-1-INPUT
+-A RH-Firewall-1-INPUT -i lo -j ACCEPT
+-A RH-Firewall-1-INPUT -p icmp --icmp-type any -j ACCEPT
+-A RH-Firewall-1-INPUT -p 50 -j ACCEPT
+-A RH-Firewall-1-INPUT -p 51 -j ACCEPT
+-A RH-Firewall-1-INPUT -p udp --dport 5353 -d 224.0.0.251 -j ACCEPT
+-A RH-Firewall-1-INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+# ssh
+-A RH-Firewall-1-INPUT -m state --state NEW -m tcp -p tcp --dport 22 -j ACCEPT
+# owamp-control listen port (srcnode)
+-A RH-Firewall-1-INPUT -m state --state NEW -m tcp -p tcp --dport 861 -j ACCEPT
+# owamp-test
+-A RH-Firewall-1-INPUT -m udp -p udp --dport 910:950 -j ACCEPT
+# reject anything that has not matched
+-A RH-Firewall-1-INPUT -j REJECT --reject-with icmp-host-prohibited
+COMMIT
+</pre>
+            </body></html>
