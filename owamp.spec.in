@@ -1,15 +1,16 @@
+#Version variables set by automated scripts
+%define perfsonar_auto_version 5.0.0
+%define perfsonar_auto_relnum 0.0.a1
 Name: owamp
 Summary: owamp - one-way delay tester
-Version: @VERSION@
-Release: @PATCH_LEVEL@%{?dist}
-License: ASL 2.0 
+Version: %{perfsonar_auto_version}
+Release: %{perfsonar_auto_relnum}%{?dist}
+License: ASL 2.0
 Group: *Development/Libraries*
 URL: http://e2epi.internet2.edu/owamp/
 Source: %{name}-%{version}.tar.gz
-Packager: Aaron Brown <aaron@internet2.edu>
 BuildRequires: libtool, I2util, libcap-devel, openssl-devel, systemd, selinux-policy-devel
 Requires: owamp-client, owamp-server, I2util
-BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-buildroot
 
 %description
 OWAMP is a client/server package that allows one to measure the latency between
@@ -135,7 +136,7 @@ rm -rf %{buildroot}/usr/lib/perfsonar/selinux
 make check
 
 %clean
-rm -rf $RPM_BUILD_ROOT 
+rm -rf $RPM_BUILD_ROOT
 
 %post -n owamp-client
 setcap "cap_net_raw+p" %{_bindir}/owping
@@ -177,7 +178,7 @@ else
         mv %{_sysconfdir}/owamp-server/owamp-server.conf %{_sysconfdir}/owamp-server/owamp-server.conf.bak
         mv /etc/owampd/owampd.conf.rpmsave %{_sysconfdir}/owamp-server/owamp-server.conf
     fi
-    
+
     if [ -e "/etc/owampd/owampd.limits" ]; then
         mv %{_sysconfdir}/owamp-server/owamp-server.limits %{_sysconfdir}/owamp-server/owamp-server.limits.bak
         mv /etc/owampd/owampd.limits %{_sysconfdir}/owamp-server/owamp-server.limits
