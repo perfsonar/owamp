@@ -82,3 +82,5 @@ owamp/owamp/test/twe2e_clear
 owamp/owamp/test/twe2e_enc
 owamp/owamp/test/twping_clear
 owamp/owamp/test/twping_enc
+owamp/owamp/selinux/Makefile
+owamp/owamp/selinux/Makefile.in
