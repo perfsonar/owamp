@@ -127,6 +127,7 @@ int launch_xwampd(
             "-R", config_dir,
             "-v",
             "-Z",
+            "-f",
             NULL,
         };
         if (execvp(*argv, argv) < 0) {
