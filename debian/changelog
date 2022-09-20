@@ -1,3 +1,9 @@
+owamp (4.4.5-1) perfsonar-4.4; urgency=low
+
+  * New upstream version.
+
+ -- perfSONAR developers <debian@perfsonar.net>  Tue, 20 Sep 2022 08:42:25 -0400
+
 owamp (4.4.4-1) perfsonar-4.4; urgency=low
 
   * New upstream version.
