@@ -27,14 +27,14 @@
 #
 #	Options:
 # Process this file with autoconf to produce a configure script.
-AC_INIT(owamp, 4.4.4, owamp-bugs@internet2.edu)
+AC_INIT(owamp, 4.4.5, owamp-bugs@internet2.edu)
 AC_CONFIG_AUX_DIR(config)
 AM_INIT_AUTOMAKE([no-define foreign])
 AC_CONFIG_SRCDIR(owamp/context.c)
 AM_CONFIG_HEADER(owamp/config.h)
 
 AC_DEFINE(PATCH_LEVEL, 1, "The RPM version number")
-AC_SUBST(PATCH_LEVEL, 1)
+AC_SUBST(PATCH_LEVEL, 0.a1.0)
  
 TOP_BUILD_DIRS=""
 
