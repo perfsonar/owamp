@@ -1,0 +1,11 @@
+--- a/test/Makefile.am	2022-10-27 10:34:11.321015310 -0400
++++ b/test/Makefile.am	2022-10-27 10:34:13.062286432 -0400
+@@ -21,7 +21,7 @@
+ INCLUDES	= $(OWPINCS) $(I2UTILINCS)
+ AM_CFLAGS	= $(OWP_PREFIX_CFLAGS)
+ 
+-check_PROGRAMS  = owtvec owstats owping_enc owping_clear owe2e_clear owe2e_auth owe2e_enc twping_enc twping_clear hmac twe2e_clear twe2e_auth twe2e_enc
++check_PROGRAMS  = owtvec owstats owping_enc owping_clear twping_enc twping_clear hmac
+ TESTS           = $(check_PROGRAMS)
+ 
+ owtvec_SOURCES	= owtvec.c
