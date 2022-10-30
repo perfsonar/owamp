@@ -17,6 +17,4 @@ changecom()dnl
 # family in with the sources, it will not be built.
 #
 
-
-I2util
 owamp
