@@ -1617,6 +1617,7 @@ typedef struct OWPStatsRec{
 
     unsigned long       rec_limit; /* limits the number of records to print */
     OWPBoolean          display_unix_ts; /* If set, prints timestamps in unix format */
+    OWPBoolean          is_json_format;  /* If set, prints output in JSON format */
 
     /*
      * data file information

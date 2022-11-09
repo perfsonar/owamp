@@ -57,6 +57,9 @@ int optreset;
  */
 #define        MAX_PADDING_SIZE        0xFFFF
 
+#define debug(fmt, ...) \
+  fprintf(stdout, "debug: %s:%s:%d: " fmt "\n", __FILE__, __func__,  __LINE__, ##__VA_ARGS__)
+
 /*
  * The powstream context
  */
@@ -145,7 +148,8 @@ print_output_args()
 "   -p             print filenames to stdout\n"
 "   -R             Only send messages to syslog (not STDERR)\n"
 "   -v             include more verbose output\n"
-"   -U             Adds UNIX timestamps to summary results"
+"   -U             Adds UNIX timestamps to summary results\n"
+"   -j             JSON output"
            );
 }
 
@@ -451,7 +455,9 @@ write_session(
     OWPNum64            endnum;
     char                tfname[PATH_MAX];
     char                ofname[PATH_MAX];
+    char                ofname_json[PATH_MAX];
     char                sfname[PATH_MAX];
+    char                sfname_json[PATH_MAX];
     char                startname[PATH_MAX];
     char                endname[PATH_MAX];
     int                 tofd = -1;
@@ -722,6 +728,10 @@ skip_data:
     if (appctx.opt.display_unix_ts == True)
         stats->display_unix_ts = True;
 
+    // Set json output
+    if (appctx.opt.is_json_format == True)
+        stats->is_json_format = True;
+
     /*
      * Parse the data and compute the statistics
      */
@@ -815,6 +825,15 @@ skip_sum:
         }
         if(strlen(sfname) > 0){
             fprintf(stdout,"%s\n",sfname);
+        }
+        if (appctx.opt.is_json_format)
+        {
+            if(strlen(ofname_json) > 0){
+                fprintf(stdout,"%s\n",ofname_json);
+            }
+            if(strlen(sfname_json) > 0){
+                fprintf(stdout,"%s\n",sfname_json);
+            }
         }
         fflush(stdout);
     }
@@ -1269,7 +1288,7 @@ main(
     char                optstring[128];
     static char         *conn_opts = "46A:k:S:B:u:I:";
     static char         *test_opts = "c:E:i:L:s:tz:P:";
-    static char         *out_opts = "b:d:e:g:N:pRvU";
+    static char         *out_opts = "b:d:e:g:N:pRvUj";
     static char         *gen_opts = "hw";
     static char         *posixly_correct="POSIXLY_CORRECT=True";
 
@@ -1515,6 +1534,9 @@ main(
                 break;
             case 'U':
                 appctx.opt.display_unix_ts = True;
+                break;
+            case 'j':
+                appctx.opt.is_json_format = True;
                 break;
             /* undocumented debug options */
 #ifdef DEBUG
@@ -2082,6 +2104,9 @@ AGAIN:
             /* Set the timestamp flag here */
             if (appctx.opt.display_unix_ts == True)
                 stats->display_unix_ts = True;
+
+            if (appctx.opt.is_json_format == True)
+                stats->is_json_format = True;
 
             /*
              * Parse the data and compute the statistics
