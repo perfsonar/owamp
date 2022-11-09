@@ -35,6 +35,7 @@
 #undef PATCH_LEVEL
 
 #include <owamp/config.h>
+#include <owamp/cjson.h>
 #endif        /* HAVE_CONFIG_H */
 
 #if        !HAVE_ERRNO_H || !HAVE_NETDB_H || !HAVE_STDLIB_H || !HAVE_SYS_PARAM_H
@@ -126,6 +127,11 @@
 #ifndef OWP_FILE_EXT
 #define OWP_FILE_EXT        ".owp"
 #endif
+#ifndef JSON_FILE_EXT
+#define JSON_FILE_EXT        ".json"
+#endif
+
+
 
 /*
  * The ascii decimal encoding of the 64 bit timestamps takes this many
