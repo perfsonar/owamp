@@ -740,9 +740,13 @@ skip_data:
         {
             stats->owp_json = cJSON_CreateObject();
         }
-        if (!stats->owp_histogram_json)
+        if (!stats->owp_histogram_ttl_json)
         {
-            stats->owp_histogram_json = cJSON_CreateArray();
+            stats->owp_histogram_ttl_json = cJSON_CreateArray();
+        }
+        if (!stats->owp_histogram_latency_json)
+        {
+            stats->owp_histogram_latency_json = cJSON_CreateArray();
         }
         if (!stats->owp_raw_packets)
         {
@@ -849,14 +853,20 @@ skip_data:
         {
             cJSON * results = cJSON_CreateObject();
             cJSON_AddItemToObject(results, "raw-packets", stats->owp_raw_packets);
-            //cJSON_AddItemToObject(results, "histogram", stats->owp_histogram_json);
+            cJSON_AddItemToObject(results, "histogram-latency", stats->owp_histogram_latency_json);
+            cJSON_AddItemToObject(results, "histogram-ttl", stats->owp_histogram_ttl_json);
             //cJSON_AddItemToObject(stats->owp_json, "results", results);
             //owp_json_str = cJSON_Print(stats->owp_raw_packets);
             owp_json_str = cJSON_Print(results);
         }
-        if (stats->sum_json)
-            sum_json_str = cJSON_Print(stats->sum_json);
 
+        OWPStatsPrintMachineJSON(stats, sum_json_file);
+
+        // TODO might need to remove
+        if (stats->sum_json)
+        {
+            sum_json_str = cJSON_Print(stats->sum_json);
+        }
         if (owp_json_str)
         {
             fprintf(owp_json_file, "%s", owp_json_str);

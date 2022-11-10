@@ -378,6 +378,7 @@ BucketBufferPrint(
         void    *app_data
         )
 {
+    printf("BucketBufferPrint\n");
     OWPBucket   node = v.dptr;
     FILE        *fp = app_data;
 
@@ -471,6 +472,7 @@ BucketIncrementDelay(
     OWPDelayType    type
     )
 {
+    printf("BucketIncrementDelay\n");
     int         b;
     OWPBucket   node;
     I2Datum     k,v;
@@ -1081,8 +1083,8 @@ IterateSummarizeSession(
                 rec->seq_no);
         return -1;
     }
+
     // TODO - probably shouldn't be here?
-    printf("here\n");
     if (stats->is_json_format)
     {
         cJSON * report = cJSON_CreateObject();
@@ -1093,10 +1095,12 @@ IterateSummarizeSession(
         cJSON_AddNumberToObject(report, "dst-clock-err-multiplier", rec->send.multiplier);
         cJSON_AddNumberToObject(report, "dst-clock-err-scale", rec->send.scale);
         cJSON_AddBoolToObject(report, "dst-clock-sync", rec->send.sync);
+        cJSON_AddNumberToObject(report, "dst-clock-err", OWPGetTimeStampError(&rec->send));
         cJSON_AddNumberToObject(report, "dst-ts", rec->send.owptime);
 
         cJSON_AddNumberToObject(report, "src-clock-err-multiplier", rec->recv.multiplier);
-        cJSON_AddNumberToObject(report, "src-clock-err-sclale", rec->recv.scale);
+        cJSON_AddNumberToObject(report, "src-clock-err-scale", rec->recv.scale);
+        cJSON_AddNumberToObject(report, "src-clock-err", OWPGetTimeStampError(&rec->recv));
         cJSON_AddBoolToObject(report, "src-clock-sync", rec->recv.sync);
         cJSON_AddNumberToObject(report, "src-clock-ts", rec->recv.owptime);
 
@@ -2375,6 +2379,9 @@ PrintMinMaxTtlMachine(
 
     fprintf(output,"MINTTL%s\t%u\n",type_desc,min_ttl);
     fprintf(output,"MAXTTL%s\t%u\n",type_desc,max_ttl);
+    // TODO
+    printf("MINTTL%s\t%u\n",type_desc,min_ttl);
+    printf("MAXTTL%s\t%u\n",type_desc,max_ttl);
 
     return ttl_num;
 }
@@ -2450,8 +2457,6 @@ OWPStatsPrintMachineJSON(
      * Basic session information
      */
     cJSON * sum_json = cJSON_CreateObject();
-    //char * sum_json_str = cJSON_Print(sum_json);
-    //fprintf(output, "%s", sum_json_str);
 
     //fprintf(output,"SUMMARY\t%.2f\n",version);
     cJSON_AddNumberToObject(sum_json, "SUMMARY", version);
@@ -2474,12 +2479,14 @@ OWPStatsPrintMachineJSON(
     cJSON_AddNumberToObject(sum_json, "START_TIME", stats->start_time);
     //fprintf(output,"END_TIME\t" OWP_TSTAMPFMT "\n",stats->end_time);
     cJSON_AddNumberToObject(sum_json, "END_TIME", stats->end_time);
-    
+
     /* print unix versions of timestamp */
     if (stats->display_unix_ts == True) {
         double epochdiff = (OWPULongToNum64(OWPJAN_1970))>>32;
-        fprintf(output,"UNIX_START_TIME\t%f\n", OWPNum64ToDouble(stats->start_time) - epochdiff);
-        fprintf(output,"UNIX_END_TIME\t%f\n", OWPNum64ToDouble(stats->end_time) - epochdiff);
+        //fprintf(output,"UNIX_START_TIME\t%f\n", OWPNum64ToDouble(stats->start_time) - epochdiff);
+        cJSON_AddNumberToObject(sum_json, "UNIX_START_TIME", OWPNum64ToDouble(stats->start_time) - epochdiff);
+        //fprintf(output,"UNIX_END_TIME\t%f\n", OWPNum64ToDouble(stats->end_time) - epochdiff);
+        cJSON_AddNumberToObject(sum_json, "UNIX_END_TIME", OWPNum64ToDouble(stats->end_time) - epochdiff);
     }
 
     /*
@@ -2489,23 +2496,34 @@ OWPStatsPrintMachineJSON(
      */
     if( !(stats->hdr->test_spec.typeP & ~0x3F000000)){
         uint8_t dscp = stats->hdr->test_spec.typeP >> 24;
-        fprintf(output,"DSCP\t0x%2.2x\n",dscp);
+        //fprintf(output,"DSCP\t0x%2.2x\n",dscp);
+        cJSON_AddNumberToObject(sum_json, "DSCP", dscp);
     }
-    fprintf(output,"LOSS_TIMEOUT\t%"PRIu64"\n",stats->hdr->test_spec.loss_timeout);
-    fprintf(output,"PACKET_PADDING\t%u\n",
+    //fprintf(output,"LOSS_TIMEOUT\t%"PRIu64"\n", stats->hdr->test_spec.loss_timeout);
+    cJSON_AddNumberToObject(sum_json, "LOSS_TIMEOUT", stats->hdr->test_spec.loss_timeout);
+    //fprintf(output,"PACKET_PADDING\t%u\n",
+    //        stats->hdr->test_spec.packet_size_padding);
+    cJSON_AddNumberToObject(sum_json, "PACKET_PADDING",
             stats->hdr->test_spec.packet_size_padding);
-    fprintf(output,"SESSION_PACKET_COUNT\t%u\n",stats->hdr->test_spec.npackets);
-    fprintf(output,"SAMPLE_PACKET_COUNT\t%u\n", stats->last - stats->first);
-    fprintf(output,"BUCKET_WIDTH\t%g\n",stats->bucketwidth);
-    fprintf(output,"SESSION_FINISHED\t%d\n",
+    //fprintf(output,"SESSION_PACKET_COUNT\t%u\n",
+    cJSON_AddNumberToObject(sum_json, "SESSION_PACKET_COUNT", stats->hdr->test_spec.npackets);
+    //fprintf(output,"SAMPLE_PACKET_COUNT\t%u\n",
+    cJSON_AddNumberToObject(sum_json, "SAMPLE_PACKET_COUNT", stats->last - stats->first);
+    //fprintf(output,"BUCKET_WIDTH\t%g\n",
+    cJSON_AddNumberToObject(sum_json, "BUCKET_WIDTH", stats->bucketwidth);
+    //fprintf(output,"SESSION_FINISHED\t%d\n",
+    cJSON_AddNumberToObject(sum_json, "SESSION_FINISHED",
             (stats->hdr->finished == OWP_SESSION_FINISHED_NORMAL)?1:0);
 
     /*
      * Summary results
      */
-    fprintf(output,"SENT\t%u\n",stats->sent);
-    fprintf(output,"SYNC\t%" PRIuPTR "\n",stats->sync);
-    fprintf(output,"MAXERR\t%g\n",stats->maxerr[OWP_DELAY]);
+    //fprintf(output,"SENT\t%u\n",stats->sent);
+    cJSON_AddNumberToObject(sum_json, "SENT", stats->sent);
+    //fprintf(output,"SYNC\t%" PRIuPTR "\n",stats->sync);
+    cJSON_AddNumberToObject(sum_json, "SYNC", stats->sync);
+    //fprintf(output,"MAXERR\t%g\n",stats->maxerr[OWP_DELAY]);
+    cJSON_AddNumberToObject(sum_json, "MAXERR", stats->maxerr[OWP_DELAY]);
     if(stats->hdr->twoway){
         fprintf(output,"MAXERR_FWD\t%g\n",stats->maxerr[TWP_FWD_DELAY]);
         fprintf(output,"MAXERR_BCK\t%g\n",stats->maxerr[TWP_BCK_DELAY]);
@@ -2514,9 +2532,11 @@ OWPStatsPrintMachineJSON(
         fprintf(output,"DUPS_BCK\t%u\n",stats->dups[TWP_BCK_PKTS]);
     }
     else{
-        fprintf(output,"DUPS\t%u\n",stats->dups[OWP_PKTS]);
+        cJSON_AddNumberToObject(sum_json, "DUPS", stats->dups[OWP_PKTS]);
+        //fprintf(output,"DUPS\t%u\n",
     }
-    fprintf(output,"LOST\t%u\n",stats->lost);
+    //fprintf(output,"LOST\t%u\n",stats->lost);
+    cJSON_AddNumberToObject(sum_json, "LOST", stats->lost);
 
     /* Min delay */
     PrintMinDelayMachine(stats,OWP_DELAY,output);
@@ -2598,6 +2618,8 @@ OWPStatsPrintMachineJSON(
         }
         fprintf(output,"</NREORDERING>\n");
     }
+    char * sum_json_str = cJSON_Print(sum_json);
+    fprintf(output, "%s", sum_json_str);
 
     return True;
 }
@@ -2618,11 +2640,6 @@ OWPStatsPrintMachine(
     double      d1;
 
     I2HexEncode(sid_name,stats->hdr->sid,sizeof(OWPSID));
-
-    if (stats->is_json_format)
-    {
-    }
-
 
     /*
      * Basic session information

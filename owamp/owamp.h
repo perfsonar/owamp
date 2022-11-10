@@ -1621,7 +1621,8 @@ typedef struct OWPStatsRec{
 
     // TODO
     cJSON               *owp_json;
-    cJSON               *owp_histogram_json;
+    cJSON               *owp_histogram_ttl_json;
+    cJSON               *owp_histogram_latency_json;
     cJSON               *owp_raw_packets;
 
     cJSON               *sum_json;
@@ -1754,6 +1755,12 @@ OWPStatsPrintSummary(
 
 extern OWPBoolean
 OWPStatsPrintMachine(
+        OWPStats    stats,
+        FILE        *output
+        );
+
+extern OWPBoolean
+OWPStatsPrintMachineJSON(
         OWPStats    stats,
         FILE        *output
         );
