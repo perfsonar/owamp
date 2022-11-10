@@ -752,9 +752,12 @@ skip_data:
         {
             stats->owp_raw_packets = cJSON_CreateArray();
         }
+        if (!stats->results)
+        {
+            stats->results = cJSON_CreateObject();
+        }
         strcpy(ofname_json,ofname);
         sprintf(&ofname_json[ext_offset],"%s%s",OWP_FILE_EXT, JSON_FILE_EXT);
-        debug("ofname_json: %s", ofname_json);
     }
 
     // TODO
@@ -762,7 +765,6 @@ skip_data:
     {
         strcpy(sfname_json,tfname);
         sprintf(&sfname_json[ext_offset],"%s%s",POW_SUM_EXT, JSON_FILE_EXT);
-        debug("sfname_json: %s", sfname_json);
     }
 
     /*
@@ -851,13 +853,21 @@ skip_data:
 
         if (stats->owp_json)
         {
-            cJSON * results = cJSON_CreateObject();
-            cJSON_AddItemToObject(results, "raw-packets", stats->owp_raw_packets);
-            cJSON_AddItemToObject(results, "histogram-latency", stats->owp_histogram_latency_json);
-            cJSON_AddItemToObject(results, "histogram-ttl", stats->owp_histogram_ttl_json);
+            //cJSON * results = cJSON_CreateObject();
+            cJSON_AddItemToObject(stats->results, "raw-packets", stats->owp_raw_packets);
+            cJSON_AddItemToObject(stats->results, "histogram-latency", stats->owp_histogram_latency_json);
+            cJSON_AddItemToObject(stats->results, "histogram-ttl", stats->owp_histogram_ttl_json);
+
+            // TODO
+            cJSON_AddNumberToObject(stats->results,"max-clock-error", 19.2);
+            cJSON_AddNumberToObject(stats->results,"packets-duplicated", *stats->dups);
+            cJSON_AddNumberToObject(stats->results,"packets-lost", stats->lost);
+            cJSON_AddNumberToObject(stats->results,"packets-received", 0);
+            cJSON_AddNumberToObject(stats->results,"packets-reordered", 0);
+            cJSON_AddNumberToObject(stats->results,"packets-sent", stats->sent);
             //cJSON_AddItemToObject(stats->owp_json, "results", results);
             //owp_json_str = cJSON_Print(stats->owp_raw_packets);
-            owp_json_str = cJSON_Print(results);
+            owp_json_str = cJSON_Print(stats->results);
         }
 
         OWPStatsPrintMachineJSON(stats, sum_json_file);

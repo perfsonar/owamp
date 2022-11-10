@@ -397,8 +397,11 @@ BucketBufferPrintJSON(
     printf("BucketBufferPrintJSON\n");
     OWPBucket   node = v.dptr;
     OWPStats    stats = app_data;
-    //void        *cdata
     cJSON * bucket = cJSON_CreateObject();
+    if (!stats->owp_histogram_latency_json)
+    {
+        stats->owp_histogram_latency_json = cJSON_CreateArray();
+    }
     // TODO random number
     char name[15];
     snprintf(name,sizeof(name),"%d", node->b);
@@ -439,6 +442,38 @@ BucketBufferPrintTW(
             node->delay_samples[OWP_DELAY],
             node->delay_samples[TWP_FWD_DELAY],
             node->delay_samples[TWP_BCK_DELAY]);
+
+    return True;
+}
+
+static I2Boolean
+BucketBufferPrintTWJSON(
+        I2Datum k __attribute__((unused)),
+        I2Datum v,
+        void    *app_data
+        )
+{
+    OWPBucket   node = v.dptr;
+    OWPStats    stats = app_data;
+    if (!stats->owp_histogram_latency_json)
+    {
+        stats->owp_histogram_latency_json = cJSON_CreateArray();
+    }
+    // TODO random number
+    //char name[15];
+    //snprintf(name,sizeof(name),"%d", node->b);
+    cJSON * bucket = cJSON_CreateObject();
+    cJSON_AddNumberToObject(bucket, "node", node->b);
+    cJSON_AddNumberToObject(bucket, "owp_delay", node->delay_samples[OWP_DELAY]);
+    cJSON_AddNumberToObject(bucket, "twp_fwd_delay", node->delay_samples[TWP_FWD_DELAY]);
+    cJSON_AddNumberToObject(bucket, "twp_bck_delay", node->delay_samples[TWP_BCK_DELAY]);
+
+    cJSON_AddItemToArray(stats->owp_histogram_latency_json, bucket);
+
+    //fprintf(fp,"\t%d\t%u\t%u\t%u\n",node->b,
+    //        node->delay_samples[OWP_DELAY],
+    //        node->delay_samples[TWP_FWD_DELAY],
+    //        node->delay_samples[TWP_BCK_DELAY]);
 
     return True;
 }
@@ -2400,11 +2435,12 @@ PrintMinMaxTtlMachine(
             break;
     }
 
+    if (stats->is_json_format)
+    {
+    }
+
     fprintf(output,"MINTTL%s\t%u\n",type_desc,min_ttl);
     fprintf(output,"MAXTTL%s\t%u\n",type_desc,max_ttl);
-    // TODO
-    printf("MINTTL%s\t%u\n",type_desc,min_ttl);
-    printf("MAXTTL%s\t%u\n",type_desc,max_ttl);
 
     return ttl_num;
 }
@@ -2473,6 +2509,11 @@ OWPStatsPrintMachineJSON(
     char        sid_name[sizeof(OWPSID)*2+1];
     long int    j;
     double      d1;
+
+    if (!stats->results)
+    {
+        stats->results = cJSON_CreateObject();
+    }
 
     I2HexEncode(sid_name,stats->hdr->sid,sizeof(OWPSID));
 
@@ -2548,11 +2589,15 @@ OWPStatsPrintMachineJSON(
     //fprintf(output,"MAXERR\t%g\n",stats->maxerr[OWP_DELAY]);
     cJSON_AddNumberToObject(sum_json, "MAXERR", stats->maxerr[OWP_DELAY]);
     if(stats->hdr->twoway){
-        fprintf(output,"MAXERR_FWD\t%g\n",stats->maxerr[TWP_FWD_DELAY]);
-        fprintf(output,"MAXERR_BCK\t%g\n",stats->maxerr[TWP_BCK_DELAY]);
+        cJSON_AddNumberToObject(sum_json, "MAXERR_FWD", stats->maxerr[TWP_FWD_DELAY]);
+        //fprintf(output,"MAXERR_FWD\t%g\n",stats->maxerr[TWP_FWD_DELAY]);
+        cJSON_AddNumberToObject(sum_json, "MAXERR_BCK", stats->maxerr[TWP_BCK_DELAY]);
+        //fprintf(output,"MAXERR_BCK\t%g\n",stats->maxerr[TWP_BCK_DELAY]);
 
-        fprintf(output,"DUPS_FWD\t%u\n",stats->dups[TWP_FWD_PKTS]);
-        fprintf(output,"DUPS_BCK\t%u\n",stats->dups[TWP_BCK_PKTS]);
+        cJSON_AddNumberToObject(sum_json, "DUPS_FWD", stats->dups[TWP_FWD_PKTS]);
+        //fprintf(output,"DUPS_FWD\t%u\n",stats->dups[TWP_FWD_PKTS]);
+        cJSON_AddNumberToObject(sum_json, "DUPS_BCK", stats->dups[TWP_BCK_PKTS]);
+        //fprintf(output,"DUPS_BCK\t%u\n",stats->dups[TWP_BCK_PKTS]);
     }
     else{
         cJSON_AddNumberToObject(sum_json, "DUPS", stats->dups[OWP_PKTS]);
@@ -2571,14 +2616,17 @@ OWPStatsPrintMachineJSON(
 
     /* Median delay */
     if(BucketBufferSortPercentile(stats,0.5,&d1,OWP_DELAY)){
-        fprintf(output,"MEDIAN\t%g\n",d1);
+        //fprintf(output,"MEDIAN\t%g\n",d1);
+        cJSON_AddNumberToObject(sum_json, "MEDIAN", d1);
     }
     if(stats->hdr->twoway){
         if(BucketBufferSortPercentile(stats,0.5,&d1,TWP_FWD_DELAY)){
-            fprintf(output,"MEDIAN_FWD\t%g\n",d1);
+            cJSON_AddNumberToObject(sum_json, "MEDIAN_FWD", d1);
+            //fprintf(output,"MEDIAN_FWD\t%g\n",d1);
         }
         if(BucketBufferSortPercentile(stats,0.5,&d1,TWP_BCK_DELAY)){
-            fprintf(output,"MEDIAN_BCK\t%g\n",d1);
+            cJSON_AddNumberToObject(sum_json, "MEDIAN_BCK", d1);
+            //fprintf(output,"MEDIAN_BCK\t%g\n",d1);
         }
     }
 
@@ -2588,6 +2636,9 @@ OWPStatsPrintMachineJSON(
         PrintMaxDelayMachine(stats,TWP_FWD_DELAY,output);
         PrintMaxDelayMachine(stats,TWP_BCK_DELAY,output);
         PrintMaxDelayMachine(stats,TWP_PROC_DELAY,output);
+        //PrintMaxDelayMachine(stats,TWP_FWD_DELAY,output);
+        //PrintMaxDelayMachine(stats,TWP_BCK_DELAY,output);
+        //PrintMaxDelayMachine(stats,TWP_PROC_DELAY,output);
     }
 
     /*
@@ -2616,12 +2667,26 @@ OWPStatsPrintMachineJSON(
     if(stats->sent > stats->lost){
         //fprintf(output,"<BUCKETS>\n");
         if(stats->hdr->twoway)
-            I2HashIterate(stats->btable,BucketBufferPrintTW,output);
+        {
+            I2HashIterate(stats->btable,BucketBufferPrintTWJSON,stats);
+            //I2HashIterate(stats->btable,BucketBufferPrintTW,output);
+        }
         else
-            I2HashIterate(stats->btable,BucketBufferPrintJSON,output);
+        {
+            I2HashIterate(stats->btable,BucketBufferPrintJSON,stats);
             //I2HashIterate(stats->btable,BucketBufferPrint,output);
+        }
         //fprintf(output,"</BUCKETS>\n");
     }
+    // Add
+    // stats->maxerr[OWP_DELAY_TYPE_NUM] [total fwd back]
+    //cJSON_AddNumberToObject(stats->results, "max-clock-err", stats->maxerr[total]);
+    cJSON_AddNumberToObject(stats->results, "max-clock-err", 0);
+    cJSON_AddNumberToObject(stats->results, "packets-duplicated", 0);
+    cJSON_AddNumberToObject(stats->results, "packets-lost", stats->lost);
+    cJSON_AddNumberToObject(stats->results, "packets-received", 0);
+    cJSON_AddNumberToObject(stats->results, "packets-reordered", 0);
+    cJSON_AddNumberToObject(stats->results, "packets-sent", stats->sent);
 
     /*
      * TTL histogram

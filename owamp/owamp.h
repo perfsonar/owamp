@@ -1620,7 +1620,8 @@ typedef struct OWPStatsRec{
     OWPBoolean          is_json_format;  /* If set, prints output in JSON format */
 
     // TODO
-    cJSON               *owp_json;
+    cJSON               *owp_json; // results
+    cJSON               *results;
     cJSON               *owp_histogram_ttl_json;
     cJSON               *owp_histogram_latency_json;
     cJSON               *owp_raw_packets;
