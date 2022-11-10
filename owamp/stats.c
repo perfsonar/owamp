@@ -387,6 +387,29 @@ BucketBufferPrint(
     return True;
 }
 
+static I2Boolean
+BucketBufferPrintJSON(
+        I2Datum k __attribute__((unused)),
+        I2Datum v,
+        void    *app_data
+        )
+{
+    printf("BucketBufferPrintJSON\n");
+    OWPBucket   node = v.dptr;
+    OWPStats    stats = app_data;
+    //void        *cdata
+    cJSON * bucket = cJSON_CreateObject();
+    // TODO random number
+    char name[15];
+    snprintf(name,sizeof(name),"%d", node->b);
+    cJSON_AddNumberToObject(bucket, name, node->delay_samples[OWP_DELAY]);
+    cJSON_AddItemToArray(stats->owp_histogram_latency_json, bucket);
+
+    //fprintf(fp,"\t%d\t%u\n",node->b,node->delay_samples[OWP_DELAY]);
+
+    return True;
+}
+
 /*
  * Function:    BucketBufferPrintTW
  *
@@ -2585,21 +2608,32 @@ OWPStatsPrintMachineJSON(
     /*
      * Delay histogram
      */
+    //cJSON * delay_histogram = cJSON_CreateArray();
+    if (!stats->owp_histogram_latency_json)
+    {
+        stats->owp_histogram_latency_json = cJSON_CreateArray();
+    }
     if(stats->sent > stats->lost){
-        fprintf(output,"<BUCKETS>\n");
+        //fprintf(output,"<BUCKETS>\n");
         if(stats->hdr->twoway)
             I2HashIterate(stats->btable,BucketBufferPrintTW,output);
         else
-            I2HashIterate(stats->btable,BucketBufferPrint,output);
-        fprintf(output,"</BUCKETS>\n");
+            I2HashIterate(stats->btable,BucketBufferPrintJSON,output);
+            //I2HashIterate(stats->btable,BucketBufferPrint,output);
+        //fprintf(output,"</BUCKETS>\n");
     }
 
     /*
      * TTL histogram
      */
+    //cJSON * ttl_histogram = cJSON_CreateArray();
+    if (!stats->owp_histogram_ttl_json)
+    {
+        stats->owp_histogram_ttl_json = cJSON_CreateArray();
+    }
     PrintTtlStatsMachine(stats,output);
 
-    fprintf(output,"\n");
+    //fprintf(output,"\n");
 
     /*
      * Reordering histogram
@@ -2607,17 +2641,31 @@ OWPStatsPrintMachineJSON(
      * (Not needed for TWAMP as twping won't allow packets to be
      * re-ordered)
      */
+    cJSON * nreordering = cJSON_CreateArray();
+
     if(!stats->hdr->twoway){
-        fprintf(output,"<NREORDERING>\n");
+        cJSON * record = cJSON_CreateObject();
+
+        //fprintf(output,"<NREORDERING>\n");
         for(j=0;((j<stats->rlistlen) && (stats->rn[j]));j++){
-            fprintf(output,"\t%u\t%u\n",(uint32_t)j+1,
-                    stats->rn[j]);
+            //fprintf(output,"\t%u\t%u\n",(uint32_t)j+1,
+            //        stats->rn[j]);
+            char name [15];
+            snprintf(name, sizeof(name), "%u", (uint32_t)j+1);
+            cJSON_AddNumberToObject(record, name, stats->rn[j]);
+            cJSON_AddItemToArray(nreordering, record);
         }
         if((j==0) || (j >= stats->rlistlen)){
-            fprintf(output,"\t%u\t%u\n",(uint32_t)j+1,0);
+            //fprintf(output,"\t%u\t%u\n",(uint32_t)j+1,0);
+            char name [15];
+            snprintf(name, sizeof(name), "%u", (uint32_t)j+1);
+            cJSON_AddNumberToObject(record, name, 0);
+            cJSON_AddItemToArray(nreordering, record);
         }
-        fprintf(output,"</NREORDERING>\n");
+        //fprintf(output,"</NREORDERING>\n");
     }
+    cJSON_AddItemToObject(sum_json, "NREORDERING", nreordering);
+
     char * sum_json_str = cJSON_Print(sum_json);
     fprintf(output, "%s", sum_json_str);
 
