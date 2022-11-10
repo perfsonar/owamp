@@ -466,6 +466,9 @@ write_session(
     OWPStats            stats = NULL;
     int                 rc;
     OWPErrSeverity      ec;
+    // TODO
+    FILE *              owp_json_file = NULL;
+    FILE *              sum_json_file = NULL;
 
     /*
      * If this session does not have a started session, or the
@@ -728,9 +731,22 @@ skip_data:
     if (appctx.opt.display_unix_ts == True)
         stats->display_unix_ts = True;
 
-    // Set json output
+    // Set json output and create the files
     if (appctx.opt.is_json_format == True)
+    {
         stats->is_json_format = True;
+        strcpy(ofname_json,ofname);
+        sprintf(&ofname_json[ext_offset],"%s%s",OWP_FILE_EXT, JSON_FILE_EXT);
+        debug("ofname_json: %s", ofname_json);
+    }
+
+    // TODO
+    if (appctx.opt.is_json_format)
+    {
+        strcpy(sfname_json,tfname);
+        sprintf(&sfname_json[ext_offset],"%s%s",POW_SUM_EXT, JSON_FILE_EXT);
+        debug("sfname_json: %s", sfname_json);
+    }
 
     /*
      * Parse the data and compute the statistics
@@ -786,6 +802,13 @@ skip_data:
     }
     dotf=True;
 
+    // open JSON format files
+    if (appctx.opt.is_json_format)
+    {
+        owp_json_file = fopen(ofname_json, "w+");
+        sum_json_file = fopen(sfname_json, "w+");
+    }
+
     /*
      * Actually print out stats
      */
@@ -804,6 +827,17 @@ skip_data:
         sfname[0] = '\0';
     }
 
+    if (appctx.opt.is_json_format)
+    {
+        cJSON * owp_json = cJSON_CreateObject();
+        cJSON * sum_json = cJSON_CreateObject();
+
+        char * owp_json_str = cJSON_Print(owp_json);
+        char * sum_json_str = cJSON_Print(sum_json);
+
+        fprintf(owp_json_file, "%s", owp_json_str);
+        fprintf(sum_json_file, "%s", sum_json_str);
+    }
 skip_sum:
     if(dotf && (unlink(tfname) != 0)){
         /* note, but ignore the error */
@@ -812,6 +846,15 @@ skip_sum:
 
     if(fp){
         fclose(fp);
+    }
+
+    // close JSON format files
+    if (appctx.opt.is_json_format)
+    {
+        if (owp_json_file)
+            fclose(owp_json_file);
+        if (sum_json_file)
+            fclose(sum_json_file);
     }
 
     if(stats){
@@ -2196,6 +2239,12 @@ AGAIN:
                 /* note, but ignore the error */
                 I2ErrLog(eh,"link(%s,%s): %M",tfname,fname);
             }
+            if (appctx.opt.is_json_format == True)
+            {
+                 // open files
+                 // write stats
+            }
+
 
             if(appctx.opt.printfiles){
                 /* Make sure file is complete */

@@ -19,6 +19,7 @@
 #	Description:	libowamp build description.
 
 INCLUDES		= $(OWPINCS) $(I2UTILINCS)
+AM_CFLAGS	        = -Wall $(OWP_PREFIX_CFLAGS)
 
 lib_LIBRARIES		= libowamp.a
 libowamp_a_SOURCES	= api.c capi.c sapi.c context.c error.c owampP.h \
