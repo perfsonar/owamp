@@ -1081,6 +1081,37 @@ IterateSummarizeSession(
                 rec->seq_no);
         return -1;
     }
+    // TODO - probably shouldn't be here?
+    printf("here\n");
+    if (stats->is_json_format)
+    {
+        cJSON * report = cJSON_CreateObject();
+        // TODO
+        cJSON_AddNumberToObject(report, "ip-ttl", rec->ttl);
+        cJSON_AddNumberToObject(report, "seq-num", rec->seq_no);
+
+        cJSON_AddNumberToObject(report, "dst-clock-err-multiplier", rec->send.multiplier);
+        cJSON_AddNumberToObject(report, "dst-clock-err-scale", rec->send.scale);
+        cJSON_AddBoolToObject(report, "dst-clock-sync", rec->send.sync);
+        cJSON_AddNumberToObject(report, "dst-ts", rec->send.owptime);
+
+        cJSON_AddNumberToObject(report, "src-clock-err-multiplier", rec->recv.multiplier);
+        cJSON_AddNumberToObject(report, "src-clock-err-sclale", rec->recv.scale);
+        cJSON_AddBoolToObject(report, "src-clock-sync", rec->recv.sync);
+        cJSON_AddNumberToObject(report, "src-clock-ts", rec->recv.owptime);
+
+        //cJSON_AddObjectToObject(stats->owp_json, "report", report);
+        if (!stats->owp_raw_packets)
+        {
+            stats->owp_raw_packets = cJSON_CreateArray();
+            //cJSON_AddObjectToObject();
+        }
+        //cJSON_AddItemReferenceToArray(stats->owp_json, report);
+        cJSON_AddItemToArray(stats->owp_raw_packets, report);
+
+        //char * str = cJSON_Print(stats->owp_raw_packets);
+        //printf("report: %s", str);
+    }
 
     /*
      * Check if in "skip" range. If so, then skip aggregation information
@@ -1175,6 +1206,7 @@ IterateSummarizeSession(
     /*
      * Print individual packet record
      */
+     // TODO here?
     if(stats->output){
         if(rec->send.sync && rec->recv.sync){
 	  if (stats->display_unix_ts == True) {
@@ -2399,6 +2431,177 @@ PrintTtlStatsMachine(
     }
 }
 
+
+OWPBoolean
+OWPStatsPrintMachineJSON(
+        OWPStats stats,
+        FILE     *output
+)
+{
+    /* Version 3.0 of stats output */
+    float       version=3.0;
+    char        sid_name[sizeof(OWPSID)*2+1];
+    long int    j;
+    double      d1;
+
+    I2HexEncode(sid_name,stats->hdr->sid,sizeof(OWPSID));
+
+    /*
+     * Basic session information
+     */
+    cJSON * sum_json = cJSON_CreateObject();
+    //char * sum_json_str = cJSON_Print(sum_json);
+    //fprintf(output, "%s", sum_json_str);
+
+    //fprintf(output,"SUMMARY\t%.2f\n",version);
+    cJSON_AddNumberToObject(sum_json, "SUMMARY", version);
+    //fprintf(output,"SID\t%s\n",sid_name);
+    cJSON_AddStringToObject(sum_json, "SID", sid_name);
+    //fprintf(output,"FROM_HOST\t%s\n",stats->fromhost);
+    cJSON_AddStringToObject(sum_json, "FROM_HOST", stats->fromhost);
+    //fprintf(output,"FROM_ADDR\t%s\n",stats->fromaddr);
+    cJSON_AddStringToObject(sum_json, "FROM_ADDR", stats->fromaddr);
+    //fprintf(output,"FROM_PORT\t%s\n",stats->fromserv);
+    cJSON_AddStringToObject(sum_json, "FROM_PORT", stats->fromserv);
+    //fprintf(output,"TO_HOST\t%s\n",stats->tohost);
+    cJSON_AddStringToObject(sum_json, "TO_HOST", stats->tohost);
+    //fprintf(output,"TO_ADDR\t%s\n",stats->toaddr);
+    cJSON_AddStringToObject(sum_json, "TO_ADDR", stats->toaddr);
+    //fprintf(output,"TO_PORT\t%s\n",stats->toserv);
+    cJSON_AddStringToObject(sum_json, "TO_PORT", stats->toserv);
+
+    //fprintf(output,"START_TIME\t" OWP_TSTAMPFMT "\n",stats->start_time);
+    cJSON_AddNumberToObject(sum_json, "START_TIME", stats->start_time);
+    //fprintf(output,"END_TIME\t" OWP_TSTAMPFMT "\n",stats->end_time);
+    cJSON_AddNumberToObject(sum_json, "END_TIME", stats->end_time);
+    
+    /* print unix versions of timestamp */
+    if (stats->display_unix_ts == True) {
+        double epochdiff = (OWPULongToNum64(OWPJAN_1970))>>32;
+        fprintf(output,"UNIX_START_TIME\t%f\n", OWPNum64ToDouble(stats->start_time) - epochdiff);
+        fprintf(output,"UNIX_END_TIME\t%f\n", OWPNum64ToDouble(stats->end_time) - epochdiff);
+    }
+
+    /*
+     * If typeP is specified as a DSCP code-byte, then output it too.
+     * (If any bits are set outside of the low-order 6 bits of the
+     * high-order byte, then it is not a DSCP.)
+     */
+    if( !(stats->hdr->test_spec.typeP & ~0x3F000000)){
+        uint8_t dscp = stats->hdr->test_spec.typeP >> 24;
+        fprintf(output,"DSCP\t0x%2.2x\n",dscp);
+    }
+    fprintf(output,"LOSS_TIMEOUT\t%"PRIu64"\n",stats->hdr->test_spec.loss_timeout);
+    fprintf(output,"PACKET_PADDING\t%u\n",
+            stats->hdr->test_spec.packet_size_padding);
+    fprintf(output,"SESSION_PACKET_COUNT\t%u\n",stats->hdr->test_spec.npackets);
+    fprintf(output,"SAMPLE_PACKET_COUNT\t%u\n", stats->last - stats->first);
+    fprintf(output,"BUCKET_WIDTH\t%g\n",stats->bucketwidth);
+    fprintf(output,"SESSION_FINISHED\t%d\n",
+            (stats->hdr->finished == OWP_SESSION_FINISHED_NORMAL)?1:0);
+
+    /*
+     * Summary results
+     */
+    fprintf(output,"SENT\t%u\n",stats->sent);
+    fprintf(output,"SYNC\t%" PRIuPTR "\n",stats->sync);
+    fprintf(output,"MAXERR\t%g\n",stats->maxerr[OWP_DELAY]);
+    if(stats->hdr->twoway){
+        fprintf(output,"MAXERR_FWD\t%g\n",stats->maxerr[TWP_FWD_DELAY]);
+        fprintf(output,"MAXERR_BCK\t%g\n",stats->maxerr[TWP_BCK_DELAY]);
+
+        fprintf(output,"DUPS_FWD\t%u\n",stats->dups[TWP_FWD_PKTS]);
+        fprintf(output,"DUPS_BCK\t%u\n",stats->dups[TWP_BCK_PKTS]);
+    }
+    else{
+        fprintf(output,"DUPS\t%u\n",stats->dups[OWP_PKTS]);
+    }
+    fprintf(output,"LOST\t%u\n",stats->lost);
+
+    /* Min delay */
+    PrintMinDelayMachine(stats,OWP_DELAY,output);
+    if(stats->hdr->twoway){
+        PrintMinDelayMachine(stats,TWP_FWD_DELAY,output);
+        PrintMinDelayMachine(stats,TWP_BCK_DELAY,output);
+        PrintMinDelayMachine(stats,TWP_PROC_DELAY,output);
+    }
+
+    /* Median delay */
+    if(BucketBufferSortPercentile(stats,0.5,&d1,OWP_DELAY)){
+        fprintf(output,"MEDIAN\t%g\n",d1);
+    }
+    if(stats->hdr->twoway){
+        if(BucketBufferSortPercentile(stats,0.5,&d1,TWP_FWD_DELAY)){
+            fprintf(output,"MEDIAN_FWD\t%g\n",d1);
+        }
+        if(BucketBufferSortPercentile(stats,0.5,&d1,TWP_BCK_DELAY)){
+            fprintf(output,"MEDIAN_BCK\t%g\n",d1);
+        }
+    }
+
+    /* Max delay */
+    PrintMaxDelayMachine(stats,OWP_DELAY,output);
+    if(stats->hdr->twoway){
+        PrintMaxDelayMachine(stats,TWP_FWD_DELAY,output);
+        PrintMaxDelayMachine(stats,TWP_BCK_DELAY,output);
+        PrintMaxDelayMachine(stats,TWP_PROC_DELAY,output);
+    }
+
+    /*
+     * PDV
+     */
+    if(CalculateJitter(stats,OWP_DELAY,&d1)){
+        fprintf(output,"PDV\t%g\n",d1);
+    }
+    if(stats->hdr->twoway){
+        if(CalculateJitter(stats,TWP_FWD_DELAY,&d1)){
+            fprintf(output,"PDV_FWD\t%g\n",d1);
+        }
+        if(CalculateJitter(stats,TWP_BCK_DELAY,&d1)){
+            fprintf(output,"PDV_BCK\t%g\n",d1);
+        }
+    }
+
+    /*
+     * Delay histogram
+     */
+    if(stats->sent > stats->lost){
+        fprintf(output,"<BUCKETS>\n");
+        if(stats->hdr->twoway)
+            I2HashIterate(stats->btable,BucketBufferPrintTW,output);
+        else
+            I2HashIterate(stats->btable,BucketBufferPrint,output);
+        fprintf(output,"</BUCKETS>\n");
+    }
+
+    /*
+     * TTL histogram
+     */
+    PrintTtlStatsMachine(stats,output);
+
+    fprintf(output,"\n");
+
+    /*
+     * Reordering histogram
+     *
+     * (Not needed for TWAMP as twping won't allow packets to be
+     * re-ordered)
+     */
+    if(!stats->hdr->twoway){
+        fprintf(output,"<NREORDERING>\n");
+        for(j=0;((j<stats->rlistlen) && (stats->rn[j]));j++){
+            fprintf(output,"\t%u\t%u\n",(uint32_t)j+1,
+                    stats->rn[j]);
+        }
+        if((j==0) || (j >= stats->rlistlen)){
+            fprintf(output,"\t%u\t%u\n",(uint32_t)j+1,0);
+        }
+        fprintf(output,"</NREORDERING>\n");
+    }
+
+    return True;
+}
+
 /*
  * Program-readable statistics summary
  */
@@ -2415,6 +2618,10 @@ OWPStatsPrintMachine(
     double      d1;
 
     I2HexEncode(sid_name,stats->hdr->sid,sizeof(OWPSID));
+
+    if (stats->is_json_format)
+    {
+    }
 
 
     /*

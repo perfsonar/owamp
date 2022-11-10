@@ -1619,6 +1619,13 @@ typedef struct OWPStatsRec{
     OWPBoolean          display_unix_ts; /* If set, prints timestamps in unix format */
     OWPBoolean          is_json_format;  /* If set, prints output in JSON format */
 
+    // TODO
+    cJSON               *owp_json;
+    cJSON               *owp_histogram_json;
+    cJSON               *owp_raw_packets;
+
+    cJSON               *sum_json;
+
     /*
      * data file information
      */

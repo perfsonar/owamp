@@ -735,6 +735,19 @@ skip_data:
     if (appctx.opt.is_json_format == True)
     {
         stats->is_json_format = True;
+        // TODO Testing
+        if (!stats->owp_json)
+        {
+            stats->owp_json = cJSON_CreateObject();
+        }
+        if (!stats->owp_histogram_json)
+        {
+            stats->owp_histogram_json = cJSON_CreateArray();
+        }
+        if (!stats->owp_raw_packets)
+        {
+            stats->owp_raw_packets = cJSON_CreateArray();
+        }
         strcpy(ofname_json,ofname);
         sprintf(&ofname_json[ext_offset],"%s%s",OWP_FILE_EXT, JSON_FILE_EXT);
         debug("ofname_json: %s", ofname_json);
@@ -802,12 +815,6 @@ skip_data:
     }
     dotf=True;
 
-    // open JSON format files
-    if (appctx.opt.is_json_format)
-    {
-        owp_json_file = fopen(ofname_json, "w+");
-        sum_json_file = fopen(sfname_json, "w+");
-    }
 
     /*
      * Actually print out stats
@@ -826,17 +833,38 @@ skip_data:
         I2ErrLog(eh,"link(%s,%s): %M",tfname,sfname);
         sfname[0] = '\0';
     }
+    // open JSON format files
+    if (appctx.opt.is_json_format)
+    {
+        owp_json_file = fopen(ofname_json, "w+");
+        sum_json_file = fopen(sfname_json, "w+");
+    }
 
     if (appctx.opt.is_json_format)
     {
-        cJSON * owp_json = cJSON_CreateObject();
-        cJSON * sum_json = cJSON_CreateObject();
+        char * owp_json_str = NULL;
+        char * sum_json_str = NULL;
 
-        char * owp_json_str = cJSON_Print(owp_json);
-        char * sum_json_str = cJSON_Print(sum_json);
+        if (stats->owp_json)
+        {
+            cJSON * results = cJSON_CreateObject();
+            cJSON_AddItemToObject(results, "raw-packets", stats->owp_raw_packets);
+            //cJSON_AddItemToObject(results, "histogram", stats->owp_histogram_json);
+            //cJSON_AddItemToObject(stats->owp_json, "results", results);
+            //owp_json_str = cJSON_Print(stats->owp_raw_packets);
+            owp_json_str = cJSON_Print(results);
+        }
+        if (stats->sum_json)
+            sum_json_str = cJSON_Print(stats->sum_json);
 
-        fprintf(owp_json_file, "%s", owp_json_str);
-        fprintf(sum_json_file, "%s", sum_json_str);
+        if (owp_json_str)
+        {
+            fprintf(owp_json_file, "%s", owp_json_str);
+        }
+        if (sum_json_str)
+        {
+            fprintf(sum_json_file, "%s", sum_json_str);
+        }
     }
 skip_sum:
     if(dotf && (unlink(tfname) != 0)){
@@ -852,9 +880,15 @@ skip_sum:
     if (appctx.opt.is_json_format)
     {
         if (owp_json_file)
+        {
             fclose(owp_json_file);
+            owp_json_file = NULL;
+        }
         if (sum_json_file)
+        {
             fclose(sum_json_file);
+            sum_json_file = NULL;
+        }
     }
 
     if(stats){
