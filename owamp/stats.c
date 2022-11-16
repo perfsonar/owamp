@@ -378,7 +378,6 @@ BucketBufferPrint(
         void    *app_data
         )
 {
-    printf("BucketBufferPrint\n");
     OWPBucket   node = v.dptr;
     FILE        *fp = app_data;
 
@@ -394,7 +393,6 @@ BucketBufferPrintJSON(
         void    *app_data
         )
 {
-    printf("BucketBufferPrintJSON\n");
     OWPBucket   node = v.dptr;
     OWPStats    stats = app_data;
     cJSON * bucket = cJSON_CreateObject();
@@ -409,6 +407,9 @@ BucketBufferPrintJSON(
     cJSON_AddItemToArray(stats->owp_histogram_latency_json, bucket);
 
     //fprintf(fp,"\t%d\t%u\n",node->b,node->delay_samples[OWP_DELAY]);
+    //TODO debug only
+    char * str = cJSON_Print(stats->owp_histogram_latency_json);
+    printf("histogram_latency: %s", str);
 
     return True;
 }
@@ -469,6 +470,8 @@ BucketBufferPrintTWJSON(
     cJSON_AddNumberToObject(bucket, "twp_bck_delay", node->delay_samples[TWP_BCK_DELAY]);
 
     cJSON_AddItemToArray(stats->owp_histogram_latency_json, bucket);
+    char * str = cJSON_Print(stats->owp_histogram_latency_json);
+    printf("histogram_latency: %s", str);
 
     //fprintf(fp,"\t%d\t%u\t%u\t%u\n",node->b,
     //        node->delay_samples[OWP_DELAY],
@@ -530,7 +533,6 @@ BucketIncrementDelay(
     OWPDelayType    type
     )
 {
-    printf("BucketIncrementDelay\n");
     int         b;
     OWPBucket   node;
     I2Datum     k,v;
@@ -1268,7 +1270,6 @@ IterateSummarizeSession(
     /*
      * Print individual packet record
      */
-     // TODO here?
     if(stats->output){
         if(rec->send.sync && rec->recv.sync){
 	  if (stats->display_unix_ts == True) {
@@ -2457,6 +2458,31 @@ PrintTtlBucket(
         fprintf(output,"\t%u\t%lu\n",bucket,stats->ttl_count[OWP_TTL][bucket]);
 }
 
+static void
+PrintTtlBucketJSON(
+        OWPStats    stats,
+        FILE        *output,
+        uint16_t    bucket
+        )
+{
+    if (!stats->owp_histogram_ttl_json)
+    {
+        stats->owp_histogram_ttl_json = cJSON_CreateArray();
+    }
+
+    if(stats->ttl_count[OWP_TTL][bucket])
+    {
+        //fprintf(output,"\t%u\t%lu\n",bucket,stats->ttl_count[OWP_TTL][bucket]);
+	cJSON * bucket_json = cJSON_CreateObject();
+	// TODO magic number
+	char bucket_name [15];
+	snprintf(bucket_name, sizeof(bucket_name), "%u", bucket);
+	cJSON_AddNumberToObject(bucket_json, bucket_name, stats->ttl_count[OWP_TTL][bucket]);
+	cJSON_AddItemToArray(stats->owp_histogram_ttl_json, bucket_json);
+        //fprintf(output,"\t%u\t%lu\n",bucket,stats->ttl_count[OWP_TTL][bucket]);
+    }
+}
+
 /* Print TTL counts for two-way sessions */
 static void
 PrintTtlBucketTW(
@@ -2465,6 +2491,25 @@ PrintTtlBucketTW(
         uint16_t    bucket
         )
 {
+    if(stats->ttl_count[TWP_FWD_TTL][bucket] ||
+       stats->ttl_count[TWP_BCK_TTL][bucket])
+        fprintf(output,"\t%u\t%lu\t%lu\n",bucket,
+                stats->ttl_count[TWP_FWD_TTL][bucket],
+                stats->ttl_count[TWP_BCK_TTL][bucket]);
+}
+
+static void
+PrintTtlBucketTWJSON(
+        OWPStats    stats,
+        FILE        *output,
+        uint16_t    bucket
+        )
+{
+    if (!stats->owp_histogram_ttl_json)
+    {
+        stats->owp_histogram_ttl_json = cJSON_CreateArray();
+    }
+
     if(stats->ttl_count[TWP_FWD_TTL][bucket] ||
        stats->ttl_count[TWP_BCK_TTL][bucket])
         fprintf(output,"\t%u\t%lu\t%lu\n",bucket,
@@ -2494,6 +2539,31 @@ PrintTtlStatsMachine(
                 PrintTtlBucket(stats,output,i);
         }
         fprintf(output,"</TTLBUCKETS>\n");
+    }
+}
+
+static void
+PrintTtlStatsMachineJSON(
+        OWPStats    stats,
+        FILE        *output
+        )
+{
+    uint16_t ttl_num;
+    uint16_t i;
+
+    ttl_num = PrintMinMaxTtlMachine(stats,output,OWP_TTL);
+    if(stats->hdr->twoway)
+        ttl_num += PrintMinMaxTtlMachine(stats,output,TWP_BCK_TTL);
+
+    if(ttl_num > 0){
+        //fprintf(output,"<TTLBUCKETS>\n");
+        for(i=0;i<256;i++){
+            if(stats->hdr->twoway)
+                PrintTtlBucketTWJSON(stats,output,i);
+            else
+                PrintTtlBucketJSON(stats,output,i);
+        }
+        //fprintf(output,"</TTLBUCKETS>\n");
     }
 }
 
@@ -2680,9 +2750,12 @@ OWPStatsPrintMachineJSON(
     }
     // Add
     // stats->maxerr[OWP_DELAY_TYPE_NUM] [total fwd back]
-    //cJSON_AddNumberToObject(stats->results, "max-clock-err", stats->maxerr[total]);
+    cJSON_AddNumberToObject(stats->results, "max-clock-err", stats->maxerr[OWP_DELAY]);
+    //stats->maxerr[type] * stats->scale_factor,
+    //    stats->maxerr[OWP_DELAY] = MAX(stats->maxerr[OWP_DELAY],derr);
     cJSON_AddNumberToObject(stats->results, "max-clock-err", 0);
-    cJSON_AddNumberToObject(stats->results, "packets-duplicated", 0);
+    //cJSON_AddNumberToObject(stats->results, "packets-duplicated", stats->dups[]);
+    cJSON_AddNumberToObject(stats->results, "packets-duplicated", stats->dups[OWP_PKTS]);
     cJSON_AddNumberToObject(stats->results, "packets-lost", stats->lost);
     cJSON_AddNumberToObject(stats->results, "packets-received", 0);
     cJSON_AddNumberToObject(stats->results, "packets-reordered", 0);
@@ -2696,7 +2769,7 @@ OWPStatsPrintMachineJSON(
     {
         stats->owp_histogram_ttl_json = cJSON_CreateArray();
     }
-    PrintTtlStatsMachine(stats,output);
+    PrintTtlStatsMachineJSON(stats,output);
 
     //fprintf(output,"\n");
 
@@ -2731,6 +2804,7 @@ OWPStatsPrintMachineJSON(
     }
     cJSON_AddItemToObject(sum_json, "NREORDERING", nreordering);
 
+    // TODO switch back to other version
     char * sum_json_str = cJSON_Print(sum_json);
     fprintf(output, "%s", sum_json_str);
 

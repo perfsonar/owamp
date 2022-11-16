@@ -854,13 +854,14 @@ skip_data:
         if (stats->owp_json)
         {
             //cJSON * results = cJSON_CreateObject();
+	    
             cJSON_AddItemToObject(stats->results, "raw-packets", stats->owp_raw_packets);
             cJSON_AddItemToObject(stats->results, "histogram-latency", stats->owp_histogram_latency_json);
             cJSON_AddItemToObject(stats->results, "histogram-ttl", stats->owp_histogram_ttl_json);
 
             // TODO
-            cJSON_AddNumberToObject(stats->results,"max-clock-error", 19.2);
-            cJSON_AddNumberToObject(stats->results,"packets-duplicated", *stats->dups);
+            cJSON_AddNumberToObject(stats->results,"max-clock-error", stats->maxerr[OWP_DELAY]);
+            cJSON_AddNumberToObject(stats->results,"packets-duplicated", stats->dups[OWP_PKTS]);
             cJSON_AddNumberToObject(stats->results,"packets-lost", stats->lost);
             cJSON_AddNumberToObject(stats->results,"packets-received", 0);
             cJSON_AddNumberToObject(stats->results,"packets-reordered", 0);
