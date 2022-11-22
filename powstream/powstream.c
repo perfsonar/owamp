@@ -466,7 +466,6 @@ write_session(
     OWPStats            stats = NULL;
     int                 rc;
     OWPErrSeverity      ec;
-    // TODO
     FILE *              owp_json_file = NULL;
     FILE *              sum_json_file = NULL;
 
@@ -735,7 +734,6 @@ skip_data:
     if (appctx.opt.is_json_format == True)
     {
         stats->is_json_format = True;
-        // TODO Testing
         if (!stats->owp_json)
         {
             stats->owp_json = cJSON_CreateObject();
@@ -760,7 +758,6 @@ skip_data:
         sprintf(&ofname_json[ext_offset],"%s%s",OWP_FILE_EXT, JSON_FILE_EXT);
     }
 
-    // TODO
     if (appctx.opt.is_json_format)
     {
         strcpy(sfname_json,tfname);
@@ -865,7 +862,7 @@ skip_data:
             cJSON_AddNumberToObject(stats->results,"max-clock-error", stats->maxerr[OWP_DELAY]);
             cJSON_AddNumberToObject(stats->results,"packets-duplicated", stats->dups[OWP_PKTS]);
             cJSON_AddNumberToObject(stats->results,"packets-lost", stats->lost);
-	    // TODO 
+	    // TODO  not being added properly
             cJSON_AddNumberToObject(stats->results,"packets-received", 0);
             cJSON_AddNumberToObject(stats->results,"packets-reordered", 0);
             //cJSON_AddNumberToObject(stats->results,"packets-reordered", stats->rlistlen);
@@ -874,8 +871,6 @@ skip_data:
             owp_json_str = cJSON_Print(stats->results);
         }
 
-
-        // TODO might need to remove
         if (stats->sum_json)
         {
             cJSON_AddItemToObject(stats->sum_json, "BUCKETS", stats->owp_histogram_latency_json);
