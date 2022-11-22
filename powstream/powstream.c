@@ -850,32 +850,36 @@ skip_data:
     {
         char * owp_json_str = NULL;
         char * sum_json_str = NULL;
+	if (stats->owp_json)
+	{
+            cJSON_AddItemToObject(stats->results, "raw-packets", stats->owp_raw_packets);
+	}
+
+        OWPStatsPrintMachineJSON(stats, sum_json_file);
 
         if (stats->owp_json)
         {
-            //cJSON * results = cJSON_CreateObject();
-	    
-            cJSON_AddItemToObject(stats->results, "raw-packets", stats->owp_raw_packets);
             cJSON_AddItemToObject(stats->results, "histogram-latency", stats->owp_histogram_latency_json);
             cJSON_AddItemToObject(stats->results, "histogram-ttl", stats->owp_histogram_ttl_json);
 
-            // TODO
             cJSON_AddNumberToObject(stats->results,"max-clock-error", stats->maxerr[OWP_DELAY]);
             cJSON_AddNumberToObject(stats->results,"packets-duplicated", stats->dups[OWP_PKTS]);
             cJSON_AddNumberToObject(stats->results,"packets-lost", stats->lost);
+	    // TODO 
             cJSON_AddNumberToObject(stats->results,"packets-received", 0);
             cJSON_AddNumberToObject(stats->results,"packets-reordered", 0);
+            //cJSON_AddNumberToObject(stats->results,"packets-reordered", stats->rlistlen);
             cJSON_AddNumberToObject(stats->results,"packets-sent", stats->sent);
             //cJSON_AddItemToObject(stats->owp_json, "results", results);
-            //owp_json_str = cJSON_Print(stats->owp_raw_packets);
             owp_json_str = cJSON_Print(stats->results);
         }
 
-        OWPStatsPrintMachineJSON(stats, sum_json_file);
 
         // TODO might need to remove
         if (stats->sum_json)
         {
+            cJSON_AddItemToObject(stats->sum_json, "BUCKETS", stats->owp_histogram_latency_json);
+            cJSON_AddItemToObject(stats->sum_json, "TTL", stats->owp_histogram_ttl_json);
             sum_json_str = cJSON_Print(stats->sum_json);
         }
         if (owp_json_str)

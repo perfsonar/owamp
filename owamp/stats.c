@@ -407,9 +407,6 @@ BucketBufferPrintJSON(
     cJSON_AddItemToArray(stats->owp_histogram_latency_json, bucket);
 
     //fprintf(fp,"\t%d\t%u\n",node->b,node->delay_samples[OWP_DELAY]);
-    //TODO debug only
-    char * str = cJSON_Print(stats->owp_histogram_latency_json);
-    printf("histogram_latency: %s", str);
 
     return True;
 }
@@ -1164,13 +1161,22 @@ IterateSummarizeSession(
         cJSON_AddBoolToObject(report, "src-clock-sync", rec->recv.sync);
         cJSON_AddNumberToObject(report, "src-clock-ts", rec->recv.owptime);
 
-        //cJSON_AddObjectToObject(stats->owp_json, "report", report);
         if (!stats->owp_raw_packets)
         {
             stats->owp_raw_packets = cJSON_CreateArray();
-            //cJSON_AddObjectToObject();
         }
-        //cJSON_AddItemReferenceToArray(stats->owp_json, report);
+        if (!stats->owp_histogram_ttl_json)
+        {
+            stats->owp_histogram_ttl_json = cJSON_CreateArray();
+        }
+        if (!stats->owp_histogram_latency_json)
+        {
+            stats->owp_histogram_latency_json = cJSON_CreateArray();
+        }
+        if (!stats->results)
+        {
+            stats->results = cJSON_CreateArray();
+        }
         cJSON_AddItemToArray(stats->owp_raw_packets, report);
 
         //char * str = cJSON_Print(stats->owp_raw_packets);
@@ -2498,6 +2504,10 @@ PrintMinMaxTtlMachineJSON(
     {
         stats->owp_histogram_ttl_json = cJSON_CreateObject();
     }
+    if (!stats->results)
+    {
+        stats->results = cJSON_CreateObject();
+    }
 
     ttl_num = CalculateTtlStats(stats,type,&min_ttl,&max_ttl);
 
@@ -2519,10 +2529,15 @@ PrintMinMaxTtlMachineJSON(
     char max_name[15];
     snprintf(min_name, sizeof(min_name), "MINTTL%s", type_desc);
     snprintf(max_name, sizeof(max_name), "MAXTTL%s", type_desc);
-    cJSON_AddNumberToObject(minttl, min_name, min_ttl);
-    cJSON_AddNumberToObject(maxttl, max_name, max_ttl);
-    cJSON_AddItemToArray(stats->owp_histogram_ttl_json, minttl);
-    cJSON_AddItemToArray(stats->owp_histogram_ttl_json, maxttl);
+    //cJSON_AddNumberToObject(minttl, min_name, min_ttl);
+    //cJSON_AddNumberToObject(maxttl, max_name, max_ttl);
+    cJSON_AddItemToObject(stats->results, min_name, minttl);
+    cJSON_AddItemToObject(stats->results, max_name, maxttl);
+    //cJSON_AddItemToArray(stats->owp_histogram_ttl_json, minttl);
+    //cJSON_AddItemToArray(stats->owp_histogram_ttl_json, maxttl);
+    char * str =cJSON_Print(stats->owp_histogram_ttl_json);
+        //char * str = cJSON_Print(stats->owp_raw_packets);
+    //printf("owp_histogram_ttl_json: %s\n", str);
 
     return ttl_num;
 }
@@ -2853,6 +2868,7 @@ OWPStatsPrintMachineJSON(
         }
         //fprintf(output,"</BUCKETS>\n");
     }
+    cJSON_AddItemToObject(stats->results, "BUCKETS", stats->owp_histogram_latency_json);
     // Add
     // stats->maxerr[OWP_DELAY_TYPE_NUM] [total fwd back]
     cJSON_AddNumberToObject(stats->results, "max-clock-err", stats->maxerr[OWP_DELAY]);
@@ -2862,8 +2878,11 @@ OWPStatsPrintMachineJSON(
     //cJSON_AddNumberToObject(stats->results, "packets-duplicated", stats->dups[]);
     cJSON_AddNumberToObject(stats->results, "packets-duplicated", stats->dups[OWP_PKTS]);
     cJSON_AddNumberToObject(stats->results, "packets-lost", stats->lost);
-    cJSON_AddNumberToObject(stats->results, "packets-received", 0);
-    cJSON_AddNumberToObject(stats->results, "packets-reordered", 0);
+    //cJSON_AddNumberToObject(stats->results, "packets-received", 0);
+    //// TODO or last - first?
+    cJSON_AddNumberToObject(stats->results, "packets-received", stats->plistlen);
+    //cJSON_AddNumberToObject(stats->results, "packets-reordered", 0);
+    cJSON_AddNumberToObject(stats->results, "packets-reordered", stats->rlistlen);
     cJSON_AddNumberToObject(stats->results, "packets-sent", stats->sent);
 
     /*
@@ -2875,6 +2894,7 @@ OWPStatsPrintMachineJSON(
         stats->owp_histogram_ttl_json = cJSON_CreateArray();
     }
     PrintTtlStatsMachineJSON(stats,output);
+    cJSON_AddItemToObject(stats->results, "ttl", stats->owp_histogram_ttl_json);
 
     //fprintf(output,"\n");
 
