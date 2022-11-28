@@ -6,6 +6,7 @@
 unibuild-log
 unibuild-work/
 unibuild-repo/
+multiarch_build/
 #Ignore autoconf, automake and make results
 *.o
 .powlock
