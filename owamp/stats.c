@@ -1170,10 +1170,15 @@ IterateSummarizeSession(
         {
             stats->results = cJSON_CreateArray();
         }
+        if (!stats->recv)
+        {
+            stats->recv = 1;
+        }
+        else
+        {
+            stats->recv = stats->recv + 1;
+        }
         cJSON_AddItemToArray(stats->owp_raw_packets, report);
-
-        //char * str = cJSON_Print(stats->owp_raw_packets);
-        //printf("report: %s", str);
     }
 
     /*
@@ -1271,24 +1276,24 @@ IterateSummarizeSession(
      */
     if(stats->output){
         if(rec->send.sync && rec->recv.sync){
-	  if (stats->display_unix_ts == True) {
-	    /* print using unix timestamp */
-	    double epochdiff = (OWPULongToNum64(OWPJAN_1970))>>32;
-	    fprintf(stats->output,
-		    "seq_no=%d delay=%e %s (sync, err=%.3g %s) sent=%f recv=%f\n",
-		    rec->seq_no, d*stats->scale_factor, stats->scale_abrv,
-		    derr*stats->scale_factor, stats->scale_abrv,
-		    OWPNum64ToDouble(rec->send.owptime) - epochdiff,
-		    OWPNum64ToDouble(rec->recv.owptime) - epochdiff
-		    );
-	  } 
-	  else {
-	    /* print the default */
-	    fprintf(stats->output,
-		    "seq_no=%-10u delay=%.3g %s\t(sync, err=%.3g %s)\n",
-		    rec->seq_no, d*stats->scale_factor, stats->scale_abrv,
-		    derr*stats->scale_factor,stats->scale_abrv);
-	  }
+            if (stats->display_unix_ts == True) {
+                /* print using unix timestamp */
+                double epochdiff = (OWPULongToNum64(OWPJAN_1970))>>32;
+                fprintf(stats->output,
+                        "seq_no=%d delay=%e %s (sync, err=%.3g %s) sent=%f recv=%f\n",
+                        rec->seq_no, d*stats->scale_factor, stats->scale_abrv,
+                        derr*stats->scale_factor, stats->scale_abrv,
+                        OWPNum64ToDouble(rec->send.owptime) - epochdiff,
+                        OWPNum64ToDouble(rec->recv.owptime) - epochdiff
+                );
+            }
+            else {
+                /* print the default */
+                fprintf(stats->output,
+                        "seq_no=%-10u delay=%.3g %s\t(sync, err=%.3g %s)\n",
+                        rec->seq_no, d*stats->scale_factor, stats->scale_abrv,
+                        derr*stats->scale_factor,stats->scale_abrv);
+            }
         }
         else{
             fprintf(stats->output,
@@ -1738,6 +1743,7 @@ OWPStatsParse(
     stats->last = last;
     stats->iskip = 0;
     stats->sent = 0;
+    stats->recv = 0;
 
     /*
      * Initialize file record information: oset's/ record index/ nrecs
@@ -2413,7 +2419,7 @@ PrintMinDelayMachineJSON(
 
     if(stats->min_delay[type] < stats->inf_delay){
         char name[JSON_STR_LEN];
-	snprintf(name, sizeof(name), "MIN%s", MachineDelayTypeDesc(type));
+        snprintf(name, sizeof(name), "MIN%s", MachineDelayTypeDesc(type));
         cJSON_AddNumberToObject(stats->sum_json, name, stats->min_delay[type]);
     }
 }
@@ -2444,7 +2450,7 @@ PrintMaxDelayMachineJSON(
     }
     if(stats->max_delay[type] > -stats->inf_delay){
         char name[JSON_STR_LEN];
-	snprintf(name, sizeof(name), "MAX%s", MachineDelayTypeDesc(type));
+        snprintf(name, sizeof(name), "MAX%s", MachineDelayTypeDesc(type));
         cJSON_AddNumberToObject(stats->sum_json, name, stats->max_delay[type]);
     }
 }
@@ -2521,8 +2527,6 @@ PrintMinMaxTtlMachineJSON(
     cJSON_AddItemToObject(stats->results, min_name, minttl);
     cJSON_AddItemToObject(stats->results, max_name, maxttl);
 
-    char * str =cJSON_Print(stats->owp_histogram_ttl_json);
-
     return ttl_num;
 }
 
@@ -2552,11 +2556,11 @@ PrintTtlBucketJSON(
 
     if(stats->ttl_count[OWP_TTL][bucket])
     {
-	cJSON * bucket_json = cJSON_CreateObject();
-	char bucket_name [JSON_STR_LEN];
-	snprintf(bucket_name, sizeof(bucket_name), "%u", bucket);
-	cJSON_AddNumberToObject(bucket_json, bucket_name, stats->ttl_count[OWP_TTL][bucket]);
-	cJSON_AddItemToArray(stats->owp_histogram_ttl_json, bucket_json);
+        cJSON * bucket_json = cJSON_CreateObject();
+        char bucket_name [JSON_STR_LEN];
+        snprintf(bucket_name, sizeof(bucket_name), "%u", bucket);
+        cJSON_AddNumberToObject(bucket_json, bucket_name, stats->ttl_count[OWP_TTL][bucket]);
+        cJSON_AddItemToArray(stats->owp_histogram_ttl_json, bucket_json);
     }
 }
 
@@ -2590,11 +2594,11 @@ PrintTtlBucketTWJSON(
     if(stats->ttl_count[TWP_FWD_TTL][bucket] ||
        stats->ttl_count[TWP_BCK_TTL][bucket])
     {
-	cJSON * bucket_json = cJSON_CreateObject();
-	cJSON_AddNumberToObject(bucket_json, "bucket", bucket);
-	cJSON_AddNumberToObject(bucket_json, "TWP_FWD_TTL", stats->ttl_count[TWP_FWD_TTL][bucket]);
-	cJSON_AddNumberToObject(bucket_json, "TWP_BCK_TTL", stats->ttl_count[TWP_BCK_TTL][bucket]);
-	cJSON_AddItemToArray(stats->owp_histogram_ttl_json, bucket_json);
+        cJSON * bucket_json = cJSON_CreateObject();
+        cJSON_AddNumberToObject(bucket_json, "bucket", bucket);
+        cJSON_AddNumberToObject(bucket_json, "TWP_FWD_TTL", stats->ttl_count[TWP_FWD_TTL][bucket]);
+        cJSON_AddNumberToObject(bucket_json, "TWP_BCK_TTL", stats->ttl_count[TWP_BCK_TTL][bucket]);
+        cJSON_AddItemToArray(stats->owp_histogram_ttl_json, bucket_json);
     }
 }
 
@@ -2641,7 +2645,7 @@ PrintTtlStatsMachineJSON(
         ttl_num += PrintMinMaxTtlMachineJSON(stats,output,TWP_BCK_TTL);
 
     if(ttl_num > 0){
-	// TTLBUCKETS
+        // TTLBUCKETS
         for(i=0;i<256;i++){
             if(stats->hdr->twoway)
                 PrintTtlBucketTWJSON(stats,output,i);
@@ -2767,14 +2771,14 @@ OWPStatsPrintMachineJSON(
      * PDV
      */
     if(CalculateJitter(stats,OWP_DELAY,&d1)){
-	cJSON_AddNumberToObject(stats->sum_json, "PDV", d1);
+        cJSON_AddNumberToObject(stats->sum_json, "PDV", d1);
     }
     if(stats->hdr->twoway){
         if(CalculateJitter(stats,TWP_FWD_DELAY,&d1)){
-	    cJSON_AddNumberToObject(stats->sum_json, "PDV_FWD", d1);
+            cJSON_AddNumberToObject(stats->sum_json, "PDV_FWD", d1);
         }
         if(CalculateJitter(stats,TWP_BCK_DELAY,&d1)){
-	    cJSON_AddNumberToObject(stats->sum_json, "PDV_BCK", d1);
+            cJSON_AddNumberToObject(stats->sum_json, "PDV_BCK", d1);
         }
     }
 
@@ -2797,13 +2801,11 @@ OWPStatsPrintMachineJSON(
         }
     }
     cJSON_AddItemToObject(stats->results, "BUCKETS", stats->owp_histogram_latency_json);
+    /*
     // Add
     // stats->maxerr[OWP_DELAY_TYPE_NUM] [total fwd back]
-    cJSON_AddNumberToObject(stats->results, "max-clock-err", stats->maxerr[OWP_DELAY]);
-    //stats->maxerr[type] * stats->scale_factor,
-    //    stats->maxerr[OWP_DELAY] = MAX(stats->maxerr[OWP_DELAY],derr);
-    cJSON_AddNumberToObject(stats->results, "max-clock-err", 0);
-    //cJSON_AddNumberToObject(stats->results, "packets-duplicated", stats->dups[]);
+    cJSON_AddNumberToObject(stats->results, "max-clock-err", stats->maxerr[OWP_DELAY] * stats->scale_factor);
+    //stats->maxerr[type] * stats->scale_factor,    stats->maxerr[OWP_DELAY] = MAX(stats->maxerr[OWP_DELAY],derr);
     cJSON_AddNumberToObject(stats->results, "packets-duplicated", stats->dups[OWP_PKTS]);
     cJSON_AddNumberToObject(stats->results, "packets-lost", stats->lost);
     //cJSON_AddNumberToObject(stats->results, "packets-received", 0);
@@ -2812,11 +2814,11 @@ OWPStatsPrintMachineJSON(
     //cJSON_AddNumberToObject(stats->results, "packets-reordered", 0);
     cJSON_AddNumberToObject(stats->results, "packets-reordered", stats->rlistlen);
     cJSON_AddNumberToObject(stats->results, "packets-sent", stats->sent);
+    */
 
     /*
      * TTL histogram
      */
-    //cJSON * ttl_histogram = cJSON_CreateArray();
     if (!stats->owp_histogram_ttl_json)
     {
         stats->owp_histogram_ttl_json = cJSON_CreateArray();
@@ -2840,7 +2842,7 @@ OWPStatsPrintMachineJSON(
     if(!stats->hdr->twoway){
         cJSON * record = cJSON_CreateObject();
 
-	// NREORDERING
+        // NREORDERING
         for(j=0;((j<stats->rlistlen) && (stats->rn[j]));j++){
             char name [JSON_STR_LEN];
             snprintf(name, sizeof(name), "%u", (uint32_t)j+1);

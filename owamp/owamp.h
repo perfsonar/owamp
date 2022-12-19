@@ -1711,6 +1711,7 @@ typedef struct OWPStatsRec{
 
     uint32_t       dups[OWP_PKT_TYPE_NUM];
     uint32_t       lost;
+    uint32_t       recv;
 
 } OWPStatsRec, *OWPStats;
 

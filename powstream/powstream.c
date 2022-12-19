@@ -847,10 +847,10 @@ skip_data:
     {
         char * owp_json_str = NULL;
         char * sum_json_str = NULL;
-	if (stats->owp_json)
-	{
+        if (stats->owp_json)
+        {
             cJSON_AddItemToObject(stats->results, "raw-packets", stats->owp_raw_packets);
-	}
+        }
 
         OWPStatsPrintMachineJSON(stats, sum_json_file);
 
@@ -862,8 +862,8 @@ skip_data:
             cJSON_AddNumberToObject(stats->results,"max-clock-error", stats->maxerr[OWP_DELAY]);
             cJSON_AddNumberToObject(stats->results,"packets-duplicated", stats->dups[OWP_PKTS]);
             cJSON_AddNumberToObject(stats->results,"packets-lost", stats->lost);
-	    // TODO  not being added properly
-            cJSON_AddNumberToObject(stats->results,"packets-received", 0);
+            // TODO  not being added properly
+            cJSON_AddNumberToObject(stats->results,"packets-received", stats->recv);
             cJSON_AddNumberToObject(stats->results,"packets-reordered", 0);
             //cJSON_AddNumberToObject(stats->results,"packets-reordered", stats->rlistlen);
             cJSON_AddNumberToObject(stats->results,"packets-sent", stats->sent);
@@ -1359,7 +1359,7 @@ sctx_clean:
 fetch_clean:
     if (p->fetch){
         OWPControlClose(p->fetch);
-	p->fetch = NULL;
+        p->fetch = NULL;
     }
 
     return -1;
@@ -1947,7 +1947,7 @@ NextConnection:
         which %= 2;
         q = &pcntrl[which];
 
-	/* If the sessions haven't been initialized, do the init phase */
+        /* If the sessions haven't been initialized, do the init phase */
         if(!p->numPackets){
             (void)SetupSession(ctx,q,p,NULL);
             goto NextConnection;
@@ -1984,7 +1984,7 @@ NextConnection:
                 goto NextConnection;
             p->session_started = True;
 wait_again:
-	    rc = OWPStopSessionsWait(p->cntrl,NULL,&pow_intr,&aval,&err_ret);
+            rc = OWPStopSessionsWait(p->cntrl,NULL,&pow_intr,&aval,&err_ret);
             if(rc<0){
                 /* error - reset sessions and start over. */
                 p->call_stop = False;
