@@ -1134,11 +1134,9 @@ IterateSummarizeSession(
         return -1;
     }
 
-    // TODO - probably shouldn't be here?
     if (stats->is_json_format)
     {
         cJSON * report = cJSON_CreateObject();
-        // TODO
         cJSON_AddNumberToObject(report, "ip-ttl", rec->ttl);
         cJSON_AddNumberToObject(report, "seq-num", rec->seq_no);
 
@@ -2491,6 +2489,7 @@ PrintMinMaxTtlMachineJSON(
         OWPTtlType  type
         )
 {
+    // TODO this isn't appearing in results
     uint8_t     ttl_num;
     uint8_t     min_ttl;
     uint8_t     max_ttl;
@@ -2516,7 +2515,6 @@ PrintMinMaxTtlMachineJSON(
             break;
     }
 
-    // TODO not being added properly
     cJSON * minttl = cJSON_CreateObject();
     cJSON * maxttl = cJSON_CreateObject();
     char min_name[JSON_STR_LEN];
@@ -2526,6 +2524,9 @@ PrintMinMaxTtlMachineJSON(
 
     cJSON_AddItemToObject(stats->results, min_name, minttl);
     cJSON_AddItemToObject(stats->results, max_name, maxttl);
+
+    cJSON_AddItemToObject(stats->results, "MINTTL", minttl);
+    cJSON_AddItemToObject(stats->results, "MAXTTL", maxttl);
 
     return ttl_num;
 }
@@ -2635,6 +2636,10 @@ PrintTtlStatsMachineJSON(
 {
     uint16_t ttl_num;
     uint16_t i;
+    if (!stats->results)
+    {
+        stats->results = cJSON_CreateObject();
+    }
     if (!stats->owp_histogram_ttl_json)
     {
         stats->owp_histogram_ttl_json = cJSON_CreateObject();
@@ -2801,20 +2806,6 @@ OWPStatsPrintMachineJSON(
         }
     }
     cJSON_AddItemToObject(stats->results, "BUCKETS", stats->owp_histogram_latency_json);
-    /*
-    // Add
-    // stats->maxerr[OWP_DELAY_TYPE_NUM] [total fwd back]
-    cJSON_AddNumberToObject(stats->results, "max-clock-err", stats->maxerr[OWP_DELAY] * stats->scale_factor);
-    //stats->maxerr[type] * stats->scale_factor,    stats->maxerr[OWP_DELAY] = MAX(stats->maxerr[OWP_DELAY],derr);
-    cJSON_AddNumberToObject(stats->results, "packets-duplicated", stats->dups[OWP_PKTS]);
-    cJSON_AddNumberToObject(stats->results, "packets-lost", stats->lost);
-    //cJSON_AddNumberToObject(stats->results, "packets-received", 0);
-    //// TODO or last - first?
-    cJSON_AddNumberToObject(stats->results, "packets-received", stats->plistlen);
-    //cJSON_AddNumberToObject(stats->results, "packets-reordered", 0);
-    cJSON_AddNumberToObject(stats->results, "packets-reordered", stats->rlistlen);
-    cJSON_AddNumberToObject(stats->results, "packets-sent", stats->sent);
-    */
 
     /*
      * TTL histogram

@@ -858,16 +858,11 @@ skip_data:
         {
             cJSON_AddItemToObject(stats->results, "histogram-latency", stats->owp_histogram_latency_json);
             cJSON_AddItemToObject(stats->results, "histogram-ttl", stats->owp_histogram_ttl_json);
-
             cJSON_AddNumberToObject(stats->results,"max-clock-error", stats->maxerr[OWP_DELAY]);
             cJSON_AddNumberToObject(stats->results,"packets-duplicated", stats->dups[OWP_PKTS]);
             cJSON_AddNumberToObject(stats->results,"packets-lost", stats->lost);
-            // TODO  not being added properly
             cJSON_AddNumberToObject(stats->results,"packets-received", stats->recv);
-            cJSON_AddNumberToObject(stats->results,"packets-reordered", 0);
-            //cJSON_AddNumberToObject(stats->results,"packets-reordered", stats->rlistlen);
             cJSON_AddNumberToObject(stats->results,"packets-sent", stats->sent);
-            //cJSON_AddItemToObject(stats->owp_json, "results", results);
             owp_json_str = cJSON_Print(stats->results);
         }
 
