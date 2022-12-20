@@ -19,7 +19,7 @@
 #	Description:	powstream build description.
 
 INCLUDES	= $(OWPINCS) $(I2UTILINCS)
-AM_CFLAGS	= $(OWP_PREFIX_CFLAGS)
+AM_CFLAGS	= -Wall -Werror $(OWP_PREFIX_CFLAGS)
 
 bin_PROGRAMS	= powstream
 

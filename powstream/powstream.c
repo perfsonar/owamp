@@ -57,6 +57,9 @@ int optreset;
  */
 #define        MAX_PADDING_SIZE        0xFFFF
 
+#define debug(fmt, ...) \
+  fprintf(stdout, "debug: %s:%s:%d: " fmt "\n", __FILE__, __func__,  __LINE__, ##__VA_ARGS__)
+
 /*
  * The powstream context
  */
@@ -145,7 +148,8 @@ print_output_args()
 "   -p             print filenames to stdout\n"
 "   -R             Only send messages to syslog (not STDERR)\n"
 "   -v             include more verbose output\n"
-"   -U             Adds UNIX timestamps to summary results"
+"   -U             Adds UNIX timestamps to summary results\n"
+"   -j             JSON output"
            );
 }
 
@@ -451,7 +455,9 @@ write_session(
     OWPNum64            endnum;
     char                tfname[PATH_MAX];
     char                ofname[PATH_MAX];
+    char                ofname_json[PATH_MAX];
     char                sfname[PATH_MAX];
+    char                sfname_json[PATH_MAX];
     char                startname[PATH_MAX];
     char                endname[PATH_MAX];
     int                 tofd = -1;
@@ -460,6 +466,8 @@ write_session(
     OWPStats            stats = NULL;
     int                 rc;
     OWPErrSeverity      ec;
+    FILE *              owp_json_file = NULL;
+    FILE *              sum_json_file = NULL;
 
     /*
      * If this session does not have a started session, or the
@@ -722,6 +730,40 @@ skip_data:
     if (appctx.opt.display_unix_ts == True)
         stats->display_unix_ts = True;
 
+    // Set json output and create the files
+    if (appctx.opt.is_json_format == True)
+    {
+        stats->is_json_format = True;
+        if (!stats->owp_json)
+        {
+            stats->owp_json = cJSON_CreateObject();
+        }
+        if (!stats->owp_histogram_ttl_json)
+        {
+            stats->owp_histogram_ttl_json = cJSON_CreateArray();
+        }
+        if (!stats->owp_histogram_latency_json)
+        {
+            stats->owp_histogram_latency_json = cJSON_CreateArray();
+        }
+        if (!stats->owp_raw_packets)
+        {
+            stats->owp_raw_packets = cJSON_CreateArray();
+        }
+        if (!stats->results)
+        {
+            stats->results = cJSON_CreateObject();
+        }
+        strcpy(ofname_json,ofname);
+        sprintf(&ofname_json[ext_offset],"%s%s",OWP_FILE_EXT, JSON_FILE_EXT);
+    }
+
+    if (appctx.opt.is_json_format)
+    {
+        strcpy(sfname_json,tfname);
+        sprintf(&sfname_json[ext_offset],"%s%s",POW_SUM_EXT, JSON_FILE_EXT);
+    }
+
     /*
      * Parse the data and compute the statistics
      */
@@ -776,6 +818,7 @@ skip_data:
     }
     dotf=True;
 
+
     /*
      * Actually print out stats
      */
@@ -793,7 +836,51 @@ skip_data:
         I2ErrLog(eh,"link(%s,%s): %M",tfname,sfname);
         sfname[0] = '\0';
     }
+    // open JSON format files
+    if (appctx.opt.is_json_format)
+    {
+        owp_json_file = fopen(ofname_json, "w+");
+        sum_json_file = fopen(sfname_json, "w+");
+    }
 
+    if (appctx.opt.is_json_format)
+    {
+        char * owp_json_str = NULL;
+        char * sum_json_str = NULL;
+        if (stats->owp_json)
+        {
+            cJSON_AddItemToObject(stats->results, "raw-packets", stats->owp_raw_packets);
+        }
+
+        OWPStatsPrintMachineJSON(stats, sum_json_file);
+
+        if (stats->owp_json)
+        {
+            cJSON_AddItemToObject(stats->results, "histogram-latency", stats->owp_histogram_latency_json);
+            cJSON_AddItemToObject(stats->results, "histogram-ttl", stats->owp_histogram_ttl_json);
+            cJSON_AddNumberToObject(stats->results,"max-clock-error", stats->maxerr[OWP_DELAY]);
+            cJSON_AddNumberToObject(stats->results,"packets-duplicated", stats->dups[OWP_PKTS]);
+            cJSON_AddNumberToObject(stats->results,"packets-lost", stats->lost);
+            cJSON_AddNumberToObject(stats->results,"packets-received", stats->recv);
+            cJSON_AddNumberToObject(stats->results,"packets-sent", stats->sent);
+            owp_json_str = cJSON_Print(stats->results);
+        }
+
+        if (stats->sum_json)
+        {
+            cJSON_AddItemToObject(stats->sum_json, "BUCKETS", stats->owp_histogram_latency_json);
+            cJSON_AddItemToObject(stats->sum_json, "TTL", stats->owp_histogram_ttl_json);
+            sum_json_str = cJSON_Print(stats->sum_json);
+        }
+        if (owp_json_str)
+        {
+            fprintf(owp_json_file, "%s", owp_json_str);
+        }
+        if (sum_json_str)
+        {
+            fprintf(sum_json_file, "%s", sum_json_str);
+        }
+    }
 skip_sum:
     if(dotf && (unlink(tfname) != 0)){
         /* note, but ignore the error */
@@ -802,6 +889,21 @@ skip_sum:
 
     if(fp){
         fclose(fp);
+    }
+
+    // close JSON format files
+    if (appctx.opt.is_json_format)
+    {
+        if (owp_json_file)
+        {
+            fclose(owp_json_file);
+            owp_json_file = NULL;
+        }
+        if (sum_json_file)
+        {
+            fclose(sum_json_file);
+            sum_json_file = NULL;
+        }
     }
 
     if(stats){
@@ -815,6 +917,15 @@ skip_sum:
         }
         if(strlen(sfname) > 0){
             fprintf(stdout,"%s\n",sfname);
+        }
+        if (appctx.opt.is_json_format)
+        {
+            if(strlen(ofname_json) > 0){
+                fprintf(stdout,"%s\n",ofname_json);
+            }
+            if(strlen(sfname_json) > 0){
+                fprintf(stdout,"%s\n",sfname_json);
+            }
         }
         fflush(stdout);
     }
@@ -1243,7 +1354,7 @@ sctx_clean:
 fetch_clean:
     if (p->fetch){
         OWPControlClose(p->fetch);
-	p->fetch = NULL;
+        p->fetch = NULL;
     }
 
     return -1;
@@ -1269,7 +1380,7 @@ main(
     char                optstring[128];
     static char         *conn_opts = "46A:k:S:B:u:I:";
     static char         *test_opts = "c:E:i:L:s:tz:P:";
-    static char         *out_opts = "b:d:e:g:N:pRvU";
+    static char         *out_opts = "b:d:e:g:N:pRvUj";
     static char         *gen_opts = "hw";
     static char         *posixly_correct="POSIXLY_CORRECT=True";
 
@@ -1515,6 +1626,9 @@ main(
                 break;
             case 'U':
                 appctx.opt.display_unix_ts = True;
+                break;
+            case 'j':
+                appctx.opt.is_json_format = True;
                 break;
             /* undocumented debug options */
 #ifdef DEBUG
@@ -1828,7 +1942,7 @@ NextConnection:
         which %= 2;
         q = &pcntrl[which];
 
-	/* If the sessions haven't been initialized, do the init phase */
+        /* If the sessions haven't been initialized, do the init phase */
         if(!p->numPackets){
             (void)SetupSession(ctx,q,p,NULL);
             goto NextConnection;
@@ -1865,7 +1979,7 @@ NextConnection:
                 goto NextConnection;
             p->session_started = True;
 wait_again:
-	    rc = OWPStopSessionsWait(p->cntrl,NULL,&pow_intr,&aval,&err_ret);
+            rc = OWPStopSessionsWait(p->cntrl,NULL,&pow_intr,&aval,&err_ret);
             if(rc<0){
                 /* error - reset sessions and start over. */
                 p->call_stop = False;
@@ -2083,6 +2197,9 @@ AGAIN:
             if (appctx.opt.display_unix_ts == True)
                 stats->display_unix_ts = True;
 
+            if (appctx.opt.is_json_format == True)
+                stats->is_json_format = True;
+
             /*
              * Parse the data and compute the statistics
              */
@@ -2171,6 +2288,12 @@ AGAIN:
                 /* note, but ignore the error */
                 I2ErrLog(eh,"link(%s,%s): %M",tfname,fname);
             }
+            if (appctx.opt.is_json_format == True)
+            {
+                 // open files
+                 // write stats
+            }
+
 
             if(appctx.opt.printfiles){
                 /* Make sure file is complete */

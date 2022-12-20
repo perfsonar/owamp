@@ -19,13 +19,14 @@
 #	Description:	libowamp build description.
 
 INCLUDES		= $(OWPINCS) $(I2UTILINCS)
+AM_CFLAGS	        = -Wall $(OWP_PREFIX_CFLAGS)
 
 lib_LIBRARIES		= libowamp.a
 libowamp_a_SOURCES	= api.c capi.c sapi.c context.c error.c owampP.h \
 			protocol.c io.c endpoint.c time.c arithm64.c \
 			rijndael-alg-fst.c rijndael-alg-fst.h \
 			rijndael-api-fst.c rijndael-api-fst.h \
-			schedule.c stats.c
+			schedule.c stats.c cjson.c
 
 EXTRA_DIST		= owamp.h
 

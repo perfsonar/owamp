@@ -35,6 +35,7 @@
 #undef PATCH_LEVEL
 
 #include <owamp/config.h>
+#include <owamp/cjson.h>
 #endif        /* HAVE_CONFIG_H */
 
 #if        !HAVE_ERRNO_H || !HAVE_NETDB_H || !HAVE_STDLIB_H || !HAVE_SYS_PARAM_H
@@ -126,6 +127,11 @@
 #ifndef OWP_FILE_EXT
 #define OWP_FILE_EXT        ".owp"
 #endif
+#ifndef JSON_FILE_EXT
+#define JSON_FILE_EXT        ".json"
+#endif
+
+
 
 /*
  * The ascii decimal encoding of the 64 bit timestamps takes this many
@@ -1611,6 +1617,16 @@ typedef struct OWPStatsRec{
 
     unsigned long       rec_limit; /* limits the number of records to print */
     OWPBoolean          display_unix_ts; /* If set, prints timestamps in unix format */
+    OWPBoolean          is_json_format;  /* If set, prints output in JSON format */
+
+    // TODO
+    cJSON               *owp_json; // results
+    cJSON               *results;
+    cJSON               *owp_histogram_ttl_json;
+    cJSON               *owp_histogram_latency_json;
+    cJSON               *owp_raw_packets;
+
+    cJSON               *sum_json;
 
     /*
      * data file information
@@ -1695,6 +1711,7 @@ typedef struct OWPStatsRec{
 
     uint32_t       dups[OWP_PKT_TYPE_NUM];
     uint32_t       lost;
+    uint32_t       recv;
 
 } OWPStatsRec, *OWPStats;
 
@@ -1740,6 +1757,12 @@ OWPStatsPrintSummary(
 
 extern OWPBoolean
 OWPStatsPrintMachine(
+        OWPStats    stats,
+        FILE        *output
+        );
+
+extern OWPBoolean
+OWPStatsPrintMachineJSON(
         OWPStats    stats,
         FILE        *output
         );
