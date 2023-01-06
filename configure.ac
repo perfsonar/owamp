@@ -161,7 +161,8 @@ AC_SEARCH_LIBS(socketpair, socket)
 AC_SEARCH_LIBS(nanosleep, rt)
 AC_SEARCH_LIBS(ceil,m)
 
-AC_CHECK_FUNCS([memset socket bind connect getaddrinfo mergesort dirfd])
+# musl and uClibc only have adjtimex
+AC_CHECK_FUNCS([memset socket bind connect getaddrinfo mergesort dirfd ntp_adjtime adjtimex])
 
 # Checks for variable/function declarations.
 AC_CHECK_DECLS([optreset])
