@@ -21,7 +21,7 @@
 # possible solution to conf dir location
 AM_CFLAGS = $(OWP_PREFIX_CFLAGS)
 
-INCLUDES	= $(OWPINCS) $(I2UTILINCS)
+AM_CPPFLAGS	= $(OWPINCS) $(I2UTILINCS)
 
 bin_PROGRAMS	= owampd twampd
 owampd_SOURCES	= owampdP.h owampd.c policy.h policy.c fts.h fts.c

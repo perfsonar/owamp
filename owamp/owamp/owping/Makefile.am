@@ -18,7 +18,7 @@
 #
 #	Description:	owping build description.
 
-INCLUDES	= $(OWPINCS) $(I2UTILINCS)
+AM_CPPFLAGS	= $(OWPINCS) $(I2UTILINCS)
 AM_CFLAGS	= $(OWP_PREFIX_CFLAGS)
 
 bin_PROGRAMS	= owping twping

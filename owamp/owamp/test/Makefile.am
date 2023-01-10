@@ -18,7 +18,7 @@
 #
 #	Description:	owtvec build description.
 
-INCLUDES	= $(OWPINCS) $(I2UTILINCS)
+AM_CPPFLAGS	= $(OWPINCS) $(I2UTILINCS)
 AM_CFLAGS	= $(OWP_PREFIX_CFLAGS)
 
 check_PROGRAMS  = owtvec owstats owping_enc owping_clear owe2e_clear owe2e_auth owe2e_enc twping_enc twping_clear hmac twe2e_clear twe2e_auth twe2e_enc
