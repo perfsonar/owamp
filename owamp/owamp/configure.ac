@@ -27,14 +27,14 @@
 #
 #	Options:
 # Process this file with autoconf to produce a configure script.
-AC_INIT(owamp, 5.0.0, owamp-bugs@internet2.edu)
+AC_INIT(owamp, 4.4.6, owamp-bugs@internet2.edu)
 AC_CONFIG_AUX_DIR(config)
 AM_INIT_AUTOMAKE([no-define foreign])
 AC_CONFIG_SRCDIR(owamp/context.c)
 AM_CONFIG_HEADER(owamp/config.h)
 
 AC_DEFINE(PATCH_LEVEL, 1, "The RPM version number")
-AC_SUBST(PATCH_LEVEL, 0.b2.1)
+AC_SUBST(PATCH_LEVEL, 1)
  
 TOP_BUILD_DIRS=""
 
@@ -161,7 +161,8 @@ AC_SEARCH_LIBS(socketpair, socket)
 AC_SEARCH_LIBS(nanosleep, rt)
 AC_SEARCH_LIBS(ceil,m)
 
-AC_CHECK_FUNCS([memset socket bind connect getaddrinfo mergesort dirfd])
+# musl and uClibc only have adjtimex
+AC_CHECK_FUNCS([memset socket bind connect getaddrinfo mergesort dirfd ntp_adjtime adjtimex])
 
 # Checks for variable/function declarations.
 AC_CHECK_DECLS([optreset])
@@ -218,6 +219,6 @@ AM_CONDITIONAL([HAVE_MAN2HTML], test x$do_man2html = xtrue)
 AC_SUBST(TOP_BUILD_DIRS)
 
 AC_SUBST(ac_aux_dir)
-AC_OUTPUT([Makefile owamp/Makefile owampd/Makefile owping/Makefile powstream/Makefile conf/Makefile test/Makefile doc/Makefile selinux/Makefile],
+AC_OUTPUT([Makefile owamp/Makefile owampd/Makefile owping/Makefile powstream/Makefile conf/Makefile test/Makefile doc/Makefile selinux/Makefile owamp.spec],
 	[test -z "$CONFIG_HEADERS" || echo timestamp > owamp/stamp-h.in])
 

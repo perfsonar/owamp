@@ -51,7 +51,24 @@
 
 static struct timeval  timeoffset;
 static int sign_timeoffset = 0;
-
+#if defined(HAVE_SYS_TIMEX_H) && (defined(HAVE_NTP_ADJTIME) || defined(HAVE_ADJTIMEX))
+static int timex_adjtime_wrapper(struct timex *ntp_conf, OWPContext ctx){
+#ifdef HAVE_NTP_ADJTIME
+    if(ntp_adjtime(ntp_conf) < 0){
+        OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"ntp_adjtime(): %M");
+    return 1;
+    }
+#elif HAVE_ADJTIMEX
+    if(adjtimex(ntp_conf) < 0){
+        OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"adjtimex(): %M");
+	return 1;
+    }
+#else
+#error No method to adjust time available
+#endif
+    return 0;
+}
+#endif
 /*
  * Function:        _OWPInitNTP
  *
@@ -98,15 +115,15 @@ _OWPInitNTP(
      * If the system has NTP system calls use them. Otherwise
      * timestamps will be marked UNSYNC.
      */
-#ifdef  HAVE_SYS_TIMEX_H
+#if defined(HAVE_SYS_TIMEX_H) && (defined(HAVE_NTP_ADJTIME) || defined(HAVE_ADJTIMEX))
     {
         struct timex        ntp_conf;
 
 	memset(&ntp_conf,0,sizeof(ntp_conf));
-        if(ntp_adjtime(&ntp_conf) < 0){
-            OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"ntp_adjtime(): %M");
-            return 1;
-        }
+
+	if(timex_adjtime_wrapper(&ntp_conf,ctx) == -1){
+	    return 1;
+	}
 
         if(ntp_conf.status & STA_UNSYNC){
             OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,
@@ -204,13 +221,13 @@ _OWPGetTimespec(
      * If ntp system calls are available use them to determine
      * time error.
      */
-#ifdef HAVE_SYS_TIMEX_H
+#if defined(HAVE_SYS_TIMEX_H) && (defined(HAVE_NTP_ADJTIME) || defined(HAVE_ADJTIMEX))
     {
         struct timex        ntp_conf;
 
         memset(&ntp_conf,0,sizeof(ntp_conf));
-        if(ntp_adjtime(&ntp_conf) < 0){
-            OWPError(ctx,OWPErrFATAL,OWPErrUNKNOWN,"ntp_adjtime(): %M");
+
+        if(timex_adjtime_wrapper(&ntp_conf, ctx)){
             return NULL;
         }
 
