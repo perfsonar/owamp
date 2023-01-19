@@ -1,52 +1,8 @@
-owamp (5.0.0~b2.1-1) perfsonar-5.0; urgency=low
-
-  * New upstream version.
-  * Building on buster.
-
- -- perfSONAR developers <debian@perfsonar.net>  Thu, 27 Oct 2022 10:34:12 -0400
-
-owamp (4.5.0~a1.0-1) perfsonar-4.5-snapshot; urgency=low
+owamp (5.0.0-1) perfsonar-4.2; urgency=low
 
   * New upstream version.
 
- -- perfSONAR developers <debian@perfsonar.net>  Fri, 16 Jul 2021 17:11:25 +0000
-
-owamp (4.4.1-1) perfsonar-4.4; urgency=low
-
-  * New upstream version.
-
- -- Antoine Delvaux <antoine.delvaux@man.poznan.pl>  Thu, 26 Aug 2021 02:38:26 +0100
-
-owamp (4.4.0-1) perfsonar-4.4; urgency=low
-
-  * New upstream version.
-  * debhelper 9.20160709 provides dh-systemd
-
- -- perfSONAR developers <debian@perfsonar.net>  Wed, 07 Jul 2021 15:19:42 +0000
-
-owamp (4.3.4-1) perfsonar-4.3; urgency=low
-
-  * New upstream version.
-
- -- perfSONAR developers <debian@perfsonar.net>  Wed, 17 Mar 2021 01:09:52 +0000
-
-owamp (4.3.3-1) perfsonar-4.3; urgency=low
-
-  * New upstream version.
-
- -- perfSONAR developers <debian@perfsonar.net>  Tue, 02 Feb 2021 16:37:00 +0000
-
-owamp (4.3.2-1) perfsonar-4.3; urgency=low
-
-  * New upstream version.
-
- -- perfSONAR developers <debian@perfsonar.net>  Wed, 18 Nov 2020 15:42:45 +0000
-
-owamp (4.3.0-1) perfsonar-4.3; urgency=low
-
-  * New upstream version.
-
- -- perfSONAR developers <debian@perfsonar.net>  Fri, 30 Oct 2020 13:50:59 +0000
+ -- perfSONAR developers <debian@perfsonar.net>  Thu, 26 Mar 2020 10:03:17 -0400
 
 owamp (4.2.4-1) perfsonar-4.2; urgency=low
 

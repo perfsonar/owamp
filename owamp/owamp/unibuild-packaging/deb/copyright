@@ -4,11 +4,11 @@ Source: http://software.internet2.edu/owamp/
 
 Files: *
 Copyright: 2002 Internet2
-           2011-2021 perfSONAR project
+           2011-2018 perfSONAR project
 License: Apache-2.0
 
 Files: debian/*
-Copyright: 2014-2021 perfSONAR project
+Copyright: 2014-2018 perfSONAR project
 License: Apache-2.0
 
 License: Apache-2.0

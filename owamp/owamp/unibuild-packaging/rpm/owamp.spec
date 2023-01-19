@@ -1,28 +1,37 @@
-#Version variables set by automated scripts
+#
+# Adapted from the spec in the sources
+#
+
 %define perfsonar_auto_version 5.0.0
-%define perfsonar_auto_relnum 0.0.a1
+%define perfsonar_auto_relnum 0.b2.1
+
 Name: owamp
 Summary: owamp - one-way delay tester
 Version: %{perfsonar_auto_version}
 Release: %{perfsonar_auto_relnum}%{?dist}
-License: ASL 2.0
+License: ASL 2.0 
 Group: *Development/Libraries*
 URL: http://e2epi.internet2.edu/owamp/
-Source: %{name}-%{version}.tar.gz
-BuildRequires: libtool
-BuildRequires: libcap-devel
-BuildRequires: openssl-devel
-BuildRequires: systemd
-BuildRequires: selinux-policy-devel
-BuildRequires: I2util
-Requires: owamp-client
-Requires: owamp-server
-Requires: I2util
+
+Source: %{name}.tar.gz
+Patch0: owamp-00-root-test.patch
+
+
+Packager: Aaron Brown <aaron@internet2.edu>
+BuildRequires: libtool, I2util, libcap-devel, openssl-devel, systemd, selinux-policy-devel
+Requires: owamp-client, owamp-server, I2util
+BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-buildroot
 
 %description
 OWAMP is a client/server package that allows one to measure the latency between
 hosts. Unlike ping, which can only measure the bidirectional delay, OWAMP
 enables you to measure the unidirectional delay between two hosts.
+
+
+%define build_devel 0
+
+%global debug_package %{nil}
+
 
 %files
 
@@ -82,13 +91,14 @@ Requires: chkconfig, initscripts, shadow-utils, coreutils
 %description -n twamp-server
 twamp server
 
-#%package devel
-#Group: Development/Libraries
-#Summary: owamp library headers.
-#%description devel
-#This package includes header files, and static link libraries for building
-#applications that use the owamp library.
-
+%if %{build_devel}
+%package devel
+Group: Development/Libraries
+Summary: owamp library headers.
+%description devel
+This package includes header files, and static link libraries for building
+applications that use the owamp library.
+%endif
 
 # Thrulay and I2Util get installed, but really, shouldn't be instaled.
 %define _unpackaged_files_terminate_build      0
@@ -110,13 +120,13 @@ twamp server
 /usr/sbin/useradd -g twamp -r -s /bin/nologin -d /tmp twamp 2> /dev/null || :
 
 %prep
-%setup -q
+%setup -q -n "%{name}"
+%patch0 -p1
+
 
 %build
 ./bootstrap
-
 %configure --with-I2util=no
-# TODO check if this make is redundant
 make
 make -f /usr/share/selinux/devel/Makefile -C selinux owamp-server.pp
 make -f /usr/share/selinux/devel/Makefile -C selinux twamp-server.pp
@@ -146,7 +156,7 @@ rm -rf %{buildroot}/usr/lib/perfsonar/selinux
 make check
 
 %clean
-rm -rf $RPM_BUILD_ROOT
+rm -rf $RPM_BUILD_ROOT 
 
 %post -n owamp-client
 setcap "cap_net_raw+p" %{_bindir}/owping
@@ -188,7 +198,7 @@ else
         mv %{_sysconfdir}/owamp-server/owamp-server.conf %{_sysconfdir}/owamp-server/owamp-server.conf.bak
         mv /etc/owampd/owampd.conf.rpmsave %{_sysconfdir}/owamp-server/owamp-server.conf
     fi
-
+    
     if [ -e "/etc/owampd/owampd.limits" ]; then
         mv %{_sysconfdir}/owamp-server/owamp-server.limits %{_sysconfdir}/owamp-server/owamp-server.limits.bak
         mv /etc/owampd/owampd.limits %{_sysconfdir}/owamp-server/owamp-server.limits
@@ -362,6 +372,14 @@ fi
 %attr(0644,root,root) %{_datadir}/selinux/packages/twamp-server.pp
 %else
 %{_sysconfdir}/rc.d/init.d/twamp-server
+%endif
+
+%if %{build_devel}
+%files devel
+%defattr(0644,root,root,0755)
+%license LICENSE
+%{_libdir}/libbwlib.a
+%{_includedir}/owamp/*
 %endif
 
 %changelog
