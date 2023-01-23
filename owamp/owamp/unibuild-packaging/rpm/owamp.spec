@@ -13,14 +13,13 @@ License: ASL 2.0
 Group: *Development/Libraries*
 URL: http://e2epi.internet2.edu/owamp/
 
-Source: %{name}.tar.gz
+Source: %{name}-%{version}.tar.gz
 Patch0: owamp-00-root-test.patch
 
 
-Packager: Aaron Brown <aaron@internet2.edu>
+Packager: The perfSONAR Development Team <perfsonar-developer@internet2.edu>
 BuildRequires: libtool, I2util, libcap-devel, openssl-devel, systemd, selinux-policy-devel
 Requires: owamp-client, owamp-server, I2util
-BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-buildroot
 
 %description
 OWAMP is a client/server package that allows one to measure the latency between
@@ -120,7 +119,7 @@ applications that use the owamp library.
 /usr/sbin/useradd -g twamp -r -s /bin/nologin -d /tmp twamp 2> /dev/null || :
 
 %prep
-%setup -q -n "%{name}"
+%setup -q -n "%{name}-%{version}"
 %patch0 -p1
 
 
