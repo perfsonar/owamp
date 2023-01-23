@@ -10,8 +10,8 @@ Description: Fix manpage warnings
 -\%http://www.internet2.edu/performance/owamp/draft-shalunov-reordering-definition-02.txt.html
 +.nf
 +http://www.internet2.edu/performance/owamp/draft-shalunov-reordering-definition-02.txt.html
---- a/doc/owping_test_opts.man	2020-03-26 10:03:16.753814991 -0400
-+++ b/doc/owping_test_opts.man	2020-03-26 10:03:18.258532076 -0400
+--- a/doc/owping_test_opts.man	2022-11-09 09:26:39.039987809 -0800
++++ b/doc/owping_test_opts.man	2022-11-09 09:26:40.317951178 -0800
 @@ -70,15 +70,15 @@
  _
  CS3	011000	Broadcast Video	TV & live events
