@@ -1,0 +1,11 @@
+diff -rupN owamp-orig/test/e2e_utils.c owamp/test/e2e_utils.c
+--- owamp-orig/test/e2e_utils.c	2023-01-23 16:39:27.329553470 +0000
++++ owamp/test/e2e_utils.c	2023-01-23 16:40:34.734731960 +0000
+@@ -125,6 +125,7 @@ int launch_xwampd(
+             protocol == OWAMP ? "../owampd/owampd" : "../owampd/twampd",
+             "-c", config_dir,
+             "-R", config_dir,
++            "-f",
+             "-v",
+             "-Z",
+             "-f",

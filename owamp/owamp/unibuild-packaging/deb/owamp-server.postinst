@@ -20,8 +20,26 @@ set -e
 
 case "$1" in
     configure)
+        # Rename configuration files
+        if dpkg-maintscript-helper supports mv_conffile; then
+            dpkg-maintscript-helper mv_conffile \
+                /etc/owampd/owampd.conf \
+                /etc/owamp-server/owamp-server.conf \
+                3.5.0~1.rc1-2~ -- "$@"
+            dpkg-maintscript-helper mv_conffile \
+                /etc/owampd/owampd.limits \
+                /etc/owamp-server/owamp-server.limits \
+                3.5.0~1.rc1-2~ -- "$@"
+        fi
         if [ -d /etc/owampd ]; then
             rmdir --ignore-fail-on-non-empty /etc/owampd
+        fi
+
+        # Remove old init script
+        if dpkg-maintscript-helper supports rm_conffile; then
+            dpkg-maintscript-helper rm_conffile \
+                /etc/init.d/owampd \
+                3.5.0~1.rc1-2~ -- "$@"
         fi
 
         if ! getent passwd owamp > /dev/null ; then

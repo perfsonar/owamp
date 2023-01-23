@@ -15,7 +15,7 @@
 
 # see FEATURE AREAS in dpkg-buildflags(1)
 export DEB_BUILD_MAINT_OPTIONS = reproducible=-timeless
-export DEB_CFLAGS_MAINT_APPEND = -O0
+export DEB_BUILD_OPTIONS = noopt
 
 # This has to be exported to make some magic below work.
 export DH_OPTIONS
