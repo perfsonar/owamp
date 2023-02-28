@@ -1,6 +1,6 @@
 Cleanup configure errors.
---- a/configure.ac	2022-11-09 09:26:40.153955878 -0800
-+++ b/configure.ac	2022-11-09 09:26:40.193954732 -0800
+--- a/configure.ac	2023-02-28 13:47:05.192642181 +0000
++++ b/configure.ac	2023-02-28 13:50:09.425778193 +0000
 @@ -105,7 +105,6 @@
  AC_SUBST(OWPLIBDEPS)
  
@@ -17,16 +17,16 @@ Cleanup configure errors.
  AC_C_CONST
  AC_HEADER_TIME
  AC_CHECK_MEMBERS([struct sockaddr.sa_len], , ,
-@@ -218,6 +216,5 @@
+@@ -219,6 +217,5 @@
  AC_SUBST(TOP_BUILD_DIRS)
  
  AC_SUBST(ac_aux_dir)
--AC_OUTPUT([Makefile owamp/Makefile owampd/Makefile owping/Makefile powstream/Makefile conf/Makefile test/Makefile doc/Makefile selinux/Makefile owamp.spec],
+-AC_OUTPUT([Makefile owamp/Makefile owampd/Makefile owping/Makefile powstream/Makefile conf/Makefile test/Makefile doc/Makefile selinux/Makefile],
 -	[test -z "$CONFIG_HEADERS" || echo timestamp > owamp/stamp-h.in])
-+AC_OUTPUT([Makefile owamp/Makefile owampd/Makefile owping/Makefile powstream/Makefile conf/Makefile test/Makefile doc/Makefile selinux/Makefile owamp.spec])
++AC_OUTPUT([Makefile owamp/Makefile owampd/Makefile owping/Makefile powstream/Makefile conf/Makefile test/Makefile doc/Makefile selinux/Makefile])
  
 --- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ b/COPYING	2022-11-09 09:26:40.193954732 -0800
++++ b/COPYING	2023-02-28 13:50:09.426954003 +0000
 @@ -0,0 +1,175 @@
 +
 +                                 Apache License
@@ -204,15 +204,15 @@ Cleanup configure errors.
 +      incurred by, or claims asserted against, such Contributor by reason
 +      of your accepting any such warranty or additional liability.
 --- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ b/AUTHORS	2022-11-09 09:26:40.193954732 -0800
++++ b/AUTHORS	2023-02-28 13:50:09.427486522 +0000
 @@ -0,0 +1 @@
 +Aaron Brown (aaron@internet2.edu)
 --- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ b/NEWS	2022-11-09 09:26:40.193954732 -0800
++++ b/NEWS	2023-02-28 13:50:09.427893765 +0000
 @@ -0,0 +1 @@
 +Placeholder
---- a/owping/Makefile.am	2022-11-09 09:26:39.046987608 -0800
-+++ b/owping/Makefile.am	2022-11-09 09:26:40.193954732 -0800
+--- a/owping/Makefile.am	2023-02-28 13:47:05.193859455 +0000
++++ b/owping/Makefile.am	2023-02-28 13:50:09.428761857 +0000
 @@ -23,7 +23,7 @@
  
  bin_PROGRAMS	= owping twping
@@ -222,8 +222,8 @@ Cleanup configure errors.
  owping_DEPENDENCIES = $(OWPLIBDEPS) $(I2UTILLIBDEPS)
  # Unfortunately, automake doesn't follow the BSD tradition here...
  RM = rm -f
---- a/powstream/Makefile.am	2022-11-09 09:26:39.047987579 -0800
-+++ b/powstream/Makefile.am	2022-11-09 09:26:40.194954703 -0800
+--- a/powstream/Makefile.am	2023-02-28 13:47:05.194237268 +0000
++++ b/powstream/Makefile.am	2023-02-28 13:50:09.429866631 +0000
 @@ -24,5 +24,5 @@
  bin_PROGRAMS	= powstream
  
