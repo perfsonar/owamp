@@ -1,4 +1,4 @@
-owamp (5.0.0-1) perfsonar-4.2; urgency=low
+owamp (5.0.0~b2.1-1) perfsonar-5.0-snapshot; urgency=low
 
   * New upstream version.
 
