@@ -35,3 +35,7 @@ override_dh_install:
 	dh_install
 	dh_apparmor --profile-name=usr.sbin.owampd -p owamp-server
 	dh_apparmor --profile-name=usr.sbin.twampd -p twamp-server
+
+# Ubuntu dbgsym.ddeb are currently not supported by reprepro
+override_dh_strip:
+	dh_strip --no-automatic-dbgsym
