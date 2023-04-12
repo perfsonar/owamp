@@ -34,37 +34,3 @@ Description: Fix manpage warnings
  _
  CS5	101000	Signaling	Video conf and gaming
  _
---- a/doc/owping_report.man	2023-04-10 09:22:30.567331865 -0400
-+++ b/doc/owping_report.man	2023-04-10 09:22:31.113257889 -0400
-@@ -83,5 +83,5 @@
- .br
- Finally \fB\*[proto]\fR reports the amount of re-ordering it observed. A
- description of the metric used to report this can be found at:
--.br
--\%http://www.internet2.edu/performance/owamp/draft-shalunov-reordering-definition-02.txt.html
-+.nf
-+http://www.internet2.edu/performance/owamp/draft-shalunov-reordering-definition-02.txt.html
---- a/doc/owping_test_opts.man	2023-04-10 09:22:30.567423156 -0400
-+++ b/doc/owping_test_opts.man	2023-04-10 09:22:31.113552387 -0400
-@@ -70,15 +70,15 @@
- _
- CS3	011000	Broadcast Video	TV & live events
- _
--AF31	011010	Multimedia Streaming	Streaming video and audio
--AF32	011100	\^	\^
--AF33	011110	\^	\^
-+AF31	011010	Multimedia Streaming	
-+AF32	011100	\^	Streaming video
-+AF33	011110	\^	and audio
- _
- CS4	100000	Real-Time Interactive	Video conf and gaming
- _
--AF41	100010	Multimedia Conferencing	H.323 video conferencing
--AF42	100100	\^	\^
--AF43	100110	\^	\^
-+AF41	100010	Multimedia Conferencing	
-+AF42	100100	\^	H.323 video
-+AF43	100110	\^	conferencing
- _
- CS5	101000	Signaling	Video conf and gaming
- _
