@@ -61,15 +61,18 @@ server.
 %package -n owamp-server
 Summary: owamp server
 Group: Applications/Network
-%if 0%{?el7}
 Requires: shadow-utils, coreutils
 %{?systemd_requires: %systemd_requires}
+%if 0%{?el7}
 # SELinux support
 Requires: policycoreutils-python, libselinux-utils
 Requires(post): selinux-policy-targeted, policycoreutils-python
 Requires(postun): policycoreutils-python
 %else
-Requires: chkconfig, initscripts, shadow-utils, coreutils
+#Requirements for > el7
+Requires: python3-policycoreutils, libselinux-utils
+Requires(post): selinux-policy-targeted, python3-policycoreutils
+Requires(postun): python3-policycoreutils
 %endif
 %description -n owamp-server
 owamp server
@@ -77,15 +80,18 @@ owamp server
 %package -n twamp-server
 Summary: twamp server
 Group: Applications/Network
-%if 0%{?el7}
 Requires: shadow-utils, coreutils
 %{?systemd_requires: %systemd_requires}
+%if 0%{?el7}
 # SELinux support
 Requires: policycoreutils-python, libselinux-utils
 Requires(post): selinux-policy-targeted, policycoreutils-python
 Requires(postun): policycoreutils-python
 %else
-Requires: chkconfig, initscripts, shadow-utils, coreutils
+#Requirements for > el7
+Requires: python3-policycoreutils, libselinux-utils
+Requires(post): selinux-policy-targeted, python3-policycoreutils
+Requires(postun): python3-policycoreutils
 %endif
 %description -n twamp-server
 twamp server
@@ -152,7 +158,16 @@ mv selinux/*.pp %{buildroot}/usr/share/selinux/packages/
 rm -rf %{buildroot}/usr/lib/perfsonar/selinux
 
 %check
-make check
+
+# TODO: This fails in Docker containers because the server doesn't
+# start.  The makes in the %build block do, too, but it ignores them.
+
+if fgrep -q /machine.slice/ /proc/1/cgroup
+then
+    printf "\nWarning: Not running check step in container\n\n"
+else
+    make check
+fi
 
 %clean
 rm -rf $RPM_BUILD_ROOT 
@@ -167,7 +182,6 @@ setcap "cap_net_raw+p" %{_bindir}/powstream
 mkdir -p /var/lib/owamp/hierarchy
 chown -R owamp:owamp /var/lib/owamp
 
-%if 0%{?el7}
 semodule -n -i %{_datadir}/selinux/packages/owamp-server.pp
 semanage port -a -t owamp_port_t -p tcp 861 2>/dev/null
 semanage port -a -t owamp_test_port_t -p udp 8760-9960 2>/dev/null
@@ -183,54 +197,11 @@ if [ "$1" = "1" ]; then
     systemctl enable owamp-server.service
     systemctl start owamp-server.service
 fi
-%else
-if [ "$1" = "1" ]; then
-	/sbin/chkconfig --add owamp-server
-	mkdir -p /var/lib/owamp/hierarchy
-	chown -R owamp:owamp /var/lib/owamp
-else
-    #handle pre 1.6 upgrade
-    if [ -e "/etc/owampd/owampd.conf" ]; then
-        mv %{_sysconfdir}/owamp-server/owamp-server.conf %{_sysconfdir}/owamp-server/owamp-server.conf.bak
-        mv /etc/owampd/owampd.conf %{_sysconfdir}/owamp-server/owamp-server.conf
-    elif [ -e "/etc/owampd/owampd.conf.rpmsave" ]; then
-        mv %{_sysconfdir}/owamp-server/owamp-server.conf %{_sysconfdir}/owamp-server/owamp-server.conf.bak
-        mv /etc/owampd/owampd.conf.rpmsave %{_sysconfdir}/owamp-server/owamp-server.conf
-    fi
-    
-    if [ -e "/etc/owampd/owampd.limits" ]; then
-        mv %{_sysconfdir}/owamp-server/owamp-server.limits %{_sysconfdir}/owamp-server/owamp-server.limits.bak
-        mv /etc/owampd/owampd.limits %{_sysconfdir}/owamp-server/owamp-server.limits
-    elif [ -e "/etc/owampd/owampd.limits.rpmsave" ]; then
-        mv %{_sysconfdir}/owamp-server/owamp-server.limits %{_sysconfdir}/owamp-server/owamp-server.limits.bak
-        mv /etc/owampd/owampd.limits.rpmsave %{_sysconfdir}/owamp-server/owamp-server.limits
-    fi
-
-    #make sure owamp-server starts if owampd was running
-    /sbin/service owampd stop 2> /dev/null  || :
-    chkconfig --list owampd 2> /dev/null | grep -q on
-    if [ $? -eq 0 ]; then
-        /sbin/chkconfig --add owamp-server
-        /sbin/service owamp-server restart
-    else
-        /sbin/service owamp-server cond-restart
-    fi
-    /sbin/chkconfig --del owampd 2> /dev/null  || :
-fi
-%endif
 
 %preun -n owamp-server
-%if 0%{?el7}
 %systemd_preun owamp-server.service
-%else
-if [ "$1" = "0" ]; then
-    /sbin/chkconfig --del owamp-server
-    /sbin/service owamp-server stop
-fi
-%endif
 
 %postun -n owamp-server
-%if 0%{?el7}
 %systemd_postun_with_restart owamp-server.service
 
 if [ $1 -eq 0 ]; then
@@ -244,7 +215,7 @@ if [ $1 -eq 0 ]; then
                       /var/lib/owamp /var/run/owamp-server.*
     fi
 fi
-%endif
+
 if [ "$1" = "0" ]; then
 	/usr/sbin/userdel owamp || :
 fi
@@ -258,7 +229,6 @@ setcap "cap_net_raw+p" %{_bindir}/twping
 mkdir -p /var/lib/twamp
 chown -R twamp:twamp /var/lib/twamp
 
-%if 0%{?el7}
 semodule -n -i %{_datadir}/selinux/packages/twamp-server.pp
 semanage port -a -t twamp_port_t -p tcp 862 2>/dev/null
 semanage port -a -t twamp_test_port_t -p udp 18760-19960 2>/dev/null
@@ -274,37 +244,11 @@ if [ "$1" = "1" ]; then
     systemctl enable twamp-server.service
     systemctl start twamp-server.service
 fi
-%else
-if [ "$1" = "1" ]; then
-	/sbin/chkconfig --add twamp-server
-	mkdir -p /var/lib/twamp
-	chown -R twamp:twamp /var/lib/twamp
-else
-    #make sure twamp-server starts if twampd was running
-    /sbin/service twampd stop 2> /dev/null  || :
-    chkconfig --list twampd 2> /dev/null | grep -q on
-    if [ $? -eq 0 ]; then
-        /sbin/chkconfig --add twamp-server
-        /sbin/service twamp-server restart
-    else
-        /sbin/service twamp-server cond-restart
-    fi
-    /sbin/chkconfig --del twampd 2> /dev/null  || :
-fi
-%endif
 
 %preun -n twamp-server
-%if 0%{?el7}
 %systemd_preun twamp-server.service
-%else
-if [ "$1" = "0" ]; then
-    /sbin/chkconfig --del twamp-server
-    /sbin/service twamp-server stop
-fi
-%endif
 
 %postun -n twamp-server
-%if 0%{?el7}
 %systemd_postun_with_restart twamp-server.service
 
 if [ $1 -eq 0 ]; then
@@ -318,7 +262,7 @@ if [ $1 -eq 0 ]; then
                       /var/lib/twamp /var/run/twamp-server.*
     fi
 fi
-%endif
+
 if [ "$1" = "0" ]; then
 	/usr/sbin/userdel twamp || :
 fi
@@ -351,12 +295,8 @@ fi
 %{_mandir}/man5/owamp*
 %{_mandir}/man8/owamp*
 %config(noreplace) %{_sysconfdir}/owamp-server/*
-%if 0%{?el7}
 %{_unitdir}/owamp-server.service
 %attr(0644,root,root) %{_datadir}/selinux/packages/owamp-server.pp
-%else
-%attr(0755,root,root) %{_sysconfdir}/rc.d/init.d/owamp-server
-%endif
 %attr(0755,root,root) %{_sysconfdir}/cron.daily/owamp-server
 
 %files -n twamp-server
@@ -366,12 +306,8 @@ fi
 %{_mandir}/man5/twamp*
 %{_mandir}/man8/twamp*
 %config(noreplace) %{_sysconfdir}/twamp-server/*
-%if 0%{?el7}
 %{_unitdir}/twamp-server.service
 %attr(0644,root,root) %{_datadir}/selinux/packages/twamp-server.pp
-%else
-%{_sysconfdir}/rc.d/init.d/twamp-server
-%endif
 
 %if %{build_devel}
 %files devel
