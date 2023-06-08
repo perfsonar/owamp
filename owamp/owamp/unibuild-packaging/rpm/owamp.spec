@@ -15,7 +15,6 @@ URL: http://e2epi.internet2.edu/owamp/
 
 Source: %{name}-%{version}.tar.gz
 Patch0: owamp-00-root-test.patch
-Patch1: selinux.patch
 
 Packager: The perfSONAR Development Team <perfsonar-developer@internet2.edu>
 BuildRequires: libtool, I2util, libcap-devel, openssl-devel, systemd, selinux-policy-devel
@@ -70,9 +69,9 @@ Requires(post): selinux-policy-targeted, policycoreutils-python
 Requires(postun): policycoreutils-python
 %else
 #Requirements for > el7
-Requires: python3-policycoreutils, libselinux-utils
-Requires(post): selinux-policy-targeted, python3-policycoreutils
-Requires(postun): python3-policycoreutils
+Requires: policycoreutils-python, python3-policycoreutils, libselinux-utils
+Requires(post): policycoreutils-python, selinux-policy-targeted, python3-policycoreutils
+Requires(postun): policycoreutils-python, python3-policycoreutils
 %endif
 %description -n owamp-server
 owamp server
@@ -89,9 +88,9 @@ Requires(post): selinux-policy-targeted, policycoreutils-python
 Requires(postun): policycoreutils-python
 %else
 #Requirements for > el7
-Requires: python3-policycoreutils, libselinux-utils
-Requires(post): selinux-policy-targeted, python3-policycoreutils
-Requires(postun): python3-policycoreutils
+Requires: policycoreutils-python, python3-policycoreutils, libselinux-utils
+Requires(post): policycoreutils-python, selinux-policy-targeted, python3-policycoreutils
+Requires(postun): policycoreutils-python, python3-policycoreutils
 %endif
 %description -n twamp-server
 twamp server
@@ -127,10 +126,6 @@ applications that use the owamp library.
 %prep
 %setup -q -n "%{name}-%{version}"
 %patch0 -p1
-%if 0%{?el7}
-%else
-%patch1 -p3
-%endif
 
 
 %build
