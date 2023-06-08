@@ -69,9 +69,9 @@ Requires(post): selinux-policy-targeted, policycoreutils-python
 Requires(postun): policycoreutils-python
 %else
 #Requirements for > el7
-Requires: policycoreutils-python, python3-policycoreutils, libselinux-utils
-Requires(post): policycoreutils-python, selinux-policy-targeted, python3-policycoreutils
-Requires(postun): policycoreutils-python, python3-policycoreutils
+Requires: policycoreutils-python-utils, python3-policycoreutils, libselinux-utils
+Requires(post): policycoreutils-python-utils, selinux-policy-targeted, python3-policycoreutils
+Requires(postun): policycoreutils-python-utils, python3-policycoreutils
 %endif
 %description -n owamp-server
 owamp server
@@ -88,9 +88,9 @@ Requires(post): selinux-policy-targeted, policycoreutils-python
 Requires(postun): policycoreutils-python
 %else
 #Requirements for > el7
-Requires: policycoreutils-python, python3-policycoreutils, libselinux-utils
-Requires(post): policycoreutils-python, selinux-policy-targeted, python3-policycoreutils
-Requires(postun): policycoreutils-python, python3-policycoreutils
+Requires: policycoreutils-python-utils, python3-policycoreutils, libselinux-utils
+Requires(post): policycoreutils-python-utils, selinux-policy-targeted, python3-policycoreutils
+Requires(postun): policycoreutils-python-utils, python3-policycoreutils
 %endif
 %description -n twamp-server
 twamp server
