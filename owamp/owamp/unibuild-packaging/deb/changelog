@@ -1,8 +1,8 @@
-owamp (5.0.4~a1.0-1) perfsonar-5.0-snapshot; urgency=low
+owamp (5.0.4-1) perfsonar-5.0; urgency=low
 
   * New upstream version.
 
- -- Lætitia Delvaux <adelvaux@man.poznan.pl>  Thu, 22 Jun 2023 16:26:30 +0000
+ -- perfSONAR developers <debian@perfsonar.net>  Mon, 24 Jul 2023 10:39:59 -0400
 
 owamp (5.0.3-1) perfsonar-5.0; urgency=low
 
