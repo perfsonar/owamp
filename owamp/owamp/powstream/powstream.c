@@ -502,7 +502,7 @@ write_session(
 	uint32_t fetch_last = 0xFFFFFFFF;
 	
 	if(appctx.opt.subsessionowp) {
-	  /* OJW 2023-09-13: Fetch only last completed subsession as ealier data has already been output */
+	  /* Fetch only last completed subsession as ealier data has already been output */
 	  fetch_first = appctx.opt.numBucketPackets * currentSubsession;
 	  if (fetch_first >= appctx.opt.numPackets)
 	    // All packets have already been fetched.
@@ -2110,7 +2110,7 @@ AGAIN:
             }
 
 	    if(appctx.opt.subsessionowp) {
-	      /* BEGIN OJW 2023-08-24
+	      /* 
 	       * Output raw data (if required)
 	       */
 	      if ( ! appctx.opt.numBucketPackets ) {
@@ -2208,7 +2208,6 @@ skip_data:
 	      }
 	      dotf=False;
 
-	      /* END OJW 2023-08-24 */
 	    }
 
             /*
