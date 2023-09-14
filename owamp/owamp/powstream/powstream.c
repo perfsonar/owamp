@@ -496,7 +496,19 @@ write_session(
         /*
          * Fetch the data and put it in testfp
          */
-        num_rec = FetchSession(p,0,(uint32_t)0xFFFFFFFF,&ec);
+	uint32_t fetch_first = 0;
+	uint32_t fetch_last = 0xFFFFFFFF;
+	
+	if(appctx.opt.subsessionowp) {
+	  /* Fetch only last completed subsession as ealier data has already been output */
+	  fetch_first = appctx.opt.numBucketPackets * currentSubsession;
+	  if (fetch_first >= appctx.opt.numPackets)
+	    // All packets have already been fetched.
+	    return;
+	} 
+	// num_rec = FetchSession(p,0,(uint32_t)0xFFFFFFFF,&ec);
+	num_rec = FetchSession(p,fetch_first,fetch_last,&ec);
+
         if(!num_rec){
             if(ec >= OWPErrWARNING){
                 /*
@@ -2067,6 +2079,108 @@ AGAIN:
                 I2ErrLog(eh,"OWPReadDataHeader failed");
                 break;
             }
+
+	    if(appctx.opt.subsessionowp) {
+	      /* 
+	       * Output raw data (if required)
+	       */
+	      if ( ! appctx.opt.numBucketPackets ) {
+                    usage(progname,
+                            "Option -n requires option -N to be set (>0).");
+                    exit(1);
+	        }
+
+	    
+	      char     ofname[PATH_MAX];
+	      int      tofd = -1;
+	      OWPNum64 endnum = p->currentSessionEndNum;
+	    
+	    
+	      /*
+	       * Make a temporary session filename to hold data.
+	       */
+	      strcpy(tfname,dirpath);
+	      sprintf(startname,OWP_TSTAMPFMT,startnum);
+	      sprintf(endname,OWP_TSTAMPFMT,localstop);
+	      //	    sprintf(startname,OWP_TSTAMPFMT,p->currentSessionStartNum);
+	      //sprintf(endname,OWP_TSTAMPFMT,endnum);
+	      sprintf(&tfname[file_offset],"%s%s%s%s%s",
+		      startname,OWP_NAME_SEP,endname,
+		      OWP_FILE_EXT,POW_INC_EXT);
+	      
+	      while(((tofd = open(tfname,O_RDWR|O_CREAT|O_EXCL,
+				  S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH)) < 0) && errno==EINTR);
+	      if(tofd < 0){
+		
+		I2ErrLog(eh,"open(%s): %M",tfname);
+		
+		/*
+		 * Can't open the file.
+		 */
+		switch(errno){
+		  /*
+		   * reasons to go to the next
+		   * session
+		   * (Temporary resource problems.)
+		   */
+		case ENOMEM:
+		case EMFILE:
+		case ENFILE:
+		case ENOSPC:
+		case EDQUOT:
+		  break;
+		  /*
+		   * Everything else is a reason to exit
+		   * (Probably permissions.)
+		   */
+		default:
+		  exit(1);
+		  break;
+		}
+		
+		/*
+		 * Skip to next session.
+		 */
+		goto skip_data;
+	      }
+	      dotf=True;
+	      
+	      /*
+	       * stat the "from" file, ftruncate the to file,
+	       * mmap both of them, then do a memcpy between them.
+	       */
+	      if(I2CopyFile(eh,tofd,fileno(p->fp),0) == 0){
+		/*
+		 * Relink the incomplete file as a complete one.
+		 */
+		strcpy(ofname,tfname);
+		sprintf(&ofname[ext_offset],"%s",OWP_FILE_EXT);
+		if(link(tfname,ofname) != 0){
+		  /* note, but ignore the error */
+		  I2ErrLog(eh,"link(%s,%s): %M",tfname,ofname);
+		  ofname[0]='\0';
+		}
+
+		if(appctx.opt.printfiles){
+		  /* Print the filename to stdout */
+		  fprintf(stdout,"%s\n",ofname);
+		  fflush(stdout);
+		}
+	      }
+
+	      
+	      
+skip_data:
+
+	      while((close(tofd) != 0) && errno==EINTR);
+	      if(dotf && (unlink(tfname) != 0)){
+		/* note, but ignore the error */
+		I2ErrLog(eh,"unlink(%s): %M",tfname);
+	      }
+	      dotf=False;
+
+	    }
+
 
             /*
              * Create the stats record if empty. (first time in loop)
