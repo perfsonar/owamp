@@ -94,6 +94,7 @@ static int              pow_error = SIGCONT;
 static char             dirpath[PATH_MAX];
 static uint32_t        file_offset,tstamp_offset,ext_offset;
 
+static uint32_t        currentSubsession = 0;    // Index of subsession in progress (if any)
 static uint32_t FetchSession(
         pow_cntrl       p,
         uint32_t        begin,
@@ -142,6 +143,7 @@ print_output_args()
 "   -e facility    syslog facility to log to\n"
 "   -g loglevel    severity log messages to report to syslog Valid values: NONE, FATAL, WARN, INFO, DEBUG, ALL\n"
 "   -N count       number of test packets (per sub-session)\n"
+"   -n 	           output also owp-file per sub session (requires -N)\n"
 "   -p             print filenames to stdout\n"
 "   -R             Only send messages to syslog (not STDERR)\n"
 "   -v             include more verbose output\n"
@@ -496,15 +498,26 @@ write_session(
         /*
          * Fetch the data and put it in testfp
          */
-        num_rec = FetchSession(p,0,(uint32_t)0xFFFFFFFF,&ec);
+	uint32_t fetch_first = 0;
+	uint32_t fetch_last = 0xFFFFFFFF;
+	
+	if(appctx.opt.subsessionowp) {
+	  /* OJW 2023-09-13: Fetch only last completed subsession as ealier data has already been output */
+	  fetch_first = appctx.opt.numBucketPackets * currentSubsession;
+	  if (fetch_first >= appctx.opt.numPackets)
+	    // All packets have already been fetched.
+	    return;
+	} 
+	// num_rec = FetchSession(p,0,(uint32_t)0xFFFFFFFF,&ec);
+	num_rec = FetchSession(p,fetch_first,fetch_last,&ec);
         if(!num_rec){
             if(ec >= OWPErrWARNING){
                 /*
                  * Server denied request - report error
                  */
-                I2ErrLog(eh,"write_session(): OWPFetchSession(): Server denied request for full session data");
-            }
-
+	         // I2ErrLog(eh,"write_session(): OWPFetchSession(): Server denied request for full session data");
+	      I2ErrLog(eh,"write_session(): OWPFetchSession(): Server denied request for session data seq_no[%llu-%llu]", fetch_first, fetch_last);
+	    }
             return;
         }
     }
@@ -631,11 +644,26 @@ write_session(
         endnum = p->currentSessionEndNum;
     }
 
+    OWPNum64 startnum = p->currentSessionStartNum;  // Get start timestamp for session
+
     /*
      * Make a temporary session filename to hold data.
      */
+    
+    if(appctx.opt.subsessionowp) {
+      /* Find start timestamp for beginning of current subsession */
+      OWPNum64 starttime_currentSubsession = p->currentSessionStartNum;
+      for( uint32_t nrecs=0; nrecs < appctx.opt.numBucketPackets*currentSubsession; nrecs++){
+	starttime_currentSubsession = OWPNum64Add(starttime_currentSubsession,
+						OWPScheduleContextGenerateNextDelta(p->sctx));
+      }
+      /* Apply subssession start timestamp in filename */
+      startnum = starttime_currentSubsession;
+    }
+
     strcpy(tfname,dirpath);
-    sprintf(startname,OWP_TSTAMPFMT,p->currentSessionStartNum);
+    // sprintf(startname,OWP_TSTAMPFMT,p->currentSessionStartNum);
+    sprintf(startname,OWP_TSTAMPFMT,startnum);
     sprintf(endname,OWP_TSTAMPFMT,endnum);
     sprintf(&tfname[file_offset],"%s%s%s%s%s",
             startname,OWP_NAME_SEP,endname,
@@ -734,7 +762,8 @@ skip_data:
      * Make a temporary session filename to hold data.
      */
     strcpy(tfname,dirpath);
-    sprintf(startname,OWP_TSTAMPFMT,p->currentSessionStartNum);
+    //sprintf(startname,OWP_TSTAMPFMT,p->currentSessionStartNum);
+    sprintf(startname,OWP_TSTAMPFMT,startnum);
     sprintf(endname,OWP_TSTAMPFMT,endnum);
     sprintf(&tfname[file_offset],"%s%s%s%s%s",
             startname,OWP_NAME_SEP,endname,
@@ -1269,7 +1298,8 @@ main(
     char                optstring[128];
     static char         *conn_opts = "46A:k:S:B:u:I:";
     static char         *test_opts = "c:E:i:L:s:tz:P:";
-    static char         *out_opts = "b:d:e:g:N:pRvU";
+    //    static char         *out_opts = "b:d:e:g:N:pRvU";
+    static char         *out_opts = "b:d:e:g:N:npRvU";
     static char         *gen_opts = "hw";
     static char         *posixly_correct="POSIXLY_CORRECT=True";
 
@@ -1509,6 +1539,15 @@ main(
                             "Invalid (-N) value. Positive integer expected");
                     exit(1);
                 }
+                break;
+            case 'n':
+	      /* Enable output of sum-session owp-files */
+	        if ( ! appctx.opt.numBucketPackets ) {
+                    usage(progname,
+                            "Missing option -N. Option -n requires option -N to be set.");
+                    exit(1);
+	        }
+                appctx.opt.subsessionowp = True;
                 break;
             case 'p':
                 appctx.opt.printfiles = True;
@@ -1906,6 +1945,8 @@ wait_again:
             FILE                *fp=NULL;
             OWPBoolean          dotf = False;
 
+	    currentSubsession = sum;
+	    
             if(sig_check())
                 goto NextConnection;
 
@@ -2068,15 +2109,117 @@ AGAIN:
                 break;
             }
 
+	    if(appctx.opt.subsessionowp) {
+	      /* BEGIN OJW 2023-08-24
+	       * Output raw data (if required)
+	       */
+	      if ( ! appctx.opt.numBucketPackets ) {
+                    usage(progname,
+                            "Option -n requires option -N to be set (>0).");
+                    exit(1);
+	        }
+
+	    
+	      char     ofname[PATH_MAX];
+	      int      tofd = -1;
+	      OWPNum64 endnum = p->currentSessionEndNum;
+	    
+	    
+	      /*
+	       * Make a temporary session filename to hold data.
+	       */
+	      strcpy(tfname,dirpath);
+	      sprintf(startname,OWP_TSTAMPFMT,startnum);
+	      sprintf(endname,OWP_TSTAMPFMT,localstop);
+	      //	    sprintf(startname,OWP_TSTAMPFMT,p->currentSessionStartNum);
+	      //sprintf(endname,OWP_TSTAMPFMT,endnum);
+	      sprintf(&tfname[file_offset],"%s%s%s%s%s",
+		      startname,OWP_NAME_SEP,endname,
+		      OWP_FILE_EXT,POW_INC_EXT);
+	      
+	      while(((tofd = open(tfname,O_RDWR|O_CREAT|O_EXCL,
+				  S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH)) < 0) && errno==EINTR);
+	      if(tofd < 0){
+		
+		I2ErrLog(eh,"open(%s): %M",tfname);
+		
+		/*
+		 * Can't open the file.
+		 */
+		switch(errno){
+		  /*
+		   * reasons to go to the next
+		   * session
+		   * (Temporary resource problems.)
+		   */
+		case ENOMEM:
+		case EMFILE:
+		case ENFILE:
+		case ENOSPC:
+		case EDQUOT:
+		  break;
+		  /*
+		   * Everything else is a reason to exit
+		   * (Probably permissions.)
+		   */
+		default:
+		  exit(1);
+		  break;
+		}
+		
+		/*
+		 * Skip to next session.
+		 */
+		goto skip_data;
+	      }
+	      dotf=True;
+	      
+	      /*
+	       * stat the "from" file, ftruncate the to file,
+	       * mmap both of them, then do a memcpy between them.
+	       */
+	      if(I2CopyFile(eh,tofd,fileno(p->fp),0) == 0){
+		/*
+		 * Relink the incomplete file as a complete one.
+		 */
+		strcpy(ofname,tfname);
+		sprintf(&ofname[ext_offset],"%s",OWP_FILE_EXT);
+		if(link(tfname,ofname) != 0){
+		  /* note, but ignore the error */
+		  I2ErrLog(eh,"link(%s,%s): %M",tfname,ofname);
+		  ofname[0]='\0';
+		}
+
+		if(appctx.opt.printfiles){
+		  /* Print the filename to stdout */
+		  fprintf(stdout,"%s\n",ofname);
+		  fflush(stdout);
+		}
+	      }
+
+	      
+	      
+skip_data:
+
+	      while((close(tofd) != 0) && errno==EINTR);
+	      if(dotf && (unlink(tfname) != 0)){
+		/* note, but ignore the error */
+		I2ErrLog(eh,"unlink(%s): %M",tfname);
+	      }
+	      dotf=False;
+
+	      /* END OJW 2023-08-24 */
+	    }
+
             /*
              * Create the stats record if empty. (first time in loop)
              */
             if(!stats){
-                if( !(stats = OWPStatsCreate(ctx,p->fp,&hdr,NULL,NULL,'m',
-                                appctx.opt.bucketWidth))){
-                    I2ErrLog(eh,"OWPStatsCreate failed");
-                    break;
-                }
+	      if( !(stats = OWPStatsCreate(ctx,p->fp,&hdr,NULL,NULL,'m',
+					   appctx.opt.bucketWidth))){
+		I2ErrLog(eh,"OWPStatsCreate failed");
+		break;
+	      }
             }
             
             /* Set the timestamp flag here */
