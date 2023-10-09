@@ -2,7 +2,7 @@
 # Adapted from the spec in the sources
 #
 
-%define perfsonar_auto_version 5.0.4
+%define perfsonar_auto_version 5.0.5
 %define perfsonar_auto_relnum 1
 
 Name: owamp
