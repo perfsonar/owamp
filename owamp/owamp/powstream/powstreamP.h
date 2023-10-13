@@ -122,6 +122,7 @@ typedef struct pow_cntrl_rec{
 
     FILE                *fp;
     FILE                *testfp;
+    FILE                *subsessionowp_fp;
     char                fname[PATH_MAX];
     uint32_t           numPackets;
     OWPBoolean          call_stop;
