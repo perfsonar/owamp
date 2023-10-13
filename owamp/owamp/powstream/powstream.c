@@ -425,6 +425,110 @@ error_out:
 }
 
 /*
+ * Function:    write_subsession_owp
+ *
+ * Description:    
+ *              Writes raw owp data not already output by the same
+ *              function. Takes a completed session and copies it from the
+ *              unlinked file - possibly computing a new endtime
+ *              based on the last "valid" record in the file.
+ *              (Technically, it should probably be based on the
+ *              scheduled sendtime
+ *
+ * In Args: 
+ *          p            - control structure
+ *          tofd         - filedescriptor to output file
+ *          num_records  - maximum number of records to output    
+ *          
+ * Out Args:    
+ *
+ * Scope:    
+ * Returns: 
+ *      True on success, false on failure   
+ * Side Effect:
+ *      Skip records are not explicitly considered
+ */
+static int
+write_subsession_owp(
+    pow_cntrl       p,
+    int             tofd,
+    uint32_t        num_records
+    )
+{
+    OWPSessionHeaderRec hdr;
+    unsigned char *owpheaderbuffer = NULL;
+    unsigned char *owprecordbuffer = NULL;
+    long current_subsessionowp_pos = ftell(p->subsessionowp_fp);
+    
+    
+    // Get hold of relevant sizes and offsets
+    (void)OWPReadDataHeader(p->ctx,p->fp,&hdr); 
+    
+    // Fetch copy of header
+    if(fseeko(p->subsessionowp_fp,0,SEEK_SET) != 0){
+	I2ErrLog(eh,"write_subsession_owp: fseeko() %M");
+	return False;
+    }
+    int hdr_len = hdr.oset_datarecs;  // Header = All bytes before datarecords start
+    owpheaderbuffer = calloc(hdr_len, 1);
+    int bytesread;
+    if ((bytesread = fread( owpheaderbuffer, 1, hdr_len, p->subsessionowp_fp)) != hdr_len) {
+	I2ErrLog(eh,"write_subsession_owp: fread() failed reading header %d .", bytesread);
+	return False;
+    }
+    // Write copy of header to output file.
+    if (write(tofd, owpheaderbuffer, hdr_len) != hdr_len ) {
+	OWPError(p->ctx,OWPErrFATAL,errno,"write_subsession_owp: write() %M");
+	return False;
+    }
+    if (current_subsessionowp_pos > 0) {
+	// Move file pointer back to current relevant data record
+	if(fseeko(p->subsessionowp_fp,current_subsessionowp_pos,SEEK_SET) != 0){
+	    I2ErrLog(eh,"write_subsession_owp: fseeko() %M");
+	    return False;
+	}
+    }
+    // Include rest of subsession records
+    uint32_t subsessionowprecords_to_output = num_records;
+    current_subsessionowp_pos = ftell(p->subsessionowp_fp);
+    owprecordbuffer = calloc(hdr.rec_size,1);
+    while ( subsessionowprecords_to_output > 0 && fread(owprecordbuffer, 1, hdr.rec_size, p->subsessionowp_fp) == hdr.rec_size) {
+	// OWP record read successfully. Output.
+	if (write(tofd, owprecordbuffer, hdr.rec_size) != hdr.rec_size ) {
+	    OWPError(p->ctx,OWPErrFATAL,errno,  "write_subsession_owp: write() %M");
+	    return False;
+	}
+	subsessionowprecords_to_output--;
+	current_subsessionowp_pos = ftell(p->subsessionowp_fp);
+    }
+    if (subsessionowprecords_to_output > 0) {
+	// Set input file pointer to beginning of record since not all expected records where output)
+	if(fseeko(p->subsessionowp_fp, current_subsessionowp_pos, SEEK_SET) != 0){
+	    I2ErrLog(eh,"write_subsession_owp: fseeko() %M");
+	    return False;
+	}
+    }
+    // Update Num of records field in header
+    uint32_t num_rec_field = num_records - subsessionowprecords_to_output;
+    if(lseek(tofd, 20, SEEK_SET)<0){
+	OWPError(p->ctx,OWPErrFATAL,errno,  "write_subsession_owp: write() %M");
+	return False;
+    }
+    num_rec_field = htonl(num_rec_field);
+    if (write(tofd, &num_rec_field, sizeof(uint32_t)) != sizeof(uint32_t) ) {
+	OWPError(p->ctx,OWPErrFATAL,errno,  "write_subsession_owp: write() %M");
+	return False;
+    }
+    
+    // Clean up buffers
+    if(owpheaderbuffer) free(owpheaderbuffer);
+    if(owprecordbuffer) free(owprecordbuffer);
+    
+    return True;
+}
+
+
+/*
  * Function:    write_session
  *
  * Description:    
@@ -495,6 +599,15 @@ write_session(
             return;
         }
 
+	//
+	// Move subsessionowp data dump ("-n") read-only file
+	// pointer to beginning also due to above trunc
+	//
+	if(fseeko(p->subsessionowp_fp,0,SEEK_SET) != 0){
+	  I2ErrLog(eh,"fseeko(): %M");
+	  return;
+	}
+	
         /*
          * Fetch the data and put it in testfp
          */
@@ -707,31 +820,36 @@ write_session(
     }
     dotf=True;
 
+    
     /*
      * stat the "from" file, ftruncate the to file,
      * mmap both of them, then do a memcpy between them.
      */
 
+    // .. or write out rest of data not already writting in
+    // earlier subsessions
     
-    if(I2CopyFile(eh,tofd,fileno(p->fp),0) == 0){
-        /*
-         * Relink the incomplete file as a complete one.
-         */
-        strcpy(ofname,tfname);
-        sprintf(&ofname[ext_offset],"%s",OWP_FILE_EXT);
-        if(link(tfname,ofname) != 0){
-            /* note, but ignore the error */
-            I2ErrLog(eh,"link(%s,%s): %M",tfname,ofname);
-            ofname[0]='\0';
-        }
+    //if(I2CopyFile(eh,tofd,fileno(p->fp),0) == 0){
+    if(appctx.opt.subsessionowp && write_subsession_owp(p,tofd, 0xFFFFFFFF) ||
+       I2CopyFile(eh,tofd,fileno(p->fp),0) == 0){
+      /*
+       * Relink the incomplete file as a complete one.
+       */
+      strcpy(ofname,tfname);
+      sprintf(&ofname[ext_offset],"%s",OWP_FILE_EXT);
+      if(link(tfname,ofname) != 0){
+	/* note, but ignore the error */
+	I2ErrLog(eh,"link(%s,%s): %M",tfname,ofname);
+	ofname[0]='\0';
+      }
     }
 
 skip_data:
-
+    
     while((close(tofd) != 0) && errno==EINTR);
     if(dotf && (unlink(tfname) != 0)){
-        /* note, but ignore the error */
-        I2ErrLog(eh,"unlink(%s): %M",tfname);
+      /* note, but ignore the error */
+      I2ErrLog(eh,"unlink(%s): %M",tfname);
     }
     dotf=False;
 
@@ -1295,6 +1413,9 @@ fetch_clean:
     return -1;
 }
 
+
+
+
 int
 main(
         int     argc,
@@ -1770,6 +1891,14 @@ main(
         }
     }
 
+    // Check if "-n" also has "-N" set
+    if(appctx.opt.subsessionowp &&  ! appctx.opt.numBucketPackets ) {
+      usage(progname,
+	    "Option -n requires option -N to be set (>0).");
+      exit(1);
+    }
+
+    
     /*
      * Add time for file buffering. 
      * Add 2 seconds to the max of (1,mu). file io is optimized to
@@ -1956,14 +2085,6 @@ wait_again:
         }
 
 
-	//FILE *subsessionowp_fp = fdopen(dup (fileno(p->fp)), "r"); 
-	// Move handle past headers
-	//if(fseeko(subsessionowp_fp, hdr->oset_datarecs ,SEEK_SET) != 0){
-	//  OWPError(ctx,OWPErrFATAL,errno,
-	//	   "main: fseeko(): %M");
-	//  return False;
-	//}
-	
         for(sum=0;sum<numSummaries;sum++){
             uint32_t            nrecs;
             OWPSessionHeaderRec hdr;
@@ -2095,23 +2216,15 @@ AGAIN:
                     break;
                 }
 
-                /*
-                 * Move subsessionowp data dump ("-n") read-only file pointer to beginning also due to above trunc
-                 */
-               if(fseeko(p->subsessionowp_fp,0,SEEK_SET) != 0){
-                    I2ErrLog(eh,"fseeko(): %M");
-                    break;
+                //
+                // Move subsessionowp data dump ("-n") read-only file
+		// pointer to beginning also due to above trunc
+                //
+		if(fseeko(p->subsessionowp_fp,0,SEEK_SET) != 0){
+		  I2ErrLog(eh,"fseeko(): %M");
+		  break;
                 }
- 		
 
-		// Move handle past headers
-		//if(fseeko(subsessionowp_fp, hdr->oset_datarecs ,SEEK_SET) != 0){
-		//  OWPError(ctx,OWPErrFATAL,errno,
-		//	   "main: fseeko(): %M");
-		//  return False;
-		//}
-
-		
                 /*
                  * Fetch the data and put it in testfp
                  */
@@ -2139,15 +2252,9 @@ AGAIN:
             }
 
 	    if(appctx.opt.subsessionowp) {
-	      /* 
-	       * Output raw owp data for this subsession 
-	       */
-	      if ( ! appctx.opt.numBucketPackets ) {
-                    usage(progname,
-                            "Option -n requires option -N to be set (>0).");
-                    exit(1);
-	      }
-
+	      // 
+	      // Output raw owp data for this subsession 
+	      //
 	    
 	      char     ofname[PATH_MAX];
 	      int      tofd = -1;
@@ -2203,160 +2310,33 @@ AGAIN:
 	      }
 	      dotf=True;
 
-	      /*
-	      FILE* dumpfp = fopen("dump.owp","w");
-	      unsigned char dumpbuf[256];
-	      size_t dumpread;
-	      while ((dumpread = fread(dumpbuf, 1, 256, p->subsessionowp_fp)) > 0 )
-		fwrite(dumpbuf,1,dumpread,dumpfp);
-	      fclose(dumpfp);
-	      fseeko(p->subsessionowp_fp,0,SEEK_SET);
-	      */
+	      	      
+	      ///*
+	      // * stat the "from" file, ftruncate the to file,
+	      // * mmap both of them, then do a memcpy between them.
+	      // */
+	      //if(I2CopyFile(eh,tofd,fileno(p->fp),0) == 0){
 	      
-	      // Copy received raw owp data since last subsession
-	      (void)OWPReadDataHeader(ctx,p->fp,&hdr);   // ... to get hold relevant of sizes and offsets
-	      unsigned char *owpheaderbuffer = NULL;
-	      unsigned char *owprecordbuffer = NULL;
-	      long current_subsessionowp_pos = ftell(p->subsessionowp_fp);
-	      //printf("Input pos: %ld\n", ftell(p->subsessionowp_fp));
-	      // Fetch copy of header
-	      if(fseeko(p->subsessionowp_fp,0,SEEK_SET) != 0){
-		I2ErrLog(eh,"fseeko(): %M");
-		return False;
-	      }
-	      int hdr_len = hdr.oset_datarecs;  // Header = All bytes before datarecords start
-	      owpheaderbuffer = calloc(hdr_len, 1);
-	      int bytesread;
-	      if ((bytesread = fread( owpheaderbuffer, 1, hdr_len, p->subsessionowp_fp)) != hdr_len) {
-		I2ErrLog(eh,"fread() failed reading header %d .", bytesread);
-		return False;
-	      }
-	      //printf("Header read (%d)\n", hdr_len);
-	      // Write copy of header to output file.
-	      if (write(tofd, owpheaderbuffer, hdr_len) != hdr_len ) {
-		OWPError(ctx,OWPErrFATAL,errno,"main: write(): %M");
-		return False;
-	      }
-	      //printf("Header written (%d).\n", hdr_len);
-	      //printf("Input pos: %ld\n", ftell(p->subsessionowp_fp));
-	      if (current_subsessionowp_pos > 0) {
-		// Move file pointer back to current relevant data record
-		if(fseeko(p->subsessionowp_fp,current_subsessionowp_pos,SEEK_SET) != 0){
-		  I2ErrLog(eh,"fseeko(): %M");
-		  return False;
-		}
-		//printf("File pointer moved (%ld).\n", current_subsessionowp_pos );
-	      }
-	      // Include rest of subsession records
-	      uint32_t subsessionowprecords_to_output = appctx.opt.numBucketPackets;
-	      current_subsessionowp_pos = ftell(p->subsessionowp_fp);
-	      owprecordbuffer = calloc(hdr.rec_size,1);
-	      //printf("no bytes per session: %d (%d)\n", subsessionowp_bytes, ftell(p->subsessionowp_fp));
-	      while ( subsessionowprecords_to_output > 0 && fread(owprecordbuffer, 1, hdr.rec_size, p->subsessionowp_fp) == hdr.rec_size) {
-		// OWP record read successfully. Output.
-		//printf("Record read (%d, %d)\n", subsessionowprecords_to_output, hdr.rec_size);
-		if (write(tofd, owprecordbuffer, hdr.rec_size) != hdr.rec_size ) {
-		  OWPError(ctx,OWPErrFATAL,errno,  "main: write(): %M");
-		  return False;
-		}
-		//printf("Record written.\n");
-		subsessionowprecords_to_output--;
-		current_subsessionowp_pos = ftell(p->subsessionowp_fp);
-		//printf("Input pos: %ld\n", ftell(p->subsessionowp_fp));
-	      }
-	      if (subsessionowprecords_to_output > 0) {
-		// Set input file pointer to beginning of record since not all expected records where output)
-		if(fseeko(p->subsessionowp_fp, current_subsessionowp_pos, SEEK_SET) != 0){
-		  I2ErrLog(eh,"fseeko(): %M");
-		  return False;
-		}
-	      }
-	      // Update Num of records field
-	      printf("Num recs: %d\n", appctx.opt.numBucketPackets - subsessionowprecords_to_output);
-	      FILE* tofp = fdopen(tofd,"r+");
-	      OWPWriteDataHeaderNumDataRecs(ctx, tofp, appctx.opt.numBucketPackets - subsessionowprecords_to_output );
-	      fflush(tofp);
-	      /*
-	      if( hdr.version == 3) {
-		// Version 3 header: Update Num of records field
-		owpheaderbuffer[20] = htonl(appctx.opt.numBucketPackets - subsessionowprecords_to_output);
-		// Rewrite header
-		if(lseek(tofd, 0, SEEK_SET)) {
-		  OWPError(ctx,OWPErrFATAL,errno,  "main: lseek(): %M");
-		  return False;
-		}
-		if (write(tofd, owpheaderbuffer, hdr_len) != hdr_len ) {
-		  OWPError(ctx,OWPErrFATAL,errno,"main: write(): %M");
-		  return False;
-		}
-	      }	
-	      */
-	      
-	      // Clean up buffers
-	      if(owpheaderbuffer) free(owpheaderbuffer);
-	      if(owprecordbuffer) free(owprecordbuffer);
+	      // Output received raw owp data since last subsession
+	      if (write_subsession_owp(p,tofd, appctx.opt.numBucketPackets)) {
 	
-	      
-	      /*
-	       * stat the "from" file, ftruncate the to file,
-	       * mmap both of them, then do a memcpy between them.
-	       */
-
-	      /*** DISABLED CODE *
-	      // Find end of pck records in file
-	      off_t       fileend;
-	      uint32_t    nrecs;
-	      if(hdr->oset_skiprecs > hdr->oset_datarecs){
-		fileend = stats->hdr->oset_skiprecs;
-	      } else {
-		if(fseeko(fromfd,0,SEEK_END) != 0){
-		  OWPError(ctx,OWPErrFATAL,errno,
-			   "main: fseeko(): %M");
-		  return False;
-		}
-		if((fileend = ftello(fromfd)) < 0){
-		  OWPError(ctx,OWPErrFATAL,errno,
-			   "main: ftello(): %M");
-		  return False;
-		}
-	      }
-	      // Find first pck record in last subsession
-	      off_t  filebegin = fileend - hdr->rec_size * appctx.opt.numBucketPackets; 
-	      if(filebegin < hdr->oset_datarecs){
-		filebegin = hdr->oset_datarecs;
-	      }
-	      // Copy records for last subsession to output file
-	      if(fseeko(fromfd,filebegin,SEEK_SET) != 0){
-		OWPError(ctx,OWPErrFATAL,errno,
-			 "main: fseeko(): %M");
-		return False;
-	      }
-
-	      if(fseeko(fromfd, ????? ,SEEK_SET) != 0){
-		I2ErrLog(eh,"fseeko(): %M");
-		return;
-	      }
-	      *** END DISABLED CODE ***/
-
-	      
-	      //	      if(I2CopyFile(eh,tofd,fileno(p->fp),0) == 0){
 		/*
 		 * Relink the incomplete file as a complete one.
 		 */
-	      strcpy(ofname,tfname);
-	      sprintf(&ofname[ext_offset],"%s",OWP_FILE_EXT);
-	      if(link(tfname,ofname) != 0){
-		/* note, but ignore the error */
-		I2ErrLog(eh,"link(%s,%s): %M",tfname,ofname);
-		ofname[0]='\0';
+		strcpy(ofname,tfname);
+		sprintf(&ofname[ext_offset],"%s",OWP_FILE_EXT);
+		if(link(tfname,ofname) != 0){
+		  /* note, but ignore the error */
+		  I2ErrLog(eh,"link(%s,%s): %M",tfname,ofname);
+		  ofname[0]='\0';
+		}
+		
+		if(appctx.opt.printfiles){
+		  /* Print the filename to stdout */
+		  fprintf(stdout,"%s\n",ofname);
+		  fflush(stdout);
+		}
 	      }
-
-	      if(appctx.opt.printfiles){
-		/* Print the filename to stdout */
-		fprintf(stdout,"%s\n",ofname);
-		fflush(stdout);
-	      }
-	      //}
 
 skip_data:
 	      while((close(tofd) != 0) && errno==EINTR);
