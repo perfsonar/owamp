@@ -427,11 +427,7 @@ error_out:
  *
  * Description:    
  *              Writes raw owp data not already output by the same
- *              function. Takes a completed session and copies it from the
- *              unlinked file - possibly computing a new endtime
- *              based on the last "valid" record in the file.
- *              (Technically, it should probably be based on the
- *              scheduled sendtime
+ *              function. 
  *
  * In Args: 
  *          p            - control structure
@@ -572,6 +568,17 @@ write_session(
     if(!p->fp || !p->session_started || (aval != OWP_CNTRL_ACCEPT))
         return;
 
+    uint32_t fetch_first = 0;
+    uint32_t fetch_last = 0xFFFFFFFF;
+	
+    if(appctx.opt.subsessionowp) {
+	/* Fetch only last completed subsession as ealier data has already been output */
+	fetch_first = appctx.opt.numBucketPackets * currentSubsession;
+	if (fetch_first >= appctx.opt.numPackets)
+	    // All packets have already been fetched.
+	    return;
+    }
+    
     /*
      * If sender session - data needs to be fetched from the remote server.
      */
@@ -609,17 +616,6 @@ write_session(
         /*
          * Fetch the data and put it in testfp
          */
-	uint32_t fetch_first = 0;
-	uint32_t fetch_last = 0xFFFFFFFF;
-	
-	if(appctx.opt.subsessionowp) {
-	  /* Fetch only last completed subsession as ealier data has already been output */
-	  fetch_first = appctx.opt.numBucketPackets * currentSubsession;
-	  if (fetch_first >= appctx.opt.numPackets)
-	    // All packets have already been fetched.
-	    return;
-	} 
-	// num_rec = FetchSession(p,0,(uint32_t)0xFFFFFFFF,&ec);
 	num_rec = FetchSession(p,fetch_first,fetch_last,&ec);
 
         if(!num_rec){
@@ -759,8 +755,6 @@ write_session(
     /*
      * Make a temporary session filename to hold data.
      */
-<<<<<<< HEAD
-=======
     
     if(appctx.opt.subsessionowp) {
       /* Find start timestamp for beginning of current subsession */
@@ -774,9 +768,8 @@ write_session(
       startnum = starttime_currentSubsession;
     }
 
->>>>>>> 504a65d (Powstream with -n option operative, but only when -t is set...)
     strcpy(tfname,dirpath);
-    sprintf(startname,OWP_TSTAMPFMT,p->currentSessionStartNum);
+    sprintf(startname,OWP_TSTAMPFMT,startnum);
     sprintf(endname,OWP_TSTAMPFMT,endnum);
     sprintf(&tfname[file_offset],"%s%s%s%s%s",
             startname,OWP_NAME_SEP,endname,
@@ -828,7 +821,6 @@ write_session(
     // .. or write out rest of data not already writting in
     // earlier subsessions
     
-    //if(I2CopyFile(eh,tofd,fileno(p->fp),0) == 0){
     if(appctx.opt.subsessionowp && write_subsession_owp(p,tofd, 0xFFFFFFFF) ||
        I2CopyFile(eh,tofd,fileno(p->fp),0) == 0){
       /*
@@ -873,16 +865,20 @@ skip_data:
     /*
      * Parse the data and compute the statistics
      */
-    if( !OWPStatsParse(stats,NULL,0,0,~0)){
-        I2ErrLog(eh,"OWPStatsParse failed");
-        goto skip_sum;
+    if( !OWPStatsParse(stats,NULL,stats->next_oset,fetch_first,~0)){
+	I2ErrLog(eh,"OWPStatsParse failed");
+	goto skip_sum;
     }
 
     /*
      * Make a temporary session filename to hold data.
      */
     strcpy(tfname,dirpath);
+<<<<<<< HEAD
     sprintf(startname,OWP_TSTAMPFMT,p->currentSessionStartNum);
+=======
+    sprintf(startname,OWP_TSTAMPFMT,startnum);
+>>>>>>> b88269b (Final fix to ensure consistent '-n'-behavior with and without '-t')
     sprintf(endname,OWP_TSTAMPFMT,endnum);
     sprintf(&tfname[file_offset],"%s%s%s%s%s",
             startname,OWP_NAME_SEP,endname,
@@ -2296,13 +2292,6 @@ AGAIN:
 	      }
 	      dotf=True;
 
-	      	      
-	      ///*
-	      // * stat the "from" file, ftruncate the to file,
-	      // * mmap both of them, then do a memcpy between them.
-	      // */
-	      //if(I2CopyFile(eh,tofd,fileno(p->fp),0) == 0){
-	      
 	      // Output received raw owp data since last subsession
 	      if (write_subsession_owp(p,tofd, appctx.opt.numBucketPackets)) {
 	
