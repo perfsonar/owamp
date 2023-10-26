@@ -646,6 +646,22 @@ write_session(
     /*
      * Make a temporary session filename to hold data.
      */
+<<<<<<< HEAD
+=======
+    
+    if(appctx.opt.subsessionowp) {
+      /* Find start timestamp for beginning of current subsession */
+      (void)OWPScheduleContextReset(p->sctx,NULL,NULL);
+      OWPNum64 starttime_currentSubsession = p->currentSessionStartNum;
+      for( uint32_t nrecs=0; nrecs < appctx.opt.numBucketPackets*currentSubsession; nrecs++){
+	starttime_currentSubsession = OWPNum64Add(starttime_currentSubsession,
+						OWPScheduleContextGenerateNextDelta(p->sctx));
+      }
+      /* Apply subssession start timestamp in filename */
+      startnum = starttime_currentSubsession;
+    }
+
+>>>>>>> 504a65d (Powstream with -n option operative, but only when -t is set...)
     strcpy(tfname,dirpath);
     sprintf(startname,OWP_TSTAMPFMT,p->currentSessionStartNum);
     sprintf(endname,OWP_TSTAMPFMT,endnum);
@@ -1911,6 +1927,18 @@ wait_again:
             stats = NULL;
         }
 
+
+	/*** DISABLED CODE ***
+	// Prepare new filehandel for dumping OWP data for sub-sessions
+	int owp_fromfp = fdopen(fileno(p->fp), "r");
+	// Move handle past headers
+	if(fseeko(fromfp, hdr->oset_datarecs ,SEEK_SET) != 0){
+	  OWPError(ctx,OWPErrFATAL,errno,
+		   "main: fseeko(): %M");
+	  return False;
+	}
+	*** END DISABLED CODE */
+	
         for(sum=0;sum<numSummaries;sum++){
             uint32_t            nrecs;
             OWPSessionHeaderRec hdr;
@@ -2029,7 +2057,7 @@ AGAIN:
                     break;
                 }
                 if((rc = ftruncate(fileno(p->testfp),0)) != 0){
-                    I2ErrLog(eh,"write_session(): ftruncate(): %M");
+                    I2ErrLog(eh,"ftruncate(): %M");
                     break;
                 }
                 /*
@@ -2082,13 +2110,13 @@ AGAIN:
 
 	    if(appctx.opt.subsessionowp) {
 	      /* 
-	       * Output raw data (if required)
+	       * Output raw data 
 	       */
 	      if ( ! appctx.opt.numBucketPackets ) {
                     usage(progname,
                             "Option -n requires option -N to be set (>0).");
                     exit(1);
-	        }
+	      }
 
 	    
 	      char     ofname[PATH_MAX];
@@ -2149,6 +2177,45 @@ AGAIN:
 	       * stat the "from" file, ftruncate the to file,
 	       * mmap both of them, then do a memcpy between them.
 	       */
+
+	      /*** DISABLED CODE **
+	      // Prepare a filehandel pointing at startpoint of subsession data 
+	      int fromfd = fdopen(fileno(p->fp), "r");
+	      // Find end of pck records in file
+	      off_t       fileend;
+	      uint32_t    nrecs;
+	      if(hdr->oset_skiprecs > hdr->oset_datarecs){
+		fileend = stats->hdr->oset_skiprecs;
+	      } else {
+		if(fseeko(fromfd,0,SEEK_END) != 0){
+		  OWPError(ctx,OWPErrFATAL,errno,
+			   "main: fseeko(): %M");
+		  return False;
+		}
+		if((fileend = ftello(fromfd)) < 0){
+		  OWPError(ctx,OWPErrFATAL,errno,
+			   "main: ftello(): %M");
+		  return False;
+		}
+	      }
+	      // Find first pck record in last subsession
+	      off_t  filebegin = fileend - hdr->rec_size * appctx.opt.numBucketPackets; 
+	      if(filebegin < hdr->oset_datarecs){
+		filebegin = hdr->oset_datarecs;
+	      }
+	      // Copy records for last subsession to output file
+	      if(fseeko(fromfd,filebegin,SEEK_SET) != 0){
+		OWPError(ctx,OWPErrFATAL,errno,
+			 "main: fseeko(): %M");
+		return False;
+	      }
+
+	      if(fseeko(fromfd, ????? ,SEEK_SET) != 0){
+		I2ErrLog(eh,"fseeko(): %M");
+		return;
+	      }
+	      *** END DISABLED CODE ***/
+
 	      if(I2CopyFile(eh,tofd,fileno(p->fp),0) == 0){
 		/*
 		 * Relink the incomplete file as a complete one.
@@ -2321,8 +2388,11 @@ cleanup:
         /*
          * Write out the complete owp session file.
          */
-        write_session(p,aval,False);
-
+	
+	if(!appctx.opt.subsessionowp) {
+	  /* Skip this if "-n" is set since last data set is already output */
+	  write_session(p,aval,False);
+	}
         /*
          * This session is complete - reset p.
          */
