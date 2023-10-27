@@ -764,7 +764,8 @@ write_session(
       /* Find start timestamp for beginning of current subsession */
       (void)OWPScheduleContextReset(p->sctx,NULL,NULL);
       OWPNum64 starttime_currentSubsession = p->currentSessionStartNum;
-      for( uint32_t nrecs=0; nrecs < appctx.opt.numBucketPackets*currentSubsession; nrecs++){
+      uint32_t nrecs;
+      for( nrecs=0; nrecs < appctx.opt.numBucketPackets*currentSubsession; nrecs++){
 	starttime_currentSubsession = OWPNum64Add(starttime_currentSubsession,
 						OWPScheduleContextGenerateNextDelta(p->sctx));
       }
