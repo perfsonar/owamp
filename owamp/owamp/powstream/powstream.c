@@ -94,6 +94,7 @@ static int              pow_error = SIGCONT;
 static char             dirpath[PATH_MAX];
 static uint32_t        file_offset,tstamp_offset,ext_offset;
 
+static uint32_t        currentSubsession = 0;    // Index of subsession in progress (if any)
 static uint32_t FetchSession(
         pow_cntrl       p,
         uint32_t        begin,
@@ -142,6 +143,7 @@ print_output_args()
 "   -e facility    syslog facility to log to\n"
 "   -g loglevel    severity log messages to report to syslog Valid values: NONE, FATAL, WARN, INFO, DEBUG, ALL\n"
 "   -N count       number of test packets (per sub-session)\n"
+"   -n 	           output also owp-file per sub session (requires -N)\n"
 "   -p             print filenames to stdout\n"
 "   -R             Only send messages to syslog (not STDERR)\n"
 "   -v             include more verbose output\n"
@@ -623,9 +625,9 @@ write_session(
                 /*
                  * Server denied request - report error
                  */
-                I2ErrLog(eh,"write_session(): OWPFetchSession(): Server denied request for full session data");
-            }
-
+	         // I2ErrLog(eh,"write_session(): OWPFetchSession(): Server denied request for full session data");
+	      I2ErrLog(eh,"write_session(): OWPFetchSession(): Server denied request for session data seq_no[%llu-%llu]", fetch_first, fetch_last);
+	    }
             return;
         }
     }
@@ -752,6 +754,8 @@ write_session(
         endnum = p->currentSessionEndNum;
     }
 
+    OWPNum64 startnum = p->currentSessionStartNum;  // Get start timestamp for session
+
     /*
      * Make a temporary session filename to hold data.
      */
@@ -874,11 +878,7 @@ skip_data:
      * Make a temporary session filename to hold data.
      */
     strcpy(tfname,dirpath);
-<<<<<<< HEAD
-    sprintf(startname,OWP_TSTAMPFMT,p->currentSessionStartNum);
-=======
     sprintf(startname,OWP_TSTAMPFMT,startnum);
->>>>>>> b88269b (Final fix to ensure consistent '-n'-behavior with and without '-t')
     sprintf(endname,OWP_TSTAMPFMT,endnum);
     sprintf(&tfname[file_offset],"%s%s%s%s%s",
             startname,OWP_NAME_SEP,endname,
@@ -1430,7 +1430,8 @@ main(
     char                optstring[128];
     static char         *conn_opts = "46A:k:S:B:u:I:";
     static char         *test_opts = "c:E:i:L:s:tz:P:";
-    static char         *out_opts = "b:d:e:g:N:pRvU";
+    //    static char         *out_opts = "b:d:e:g:N:pRvU";
+    static char         *out_opts = "b:d:e:g:N:npRvU";
     static char         *gen_opts = "hw";
     static char         *posixly_correct="POSIXLY_CORRECT=True";
 
@@ -1670,6 +1671,15 @@ main(
                             "Invalid (-N) value. Positive integer expected");
                     exit(1);
                 }
+                break;
+            case 'n':
+	      /* Enable output of sum-session owp-files */
+	        if ( ! appctx.opt.numBucketPackets ) {
+                    usage(progname,
+                            "Missing option -N. Option -n requires option -N to be set.");
+                    exit(1);
+	        }
+                appctx.opt.subsessionowp = True;
                 break;
             case 'p':
                 appctx.opt.printfiles = True;
@@ -2076,6 +2086,8 @@ wait_again:
             FILE                *fp=NULL;
             OWPBoolean          dotf = False;
 
+	    currentSubsession = sum;
+	    
             if(sig_check())
                 goto NextConnection;
 
@@ -2323,7 +2335,6 @@ skip_data:
 
 	    }
 
-
             /*
              * This section reads the packet records
              * in the time period of this sum-session.
@@ -2343,11 +2354,11 @@ skip_data:
              * Create the stats record if empty. (first time in loop)
              */
             if(!stats){
-                if( !(stats = OWPStatsCreate(ctx,p->fp,&hdr,NULL,NULL,'m',
-                                appctx.opt.bucketWidth))){
-                    I2ErrLog(eh,"OWPStatsCreate failed");
-                    break;
-                }
+	      if( !(stats = OWPStatsCreate(ctx,p->fp,&hdr,NULL,NULL,'m',
+					   appctx.opt.bucketWidth))){
+		I2ErrLog(eh,"OWPStatsCreate failed");
+		break;
+	      }
             }
             
             /* Set the timestamp flag here */
