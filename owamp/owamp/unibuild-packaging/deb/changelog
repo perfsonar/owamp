@@ -1,3 +1,9 @@
+owamp (5.0.9~a1.0-1) perfsonar-5.0-snapshot; urgency=low
+
+  * New upstream version.
+
+ -- Lætitia Delvaux <adelvaux@man.poznan.pl>  Mon, 19 Feb 2024 15:46:42 +0100
+
 owamp (5.0.8-1) perfsonar-5.0; urgency=low
 
   * New upstream version.
