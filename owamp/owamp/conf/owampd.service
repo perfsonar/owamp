@@ -7,6 +7,7 @@ Type=forking
 PIDFile=/var/run/owamp-server.pid
 ExecStart=/usr/bin/owampd -c /etc/owamp-server -R /var/run
 LimitNOFILE=4096
+Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target
