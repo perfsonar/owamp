@@ -2,6 +2,7 @@ policy_module(owamp-server, 1.0.0)
 
 require {
     type passwd_file_t;
+    type sssd_var_lib_t;
 };
 
 ########################################
@@ -74,3 +75,5 @@ allow owampd_t owamp_port_t:tcp_socket { name_bind };
 allow owampd_t self:tcp_socket { listen accept };
 corenet_udp_bind_generic_node(owampd_t)
 allow owampd_t owamp_test_port_t:udp_socket { name_bind };
+allow owampd_t owampd_var_lib_t:file map;
+allow owampd_t sssd_var_lib_t:dir search;
