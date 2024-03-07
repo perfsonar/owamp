@@ -2,6 +2,7 @@ policy_module(twamp-server, 1.0.0)
 
 require {
     type passwd_file_t;
+    type sssd_var_lib_t;
 };
 
 ########################################
@@ -66,3 +67,5 @@ allow twampd_t twamp_port_t:tcp_socket { name_bind };
 allow twampd_t self:tcp_socket { listen accept };
 corenet_udp_bind_generic_node(twampd_t)
 allow twampd_t twamp_test_port_t:udp_socket { name_bind };
+allow twampd_t twampd_var_lib_t:file map;
+allow twampd_t sssd_var_lib_t:dir search;
