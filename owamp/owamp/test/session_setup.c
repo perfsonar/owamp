@@ -219,8 +219,8 @@ int session_setup_test(
     if (!OWPSessionRequest(
                 cntrl,
                 // not a real test, but these params run through the basic setup
-                I2AddrByNode(ctx->eh, "127.0.0.1"), True,
-                I2AddrByNode(ctx->eh, "127.0.0.1"), True,
+                I2AddrByNode(ctx->eh, "localhost"), True,
+                I2AddrByNode(ctx->eh, "localhost"), True,
                 False,
                 &tspec,
                 NULL,
