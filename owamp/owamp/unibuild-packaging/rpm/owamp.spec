@@ -157,16 +157,7 @@ mv selinux/*.pp %{buildroot}/usr/share/selinux/packages/
 rm -rf %{buildroot}/usr/lib/perfsonar/selinux
 
 %check
-
-# TODO: This fails in Docker containers because the server doesn't
-# start.  The makes in the %build block do, too, but it ignores them.
-
-if fgrep -q /machine.slice/ /proc/1/cgroup
-then
-    printf "\nWarning: Not running check step in container\n\n"
-else
-    make check
-fi
+make check
 
 %clean
 rm -rf $RPM_BUILD_ROOT 

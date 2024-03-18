@@ -31,7 +31,11 @@
 #include "./session_setup.h"
 
 
-#define TMP_SOCK_FILENAME_TPL "twsock.XXXXXX"
+#ifdef P_tmpdir
+#define TMP_SOCK_FILENAME_TPL (P_tmpdir "/twsock.XXXXXX")
+#else
+#define TMP_SOCK_FILENAME_TPL "/tmp/twsock.XXXXXX"
+#endif
 
 
 /*
