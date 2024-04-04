@@ -34,7 +34,7 @@ AC_CONFIG_SRCDIR(owamp/context.c)
 AM_CONFIG_HEADER(owamp/config.h)
 
 AC_DEFINE(PATCH_LEVEL, 1, "The RPM version number")
-AC_SUBST(PATCH_LEVEL, 0.a1.0)
+AC_SUBST(PATCH_LEVEL, 0.b1.1)
  
 TOP_BUILD_DIRS=""
 
