@@ -3,6 +3,9 @@
 /* "name of sysconfdir under prefix" */
 #undef AUTOCONF_SYSCONFDIR
 
+/* Define to 1 if you have the `adjtimex' function. */
+#undef HAVE_ADJTIMEX
+
 /* Define to 1 if you have the `bind' function. */
 #undef HAVE_BIND
 
@@ -59,6 +62,9 @@
 
 /* Define to 1 if you have the <netdb.h> header file. */
 #undef HAVE_NETDB_H
+
+/* Define to 1 if you have the `ntp_adjtime' function. */
+#undef HAVE_NTP_ADJTIME
 
 /* Define to 1 if you have the `socket' function. */
 #undef HAVE_SOCKET
