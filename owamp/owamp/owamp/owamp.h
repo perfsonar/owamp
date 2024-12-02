@@ -725,6 +725,22 @@ typedef void (*OWPCloseFileFunc)(
  */
 #define OWPIPv6Only "OWPIPv6Only"
 
+/*
+ * Such option may be used if PAT is done on Remote side and Ports are not preserved. It concerns only traffic issued by the Remote Node.	    
+ * Do not check Remote test port [bypass Remote Port Translation]
+ */
+#define OWPPATTRemote "OWPPATTRemote"
+
+/*
+ * Such option may be used if Client is not aware of NAT on Server Side. Otherwise this may be handled using unspecified address for target.
+ * Any Receiver Session Address is seen as Local Address [bypass Address Translation on Receiver side]
+ */
+#define OWPNATTServer "OWPNATTServer"
+
+/* Such option may be used to bypass Address Translation on Client/server if Client is aware of it and use Unspecified Address
+ * In this case Unspecified Session Addresses are switched with Control Addresses seen by the Server if set at the server level	  */  
+#define OWPSwitchUnspec "OWPSwitchUnspec"
+
 extern int
 OWPReportLevelByName(
         const char      *name
@@ -858,7 +874,8 @@ OWPControlOpen(
         OWPContext      ctx,
         const char      *local_addr,    /* src addr or NULL             */
         I2Addr          server_addr,    /* server addr or NULL          */
-        uint32_t       mode_mask,      /* OR of OWPSessionMode vals    */
+        uint32_t        mode_mask,      /* OR of OWPSessionMode vals    */
+	uint32_t        dscp_ctrl,      /* DSCP Value                   */
         OWPUserID       userid,         /* null if unwanted             */
         OWPNum64        *uptime_ret,    /* server uptime - ret or NULL  */
         OWPErrSeverity  *err_ret
@@ -874,6 +891,7 @@ OWPControlOpenInterface(
         const char      *interface,     /* interface to bind to or NULL   */
         I2Addr          server_addr,    /* server addr                    */
         uint32_t        mode_req_mask,  /* requested modes                */
+	uint32_t        dscp_ctrl,      /* DSCP Value                     */
         OWPUserID       userid,         /* userid or NULL                 */
         OWPNum64        *uptime_ret,    /* server uptime - ret            */
         OWPErrSeverity  *err_ret        /* err - return                   */
@@ -888,7 +906,8 @@ TWPControlOpen(
         OWPContext      ctx,
         const char      *local_addr,    /* src addr or NULL             */
         I2Addr          server_addr,    /* server addr or NULL          */
-        uint32_t       mode_mask,      /* OR of OWPSessionMode vals    */
+        uint32_t        mode_mask,      /* OR of OWPSessionMode vals    */
+	uint32_t        dscp_ctrl,      /* DSCP Value                   */
         OWPUserID       userid,         /* null if unwanted             */
         OWPNum64        *uptime_ret,    /* server uptime - ret or NULL  */
         OWPErrSeverity  *err_ret
@@ -904,6 +923,7 @@ TWPControlOpenInterface(
         const char      *interface,     /* interface to bind to or NULL */
         I2Addr          server_addr,    /* server addr or NULL          */
         uint32_t        mode_mask,      /* OR of OWPSessionMode vals    */
+	uint32_t        dscp_ctrl,      /* DSCP Value                   */
         OWPUserID       userid,         /* null if unwanted             */
         OWPNum64        *uptime_ret,    /* server uptime - ret or NULL  */
         OWPErrSeverity  *err_ret
@@ -949,7 +969,8 @@ OWPSessionRequest(
         OWPBoolean      server_conf_sender,
         I2Addr          receiver,
         OWPBoolean      server_conf_receiver,
-        OWPBoolean      zero_addr,
+        OWPBoolean      zero_sender_addr,
+	OWPBoolean      zero_receiver_addr,
         OWPTestSpec     *test_spec,
         FILE            *fp,
         OWPSID          sid_ret,

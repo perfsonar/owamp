@@ -22,6 +22,24 @@
  *        application will measure active one-way udp latencies. And it will
  *        set up perpetual tests and keep them going until this application
  *        is killed.
+ *
+ *
+ * 
+ * Addons : frederic.roudaut@orange.com
+ *   Trying to provide solutions to improve NAT/PAT Bypass : 
+ *               
+ *            - Option [X], [Y] has been added as an extension to OWAMP RFC when Session Sender/Receiver are
+ *              also Control Client/Server. 
+ *              As for TWAMP, it permits to set Session Sender/Receiver IP to Zero Addr in Owamp Requests
+ *              from Control-Client : [X] For Session-Sender, [Y] For Session-Server. 
+ *              In that case Control-Server had to switch the Zero Addr with the corresponding Session IP Addr
+ *              according the way test is done. For example when tests are done in both ways using Owamp, option [X] 
+ *              tells the Control-Server to use the zero address for Control-Client in test session from Control-Client
+ *              to Control-Server and for Control-Server in test session from Control-Server to Control-client
+ *              It helps to bypass NAT on both Session Sender/Receiver. 
+ *            - Option [y] to handle PAT from the Session-Remote. In that case, Session-Remote Port 
+ *              is not checked.     
+ *
  */
 #include <owamp/owamp.h>
 
@@ -114,6 +132,9 @@ print_conn_args(){
 "   -B interface   specify the interface to use for control connection and tests\n"
 "   -u username    username to use with Authenticated/Encrypted modes\n"
 "   -I retryDelay  time to wait between failed connections (default: 60 seconds)\n"
+"   -X             do not specify IP addresses for Session-Sender (NAT traversal on Test Sender Side)\n"
+"   -Y             do not specify IP addresses for Session-Receiver (NAT traversal on Test Receiver Side)\n"
+"   -y             do not check Session-Remote port [bypass Server Port Translation for test packets issued by the Remote Test Side]\n"
         );
 }
 
@@ -391,7 +412,9 @@ FetchSession(
                         appctx.opt.srcaddr,
                         appctx.opt.interface,
                         I2AddrByNode(eh, appctx.remote_serv),
-                        appctx.auth_mode,appctx.opt.identity,
+                        appctx.auth_mode,
+			appctx.opt.dscp_ctrl,
+			appctx.opt.identity,
                         NULL,&err);
         if (!p->fetch) {
             I2ErrLog(eh,"OWPControlOpen(%s): Couldn't open 'fetch' connection to server: %M",
@@ -1050,7 +1073,9 @@ SetupSession(
                     appctx.opt.srcaddr,
                     appctx.opt.interface,
                     I2AddrByNode(eh, appctx.remote_serv),
-                    appctx.auth_mode,appctx.opt.identity,
+                    appctx.auth_mode,
+		    appctx.opt.dscp_ctrl,
+		    appctx.opt.identity,
                     NULL,&err))){
         if(sig_check()) return 1;
 
@@ -1147,7 +1172,7 @@ SetupSession(
     if(appctx.opt.sender){
         if(!OWPSessionRequest(p->cntrl,NULL,(OWPBoolean)False,
                     I2AddrByNode(eh,appctx.remote_test),(OWPBoolean)True,
-                    (OWPBoolean)False,(OWPTestSpec*)&tspec,NULL,p->sid,&err)){
+                    (OWPBoolean)False,(OWPBoolean)False,(OWPTestSpec*)&tspec,NULL,p->sid,&err)){
             I2ErrLog(eh,"OWPSessionRequest: Failed");
             /*
             if(err == OWPErrFATAL){
@@ -1160,7 +1185,7 @@ SetupSession(
     }
     else{
         if(!OWPSessionRequest(p->cntrl,I2AddrByNode(eh,appctx.remote_test),
-                    True, NULL, False, False, (OWPTestSpec*)&tspec, p->testfp,
+                    True, NULL, False, False, False, (OWPTestSpec*)&tspec, p->testfp,
                     p->sid,&err)){
             I2ErrLog(eh,"OWPSessionRequest: Failed");
             /*
@@ -1267,7 +1292,7 @@ main(
     int                 ch;
     char                *endptr = NULL;
     char                optstring[128];
-    static char         *conn_opts = "46A:k:S:B:u:I:";
+    static char         *conn_opts = "46A:k:S:B:u:I:XYy";
     static char         *test_opts = "c:E:i:L:s:tz:P:";
     static char         *out_opts = "b:d:e:g:N:pRvU";
     static char         *gen_opts = "hw";
@@ -1306,6 +1331,10 @@ main(
     appctx.opt.port_range.low  = 8760;
     appctx.opt.port_range.high = 9960;
 
+    appctx.opt.zero_sender_addr = appctx.opt.zero_receiver_addr = False;
+    appctx.opt.pattRemote = False;
+    appctx.opt.dscp_ctrl = 0;
+      
     /*
      * Fix getopt if the brain-dead GNU version is being used.
      */
@@ -1486,6 +1515,16 @@ main(
                     }
                 }
                 break;
+	    case 'X':
+	      appctx.opt.zero_sender_addr = False;	      
+	      break;
+	    case 'Y':
+	      appctx.opt.zero_receiver_addr = False;	      
+	      break;
+	    case 'y':
+	      appctx.opt.pattRemote = True;
+	      break;
+		
             /* Output options */
             case 'b':
                 appctx.opt.bucketWidth = strtod(optarg, &endptr);
