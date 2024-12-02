@@ -1,5 +1,5 @@
 # Trying to provide solutions to improve NAT/PAT Bypass : 
-##TWAMP, twping :
+## TWAMP, twping :
 - option [Z] was already implemented to set Session Sender/Reflector IP to Zero Addr in Twamp 
 Requests from Control-Client. In that case, Control-Client is also Session-Sender and 
 Control-Server is Session-Reflector. Control-Server had then to switch the Zero Addr with 
@@ -10,7 +10,7 @@ It helps to bypass NAT on both Session Sender/Reflector when they are also Contr
 - Option [y] to handle PAT from the Session-Reflector. In that case, Session-Reflector Port 
 is not checked.     
                 
-## OWAMP: owping : 
+## OWAMP, owping : 
 - Option [X], [Y] has been added as an extension to OWAMP RFC when Session Sender/Receiver are
 also Control Client/Server. 
 As for TWAMP, it permits to set Session Sender/Receiver IP to Zero Addr in Owamp Requests
