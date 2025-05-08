@@ -87,9 +87,7 @@ is created after the Stop-Sessions message has been received from
 the sender host over the control socket. This message includes information about
 any packet records that the sender did not send; therefore, the preliminary
 data could show packet loss when, in reality, the sending process never sent
-the expected packets. The \fI\-n\fR option may be applied to make powstream
-also output data files for each sub-session defined by \fI\-N\fR. If set \fI\-n\fR
-may cause results not to take into account unsent packets.
+the expected packets.
 .PP
 .B powstream
 saves data files and summary files for each session in the current directory,
@@ -403,17 +401,6 @@ option.
 .RS
 .IP Default:
 unset
-.RE
-.TP
-\fB\-n\fR
-.br
-Enable output of sub-session data files (in addition to summary files).
-This option requires \fI\-N\fR to be set. Note that this option will
-disable output of the additional full data set summary file and full data
-file which normally is output when only \fI\-N\fR is set.
-.RS
-.IP Default:
-Unset.
 .RE
 .TP
 \fB\-p\fR

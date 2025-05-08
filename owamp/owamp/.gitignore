@@ -1,8 +1,0 @@
-# checkinstall stuff
-backup-*.tgz
-owamp_*.deb
-description-pak
-doc-pak*
-checkinstall-make-deb.sh
-# emacs backup files
-*~

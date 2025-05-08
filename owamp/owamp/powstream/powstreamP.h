@@ -89,7 +89,6 @@ typedef        struct {
         int         verbose;            /* -v verbose */
         double      bucketWidth;        /* -b (seconds) */
         uint32_t    numBucketPackets;   /* -N */
-        I2Boolean   subsessionowp;      /* -n */
         uint32_t    delayStart;         /* -z */
 
         uint32_t    retryDelay;         /* -I */
@@ -122,7 +121,6 @@ typedef struct pow_cntrl_rec{
 
     FILE                *fp;
     FILE                *testfp;
-    FILE                *subsessionowp_fp;
     char                fname[PATH_MAX];
     uint32_t           numPackets;
     OWPBoolean          call_stop;
