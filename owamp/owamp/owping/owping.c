@@ -23,6 +23,40 @@
  *
  *    Initial implementation of owping commandline application. This
  *    application will measure active one-way udp latencies.
+ * 
+ * 
+ * 
+ * Addons : frederic.roudaut@orange.com
+ *   Trying to provide solutions to improve NAT/PAT Bypass : 
+ *     - TWAMP, twping :
+ *            - option [Z] was already implemented to set Session Sender/Reflector IP to Zero Addr in Twamp 
+ *              Requests from Control-Client. In that case, Control-Client is also Session-Sender and 
+ *              Control-Server is Session-Reflector. Control-Server had then to switch the Zero Addr with 
+ *              the corresponding Control IP Addr.
+ *              Such option is still available but now also split in 2 options : [X] For Session-Sender, 
+ *              [Y] For Session-Reflector. 
+ *              It helps to bypass NAT on both Session Sender/Reflector when they are also Control Client/Server. 
+ *            - Option [y] to handle PAT from the Session-Reflector. In that case, Session-Reflector Port 
+ *              is not checked.     
+ *               
+ *     -  OWAMP: owping : 
+ *            - Option [X], [Y] has been added as an extension to OWAMP RFC when Session Sender/Receiver are
+ *              also Control Client/Server. 
+ *              As for TWAMP, it permits to set Session Sender/Receiver IP to Zero Addr in Owamp Requests
+ *              from Control-Client : [X] For Session-Sender, [Y] For Session-Server. 
+ *              In that case Control-Server had to switch the Zero Addr with the corresponding Session IP Addr
+ *              according the way test is done. For example when tests are done in both ways using Owamp, option [X] 
+ *              tells the Control-Server to use the zero address for Control-Client in test session from Control-Client
+ *              to Control-Server and for Control-Server in test session from Control-Server to Control-client
+ *              It helps to bypass NAT on both Session Sender/Receiver. 
+ *            - Option [y] to handle PAT from the Session-Remote. In that case, Session-Remote Port 
+ *              is not checked.     
+ *
+ *
+ *   Add an option [m] to set DSCP field on Control packets (from Control Client to Server).
+ *      To reflect ToS received from Control-Client, on Linux we may have to set 1 into 
+ *      /proc/sys/net/ipv4/tcp_reflect_tos on Control-Server side 
+ *
  */
 #include <owamp/owamp.h>
 #include <I2util/util.h>
@@ -70,9 +104,9 @@ print_conn_args(
         )
 {
 #ifdef TWAMP
-    fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n",
+    fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n",
 #else
-    fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n",
+    fprintf(stderr, "%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n",
 #endif
             "              [Connection Args]",
 #ifdef TWAMP
@@ -84,12 +118,24 @@ print_conn_args(
 #endif
             "   -S srcaddr     specify the local address or interface for control connection and tests",
             "   -B interface   specify the interface to use for control connection and tests",
-#ifdef TWAMP
+#ifdef TWAMP            
             "   -Z             do not specify IP addresses for tests packets (NAT traversal)",
             "   -u username    username to use with Authenticated/Encrypted/Mixed modes",
 #else
             "   -u username    username to use with Authenticated/Encrypted modes",
 #endif
+#ifdef TWAMP            
+	    "   -X             do not specify IP addresses for Session-Sender (NAT traversal on Test Sender Side)",
+            "   -Y             do not specify IP addresses for Session-Reflector (NAT traversal on Test Reflector Side)",
+	    // Such option may be used if PAT is done on Session-Reflector side and Ports are not preserved. It concerns only traffic issued by the Session-Reflector.	    
+            "   -y             do not check Session-Reflector port [bypass Port Translation for packets issued by the Test Reflector]",
+#else
+	    "   -X             do not specify IP addresses for Session-Sender (NAT traversal on Test Sender Side)",
+            "   -Y             do not specify IP addresses for Session-Receiver (NAT traversal on Test Receiver Side)",
+	    // Such option may be used if PAT is done on Remote Side and Ports are not preserved. It concerns only traffic issued by the Remote.	    
+            "   -y             do not check Session-Remote port [bypass Port Translation for test packets issued by the Remote Test Side]",	    
+#endif
+	    "   -m DSCP        RFC 2474 style DSCP value for TOS byte on control connection",   
             "   -4             connect using IPv4 addresses only",
             "   -6             connect using IPv6 addresses only"
            );
@@ -956,9 +1002,14 @@ FAILED:
     return False;
 }
 
+/*
+ * Type-P (To define DSCP in Test Session) Parsing 
+ * This Parsing is also used to define DSCP Value in Ctrl Session 
+ */
 static OWPBoolean
 parse_typeP(
-        char        *tspec
+	    char        *tspec,
+	    uint32_t *dscpvalue
         )
 {
     char            *tstr,*endptr;
@@ -984,7 +1035,7 @@ parse_typeP(
     }
 
     /*
-     * It is useful to define some symbolic constants for the -D (DSCP)
+     * It is useful to define some symbolic constants for the -D/-m (DSCP)
      * value. RFC 4594 seemed a reasonable collection of these useful
      * constants.
      *
@@ -1159,11 +1210,11 @@ parse_typeP(
      * pType of OWAMP expects them in the low-order 6 bits of the
      * high-order byte. So, shift 24 left, and 2 right == 22.
      */
-    ping_ctx.typeP = tosbyte << 22;
+    *dscpvalue = tosbyte << 22;
     return True;
 
 FAILED:
-    I2ErrLogP(eh,EINVAL,"Invalid DSCP value (-D): \"%s\": %M",tspec);
+    I2ErrLogP(eh,EINVAL,"Invalid DSCP value (-D/-m): \"%s\": %M",tspec);
     return False;
 }
 
@@ -1217,7 +1268,7 @@ main(
     int                 ch;
     char                *endptr = NULL;
     char                optstring[128];
-    static char         *conn_opts = "64A:k:S:u:B:";
+    static char         *conn_opts = "64A:k:S:u:B:XYym:";
     static char         *test_opts = "c:D:E:F:i:L:P:s:z:";
     static char         *out_opts = "a:b:d:Mn:N:pQRv::U";
     static char         *gen_opts = "h";
@@ -1272,7 +1323,7 @@ main(
     ctx = ping_ctx.lib_ctx;
 
     /* Set default options. */
-    ping_ctx.opt.v4only = ping_ctx.opt.v6only = ping_ctx.opt.zero_addr =
+    ping_ctx.opt.v4only = ping_ctx.opt.v6only = ping_ctx.opt.zero_sender_addr = ping_ctx.opt.zero_receiver_addr =
     ping_ctx.opt.records = ping_ctx.opt.from = ping_ctx.opt.to =
     ping_ctx.opt.quiet = ping_ctx.opt.raw = ping_ctx.opt.machine = False;
 #ifdef DEBUG
@@ -1297,6 +1348,9 @@ main(
     ping_ctx.opt.portspec->low  = 8760;
     ping_ctx.opt.portspec->high = 9960;
 
+    ping_ctx.opt.pattRemote = False;
+    ping_ctx.opt.dscp_ctrl = 0;
+    
     /* Create options strings for this program. */
     if (!strcmp(progname, "owping") || !strcmp(progname, "twping")) {
         strcpy(optstring, conn_opts);
@@ -1369,10 +1423,30 @@ main(
                     exit(1);
                 }
                 break;
-            case 'Z':
-                ping_ctx.opt.zero_addr = True;
+            case 'X':
+                ping_ctx.opt.zero_sender_addr = True;
                 break;
-
+            case 'Y':
+                ping_ctx.opt.zero_receiver_addr = True;
+                break;
+            case 'Z':
+  	        ping_ctx.opt.zero_sender_addr = True;
+                ping_ctx.opt.zero_receiver_addr = True;
+                break;
+	    case 'y':
+	        ping_ctx.opt.pattRemote = True;
+		break;
+	    case 'm':
+	        if(ping_ctx.opt.dscp_ctrl){
+		  usage(progname,
+			"Invalid option \'-m\'. Can only set one \'-m\'");
+		  exit(1);
+		}
+		if(!parse_typeP(optarg, &(ping_ctx.opt.dscp_ctrl))){
+		  exit(1);
+		}
+		break;
+		
                 /* Test options. */
 
             case 'c':
@@ -1389,7 +1463,7 @@ main(
                             "Invalid option \'-D\'. Can only set one \'-D\'");
                     exit(1);
                 }
-                if(!parse_typeP(optarg)){
+                if(!parse_typeP(optarg,&ping_ctx.typeP)){
                     exit(1);
                 }
                 break;
@@ -1723,6 +1797,14 @@ main(
             exit(1);
         }
 
+	/*
+	 * Setup pattRemote
+	 */
+	if(ping_ctx.opt.pattRemote && !OWPContextConfigSetV(ctx,OWPPATTRemote,
+						    (void*)True)){
+	  I2ErrLog(eh,"OWPContextConfigSetV(): Can't set OWPPATTRemote?!");
+	  exit(1);
+	}
 
         /*
          * Set the detach processes flag.
@@ -1753,7 +1835,9 @@ main(
                 ping_ctx.opt.srcaddr,
                 ping_ctx.opt.interface,
                 I2AddrByNode(eh, ping_ctx.remote_serv),
-                ping_ctx.auth_mode,ping_ctx.opt.identity,
+                ping_ctx.auth_mode,
+		ping_ctx.opt.dscp_ctrl,
+		ping_ctx.opt.identity,
                 NULL,&err_ret);
         if (!ping_ctx.cntrl){
             I2ErrLog(eh, "Unable to open control connection to %s.",
@@ -1851,7 +1935,7 @@ main(
 
         if (!OWPSessionRequest(ping_ctx.cntrl, NULL, False,
                                I2AddrByNode(eh,ping_ctx.remote_test),
-                               True,ping_ctx.opt.zero_addr,
+                               True,ping_ctx.opt.zero_sender_addr,ping_ctx.opt.zero_receiver_addr,
                                (OWPTestSpec*)&tspec,
                                fromfp,tosid,&err_ret))
             FailSession(ping_ctx.cntrl);
@@ -1862,7 +1946,7 @@ main(
         if(ping_ctx.opt.to) {
             if (!OWPSessionRequest(ping_ctx.cntrl, NULL, False,
                         I2AddrByNode(eh,ping_ctx.remote_test),
-                        True,ping_ctx.opt.zero_addr,
+                        True,ping_ctx.opt.zero_sender_addr,ping_ctx.opt.zero_receiver_addr,
                         (OWPTestSpec*)&tspec,
                         NULL,tosid,&err_ret))
                 FailSession(ping_ctx.cntrl);
@@ -1887,7 +1971,7 @@ main(
 
             if (!OWPSessionRequest(ping_ctx.cntrl,
                         I2AddrByNode(eh,ping_ctx.remote_test),
-                        True, NULL, False, ping_ctx.opt.zero_addr,
+                        True, NULL, False, ping_ctx.opt.zero_sender_addr,ping_ctx.opt.zero_receiver_addr,
                         (OWPTestSpec*)&tspec,
                         fromfp,fromsid,&err_ret))
                 FailSession(ping_ctx.cntrl);
@@ -2089,7 +2173,9 @@ main(
                 ping_ctx.opt.srcaddr,
                 ping_ctx.opt.interface,
                 I2AddrByNode(eh, ping_ctx.remote_serv),
-                ping_ctx.auth_mode,ping_ctx.opt.identity,
+                ping_ctx.auth_mode,
+                ping_ctx.opt.dscp_ctrl,
+		ping_ctx.opt.identity,
                 NULL,&err_ret);
         if (!ping_ctx.cntrl){
             I2ErrLog(eh, "Unable to open control connection to %s.",
@@ -2144,7 +2230,9 @@ main(
                 ping_ctx.opt.srcaddr,
                 ping_ctx.opt.interface,
                 I2AddrByNode(eh, ping_ctx.remote_serv),
-                ping_ctx.auth_mode,ping_ctx.opt.identity,
+                ping_ctx.auth_mode,
+                ping_ctx.opt.dscp_ctrl,
+		ping_ctx.opt.identity,
                 &tstamp.owptime,&err_ret);
         if (!ping_ctx.cntrl){
             I2ErrLog(eh, "Unable to open control connection to %s.",

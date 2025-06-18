@@ -70,6 +70,10 @@ typedef struct {
 
     I2Boolean       setEndDelay;
     double          endDelay;
+
+    I2Boolean       patt_remote;      /* -x */
+    I2Boolean       natt_server;      /* -Y */
+    I2Boolean       switchUnspec;     /* -W */
 } owampd_opts;
 
 #endif        /*        _OWAMPDP_H_        */
