@@ -2393,12 +2393,21 @@ again:
         /*
          * Verify peer before looking at packet.
          */
-        if(I2SockAddrEqual(rsaddr,rsaddrlen,
-                    (struct sockaddr*)&peer_addr,
-                    peer_addr_len,I2SADDR_ALL) <= 0){
-            goto again;
-        }
-
+	// If Remote PAT-T set, do not check Sending Port from Sender Node 
+	if((OWPBoolean)OWPContextConfigGetV(ep->cntrl->ctx,OWPPATTRemote))
+	  {
+	    if(I2SockAddrEqual(rsaddr,rsaddrlen,
+			       (struct sockaddr*)&peer_addr,
+			       peer_addr_len,I2SADDR_ADDR) <= 0){
+	      goto again;
+	    }
+	  }
+	else if(I2SockAddrEqual(rsaddr,rsaddrlen,
+				(struct sockaddr*)&peer_addr,
+				peer_addr_len,I2SADDR_ALL) <= 0){
+	  goto again;
+	    }
+	
         /*
          * Decrypt the packet if needed.
          */
@@ -2617,7 +2626,7 @@ run_reflector(
     uint8_t             ttl;
     size_t              snd_payload_len;
     uint32_t            testtimeout;
-
+	
     if( !(lsaddr = I2AddrSAddr(ep->tsession->sender,&lsaddrlen))){
         exit(OWP_CNTRL_FAILURE);
     }
@@ -2825,12 +2834,21 @@ again:
 
         /*
          * Verify peer before looking at packet.
-         */
-        if(I2SockAddrEqual(rsaddr,rsaddrlen,
-                    (struct sockaddr*)&peer_addr,
-                    peer_addr_len,I2SADDR_ALL) <= 0){
-            goto again;
-        }
+         */	
+	// If Remote PAT-T set, do not check Sending Port from Sender Node 
+	if((OWPBoolean)OWPContextConfigGetV(ep->cntrl->ctx,OWPPATTRemote))
+	  {
+	    if(I2SockAddrEqual(rsaddr,rsaddrlen,
+			       (struct sockaddr*)&peer_addr,
+			       peer_addr_len,I2SADDR_ADDR) <= 0){
+	      goto again;
+	    }
+	  }
+	else if(I2SockAddrEqual(rsaddr,rsaddrlen,
+				(struct sockaddr*)&peer_addr,
+				peer_addr_len,I2SADDR_ALL) <= 0){
+	  goto again;
+	}
 
 #ifdef OWP_EXTRA_DEBUG
         {

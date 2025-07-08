@@ -1,3 +1,4 @@
+
 /*
  *      $Id$
  */
@@ -29,6 +30,91 @@
 #include <assert.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <arpa/inet.h>
+
+/*
+ * Function : __util_I2AddrIPName
+ *   
+ * Description : provides the ip in char* for a given I2Addr
+ */
+char *
+__util_I2AddrIPName(
+		    I2Addr addr,
+		    char *buf,
+		    size_t *len
+		    )
+{
+  assert(buf);
+  assert(len);
+  int size_min = INET6_ADDRSTRLEN > INET_ADDRSTRLEN ? INET6_ADDRSTRLEN : INET_ADDRSTRLEN;
+  assert(*len >size_min);    
+  buf[0]='\0';
+  
+  socklen_t saddrlen;
+  struct sockaddr *saddr = I2AddrSAddr(addr, &saddrlen);
+  switch(saddr->sa_family)
+    {
+    case AF_INET:    
+	struct sockaddr_in *addr_in = (struct sockaddr_in *)saddr;
+	inet_ntop(AF_INET, &(addr_in->sin_addr),buf,INET_ADDRSTRLEN);
+	break;
+      
+    case AF_INET6:
+      struct sockaddr_in6 *addr_in6 = (struct sockaddr_in6 *)saddr;
+      inet_ntop(AF_INET6, &(addr_in6->sin6_addr),buf,INET6_ADDRSTRLEN);
+      break;
+      
+    default:
+      break;
+    }
+
+  *len = MIN(*len,strlen(buf));
+  return buf;
+}
+
+
+/*
+ * Function : __util_modeName
+ *   
+ * Description : provides the Mode in char* for a given Mode
+ */
+char *
+__util_modeName(
+		int mode,
+		char *buf,
+		size_t *len
+		)
+{
+  assert(buf);
+  assert(len);
+  assert(*len>0);
+  
+  switch(mode)
+    {
+    case OWP_MODE_OPEN:
+      strncpy(buf,"open",*len);
+      break;
+	
+    case OWP_MODE_AUTHENTICATED:
+      strncpy(buf,"authenticated",*len);
+      break;
+      
+    case OWP_MODE_ENCRYPTED:
+      strncpy(buf,"encrypted",*len);
+      break;
+
+    case TWP_MODE_MIXED:
+      strncpy(buf,"mixed",*len);
+      break;
+	
+    default:
+      strncpy(buf,"undefined",*len);
+      break;
+    }
+
+   *len = MIN(*len,strlen(buf));
+   return buf;
+}
 
 
 static int
@@ -56,7 +142,7 @@ OpenSocket(
 
         if(fd < 0)
             continue;
-
+	
         on=1;
         if(setsockopt(fd,SOL_SOCKET,SO_REUSEADDR,&on,sizeof(on)) != 0){
             goto failsock;
@@ -653,6 +739,70 @@ OWPProcessTestRequest(
         goto error;
     }
 
+    // Logs to get Information on OWAMP Sessions
+    char mode[NI_MAXSERV];
+    size_t mode_len = sizeof(mode);
+
+    char recvnode[NI_MAXHOST];
+    size_t recvnode_len = sizeof(recvnode);
+    char recvnode_info[NI_MAXHOST];
+    size_t recvnode_info_len = sizeof(recvnode_info);
+
+    char sendnode[NI_MAXHOST];
+    size_t sendnode_len = sizeof(sendnode);
+    char sendnode_info[NI_MAXHOST];
+    size_t sendnode_info_len = sizeof(sendnode_info);
+    
+    char remotenode[NI_MAXHOST];
+    size_t remotenode_len = sizeof(remotenode);
+    char remotenode_info[NI_MAXHOST];
+    size_t remotenode_info_len = sizeof(remotenode_info);
+
+    char localnode[NI_MAXHOST];
+    size_t localnode_len = sizeof(localnode);
+    char localnode_info[NI_MAXHOST];
+    size_t localnode_info_len = sizeof(localnode_info);
+    
+    int recvport = 0;
+    int sendport = 0;
+    int remoteport = 0;
+    int localport = 0;
+
+    __util_modeName(cntrl->mode,mode,&mode_len);
+
+    I2AddrNodeName(tsession->receiver,recvnode,&recvnode_len);
+    recvport=I2AddrPort(tsession->receiver);    
+    __util_I2AddrIPName(tsession->receiver,recvnode_info,&recvnode_info_len);
+
+    I2AddrNodeName(tsession->sender,sendnode,&sendnode_len);	
+    sendport=I2AddrPort(tsession->sender);
+    __util_I2AddrIPName(tsession->sender,sendnode_info,&sendnode_info_len);	
+
+    I2AddrNodeName(cntrl->remote_addr,remotenode,&remotenode_len);
+    remoteport=I2AddrPort(cntrl->remote_addr);
+    __util_I2AddrIPName(cntrl->remote_addr,remotenode_info,&remotenode_info_len);
+
+    I2AddrNodeName(cntrl->local_addr,localnode,&localnode_len);
+    localport=I2AddrPort(cntrl->local_addr);
+    __util_I2AddrIPName(cntrl->local_addr,localnode_info,&localnode_info_len);
+    
+    OWPError(cntrl->ctx,OWPErrINFO,OWPErrUNKNOWN,"===== New OWAMP Process Test Request [Mode: %s]\n\tCtrl = Remote: %s:%d (%s) ==> Local: %s:%d (%s)\n\tSession = [Sender]: %s:%d (%s) ==> [Receiver]: %s:%d (%s)",
+	     mode,
+	     remotenode,
+	     remoteport,
+	     remotenode_info,
+	     localnode,
+	     localport,
+	     localnode_info,
+	     sendnode,
+	     sendport,
+	     sendnode_info,
+	     recvnode,
+	     recvport,
+	     recvnode_info
+	     );
+
+    
     /*
      * if conf_receiver - open port and get SID.
      */
@@ -671,7 +821,22 @@ OWPProcessTestRequest(
             err_ret = OWPErrWARNING;
             goto error;
         }
-
+       
+	// If NAT-T set on server side, use the local address for Receiving on server
+	if((OWPBoolean)OWPContextConfigGetV(cntrl->ctx,OWPNATTServer))
+	  {
+	    struct sockaddr *local_saddr;
+	    
+	    if(!(local_saddr=I2AddrSAddr(cntrl->local_addr,&saddrlen)))	    
+	      {
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+			 "Unable to determine sockaddr information");
+		err_ret = OWPErrFATAL;
+		goto error;
+	      }
+	    ((struct sockaddr_in *)rsaddr)->sin_addr=((struct sockaddr_in *)local_saddr)->sin_addr;	    
+	  }
+	
         if(!_OWPCallCheckTestPolicy(cntrl,False,
                     rsaddr,ssaddr,saddrlen,
                     &tsession->test_spec,&tsession->closure,
@@ -723,14 +888,29 @@ OWPProcessTestRequest(
             if(I2SockAddrEqual(csaddr,csaddrlen,rsaddr,saddrlen,
                         I2SADDR_ADDR) <= 0){
                 OWPError(cntrl->ctx,OWPErrWARNING,OWPErrPOLICY,
-                        "Test Denied: OpenMode recieve_addr(%s) != control_client(%s)",
+                        "Test Denied: OpenMode receive_addr(%s) != control_client(%s)",
                         recvnode,remotenode);
                 acceptval = OWP_CNTRL_REJECT;
                 err_ret = OWPErrWARNING;
                 goto error;
             }
         }
-
+	
+	// If NAT-T set on server side, use the local address for sending from server	
+	if((OWPBoolean)OWPContextConfigGetV(cntrl->ctx,OWPNATTServer))
+	  {
+	    struct sockaddr *local_saddr;
+	    
+	    if(!(local_saddr=I2AddrSAddr(cntrl->local_addr,&saddrlen)))	    
+	      {
+		OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+			 "Unable to determine sockaddr information");
+		err_ret = OWPErrFATAL;
+		goto error;
+	      }
+	    ((struct sockaddr_in *)ssaddr)->sin_addr=((struct sockaddr_in *)local_saddr)->sin_addr;	    
+	  }
+	
         if(!_OWPCallCheckTestPolicy(cntrl,True,
                     ssaddr,rsaddr,saddrlen,
                     &tsession->test_spec,
@@ -750,6 +930,9 @@ OWPProcessTestRequest(
             goto error;
         }
         port = I2AddrPort(tsession->sender);
+	
+	OWPError(cntrl->ctx,OWPErrINFO,OWPErrUNKNOWN,"Endpoint Test Sender Port Computed: %d", port);
+
     }
 
     /*
@@ -763,6 +946,8 @@ OWPProcessTestRequest(
             goto error;
         }
         port = I2AddrPort(tsession->receiver);
+	
+	OWPError(cntrl->ctx,OWPErrINFO,OWPErrUNKNOWN,"Endpoint Test Receiver Port Computed: %d", port);
     }
 
     if( (rc = _OWPWriteAcceptSession(cntrl,intr,OWP_CNTRL_ACCEPT,
@@ -794,6 +979,7 @@ err2:
     return err_ret;
 }
 
+
 OWPErrSeverity
 OWPProcessTestRequestTW(
         OWPControl  cntrl,
@@ -816,7 +1002,7 @@ OWPProcessTestRequestTW(
     }
 
     /*
-     * Read the TestRequest and alloate tsession to hold the information.
+     * Read the TestRequest and allocate tsession to hold the information.
      */
     if((rc = _OWPReadTestRequest(cntrl,intr,&tsession,&acceptval)) !=
             OWPErrOK){
@@ -841,6 +1027,84 @@ OWPProcessTestRequestTW(
         goto error;
     }
 
+    // Logs to get Information on TWAMP Sessions
+    char mode[NI_MAXHOST];
+    size_t mode_len = sizeof(mode);
+    
+    char recvnode[NI_MAXHOST];
+    size_t recvnode_len = sizeof(recvnode);
+    char recvnode_info[NI_MAXHOST];
+    size_t recvnode_info_len = sizeof(recvnode_info);
+
+    char sendnode[NI_MAXHOST];
+    size_t sendnode_len = sizeof(sendnode);
+    char sendnode_info[NI_MAXHOST];
+    size_t sendnode_info_len = sizeof(sendnode_info);
+    
+    char remotenode[NI_MAXHOST];
+    size_t remotenode_len = sizeof(remotenode);
+    char remotenode_info[NI_MAXHOST];
+    size_t remotenode_info_len = sizeof(remotenode_info);
+
+    char localnode[NI_MAXHOST];
+    size_t localnode_len = sizeof(localnode);
+    char localnode_info[NI_MAXHOST];
+    size_t localnode_info_len = sizeof(localnode_info);
+    
+    int recvport = 0;
+    int sendport = 0;
+    int remoteport = 0;
+    int localport = 0;
+
+    __util_modeName(cntrl->mode,mode,&mode_len);
+
+    I2AddrNodeName(tsession->receiver,recvnode,&recvnode_len);
+    recvport=I2AddrPort(tsession->receiver);    
+    __util_I2AddrIPName(tsession->receiver,recvnode_info,&recvnode_info_len);
+
+    I2AddrNodeName(tsession->sender,sendnode,&sendnode_len);	
+    sendport=I2AddrPort(tsession->sender);
+    __util_I2AddrIPName(tsession->sender,sendnode_info,&sendnode_info_len);	
+
+    I2AddrNodeName(cntrl->remote_addr,remotenode,&remotenode_len);
+    remoteport=I2AddrPort(cntrl->remote_addr);
+    __util_I2AddrIPName(cntrl->remote_addr,remotenode_info,&remotenode_info_len);
+
+    I2AddrNodeName(cntrl->local_addr,localnode,&localnode_len);
+    localport=I2AddrPort(cntrl->local_addr);
+    __util_I2AddrIPName(cntrl->local_addr,localnode_info,&localnode_info_len);
+    
+    OWPError(cntrl->ctx,OWPErrINFO,OWPErrUNKNOWN,"===== New TWAMP Process Test Request [Mode: %s]\n\tCtrl = Remote: %s:%d (%s) ==> Local: %s:%d (%s)\n\tSession = [Sender]: %s:%d (%s) ==> [Reflector]: %s:%d (%s)",
+	     mode,
+	     remotenode,
+	     remoteport,
+	     remotenode_info,
+	     localnode,
+	     localport,
+	     localnode_info,
+	     sendnode,
+	     sendport,
+	     sendnode_info,
+	     recvnode,
+	     recvport,
+	     recvnode_info
+	     );
+
+    // If NAT-T set on server side, use the local address for Receiving on server	
+    if((OWPBoolean)OWPContextConfigGetV(cntrl->ctx,OWPNATTServer))
+      {
+	struct sockaddr *local_saddr;
+	
+	if(!(local_saddr=I2AddrSAddr(cntrl->local_addr,&saddrlen)))	    
+	  {
+	    OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+		     "Unable to determine sockaddr information");
+	    err_ret = OWPErrFATAL;
+	    goto error;
+	  }
+	((struct sockaddr_in *)rsaddr)->sin_addr=((struct sockaddr_in *)local_saddr)->sin_addr;	    
+      }	
+    
     if(_OWPCreateSID(tsession) != 0){
         err_ret = OWPErrWARNING;
         acceptval = OWP_CNTRL_FAILURE;
@@ -884,6 +1148,8 @@ OWPProcessTestRequestTW(
         acceptval = OWP_CNTRL_FAILURE;
         goto error;
     }
+    
+    OWPError(cntrl->ctx,OWPErrINFO,OWPErrUNKNOWN,"Reflector Test Port Computed: %d", port);
 
     if( (rc = _OWPWriteAcceptSession(cntrl,intr,OWP_CNTRL_ACCEPT,
                     port,tsession->sid)) < OWPErrOK){

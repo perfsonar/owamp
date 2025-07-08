@@ -225,7 +225,7 @@ int session_setup_test(
                 // not a real test, but these params run through the basic setup
                 I2AddrByNode(ctx->eh, "localhost"), True,
                 I2AddrByNode(ctx->eh, "localhost"), True,
-                False,
+                False,False,		
                 &tspec,
                 NULL,
                 sid_ret, &err_ret)) {

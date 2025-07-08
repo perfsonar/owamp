@@ -82,8 +82,10 @@ typedef    struct {
         I2Boolean       printfiles;         /* -p */
         char            *srcaddr;           /* -S */
         char            *interface;         /* -B */
-        I2Boolean       zero_addr;          /* -Z */
-
+        I2Boolean       zero_sender_addr;   /* -X */
+        I2Boolean       zero_receiver_addr; /* -Y */
+        I2Boolean       pattRemote;         /* -y */
+        uint32_t        dscp_ctrl;          /* -m */
         OWPPortRange    portspec;           /* -P */
 
 #ifdef DEBUG
