@@ -1,0 +1,188 @@
+name: owamp-workflow
+ 
+on: 
+  workflow_dispatch:
+    inputs: 
+      BUILD_BRANCH: 
+        description: 'Branch to build'
+        required: true
+      OS:
+        description: 'OS to build on' 
+        required: true
+      BUILD_VARS_JSON:
+        description: 'Build var json file'
+        required: true
+  workflow_run:
+    workflows: "Build owamp artifacts and pass runid"
+    types:
+      - completed      
+ 
+jobs:
+       
+  build-owamp:
+
+ 
+    runs-on: ubuntu-latest
+
+    steps:
+
+        - name: Capture start date and time
+          id: start_time
+          run: echo "start_time=$(date -u)" >> $GITHUB_ENV
+
+        - name: Add start time to build_vars.json
+          run: |
+            modified_json=$(echo '${{ github.event.inputs.BUILD_VARS_JSON }}' | jq '.buildstats += { "${{ github.event.repository.name }}-start": "${{ env.start_time }}" }' )
+            BUILD_VARS_JSON=$(echo "$modified_json" | jq -c '.')
+            echo "BUILD_VARS_JSON=$BUILD_VARS_JSON" >> $GITHUB_ENV
+            echo "**** next next ****"
+            echo "BUILD_VARS_JSON=$BUILD_VARS_JSON"
+          
+        - name: Check out Repo
+          uses: actions/checkout@v4
+          with:
+            ref: ${{ github.event.inputs.BUILD_BRANCH }}
+            
+        - name: Fetch workflow script from projects
+          env:
+             github-token: ${{ secrets.GIT_ACTIONS }}
+          run: |
+            git clone https://github.com/perfsonar/project.git project
+            if [ "${{ github.event.inputs.OS }}" == 'ol8' ] || [ "${{ github.event.inputs.OS }}" == 'el9' ]; then
+              cp project/toolbox/workflows/github-el-workflow.sh . 
+              elif [ "${{ github.event.inputs.OS }}" == 'd11' ] || [ "${{ github.event.inputs.OS }}" == 'd12' ]; then
+              cp project/toolbox/workflows/github-db-workflow.sh . 
+              elif [ "${{ github.event.inputs.OS }}" == 'u20' ] || [ "${{ github.event.inputs.OS }}" == 'u24' ]; then
+              cp project/toolbox/workflows/github-ub-workflow.sh . 
+            fi
+        
+        - name: Pretty-print BUILD_VARS_JSON
+          run: |
+            echo "$BUILD_VARS_JSON"
+            
+        - name: Extract dependencies
+          id: extract_deps
+          run: |
+            echo "$BUILD_VARS_JSON" | jq -r '.repos[] | select(.name == "${{ github.event.repository.name }}") | .deps[]' > deps.txt
+            echo "Dependencies:"
+            cat deps.txt
+        - name: Download artifacts
+          run: |
+            mkdir -p artifacts
+            while IFS= read -r repo; do
+              echo "Downloading artifact for $repo"
+              run_id=$(echo "$BUILD_VARS_JSON" | jq -r ".buildids | .[\"$repo\"]")
+              echo "rund id $run_id"
+              gh run download $run_id --repo perfsonar/$repo -D artifacts/$repo --name "$repo-${{ github.event.inputs.OS }}"  
+              artifact_path="artifacts/$repo"
+              pwd
+              echo "list artifact path"
+              ls -al "$artifact_path"
+              if [ "${{ github.event.inputs.OS }}" == 'ol8' ] || [ "${{ github.event.inputs.OS }}" == 'el9' ]; then
+                mkdir -p artifacts/RPMS
+                echo "copy to the artifacts RPM dir"
+                cp "$artifact_path"/RPMS/*.rpm artifacts/RPMS
+              elif [ "${{ github.event.inputs.OS }}" == 'd11' ] || [ "${{ github.event.inputs.OS }}" == 'd12' ]; then
+                echo "debian" 
+                mkdir -p artifacts/DEBS
+                echo "copy to the artifacts DEBS dir"
+                cp -r "$artifact_path"/* artifacts/DEBS
+                echo "list artifacts DEBS dir"
+                ls -al artifacts/DEBS/*
+              elif [ "${{ github.event.inputs.OS }}" == 'u20' ] || [ "${{ github.event.inputs.OS }}" == 'u24' ]; then
+                echo " ubuntu artifacts " 
+                mkdir -p artifacts/ubuntu
+                echo "copy to the artifacts ubuntu dir"
+                cp -r "$artifact_path"/* artifacts/ubuntu
+                echo "list artifacts ubuntu dir"
+                ls -al artifacts/ubuntu/*
+              fi
+            done < deps.txt
+          env:
+            GITHUB_TOKEN: ${{ secrets.GIT_ACTIONS }}
+
+        - name: run docker oneshot builder and github-actions-workflow.sh
+          run: |
+            if [ "${{ github.event.inputs.OS }}" == 'ol8' ] || [ "${{ github.event.inputs.OS }}" == 'el9' ]; then
+              curl -s https://raw.githubusercontent.com/perfsonar/docker-oneshot-builder/main/build | sh -s - --run github-el-workflow.sh . '${{ github.event.inputs.OS }}'  
+              elif [ "${{ github.event.inputs.OS }}" == 'd11' ] || [ "${{ github.event.inputs.OS }}" == 'd12' ]; then
+              curl -s https://raw.githubusercontent.com/perfsonar/docker-oneshot-builder/main/build | sh -s - --run github-db-workflow.sh . '${{ github.event.inputs.OS }}'
+              elif [ "${{ github.event.inputs.OS }}" == 'u20' ] || [ "${{ github.event.inputs.OS }}" == 'u24' ]; then
+              curl -s https://raw.githubusercontent.com/perfsonar/docker-oneshot-builder/main/build | sh -s - --run github-db-workflow.sh . '${{ github.event.inputs.OS }}' 
+            fi
+           
+        - uses: actions/upload-artifact@v3
+          with:
+            name: ${{ github.event.repository.name }}-${{ github.event.inputs.OS }}
+            path: unibuild-repo
+            retention-days: 5
+        
+        - name: Delete current repo from build
+          id: modify_json
+          run: |
+   
+            modified_json=$(echo "$BUILD_VARS_JSON" | jq 'del(.repos[0])')
+            echo "Modified JSON:"
+            echo "$modified_json" | jq .
+            BUILD_VARS_JSON=$(echo "$modified_json" | jq -c '.')
+            echo "BUILD_VARS_JSON=$BUILD_VARS_JSON" >> $GITHUB_ENV
+            echo "**** next next ****"
+            echo "BUILD_VARS_JSON=$BUILD_VARS_JSON" 
+            
+        - name: Use modified BUILD_VARS_JSON
+          run: |
+            echo "Using the modified BUILD_VARS_JSON environment variable:"
+            echo "$BUILD_VARS_JSON" | jq .
+            
+        - name: Look up the next repo name to build
+          id: extract_repo_name
+          run: |
+            echo "BUILD_VARS_JSON value is: $BUILD_VARS_JSON"
+            NEXTREPO=$(echo  "$BUILD_VARS_JSON"  | jq -r '.repos[0].name' )
+            echo "NEXTREPO=$NEXTREPO" >> $GITHUB_ENV  
+            
+        - name: Display NEXTREPO value
+          run: echo "The value of NEXTREPO is $NEXTREPO"  
+
+        - name: Add GitHub run ID to buildids
+          id: add_run_id
+          run: |
+            GITHUB_RUN_ID=${{ github.run_id }}
+            modified_json=$(echo "$BUILD_VARS_JSON"  | jq --arg run_id "$GITHUB_RUN_ID" '.buildids.${{ github.event.repository.name }} = $run_id')
+            echo "Modified JSON with GitHub run ID:"
+            echo "$modified_json" | jq .
+            BUILD_VARS_JSON=$(echo "$modified_json" | jq -c '.')
+            echo "BUILD_VARS_JSON=$BUILD_VARS_JSON" >> $GITHUB_ENV
+            echo "BUILD_VARS_JSON=$BUILD_VARS_JSON" 
+            
+        - name: Capture end date and time
+          id: end_time
+          run: echo "end_time=$(date -u)" >> $GITHUB_ENV
+
+        - name: Add end time to build_vars.json
+          run: |
+            modified_json=$(echo "$BUILD_VARS_JSON" | jq '.buildstats += { "${{ github.event.repository.name }}-end": "${{ env.end_time }}" }' )
+            BUILD_VARS_JSON=$(echo "$modified_json" | jq -c '.')
+            echo "BUILD_VARS_JSON=$BUILD_VARS_JSON" >> $GITHUB_ENV
+            echo "BUILD_VARS_JSON=$BUILD_VARS_JSON"
+        - name: Use modified BUILD_VARS_JSON with run id
+          run: |
+            echo "Using the modified BUILD_VARS_JSON environment variable:"
+            echo "$BUILD_VARS_JSON" | jq .
+         
+        - name: Pass workflow  
+          uses: actions/github-script@v6
+          with:
+            github-token: ${{ secrets.GIT_ACTIONS }}
+            script: |
+              await github.rest.actions.createWorkflowDispatch({
+              owner: 'perfsonar',
+              repo: '${{ env.NEXTREPO}}',
+              workflow_id: '${{ env.NEXTREPO}}-workflow.yml',
+              ref: 'master',
+               inputs: {
+              OS:  '${{ github.event.inputs.OS }}',
+              BUILD_VARS_JSON: '${{ env.BUILD_VARS_JSON}}',
+              BUILD_BRANCH: '${{ github.event.inputs.BUILD_BRANCH }}'
+              }
+              })
