@@ -171,7 +171,8 @@ TryAddr(
         struct addrinfo *ai,
         const char      *local_addr,
         const char      *interface,
-        I2Addr          server_addr
+        I2Addr          server_addr,
+	uint32_t        dscp_ctrl      /* DSCP Value           */
        )
 {
     OWPErrSeverity  addr_ok=OWPErrOK;
@@ -180,7 +181,73 @@ TryAddr(
     fd = socket(ai->ai_family,ai->ai_socktype,ai->ai_protocol);
     if(fd < 0)
         return 1;
+    
+    if(dscp_ctrl != 0)
+      /* SET DSCP Value On CTRL Session */
+      {
+	/* For now, just verify dscp_ctrl set to valid value
+	 * for DSCP mode:
+	 * Only 6 bits can be set for it to be valid
+	 * (bits 2-7 of the high-order byte)
+	 */
+	int optname = IP_TOS;
+	int optlevel = IP_TOS;
+	int sopt;
+	if(dscp_ctrl & ~0x3F000000){
+	  OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNSUPPORTED,
+		   "Unsupported DSCP CTRL requested");
+	  /*
+	   * This was a valid request, this implementation just doesn't
+	   * support it.
+	   */                
+	  goto cleanup;
+	}
+	/*
+	 * TODO: When I find a kernel that actually has IPV6_TCLASS
+	 * make sure it works. (This looks like the RFC 3542 way...)
+	 */
+	switch(ai->ai_family){
+	case AF_INET:
+	  optlevel = IPPROTO_IP;
+	  optname = IP_TOS;
+	  break;
+#ifdef        AF_INET6
+	case AF_INET6:
+	  optlevel = IPPROTO_IPV6;
+	  /*
+	   * Look for RFC 3542 sockopts - have no systems with them, but look
+	   * for them anyway...
+	   */
+#ifdef  IPV6_TCLASS
+	  optname = IPV6_TCLASS;
+#else
+	  optname = IP_TOS;
+#endif
+	  break;
+#endif
+	default:
+	  /*NOTREACHED*/
+	  break;
+	}
 
+	/* Copy high-order byte (minus first two bits) */
+	sopt = (uint8_t)(dscp_ctrl >> 24);
+	sopt &= 0x3F; /* this should be a no-op until PHB... */
+
+	/* shift for setting TOS */
+	sopt <<= 2;
+	if(setsockopt(fd,optlevel,optname,
+		      (void*)&sopt,sizeof(sopt)) < 0){
+	  OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+		   "setsockopt(%s,%s=%d): %M",
+		   ((optlevel==IPPROTO_IP)?
+                         "IPPROTO_IP":"IPPROTO_IPV6"),
+                        ((optname==IP_TOS)?"IP_TOS":"IPV6_TCLASS"),
+		   sopt);
+	  goto cleanup;
+	}
+      }       
+    
     if(interface){
         if(!OWPSocketInterfaceBind(cntrl,fd,interface))
             goto cleanup;
@@ -261,6 +328,7 @@ _OWPClientConnect(
         const char      *local_addr,
         const char      *interface,
         I2Addr          server_addr,
+	uint32_t        dscp_ctrl,      /* DSCP Value           */
         OWPErrSeverity  *err_ret
         )
 {
@@ -314,7 +382,7 @@ _OWPClientConnect(
 
             if(ai->ai_family != AF_INET6) continue;
 
-            if( (rc = TryAddr(cntrl,ai,local_addr,interface,server_addr)) == 0)
+            if( (rc = TryAddr(cntrl,ai,local_addr,interface,server_addr,dscp_ctrl)) == 0)
                 return 0;
             if(rc < 0)
                 goto error;
@@ -329,7 +397,7 @@ _OWPClientConnect(
 
             if(ai->ai_family != AF_INET) continue;
 
-            if( (rc = TryAddr(cntrl,ai,local_addr,interface,server_addr)) == 0)
+            if( (rc = TryAddr(cntrl,ai,local_addr,interface,server_addr,dscp_ctrl)) == 0)
                 return 0;
             if(rc < 0)
                 goto error;
@@ -390,6 +458,7 @@ OWPControlOpenCommon(
         const char      *interface,     /* interface to bind to or null   */
         I2Addr          server_addr,    /* server addr                    */
         uint32_t        mode_req_mask,  /* requested modes                */
+	uint32_t        dscp_ctrl,      /* DSCP Value                     */
         OWPUserID       userid,         /* userid or NULL                 */
         OWPNum64        *uptime_ret,    /* server uptime - ret            */
         OWPErrSeverity  *err_ret,       /* err - return                   */
@@ -439,7 +508,7 @@ OWPControlOpenCommon(
      * Connect to the server.
      * Address policy check happens in here.
      */
-    if(_OWPClientConnect(cntrl,local_addr,interface,server_addr,err_ret) != 0)
+    if(_OWPClientConnect(cntrl,local_addr,interface,server_addr,dscp_ctrl,err_ret) != 0)
         goto error;
 
     if(!cntrl->local_addr){
@@ -691,12 +760,13 @@ OWPControlOpen(
         const char      *local_addr,    /* local addr or null   */
         I2Addr          server_addr,    /* server addr          */
         uint32_t        mode_req_mask,  /* requested modes      */
+	uint32_t        dscp_ctrl,      /* DSCP Value           */
         OWPUserID       userid,         /* userid or NULL       */
         OWPNum64        *uptime_ret,    /* server uptime - ret  */
         OWPErrSeverity  *err_ret        /* err - return         */
         )
 {
-    return OWPControlOpenCommon(ctx,local_addr,NULL,server_addr,mode_req_mask,
+    return OWPControlOpenCommon(ctx,local_addr,NULL,server_addr,mode_req_mask,dscp_ctrl,
                                 userid,uptime_ret,err_ret,False);
 }
 
@@ -718,13 +788,14 @@ OWPControlOpenInterface(
         const char      *interface,     /* interface to bind to or null   */
         I2Addr          server_addr,    /* server addr                    */
         uint32_t        mode_req_mask,  /* requested modes                */
+	uint32_t        dscp_ctrl,      /* DSCP Value                     */
         OWPUserID       userid,         /* userid or NULL                 */
         OWPNum64        *uptime_ret,    /* server uptime - ret            */
         OWPErrSeverity  *err_ret        /* err - return                   */
         )
 {
-    return OWPControlOpenCommon(ctx,local_addr,interface,server_addr,
-                                mode_req_mask,userid,uptime_ret,err_ret,False);
+   return OWPControlOpenCommon(ctx,local_addr,interface,server_addr,mode_req_mask,dscp_ctrl,
+			       userid,uptime_ret,err_ret,False);
 }
 
 /*
@@ -747,12 +818,13 @@ TWPControlOpen(
         const char      *local_addr,    /* local addr or null   */
         I2Addr          server_addr,    /* server addr          */
         uint32_t        mode_req_mask,  /* requested modes      */
+	uint32_t        dscp_ctrl,      /* DSCP Value           */
         OWPUserID       userid,         /* userid or NULL       */
         OWPNum64        *uptime_ret,    /* server uptime - ret  */
         OWPErrSeverity  *err_ret        /* err - return         */
         )
 {
-    return OWPControlOpenCommon(ctx,local_addr,NULL,server_addr,mode_req_mask,
+    return OWPControlOpenCommon(ctx,local_addr,NULL,server_addr,mode_req_mask,dscp_ctrl,
                                 userid,uptime_ret,err_ret,True);
 }
 
@@ -774,13 +846,14 @@ TWPControlOpenInterface(
         const char      *interface,     /* interface to bind to or null */
         I2Addr          server_addr,    /* server addr          */
         uint32_t        mode_req_mask,  /* requested modes      */
+	uint32_t        dscp_ctrl,      /* DSCP Value           */
         OWPUserID       userid,         /* userid or NULL       */
         OWPNum64        *uptime_ret,    /* server uptime - ret  */
         OWPErrSeverity  *err_ret        /* err - return         */
         )
 {
-    return OWPControlOpenCommon(ctx,local_addr,interface,server_addr,
-                                mode_req_mask,userid,uptime_ret,err_ret,True);
+   return OWPControlOpenCommon(ctx,local_addr,interface,server_addr,mode_req_mask,dscp_ctrl,
+			       userid,uptime_ret,err_ret,True);
 }
 
 /*
@@ -807,7 +880,8 @@ _OWPClientRequestTestReadResponse(
         OWPBoolean      server_conf_sender,
         I2Addr          receiver,
         OWPBoolean      server_conf_receiver,
-        OWPBoolean      zero_addr,
+        OWPBoolean      zero_sender_addr,
+	OWPBoolean      zero_receiver_addr,
         OWPTestSpec     *test_spec,
         OWPSID          sid,  /* ret iff cntrl->twoway || conf_receiver else set */
         OWPErrSeverity  *err_ret
@@ -836,7 +910,7 @@ _OWPClientRequestTestReadResponse(
                     I2AddrSAddr(sender,NULL),
                     I2AddrSAddr(receiver,NULL),
                     server_conf_sender, server_conf_receiver,
-                    zero_addr,
+                    zero_sender_addr, zero_receiver_addr,
                     cntrl->twoway ? NULL : sid, test_spec)) < OWPErrOK){
         *err_ret = (OWPErrSeverity)rc;
         return 1;
@@ -853,7 +927,7 @@ _OWPClientRequestTestReadResponse(
 
     /*
      * Figure out if the server will be returning Port field.
-     * If so - set set_addr to the sockaddr that needs to be set.
+     * If so - set set_addr to the sockaddr that needs to be set. 
      */
     if(server_conf_sender && !server_conf_receiver){
         if( !I2AddrSetPort(sender,port_ret)){
@@ -909,7 +983,8 @@ OWPSessionRequest(
         OWPBoolean      server_conf_sender,
         I2Addr          receiver,
         OWPBoolean      server_conf_receiver,
-        OWPBoolean      zero_addr,
+        OWPBoolean      zero_sender_addr,
+	OWPBoolean      zero_receiver_addr,
         OWPTestSpec     *test_spec,
         FILE            *fp,
         OWPSID          sid_ret,
@@ -1125,7 +1200,7 @@ foundaddr:
                         !cntrl->twoway && server_conf_sender,
                         receiver,
                         !cntrl->twoway && server_conf_receiver,
-                        zero_addr,
+                        zero_sender_addr, zero_receiver_addr,
                         test_spec,tsession->sid,err_ret)) != 0){
             goto error;
         }
@@ -1208,7 +1283,7 @@ foundaddr:
             if((rc = _OWPClientRequestTestReadResponse(cntrl,retn_on_intr,
                             sender,server_conf_sender,
                             receiver,server_conf_receiver,
-                            zero_addr,
+                            zero_sender_addr,zero_receiver_addr,
                             test_spec,tsession->sid,err_ret)) != 0){
                 goto error;
             }
