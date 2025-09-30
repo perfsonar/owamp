@@ -19,7 +19,39 @@
  *        Date:         Mon Jun 03 10:57:07 MDT 2002
  *
  *        Description:        
- */
+ * 
+ * 
+ * 
+ * Addons : frederic.roudaut@orange.com
+ *   Trying to provide solutions to improve NAT/PAT Bypass : 
+ *     - twampd :
+ *            - Option [W] : has to be used now to handle Zero Addr in Twamp Request when Session Sender/Reflector 
+ *              are also Control Client/Server. Control-Server had then to switch the Zero Addr with 
+ *              the corresponding Control IP Addr.
+ *              It helps to bypass NAT on both Session Sender/Reflector when they are also Control Client/Server. 
+ *            - Option [x] to handle PAT from the Session-Sender. In that case, Session-Sender Port 
+ *              is not checked. Indeed, even with Zero Address, PAT on Session-Sender was not considered.     
+ *            - Option [Y] : Such option may be used if Control-Client is not aware of NAT on Session-Reflector Side and/or 
+ *              does not use zero address. In that case any Session-Reflector Address is seen as Local Address.
+ * 
+ *               
+ *     -  owampd : 
+ *            - Option [W] has been added as an extension to OWAMP RFC when Session Sender/Receiver are
+ *              also Control Client/Server.  
+ *              As for TWAMP, it permits to handle Zero Addr for Session Sender/Receiver in Owamp Requests
+ *              from Control-Client 
+ *              In that case Control-Server had to switch the Zero Addr with the corresponding Session IP Addr
+ *              according the way test is done.  
+ *              It helps to bypass NAT on both Session Sender/Receiver. 
+ *            - Option [x] to handle PAT from the Session-Remote. In that case, Session-Remote Port 
+ *              is not checked. Indeed, even with Zero Address, PAT on Session-Remote was not considered.     
+ *            - Option [Y] : Such option may be used if Control-Client is not aware of NAT on Session-Local Side and/or 
+ *              does not use zero address. In that case any Session-Local Address is seen as Local Address.
+ *
+ *
+ *
+ */ 
+
 #include <owamp/owamp.h>
 
 #include <stdio.h>
@@ -112,6 +144,20 @@ usage(
             "   -S nodename:port  Srcaddr to bind to\n"
             "   -U user           Run as user \"user\" :-uid also valid\n"
             "   -v                verbose output\n"
+#ifdef TWAMP
+	    // Such option may be used if PAT is done on Session-Sender and Ports are not preserved. It concerns only traffic issued by the Session-Sender.	    
+            "   -x                Do not check Session-Sender port [bypass Port Translation for packets issued by the Session-Sender]\n"
+	    // Such option may be used if Control-Client is not aware of NAT on Session-Reflector Side and/or does not use zero address.	    
+            "   -Y                Any Session-Reflector Address is seen as Local Address [bypass Address Translation on Session-Reflector side]\n"
+	    "   -W                Unspecified Session Addresses are switched with Control Addresses seen [bypass Address Translation on Session Sender/Reflector]\n"
+#else
+	    // Such option may be used if PAT is done on Session-Remote side and Ports are not preserved. It concerns only traffic issued by the Session-Remote.	    
+            "   -x                Do not check Session-Remote test port [bypass Port Translation for packets issued by the Session-Remote]\n"
+	    // Such option may be used if Control-Remote is not aware of NAT on Session-Local Side and/or does not use zero address.	    
+            "   -Y                Any Session-Local Address is seen as Local Address [bypass Address Translation on Session-Local side]\n"
+	    "   -W                Unspecified Session Addresses are switched with Control Addresses seen [bypass Address Translation on Session Sender/Receiver]\n"
+
+#endif
 #ifdef DEBUG
             "   -w                Debugging: busy-wait children after fork to allow attachment\n"
             "   -Z                Debugging: Run in foreground\n"
@@ -538,7 +584,7 @@ ACCEPT:
                 break;
         }
     }
-
+	
     if (opts.maxcontrolsessions &&
         (control_sessions + 1 > opts.maxcontrolsessions)) {
         /*
@@ -1258,9 +1304,9 @@ int main(
     sigset_t            sigs;
 
 #ifdef DEBUG
-    char                *optstring = "a:c:d:e:fG:hP:R:S:U:vwZ";
+    char                *optstring = "a:c:d:e:fG:hP:R:S:U:vwZxYW";
 #else        
-    char                *optstring = "a:c:d:e:fG:hP:R:S:U:vZ";
+    char                *optstring = "a:c:d:e:fG:hP:R:S:U:vZxYW";
 #endif
 
     /*
@@ -1292,6 +1338,9 @@ int main(
     opts.controltimeout = OWP_DFLT_CONTROL_TIMEOUT;
     opts.portspec = NULL;
     opts.maxcontrolsessions = 0;
+    opts.natt_server = False; 
+    opts.patt_remote = False;
+    opts.switchUnspec = False; 
 
     if(!getcwd(opts.cwd,sizeof(opts.cwd))){
         perror("getcwd()");
@@ -1438,6 +1487,15 @@ int main(
                 opts.childwait = (void*)True;
                 break;
 #endif
+	    case 'x':
+	      opts.patt_remote = True;
+	      break;
+	    case 'Y':
+	      opts.natt_server = True;
+	      break;
+	    case 'W':
+	      opts.switchUnspec = True;
+	      break;
             case 'h':
             case '?':
             default:
@@ -1495,7 +1553,35 @@ int main(
                 "OWPContextConfigSetV(): Can't set OWPEndDelay?!");
         exit(1);
     }
-
+   
+    /*
+     * Setup PATT Remote
+     */
+    if(opts.patt_remote && !OWPContextConfigSetV(ctx,OWPPATTRemote,
+						(void*)True)){
+        I2ErrLog(errhand,
+                "OWPContextConfigSetV(): Can't set OWPPATTRemote?!");
+        exit(1);
+    }
+    /*
+     * Setup NAT Server
+     */
+    if(opts.natt_server && !OWPContextConfigSetV(ctx,OWPNATTServer,
+						(void*)True)){
+        I2ErrLog(errhand,
+                "OWPContextConfigSetV(): Can't set OWPNATTServer?!");
+        exit(1);
+    }
+    /*
+     * Setup switchUnspec
+     */
+    if(opts.switchUnspec && !OWPContextConfigSetV(ctx,OWPSwitchUnspec,
+						(void*)True)){
+        I2ErrLog(errhand,
+                "OWPContextConfigSetV(): Can't set OWPSwitchUnspec?!");
+        exit(1);
+    }
+    
     if(!opts.vardir)
         opts.vardir = opts.cwd;
     if(!opts.confdir)

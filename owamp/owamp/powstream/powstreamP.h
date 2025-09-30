@@ -96,6 +96,10 @@ typedef        struct {
         I2Boolean   setEndDelay;
         double      endDelay;           /* -E */
 
+        I2Boolean       zero_sender_addr;   /* -X */
+        I2Boolean       zero_receiver_addr; /* -Y */
+        I2Boolean       pattRemote;         /* -y */
+        uint32_t        dscp_ctrl;          /* -m */
     } opt;
 
     char            *remote_test;
