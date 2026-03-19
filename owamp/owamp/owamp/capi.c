@@ -98,6 +98,7 @@ _OWPClientBind(
     else {
         struct addrinfo hints;
         struct addrinfo *result;
+        int gai_err;
 
         memset(&hints, 0, sizeof(struct addrinfo));
         hints.ai_family = remote_addrinfo->ai_family;
@@ -107,10 +108,31 @@ _OWPClientBind(
         hints.ai_canonname = NULL;
         hints.ai_addr = NULL;
         hints.ai_next = NULL;
- 
-        if (getaddrinfo(local_addr, NULL, &hints, &result) != 0) {
-            OWPError(cntrl->ctx,OWPErrFATAL,errno,
-                    "getaddrinfo(): %s: %M", local_addr);
+        gai_err = getaddrinfo(local_addr, NULL, &hints, &result);
+            if (gai_err != 0 || !result) {
+            const char *fam_str =
+                    (hints.ai_family == AF_INET)  ? "AF_INET"  :
+                    (hints.ai_family == AF_INET6) ? "AF_INET6" :
+                    (hints.ai_family == AF_UNSPEC)? "AF_UNSPEC": "UNKNOWN";
+
+            const char *sock_str =
+                    (hints.ai_socktype == SOCK_STREAM) ? "SOCK_STREAM" :
+                    (hints.ai_socktype == SOCK_DGRAM)  ? "SOCK_DGRAM"  :
+                    (hints.ai_socktype == SOCK_RAW)    ? "SOCK_RAW"    : "UNKNOWN";
+
+            OWPError(cntrl->ctx, OWPErrFATAL, 0,
+                    "getaddrinfo() for host %s failed: %s\n"
+                    "  ai_family=%s (%d)\n"
+                    "  ai_socktype=%s (%d)\n"
+                    "  ai_protocol=%d\n"
+                    "  ai_flags=0x%x",
+                    local_addr ? local_addr : "(null)",
+                    gai_strerror(gai_err),
+                    fam_str, hints.ai_family,
+                    sock_str, hints.ai_socktype,
+                    hints.ai_protocol,
+                    hints.ai_flags);
+
             return False;
         }
 
