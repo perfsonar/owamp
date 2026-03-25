@@ -1,0 +1,43 @@
+name: owamp-workflow
+ 
+on:
+  workflow_dispatch:
+    inputs: 
+      BUILD_VARS_JSON:
+        description: 'Build var json file'
+        required: true   
+ 
+jobs:
+  
+  prepare-build:
+    uses: perfsonar/project/.github/workflows/prepare-build.yml@master
+    with:
+      BUILD_VARS_JSON: ${{ inputs.BUILD_VARS_JSON }}
+
+  oneshot-scripted-build:
+    needs: prepare-build
+    uses: perfsonar/project/.github/workflows/oneshot-scripted-build.yml@master
+    secrets:
+      GIT_ACTIONS: ${{ secrets.GIT_ACTIONS }}
+    with:
+      BUILD_OS: ${{ needs.prepare-build.outputs.BUILD_OS }}
+      BUILD_TYPE: ${{ needs.prepare-build.outputs.BUILD_TYPE }}
+      BUILD_BRANCH: ${{ needs.prepare-build.outputs.BUILD_BRANCH }}
+      BUILD_VARS_JSON: ${{ needs.prepare-build.outputs.BUILD_VARS_JSON }}
+
+  post-build:
+    needs: 
+      - prepare-build
+      - oneshot-scripted-build
+    uses: perfsonar/project/.github/workflows/post-build.yml@master
+    secrets:
+      GIT_ACTIONS: ${{ secrets.GIT_ACTIONS }}
+    with:
+      BUILD_OS: ${{ needs.prepare-build.outputs.BUILD_OS }}
+      BUILD_TYPE: ${{ needs.prepare-build.outputs.BUILD_TYPE }}
+      BUILD_BRANCH: ${{ needs.prepare-build.outputs.BUILD_BRANCH }}
+      BUILD_VARS_JSON: ${{ needs.prepare-build.outputs.BUILD_VARS_JSON }}
+ 
+          
+         
+ 
