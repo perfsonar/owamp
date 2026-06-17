@@ -41,6 +41,7 @@
 #include <sys/socket.h>
 #include <sys/param.h>
 #include <netinet/in.h>
+#include <pthread.h>
 
 #ifndef MAXHOSTNAMELEN
 #define MAXHOSTNAMELEN        64
@@ -290,6 +291,11 @@ struct _OWPSkipRec{
     _OWPSkip    next;
 };
 
+
+typedef struct signals_s {
+    sigset_t            sigs,osigs;
+} signals_t;
+
 /*
  * This type holds all the information needed for an endpoint to be
  * managed.
@@ -349,6 +355,22 @@ typedef struct OWPEndpointRec{
     _OWPSkip            free_skiplist;
     _OWPSkip            head_skip;
     _OWPSkip            tail_skip;
+
+    int epollfd;
+    int timerfd;
+    int eventfd;
+    struct signals_s signals;
+    volatile sig_atomic_t state;
+    pthread_t thread;
+    pthread_cond_t cond;
+    pthread_mutex_t mutex;
+    int id;
+    pid_t tid;
+
+    // NOTE: NOT threadsafe
+    volatile sig_atomic_t _owp_usr1;
+    volatile sig_atomic_t _owp_usr2;
+    volatile sig_atomic_t _owp_int;
 
 } OWPEndpointRec, *OWPEndpoint;
 

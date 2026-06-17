@@ -1359,10 +1359,16 @@ OWPStartSessions(
     }
 
     /*
-     * Small optimization... - start local receivers while waiting for
-     * the server to respond. (should not start senders - don't want
-     * to send packets unless control-ack comes back positive.)
+     * Read the server response.
      */
+    if(((rc = _OWPReadStartAck(cntrl,retn_on_intr,&acceptval)) < OWPErrOK) ||
+            (acceptval != OWP_CNTRL_ACCEPT)){
+        return _OWPFailControlSession(cntrl,OWPErrFATAL);
+    }
+
+    //
+    // Start Local receivers
+    //
     for(tsession = cntrl->tests;tsession;tsession = tsession->next){
         if(tsession->endpoint && !tsession->endpoint->send){
             if(!_OWPEndpointStart(tsession->endpoint,&err)){
@@ -1370,14 +1376,6 @@ OWPStartSessions(
             }
             err2 = MIN(err,err2);
         }
-    }
-
-    /*
-     * Read the server response.
-     */
-    if(((rc = _OWPReadStartAck(cntrl,retn_on_intr,&acceptval)) < OWPErrOK) ||
-            (acceptval != OWP_CNTRL_ACCEPT)){
-        return _OWPFailControlSession(cntrl,OWPErrFATAL);
     }
 
     /*
@@ -1466,7 +1464,7 @@ OWPFetchSession(
     OWPAcceptType       acceptval;
     uint8_t             finished;
     uint32_t            n;
-    OWPTestSession      tsession = NULL;
+    OWPTestSession      tsession;
     OWPSessionHeaderRec hdr;
     off_t               toff;
     char                buf[_OWP_FETCH_BUFFSIZE];

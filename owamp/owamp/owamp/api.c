@@ -1876,6 +1876,7 @@ done:
     return err2;
 }
 
+// TODO NOTE: might have to change this for pthreads
 int
 OWPStopSessionsWait(
         OWPControl      cntrl,
@@ -1972,8 +1973,7 @@ AGAIN:
 
     if(rc < 0){
         if(errno != EINTR){
-            OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                    "select():%M");
+            OWPError(cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN, "poll():%M");
             *err_ret = OWPErrFATAL;
             return -1;
         }
