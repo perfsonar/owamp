@@ -129,6 +129,11 @@ applications that use the owamp library.
 
 
 %build
+%if 0%{?rhel} == 8
+# Add the -pthread flag to both compiler and linker variables
+export CFLAGS="%{optflags} -pthread"
+export LDFLAGS="%{build_ldflags} -pthread"
+%endif
 ./bootstrap
 %configure --with-I2util=no
 make
