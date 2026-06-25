@@ -5,7 +5,7 @@ on:
     inputs: 
       BUILD_VARS_JSON:
         description: 'Build var json file'
-        required: true   
+        required: true
  
 jobs:
   
