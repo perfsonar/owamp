@@ -1587,7 +1587,7 @@ RETRY:
             }
         }
 
-AGAIN:
+AGAIN: ;
         int sig = check_signals(ep, 0);
         if (sig < 0){
             print_detailed("ERROR");
