@@ -1587,131 +1587,130 @@ RETRY:
             }
         }
 
-AGAIN: {
-            int sig = check_signals(ep, 0);
+AGAIN: ;
+        int sig = check_signals(ep, 0);
+        if (sig < 0){
+            print_detailed("ERROR");
+            debug_assert(0);
+            goto finish_sender;
+        }
+        if(ep->_owp_int || ep->_owp_usr2){
+            goto finish_sender;
+        }
+
+        if(!_OWPGetTimespec(ep->cntrl->ctx,&currtime,&esterror,&sync)){
+            OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                    "Problem retrieving time");
+            return OWP_CNTRL_FAILURE;
+        }
+
+        //
+        // If current time is greater than next send time...
+        ///
+        if(timespeccmp(&currtime,&nexttime,>)){
+
+            //
+            // If current time is more than "timeout" past next
+            // send time, then skip actually sending.
+            ///
+            latetime = timeout;
+            timespecadd(&latetime,&nexttime);
+            if(timespeccmp(&currtime,&latetime,>)){
+                skip(ep,i);
+                goto SKIP_SEND;
+            }
+
+            // send-packet
+
+            (void)OWPTimespecToTimestamp(&owptstamp,&currtime,
+                                         &esterror,&lasterror);
+            lasterror = esterror;
+            owptstamp.sync = sync;
+            _OWPEncodeTimeStamp((uint8_t *)tstamp,&owptstamp);
+            if(!_OWPEncodeTimeStampErrEstimate((uint8_t *)tstamperr,
+                        &owptstamp)){
+                OWPError(ep->cntrl->ctx,OWPErrFATAL,
+                        OWPErrUNKNOWN,
+                        "Invalid Timestamp Error");
+                owptstamp.multiplier = 0xFF;
+                owptstamp.scale = 0x3F;
+                owptstamp.sync = 0;
+                (void)_OWPEncodeTimeStampErrEstimate((uint8_t *)tstamperr,
+                                                     &owptstamp);
+            }
+
+            //
+            // For ENCRYPTED mode, we have to encrypt the second
+            // block after fetching the timestamp. (CBC mode)
+            ///
+            if(ep->cntrl->mode & OWP_MODE_ENCRYPTED){
+                //
+                // Append second block to HMAC (timestamp block)
+                ///
+                I2HMACSha1Append(ep->hmac_ctx,(uint8_t *)&clr_buffer[16],16);
+
+                //
+                // Encrypt second block
+                ///
+                r = blockEncrypt(iv,&ep->aeskey,(uint8_t *)&clr_buffer[16],16*8,
+                        (uint8_t *)&ep->payload[16]);
+                if(r != (16*8)){
+                    OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                            "run_sender: Invalid CBC encryption of seq (#%ul)",
+                            i);
+                    //exit(OWP_CNTRL_FAILURE);
+                    return OWP_CNTRL_FAILURE;
+                }
+            }
+
+            if(hmac){
+                uint8_t hmacd[I2HMAC_SHA1_DIGEST_SIZE];
+
+                memset(hmacd,0,sizeof(hmacd));
+                I2HMACSha1Finish(ep->hmac_ctx,hmacd);
+                memcpy(hmac,hmacd,MIN(16,I2HMAC_SHA1_DIGEST_SIZE));
+            }
+
+            sig = check_signals(ep, 0);
             if (sig < 0){
                 print_detailed("ERROR");
                 debug_assert(0);
                 goto finish_sender;
             }
-            if(ep->_owp_int || ep->_owp_usr2){
+            if( ep->_owp_usr2 || ep->_owp_int){
+                print_detailed("owp_int || owp_usr2 jump to finish_sender");
                 goto finish_sender;
             }
 
-            if(!_OWPGetTimespec(ep->cntrl->ctx,&currtime,&esterror,&sync)){
-                OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                        "Problem retrieving time");
-                return OWP_CNTRL_FAILURE;
-            }
-
-            //
-            // If current time is greater than next send time...
-            ///
-            if(timespeccmp(&currtime,&nexttime,>)){
-
-                //
-                // If current time is more than "timeout" past next
-                // send time, then skip actually sending.
-                ///
-                latetime = timeout;
-                timespecadd(&latetime,&nexttime);
-                if(timespeccmp(&currtime,&latetime,>)){
-                    skip(ep,i);
-                    goto SKIP_SEND;
-                }
-
-                // send-packet
-
-                (void)OWPTimespecToTimestamp(&owptstamp,&currtime,
-                        &esterror,&lasterror);
-                lasterror = esterror;
-                owptstamp.sync = sync;
-                _OWPEncodeTimeStamp((uint8_t *)tstamp,&owptstamp);
-                if(!_OWPEncodeTimeStampErrEstimate((uint8_t *)tstamperr,
-                            &owptstamp)){
-                    OWPError(ep->cntrl->ctx,OWPErrFATAL,
-                            OWPErrUNKNOWN,
-                            "Invalid Timestamp Error");
-                    owptstamp.multiplier = 0xFF;
-                    owptstamp.scale = 0x3F;
-                    owptstamp.sync = 0;
-                    (void)_OWPEncodeTimeStampErrEstimate((uint8_t *)tstamperr,
-                            &owptstamp);
-                }
-
-                //
-                // For ENCRYPTED mode, we have to encrypt the second
-                // block after fetching the timestamp. (CBC mode)
-                ///
-                if(ep->cntrl->mode & OWP_MODE_ENCRYPTED){
-                    //
-                    // Append second block to HMAC (timestamp block)
-                    ///
-                    I2HMACSha1Append(ep->hmac_ctx,(uint8_t *)&clr_buffer[16],16);
-
-                    //
-                    // Encrypt second block
-                    ///
-                    r = blockEncrypt(iv,&ep->aeskey,(uint8_t *)&clr_buffer[16],16*8,
-                            (uint8_t *)&ep->payload[16]);
-                    if(r != (16*8)){
+            if( (sent = sendto(ep->sockfd,ep->payload,
+                            ep->len_payload,0,saddr,saddrlen)) < 0){
+                switch(errno){
+                    // retry errors
+                    case ENOBUFS:
+                        goto RETRY;
+                        break;
+                        // fatal errors
+                    case EBADF:
+                    case EACCES:
+                    case ENOTSOCK:
+                    case EFAULT:
+                    case EAGAIN:
+                        print_detailed("ERROR");
                         OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                                "run_sender: Invalid CBC encryption of seq (#%ul)",
-                                i);
-                        //exit(OWP_CNTRL_FAILURE);
+                                "Unable to send([%s]:%s:(#%d): %M",
+                                nodename,nodeserv,i);
                         return OWP_CNTRL_FAILURE;
-                    }
+                        break;
+                        // ignore everything else
+                    default:
+                        break;
                 }
 
-                if(hmac){
-                    uint8_t hmacd[I2HMAC_SHA1_DIGEST_SIZE];
-
-                    memset(hmacd,0,sizeof(hmacd));
-                    I2HMACSha1Finish(ep->hmac_ctx,hmacd);
-                    memcpy(hmac,hmacd,MIN(16,I2HMAC_SHA1_DIGEST_SIZE));
-                }
-
-                sig = check_signals(ep, 0);
-                if (sig < 0){
-                    print_detailed("ERROR");
-                    debug_assert(0);
-                    goto finish_sender;
-                }
-                if( ep->_owp_usr2 || ep->_owp_int){
-                    print_detailed("owp_int || owp_usr2 jump to finish_sender");
-                    goto finish_sender;
-                }
-
-                if( (sent = sendto(ep->sockfd,ep->payload,
-                                ep->len_payload,0,saddr,saddrlen)) < 0){
-                    switch(errno){
-                        // retry errors
-                        case ENOBUFS:
-                            goto RETRY;
-                            break;
-                            // fatal errors
-                        case EBADF:
-                        case EACCES:
-                        case ENOTSOCK:
-                        case EFAULT:
-                        case EAGAIN:
-                            print_detailed("ERROR");
-                            OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                                    "Unable to send([%s]:%s:(#%d): %M",
-                                    nodename,nodeserv,i);
-                            return OWP_CNTRL_FAILURE;
-                            break;
-                            // ignore everything else
-                        default:
-                            break;
-                    }
-
-                    // but do note it as INFO for debugging
-                    print_detailed("ERROR");
-                    OWPError(ep->cntrl->ctx,OWPErrDEBUG,OWPErrUNKNOWN,
-                            "Unable to send([%s]:%s:(#%d): %M",
-                            nodename,nodeserv,i);
-                }
+                // but do note it as INFO for debugging
+                print_detailed("ERROR");
+                OWPError(ep->cntrl->ctx,OWPErrDEBUG,OWPErrUNKNOWN,
+                        "Unable to send([%s]:%s:(#%d): %M",
+                        nodename,nodeserv,i);
             }
 
 SKIP_SEND:
@@ -1769,9 +1768,9 @@ SKIP_SEND:
         sleeptime = latetime;
         timespecsub(&sleeptime,&currtime);
 #if NOT
-        OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
-                "run_sender: end nanosleep(%lu.%lu,nil)",
-                sleeptime.tv_sec,sleeptime.tv_nsec);
+OWPError(ep->cntrl->ctx,OWPErrFATAL,OWPErrUNKNOWN,
+                    "run_sender: end nanosleep(%lu.%lu,nil)",
+                    sleeptime.tv_sec,sleeptime.tv_nsec);
 #endif
         if(nanosleep(&sleeptime,NULL) == 0)
             break;
