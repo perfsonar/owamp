@@ -309,6 +309,8 @@ typedef struct OWPEndpointRec{
 #endif
 
     OWPAcceptType       acceptval;
+    // TODO testing
+    OWPAcceptType       result;
     pid_t               child;
     int                 wopts;
     OWPBoolean          send;
