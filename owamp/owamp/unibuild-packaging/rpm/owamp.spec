@@ -125,7 +125,11 @@ applications that use the owamp library.
 
 %prep
 %setup -q -n "%{name}-%{version}"
+%if 0%{?el8}%{?ol8}
 %patch0 -p1
+%else
+%patch 0 -p1
+%endif
 
 
 %build
