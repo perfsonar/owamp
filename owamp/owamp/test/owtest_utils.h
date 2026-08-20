@@ -7,7 +7,13 @@
  *        Description:  declarations for shared test methods/structs
  */
 
-#define TMPNAME_FMT "owtest.XXXXXX"
+#ifdef P_tmpdir
+#define TMPNAME_FMT (P_tmpdir "/owtest.XXXXXX")
+#else
+#define TMPNAME_FMT "/tmp/owtest.XXXXXX"
+#endif
+
+
 
 FILE *tmpFile(void);
 FILE *tmpSessionDataFile(const char *hex);
