@@ -57,7 +57,7 @@
 //
 //    FEEDBACK WELCOME!
 //
-//#define DEBUG
+#define DEBUG
 
 
 //
@@ -73,8 +73,8 @@
 #endif
 #endif
 
-#ifdef DEBUG
 #include <assert.h>
+#ifdef DEBUG
 #define print_debug(fmt, ...) printf("DEBUG: %s %s %i: %i: " fmt "\n", __FILE__, __func__, __LINE__, getpid(),  ##__VA_ARGS__)
 #define print_detailed(fmt, ...) \
     printf("DEBUG: %s %s %i: ep %i tid %i thread %lu sock %i sigfd %i efd %i tfd %i df %p state %i start %i stop %i term %i accept %i: " fmt "\n", __FILE__, __func__, __LINE__, \
@@ -2046,7 +2046,7 @@ static int is_data_available(OWPEndpoint ep, int timeout_in_ms){
     if (nfds < 0){
         pperror("epoll_wait");
         print_detailed("ERROR");
-        debug_assert(0);
+        //debug_assert(0);
         return -1;
     }else if (nfds ==0){
         // NOTE: Timeout available, but that means valid fd 0 can't be used.
@@ -5070,6 +5070,7 @@ AGAIN:
                     ep->acceptval = (OWPAcceptType)childstatus;
                 } else {
                     pperror("pthread_tryjoin_np");
+                    debug_assert(-1);
                 }
             }
         } else {
