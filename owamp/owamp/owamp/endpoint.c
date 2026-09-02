@@ -4706,6 +4706,7 @@ static void * child_thread(void * param){
     // TODO NOTE: close fd's here?
 
     pthread_exit((void*)(ep->result));
+    // NOTE: what are the issues with the close(cntrl->sockfd)?
 }
 
 
@@ -4842,6 +4843,19 @@ OWPBoolean _run(OWPEndpoint ep){
         print_detailed("ERROR");
         pperror("pthread_create");
     }
+
+    // TODO: choose not to detach so we can check if the thread has
+    // ended with tryjoin
+
+    //if((OWPBoolean)OWPContextConfigGetV((ep)->cntrl->ctx,OWPDetachProcesses))
+    //{
+    //    print_detailed("DETACH THREAD");
+    //    int ret = pthread_detach(ep->thread);
+    //    if (ret != 0){
+    //        perror("pthread_detach");
+    //        debug_assert(0);
+    //    }
+    //}
 
     // Reset main thread signals to allow SIGINT immediately, regardless of
     // return value, then check return value
@@ -5060,6 +5074,7 @@ AGAIN:
         if (ep->wopts == WNOHANG){
             // TODO: NOTE This is mostly for a hang in twamp, there's probably a better solution
             print_detailed("WNOHANG");
+            //if((OWPBoolean)OWPContextConfigGetV((ep)->cntrl->ctx,OWPDetachProcesses))
             if (ep->thread) {
                 ret = pthread_tryjoin_np(ep->thread, (void *)&childstatus);
                 //ret = pthread_tryjoin_np(ep->thread, &childstatus);
@@ -5070,8 +5085,12 @@ AGAIN:
                     ep->acceptval = (OWPAcceptType)childstatus;
                 } else {
                     pperror("pthread_tryjoin_np");
+                    //ep->acceptval =
                     debug_assert(-1);
                 }
+                // TODO???
+                print_detailed("AGAIN???");
+                goto AGAIN;
             }
         } else {
             print_detailed("HANGING");
