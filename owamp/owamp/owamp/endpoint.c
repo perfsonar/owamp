@@ -57,7 +57,7 @@
 //
 //    FEEDBACK WELCOME!
 //
-#define DEBUG
+//#define DEBUG
 
 
 //
@@ -2046,7 +2046,6 @@ static int is_data_available(OWPEndpoint ep, int timeout_in_ms){
     if (nfds < 0){
         pperror("epoll_wait");
         print_detailed("ERROR");
-        //debug_assert(0);
         return -1;
     }else if (nfds ==0){
         // NOTE: Timeout available, but that means valid fd 0 can't be used.
@@ -4844,19 +4843,6 @@ OWPBoolean _run(OWPEndpoint ep){
         pperror("pthread_create");
     }
 
-    // TODO: choose not to detach so we can check if the thread has
-    // ended with tryjoin
-
-    //if((OWPBoolean)OWPContextConfigGetV((ep)->cntrl->ctx,OWPDetachProcesses))
-    //{
-    //    print_detailed("DETACH THREAD");
-    //    int ret = pthread_detach(ep->thread);
-    //    if (ret != 0){
-    //        perror("pthread_detach");
-    //        debug_assert(0);
-    //    }
-    //}
-
     // Reset main thread signals to allow SIGINT immediately, regardless of
     // return value, then check return value
     if(!_reset_pthread_sigmask(ep)){
@@ -4889,8 +4875,6 @@ _prepare_to_run(
         OWPErrSeverity  *err_ret
         )
 {
-    //OWPContext          ctx = OWPGetContext(cntrl);
-    //OWPEndpoint         *end_data = &tsession->endpoint;
     OWPEndpoint         ep = tsession->endpoint;
 
     //
@@ -5059,7 +5043,6 @@ _OWPEndpointStatus(
         )
 {
     print_detailed("_OWPEndpointStatus");
-    //pid_t   p;
     int ret = 0;
     int     childstatus;
 
@@ -5074,10 +5057,8 @@ AGAIN:
         if (ep->wopts == WNOHANG){
             // TODO: NOTE This is mostly for a hang in twamp, there's probably a better solution
             print_detailed("WNOHANG");
-            //if((OWPBoolean)OWPContextConfigGetV((ep)->cntrl->ctx,OWPDetachProcesses))
             if (ep->thread) {
                 ret = pthread_tryjoin_np(ep->thread, (void *)&childstatus);
-                //ret = pthread_tryjoin_np(ep->thread, &childstatus);
                 if (ret == 0){
                     print_detailed("pthread_tryjoin_np returned %i childstatus %i", ret, childstatus);
 
@@ -5085,20 +5066,24 @@ AGAIN:
                     ep->acceptval = (OWPAcceptType)childstatus;
                 } else {
                     pperror("pthread_tryjoin_np");
-                    //ep->acceptval =
-                    debug_assert(-1);
+                    if (ret == EBUSY){
+                        sleep(1);
+                    } else if (ret == EINTR) {
+                        debug_assert(-1);
+                    } else if (ret == EPERM){
+                        debug_assert(-1);
+                    } else if(ret == EINVAL){
+                        debug_assert(-1);
+                    }
+                    print_detailed("AGAIN???");
+                    goto AGAIN;
                 }
-                // TODO???
-                print_detailed("AGAIN???");
-                goto AGAIN;
             }
         } else {
             print_detailed("HANGING");
             if (ep->thread){
                     print_detailed("Trying to join");
                     ret = pthread_join(ep->thread, (void*)&childstatus);
-                    // TODO
-                    //ret = pthread_join(ep->thread, &childstatus);
                     if (ret != 0){
                         pperror("pthread_join");
                         print_detailed("ret is %i", ret);
