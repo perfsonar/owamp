@@ -73,8 +73,8 @@
 #endif
 #endif
 
-#ifdef DEBUG
 #include <assert.h>
+#ifdef DEBUG
 #define print_debug(fmt, ...) printf("DEBUG: %s %s %i: %i: " fmt "\n", __FILE__, __func__, __LINE__, getpid(),  ##__VA_ARGS__)
 #define print_detailed(fmt, ...) \
     printf("DEBUG: %s %s %i: ep %i tid %i thread %lu sock %i sigfd %i efd %i tfd %i df %p state %i start %i stop %i term %i accept %i: " fmt "\n", __FILE__, __func__, __LINE__, \
@@ -165,6 +165,7 @@ EndpointAlloc(
     ep->sockfd = -1;
     ep->skiprecfd = -1;
     ep->acceptval = OWP_CNTRL_INVALID;
+    ep->result = OWP_CNTRL_INVALID;
     ep->wopts = WNOHANG;
 
     ep->epollfd = -1;
@@ -2045,7 +2046,6 @@ static int is_data_available(OWPEndpoint ep, int timeout_in_ms){
     if (nfds < 0){
         pperror("epoll_wait");
         print_detailed("ERROR");
-        debug_assert(0);
         return -1;
     }else if (nfds ==0){
         // NOTE: Timeout available, but that means valid fd 0 can't be used.
@@ -2059,9 +2059,13 @@ static int is_data_available(OWPEndpoint ep, int timeout_in_ms){
     if (ev.data.fd == ep->timerfd){
         print_detailed("TIMER WENT OFF");
         ssize_t s;
-        uint64_t exp, tot_exp;
+        uint64_t exp;
         s = read(ep->timerfd, &exp, sizeof(uint64_t));
         print_detailed("timer read %li", s);
+        if (s < 0){
+            perror("error reading timer");
+            return -1;
+        }
         return ep->timerfd;
     }else if (ev.data.fd == ep->sockfd){
         print_detailed("got sockfd");
@@ -2077,6 +2081,10 @@ static int is_data_available(OWPEndpoint ep, int timeout_in_ms){
             print_detailed("got eventfd");
             int ret = read_eventfd(ep->eventfd);
             print_detailed("readeventfd got %i", ret);
+            if (ret < 0){
+                perror("read_eventfd");
+                return -1;
+            }
             return ep->eventfd;
         } else {
             print_detailed("got eventfd HUP or ERR");
@@ -4201,6 +4209,8 @@ RECEIVE:
             print_detailed("calling is_data_available");
             // TODO probably shouldn't set timeout?
             int fd  = is_data_available(ep, -1);
+            // TODO resp_len should be 0 or -1 by default?
+            resp_len = -1;
             print_detailed("is_data_available returned %i", fd);
             if (fd == ep->sockfd)
             {
@@ -4636,9 +4646,12 @@ static void * child_thread(void * param){
         print_detailed("got signal %i", signal);
         ep->state = TERMINATED;
         debug_assert(0);
+        ep->result = OWP_CNTRL_REJECT;
+
         // cancel the session
         unlock_endpoint(ep);
-        pthread_exit( (void*)OWP_CNTRL_REJECT);
+        // TODO
+        pthread_exit( (void*) ep->result);
     }
 
     lock_endpoint(ep);
@@ -4672,23 +4685,27 @@ static void * child_thread(void * param){
         }
     }
 
-    if (ep->_owp_usr2 == 1);
+    if (ep->_owp_usr2 == 1)
     {
         ep->state = STOPPED;
     }
 
-    if (ep->_owp_int == 1);
+    if (ep->_owp_int == 1)
     {
         ep->state = TERMINATED;
     }
 
     print_detailed("epid %i thread %lu ENDING ret %i state %i", ep->id, ep->thread, ret, ep->state);
 
+    // TODO NOTE: which return value?
+    ep->result = (OWPAcceptType) ret;
+
     unlock_endpoint(ep);
 
     // TODO NOTE: close fd's here?
 
-    pthread_exit((void*)(ret));
+    pthread_exit((void*)(ep->result));
+    // NOTE: what are the issues with the close(cntrl->sockfd)?
 }
 
 
@@ -4858,8 +4875,6 @@ _prepare_to_run(
         OWPErrSeverity  *err_ret
         )
 {
-    OWPContext          ctx = OWPGetContext(cntrl);
-    OWPEndpoint         *end_data = &tsession->endpoint;
     OWPEndpoint         ep = tsession->endpoint;
 
     //
@@ -4968,7 +4983,7 @@ _OWPEndpointInitHook(
     print_debug();
 
     OWPContext          ctx = OWPGetContext(cntrl);
-    OWPEndpoint         *end_data = &tsession->endpoint;
+    //OWPEndpoint         *end_data = &tsession->endpoint;
     OWPEndpoint         ep = tsession->endpoint;
 
     *err_ret = OWPErrWARNING;
@@ -5028,7 +5043,6 @@ _OWPEndpointStatus(
         )
 {
     print_detailed("_OWPEndpointStatus");
-    pid_t   p;
     int ret = 0;
     int     childstatus;
 
@@ -5052,6 +5066,17 @@ AGAIN:
                     ep->acceptval = (OWPAcceptType)childstatus;
                 } else {
                     pperror("pthread_tryjoin_np");
+                    if (ret == EBUSY){
+                        sleep(1);
+                    } else if (ret == EINTR) {
+                        debug_assert(-1);
+                    } else if (ret == EPERM){
+                        debug_assert(-1);
+                    } else if(ret == EINVAL){
+                        debug_assert(-1);
+                    }
+                    print_detailed("AGAIN???");
+                    goto AGAIN;
                 }
             }
         } else {
