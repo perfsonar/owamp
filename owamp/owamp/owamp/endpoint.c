@@ -77,8 +77,8 @@
 #ifdef DEBUG
 #define print_debug(fmt, ...) printf("DEBUG: %s %s %i: %i: " fmt "\n", __FILE__, __func__, __LINE__, getpid(),  ##__VA_ARGS__)
 #define print_detailed(fmt, ...) \
-    printf("DEBUG: %s %s %i: ep %i tid %i thread %lu sock %i sigfd %i efd %i tfd %i df %p state %i start %i stop %i term %i accept %i: " fmt "\n", __FILE__, __func__, __LINE__, \
-    ep->id, ep->tid, ep->thread, ep->sockfd, ep->eventfd, ep->epollfd, ep->timerfd, ep->datafile, ep->state, ep->_owp_usr1, ep->_owp_usr2, ep->_owp_int, ep->acceptval, ##__VA_ARGS__)
+    printf("DEBUG: %s %s %i: ep %i thread %lu sock %i sigfd %i efd %i tfd %i df %p state %i start %i stop %i term %i accept %i: " fmt "\n", __FILE__, __func__, __LINE__, \
+    ep->id, ep->thread, ep->sockfd, ep->eventfd, ep->epollfd, ep->timerfd, ep->datafile, ep->state, ep->_owp_usr1, ep->_owp_usr2, ep->_owp_int, ep->acceptval, ##__VA_ARGS__)
 #define pperror(fmt, ...) perror(fmt)
 #define debug_assert(fmt) assert(fmt)
 
@@ -103,6 +103,12 @@ enum state {
     STARTED = 4,
     STOPPED = 5,
     TERMINATED = 6
+};
+
+enum is_detached {
+    UNKNOWN = 0, // NOTE: to prevent 0
+    NOT_DETACHED = 1,
+    DETACHED = 2
 };
 
 static void lock_endpoint(OWPEndpoint ep){
@@ -164,9 +170,17 @@ EndpointAlloc(
     ep->cntrl = cntrl;
     ep->sockfd = -1;
     ep->skiprecfd = -1;
+
+    // thread and acceptval are parent
+    // tid and result are thread
     ep->acceptval = OWP_CNTRL_INVALID;
     ep->result = OWP_CNTRL_INVALID;
     ep->wopts = WNOHANG;
+
+    ep->is_detached = DETACHED; // UNKNOWN 0
+
+    ep->thread = 0;
+    //ep->tid = 0;
 
     ep->epollfd = -1;
     ep->timerfd = -1;
@@ -4695,7 +4709,7 @@ static void * child_thread(void * param){
         ep->state = TERMINATED;
     }
 
-    print_detailed("epid %i thread %lu ENDING ret %i state %i", ep->id, ep->thread, ret, ep->state);
+    //print_detailed("epid %i thread %lu ENDING ret %i state %i", ep->id, ep->thread, ret, ep->state);
 
     // TODO NOTE: which return value?
     ep->result = (OWPAcceptType) ret;
@@ -4812,7 +4826,7 @@ OWPBoolean _run(OWPEndpoint ep){
     print_detailed("_run");
 
     // There should never be a thread
-    debug_assert(!ep->thread);
+    //debug_assert(!ep->thread);
 
     print_detailed("initializing epoll");
 
@@ -4837,11 +4851,21 @@ OWPBoolean _run(OWPEndpoint ep){
         return False;
     }
 
+    if(!(OWPBoolean)OWPContextConfigGetV(ep->cntrl->ctx,OWPDetachProcesses))
+    {
+        print_detailed("NOT DETACHED");
+        ep->is_detached = NOT_DETACHED;
+    } else {
+        print_detailed("DETACHED");
+        ep->is_detached = DETACHED;
+    }
+
     int ret = pthread_create(&ep->thread, NULL, &child_thread, (void*)ep);
     if (ret != 0){
         print_detailed("ERROR");
         pperror("pthread_create");
     }
+
 
     // Reset main thread signals to allow SIGINT immediately, regardless of
     // return value, then check return value
@@ -5045,12 +5069,20 @@ _OWPEndpointStatus(
     print_detailed("_OWPEndpointStatus");
     int ret = 0;
     int     childstatus;
+    //if((OWPBoolean)OWPContextConfigGetV(*ctx,OWPDetachProcesses)
+    //if(!OWPContextConfigSetV(ctx,OWPDetachProcesses,(void*)True)){
+    ////if((OWPBoolean)OWPContextConfigGetV(ep->cntrl->ctx,OWPDetachProcesses)
+
 
     *err_ret = OWPErrOK;
 
     print_detailed("epid %i status wopts %i", ep->id, ep->wopts);
     print_detailed("acceptval %i", ep->acceptval);
     print_detailed("*aval is %is", *aval);
+
+
+    // TODO
+    print_detailed("is_detached %lu", ep->is_detached);
 
     if (ep->acceptval <0){
 AGAIN:
@@ -5068,16 +5100,21 @@ AGAIN:
                     pperror("pthread_tryjoin_np");
                     if (ret == EBUSY){
                         sleep(1);
+                        print_detailed("AGAIN???");
+                        goto AGAIN;
                     } else if (ret == EINTR) {
+                        print_detailed("AGAIN???");
+                        goto AGAIN;
                         debug_assert(-1);
                     } else if (ret == EPERM){
                         debug_assert(-1);
                     } else if(ret == EINVAL){
                         debug_assert(-1);
                     }
-                    print_detailed("AGAIN???");
-                    goto AGAIN;
+                    debug_assert(-1);
                 }
+            } else {
+                    debug_assert(-1);
             }
         } else {
             print_detailed("HANGING");
@@ -5098,9 +5135,12 @@ AGAIN:
 
                     print_detailed("Changing acceptval");
                     ep->acceptval = (OWPAcceptType)childstatus;
+            } else {
+                    debug_assert(-1);
             }
         }
     }
+    // TODO set thread to something?
     *aval =  ep->acceptval;
 
     if(*aval == OWP_CNTRL_ACCEPT){
@@ -5135,7 +5175,7 @@ _OWPEndpointStop(
     debug_assert(ep->_owp_usr1 == 1);
 
 
-    print_detailed("epid %i tid %i Stop", ep->id, ep->tid);
+    //print_detailed("epid %i tid %i Stop", ep->id, ep->tid);
 
     *err_ret = OWPErrFATAL;
 
