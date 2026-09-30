@@ -57,7 +57,7 @@
 //
 //    FEEDBACK WELCOME!
 //
-//#define DEBUG
+//#define OWP_DEBUG
 
 
 //
@@ -74,7 +74,7 @@
 #endif
 
 #include <assert.h>
-#ifdef DEBUG
+#ifdef OWP_DEBUG
 #define print_debug(fmt, ...) printf("DEBUG: %s %s %i: %i: " fmt "\n", __FILE__, __func__, __LINE__, getpid(),  ##__VA_ARGS__)
 #define print_detailed(fmt, ...) \
     printf("DEBUG: %s %s %i: ep %i thread %lu sock %i sigfd %i efd %i tfd %i df %p state %i start %i stop %i term %i accept %i: " fmt "\n", __FILE__, __func__, __LINE__, \
@@ -89,7 +89,7 @@
 #define pperror(fmt, ...)
 #define debug_assert(fmt)
 
-#endif // DEBUG
+#endif // OWP_DEBUG
 
 //=============================================================================
 //=============================================================================
@@ -177,7 +177,7 @@ EndpointAlloc(
     ep->result = OWP_CNTRL_INVALID;
     ep->wopts = WNOHANG;
 
-    ep->is_detached = DETACHED; // UNKNOWN 0
+    ep->is_detached = UNKNOWN; // UNKNOWN 0
 
     ep->thread = 0;
     //ep->tid = 0;
@@ -4851,13 +4851,16 @@ OWPBoolean _run(OWPEndpoint ep){
         return False;
     }
 
-    if(!(OWPBoolean)OWPContextConfigGetV(ep->cntrl->ctx,OWPDetachProcesses))
+    //if((OWPBoolean)OWPContextConfigGetV(*ctx,OWPDetachProcesses)
+    //if(!OWPContextConfigSetV(ctx,OWPDetachProcesses,(void*)True)){
+    ////if((OWPBoolean)OWPContextConfigGetV(ep->cntrl->ctx,OWPDetachProcesses)
+    if((OWPBoolean)OWPContextConfigGetV(ep->cntrl->ctx,OWPDetachProcesses))
     {
-        print_detailed("NOT DETACHED");
-        ep->is_detached = NOT_DETACHED;
-    } else {
         print_detailed("DETACHED");
         ep->is_detached = DETACHED;
+    } else {
+        print_detailed("NOT DETACHED");
+        ep->is_detached = NOT_DETACHED;
     }
 
     int ret = pthread_create(&ep->thread, NULL, &child_thread, (void*)ep);
@@ -5069,12 +5072,11 @@ _OWPEndpointStatus(
     print_detailed("_OWPEndpointStatus");
     int ret = 0;
     int     childstatus;
+
+    *err_ret = OWPErrOK;
     //if((OWPBoolean)OWPContextConfigGetV(*ctx,OWPDetachProcesses)
     //if(!OWPContextConfigSetV(ctx,OWPDetachProcesses,(void*)True)){
     ////if((OWPBoolean)OWPContextConfigGetV(ep->cntrl->ctx,OWPDetachProcesses)
-
-
-    *err_ret = OWPErrOK;
 
     print_detailed("epid %i status wopts %i", ep->id, ep->wopts);
     print_detailed("acceptval %i", ep->acceptval);
@@ -5082,10 +5084,31 @@ _OWPEndpointStatus(
 
 
     // TODO
-    print_detailed("is_detached %lu", ep->is_detached);
+    print_detailed("is_detached %lu (%lu is detached, %lu is NOT detached)", ep->is_detached, DETACHED, NOT_DETACHED);
 
     if (ep->acceptval <0){
 AGAIN:
+        if (ep->is_detached){
+            // If it is detached
+            if (ep->wopts == WNOHANG){
+                print_detailed("Detached and not hanging");
+            } else {
+                print_detailed("Detached and hanging? WTF");
+                debug_assert(0);
+            }
+        } else if (!ep->is_detached){
+            // If it is NOT detached
+            if (ep->wopts == WNOHANG){
+                print_detailed("NOT detached and NOT hanging -- weird, but okay");
+            } else {
+                print_detailed("NOT detached and hanging");
+                debug_assert(0);
+            }
+        } else {
+            // UNKNOWN
+            debug_assert(0);
+        }
+        // TODO instead of WNOHANG, first check detached process (then nohang?)
         if (ep->wopts == WNOHANG){
             // TODO: NOTE This is mostly for a hang in twamp, there's probably a better solution
             print_detailed("WNOHANG");
@@ -5100,22 +5123,27 @@ AGAIN:
                     pperror("pthread_tryjoin_np");
                     if (ret == EBUSY){
                         sleep(1);
-                        print_detailed("AGAIN???");
+                        //print_detailed("AGAIN???");
                         goto AGAIN;
                     } else if (ret == EINTR) {
-                        print_detailed("AGAIN???");
-                        goto AGAIN;
-                        debug_assert(-1);
+                        // TODO???
+                        if (ep->is_detached) {
+                            print_detailed("AGAIN???");
+                            goto AGAIN;
+                        } else {
+                            print_detailed("WARNING Not doing this again, but weird case?");
+                        }
+                        //debug_assert(-1);
                     } else if (ret == EPERM){
-                        debug_assert(-1);
+                        //debug_assert(-1);
                     } else if(ret == EINVAL){
-                        debug_assert(-1);
+                        //debug_assert(-1);
                     }
-                    debug_assert(-1);
+                    //debug_assert(-1);
                 }
-            } else {
-                    debug_assert(-1);
-            }
+            } //else {
+              //      debug_assert(-1);
+              //}
         } else {
             print_detailed("HANGING");
             if (ep->thread){
@@ -5135,9 +5163,9 @@ AGAIN:
 
                     print_detailed("Changing acceptval");
                     ep->acceptval = (OWPAcceptType)childstatus;
-            } else {
-                    debug_assert(-1);
-            }
+            } //else {
+              //      debug_assert(-1);
+            //}
         }
     }
     // TODO set thread to something?

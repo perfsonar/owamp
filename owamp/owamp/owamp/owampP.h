@@ -311,7 +311,6 @@ typedef struct OWPEndpointRec{
     OWPAcceptType       acceptval;
     // TODO testing
     OWPAcceptType       result;
-    //pid_t               child;
     OWPBoolean          is_detached;
 
     int                 wopts;
