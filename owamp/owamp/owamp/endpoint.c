@@ -484,6 +484,7 @@ anon_file(
         tmpdir = _OWP_DEFAULT_TMPDIR;
     }
 
+    // TODO Narrowing conversion from unsigned long to signed int
     pathlen = strlen(tmpdir) + strlen(OWP_PATH_SEPARATOR) +
         strlen(_OWP_SKIPFILE_FMT) + 1;
 
@@ -1434,7 +1435,7 @@ skip(
 //          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //
 ///
-static int check_signals(OWPEndpoint ep, int timeout);
+static int check_signals(OWPEndpoint ep, int timeout_in_ms);
 
 //
 // Function:        run_sender
@@ -1602,9 +1603,10 @@ RETRY:
             }
         }
 
-AGAIN:
+AGAIN: //; // Null statement
+
         int sig = check_signals(ep, 0);
-        if (sig < 0){
+        if (sig < 0) {
             print_detailed("ERROR");
             debug_assert(0);
             goto finish_sender;
@@ -2061,7 +2063,7 @@ static int is_data_available(OWPEndpoint ep, int timeout_in_ms){
         pperror("epoll_wait");
         print_detailed("ERROR");
         return -1;
-    }else if (nfds ==0){
+    } else if (nfds == 0){
         // NOTE: Timeout available, but that means valid fd 0 can't be used.
         print_detailed("nothing available to read");
         return 0;
@@ -2070,7 +2072,7 @@ static int is_data_available(OWPEndpoint ep, int timeout_in_ms){
     print_detailed("Something to read! %i", nfds);
 
     // TODO possibly add signalfd here?
-    if (ev.data.fd == ep->timerfd){
+    if (ev.data.fd == ep->timerfd) {
         print_detailed("TIMER WENT OFF");
         ssize_t s;
         uint64_t exp;
@@ -2081,7 +2083,7 @@ static int is_data_available(OWPEndpoint ep, int timeout_in_ms){
             return -1;
         }
         return ep->timerfd;
-    }else if (ev.data.fd == ep->sockfd){
+    } else if (ev.data.fd == ep->sockfd) {
         print_detailed("got sockfd");
         if (ev.events & EPOLLIN){
         } else {
@@ -2089,10 +2091,11 @@ static int is_data_available(OWPEndpoint ep, int timeout_in_ms){
             return -1;
         }
         return ep->sockfd;
-    }else if (ev.data.fd == ep->eventfd){
+    } else if (ev.data.fd == ep->eventfd){
         print_detailed("got eventfd");
         if (ev.events & EPOLLIN){
             print_detailed("got eventfd");
+
             int ret = read_eventfd(ep->eventfd);
             print_detailed("readeventfd got %i", ret);
             if (ret < 0){
@@ -2108,7 +2111,7 @@ static int is_data_available(OWPEndpoint ep, int timeout_in_ms){
         debug_assert(0);
 
         return -1;
-    }else{
+    } else {
         print_detailed("unknown");
         debug_assert(0);
         return -1;
@@ -2647,14 +2650,14 @@ run_receiver(
 
     print_detailed("flush lost");
     rc = flush_lost(ep,&currtime,&lostspec,&datarec.recv);
-    if(rc < 0){
+    if(rc < 0) {
         print_detailed("ERROR");
         goto error;
-    }
-    else if(rc > 0){
+    } else if(rc > 0){
         print_detailed("FINISH");
         goto test_over;
     }
+    // rc == 0
 
     print_detailed("starting while loop");
     while(1){
@@ -2757,11 +2760,12 @@ again:
         } else if (fd == ep->timerfd) {
             print_debug("timer");
             owp_intr = 1;
+            // TODO?
         } else if (fd == ep->eventfd) {
-            print_detailed("signal");
+            print_detailed("eventfd/signal");
             goto error;
         } else if (fd < 0){
-            print_debug("ERROR");
+            print_debug("fd ERROR");
             goto error;
         } else {
             print_debug("unknown");
@@ -2813,11 +2817,10 @@ again:
         datarec.recv.sync = sync;
 
         rc = flush_lost(ep,&currtime,&lostspec,&datarec.recv);
-        if(rc < 0){
+        if(rc < 0) {
             print_debug("ERROR");
             goto error;
-        }
-        else if(rc > 0){
+        } else if (rc > 0) {
             print_detailed("GO TO TEST OVER");
             goto test_over;
         }
@@ -3317,7 +3320,7 @@ again:
                     OWPError(ep->cntrl->ctx,OWPErrFATAL,
                             OWPErrUNKNOWN,"recvfromttl(): %M");
                     goto error;
-                }else {
+                } else {
                     // TODO not sure about this?
                     debug_assert(0);
                 }
