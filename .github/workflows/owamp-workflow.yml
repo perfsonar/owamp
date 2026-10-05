@@ -10,13 +10,13 @@ on:
 jobs:
   
   prepare-build:
-    uses: perfsonar/project/.github/workflows/prepare-build.yml@master
+    uses: perfsonar/project/.github/workflows/prepare-build.yml@main
     with:
       BUILD_VARS_JSON: ${{ inputs.BUILD_VARS_JSON }}
 
   oneshot-scripted-build:
     needs: prepare-build
-    uses: perfsonar/project/.github/workflows/oneshot-scripted-build.yml@master
+    uses: perfsonar/project/.github/workflows/oneshot-scripted-build.yml@main
     secrets:
       GIT_ACTIONS: ${{ secrets.GIT_ACTIONS }}
     with:
@@ -29,7 +29,7 @@ jobs:
     needs: 
       - prepare-build
       - oneshot-scripted-build
-    uses: perfsonar/project/.github/workflows/post-build.yml@master
+    uses: perfsonar/project/.github/workflows/post-build.yml@main
     secrets:
       GIT_ACTIONS: ${{ secrets.GIT_ACTIONS }}
     with:
