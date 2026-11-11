@@ -1,17 +1,13 @@
 #
-# Makefile for unibuild top-level directory
+# Makefile for top-level directory (Rust port)
 #
 
 default: build
 
-
-BUILD_LOG=unibuild-log
+BUILD_LOG = build-log
 
 ifdef START
-UNIBUILD_OPTS += --start $(START)
-endif
-ifdef STOP
-UNIBUILD_OPTS += --stop $(STOP)
+CARGO_OPTS += --package $(START)
 endif
 
 # The shell command below does the equivalent of BASH's pipefail
@@ -20,20 +16,28 @@ endif
 build:
 	rm -rf $(BUILD_LOG)
 	((( \
-	(unibuild build $(UNIBUILD_OPTS); echo $$? >&3) \
+	(cargo build --workspace $(CARGO_OPTS); echo $$? >&3) \
 	| tee $(BUILD_LOG) >&4) 3>&1) \
 	| (read XS; exit $$XS) \
 	) 4>&1
 TO_CLEAN += $(BUILD_LOG)
 
+test:
+	cargo test --workspace -- --test-threads=1
 
-uninstall:
-	unibuild make --reverse $@
+fmt:
+	cargo fmt --all -- --check
 
-fresh: uninstall build
+clippy:
+	cargo clippy --workspace --all-targets -- -D warnings
+
+check: fmt clippy test
+
+fresh: clean build
 
 clean:
-	unibuild make $(UNIBUILD_OPTS) clean
-	unibuild clean
+	cargo clean
 	rm -rf $(TO_CLEAN)
 	find . -name '*~' | xargs rm -f
+
+.PHONY: default build test fmt clippy check fresh clean

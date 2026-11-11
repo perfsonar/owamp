@@ -1,0 +1,22 @@
+[package]
+name = "owamp-exp-vector"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Rijndael reference + test vectors (Rust port of owamp/exp-vector)"
+publish = false
+
+[lib]
+name = "owamp_exp_vector"
+path = "src/lib.rs"
+
+[[bin]]
+name = "vector"
+path = "src/vector.rs"
+
+[dependencies]
+owamp = { workspace = true }
+hex.workspace = true
+
+[lints]
+workspace = true

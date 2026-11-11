@@ -1,0 +1,69 @@
+[workspace]
+resolver = "2"
+members = [
+    "owamp/owamp",
+    "owamp/owampd",
+    "owamp/owping",
+    "owamp/powstream",
+    "owamp/twampd",
+    "owamp/twping",
+    "owamp/test",
+    "owamp/bench",
+    "owamp/exp-vector",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+authors = ["OWAMP Rust Port"]
+repository = "https://github.com/perfsonar/owamp"
+
+[workspace.dependencies]
+owamp = { path = "owamp/owamp" }
+anyhow = "1"
+thiserror = "2"
+byteorder = "1"
+aes = "0.8"
+hmac = "0.12"
+sha1 = "0.10"
+pbkdf2 = "0.12"
+rand = "0.8"
+socket2 = { version = "0.5", features = ["all"] }
+libc = "0.2"
+clap = { version = "4", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+ctrlc = "3"
+chrono = "0.4"
+hex = "0.4"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "warn"
+unused_must_use = "deny"
+unused_imports = "warn"
+dead_code = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+
+module_name_repetitions = "allow"
+similar_names = "allow"
+many_single_char_names = "allow"
+too_many_arguments = "allow"
+fn_params_excessive_bools = "allow"
+trivially_copy_pass_by_ref = "allow"
+needless_pass_by_value = "allow"
+needless_pass_by_ref_mut = "allow"
+unnecessary_wraps = "allow"
+should_implement_trait = "allow"
+struct_excessive_bools = "allow"
+cast_possible_truncation = "allow"
+cast_sign_loss = "allow"
+cast_possible_wrap = "allow"
+cast_precision_loss = "allow"
+ptr_as_ptr = "allow"
+ref_as_ptr = "allow"
+borrow_as_ptr = "allow"

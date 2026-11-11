@@ -1,0 +1,21 @@
+[package]
+name = "twampd"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "TWAMP server daemon (Rust port of twampd.c)"
+
+[lib]
+name = "twampd"
+path = "src/lib.rs"
+
+[[bin]]
+name = "twampd"
+path = "src/main.rs"
+
+[dependencies]
+owampd = { path = "../owampd" }
+anyhow.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,14 @@
+# Clippy knobs for the C→Rust OWAMP port.
+# Thresholds stay strict enough to catch growth, but allow C-parity state machines.
+cognitive-complexity-threshold = 50
+too-many-lines-threshold = 320
+too-many-arguments-threshold = 10
+type-complexity-threshold = 350
+# 64 KiB copy buffers are intentional; flag only larger stacks.
+array-size-threshold = 65536
+avoid-breaking-exported-api = false
+allow-expect-in-tests = true
+allow-unwrap-in-tests = true
+allow-dbg-in-tests = true
+allow-print-in-tests = true
+doc-valid-idents = ["OWAMP", "TWAMP", "NTP", "HMAC", "AES", "SID", "IPv4", "IPv6"]

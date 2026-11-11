@@ -1,0 +1,26 @@
+# Stable rustfmt (strict defaults). Unstable options are listed below for
+# `cargo +nightly fmt` when desired.
+edition = "2021"
+style_edition = "2021"
+max_width = 100
+tab_spaces = 4
+newline_style = "Unix"
+use_field_init_shorthand = true
+use_try_shorthand = true
+merge_derives = true
+reorder_imports = true
+reorder_modules = true
+remove_nested_parens = true
+hex_literal_case = "Lower"
+match_block_trailing_comma = true
+
+# --- nightly-only (ignored on stable with a warning if uncommented) ---
+# wrap_comments = true
+# comment_width = 100
+# normalize_comments = true
+# normalize_doc_attributes = true
+# format_code_in_doc_comments = true
+# imports_granularity = "Module"
+# group_imports = "StdExternalCrate"
+# trailing_comma = "Vertical"
+# blank_lines_upper_bound = 1

@@ -1,0 +1,27 @@
+[package]
+name = "owampd"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "OWAMP server daemon (Rust port)"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "owampd"
+path = "src/main.rs"
+
+[dependencies]
+owamp.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+libc.workspace = true
+ctrlc.workspace = true
+hex.workspace = true
+socket2.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,29 @@
+[package]
+name = "owamp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "OWAMP/TWAMP protocol library (Rust port of libowamp)"
+
+[lib]
+name = "owamp"
+crate-type = ["rlib", "cdylib", "staticlib"]
+
+[dependencies]
+anyhow.workspace = true
+thiserror.workspace = true
+byteorder.workspace = true
+aes.workspace = true
+hmac.workspace = true
+sha1.workspace = true
+pbkdf2.workspace = true
+rand.workspace = true
+socket2.workspace = true
+libc.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+chrono.workspace = true
+hex.workspace = true
+
+[lints]
+workspace = true

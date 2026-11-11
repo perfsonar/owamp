@@ -1,0 +1,30 @@
+[package]
+name = "owamp-test"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "OWAMP/TWAMP integration tests (Rust port of owamp/test)"
+publish = false
+
+[lib]
+name = "owamp_test"
+path = "src/lib.rs"
+
+[dependencies]
+owamp = { workspace = true }
+anyhow.workspace = true
+libc.workspace = true
+hex.workspace = true
+tracing.workspace = true
+hmac.workspace = true
+sha1.workspace = true
+
+# Ensure workspace binaries are built alongside tests (resolve via target/*/name).
+[dev-dependencies]
+owampd = { path = "../owampd" }
+owping = { path = "../owping" }
+twampd = { path = "../twampd" }
+twping = { path = "../twping" }
+
+[lints]
+workspace = true
