@@ -85,3 +85,14 @@ owamp/owamp/test/twping_clear
 owamp/owamp/test/twping_enc
 owamp/owamp/selinux/Makefile
 owamp/owamp/selinux/Makefile.in
+
+# Rust
+/target/
+.rust-target/
+Cargo.lock.bak
+
+# Editor / local
+*.swp
+*~
+.idea/
+.vscode/

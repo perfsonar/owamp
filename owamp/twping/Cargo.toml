@@ -1,0 +1,20 @@
+[package]
+name = "twping"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "twping"
+path = "src/lib.rs"
+
+[[bin]]
+name = "twping"
+path = "src/main.rs"
+
+[dependencies]
+owping = { path = "../owping" }
+anyhow.workspace = true
+
+[lints]
+workspace = true

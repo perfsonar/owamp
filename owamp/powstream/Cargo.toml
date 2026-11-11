@@ -1,0 +1,16 @@
+[package]
+name = "powstream"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+owamp.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+libc.workspace = true
+
+[lints]
+workspace = true

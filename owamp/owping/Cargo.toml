@@ -1,0 +1,36 @@
+[package]
+name = "owping"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "owping"
+path = "src/main.rs"
+
+[[bin]]
+name = "owstats"
+path = "src/bin_owstats.rs"
+
+[[bin]]
+name = "owfetch"
+path = "src/bin_owfetch.rs"
+
+[[bin]]
+name = "owup"
+path = "src/bin_owup.rs"
+
+[dependencies]
+owamp.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+hex.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+libc.workspace = true
+
+[lints]
+workspace = true
